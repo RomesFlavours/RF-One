@@ -9,7 +9,11 @@
         "workspace/position_new.html": "workspace/how_it_works.html#selection",
         "workspace/job_form.html": "workspace/how_it_works.html#selection",
         "sp/position.html": "workspace/how_it_works.html#applications",
-        "workspace/position.html": ["workspace/how_it_works.html#applications", "workspace/how_it_works.html#interviews", "workspace/how_it_works.html#decisions"],
+        "workspace/position.html": [
+          "workspace/how_it_works.html#applications",
+          "workspace/how_it_works.html#interviews",
+          "workspace/how_it_works.html#decisions"
+        ],
         "workspace/compare.html": "workspace/how_it_works.html#applications",
         "workspace/evaluation.html": "workspace/how_it_works.html#evaluation",
         "workspace/candidate.html": "workspace/how_it_works.html#evaluation",
@@ -81,20 +85,25 @@
     "RF-One Web": {
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
-      "pages": {},
+      "pages": {
+        "employee_directory.html": "employee_directory_how_it_works.html#directory",
+        "employee_directory_detail.html": "employee_directory_how_it_works.html#employee",
+        "admin_accounts.html": "admin_accounts_how_it_works.html#accounts",
+        "admin_account_form.html": "admin_accounts_how_it_works.html#account-form"
+      },
       "not_operational": {
         "base.html": "layout of RF-One Web",
         "login.html": "sign-in",
         "forgot_password.html": "password recovery",
         "forgot_password_code.html": "password recovery",
         "work_in_progress.html": "placeholder of a module not yet available",
-        "restaurant_wines_how_it_works.html": "the Restaurant Wines guide itself"
+        "restaurant_wines_how_it_works.html": "the Restaurant Wines guide itself",
+        "employee_directory_how_it_works.html": "the Employee Directory guide itself",
+        "admin_accounts_how_it_works.html": "the Accounts guide itself"
       },
       "help_missing": {
         "home.html": "RF-One Home",
         "profile.html": "Profile",
-        "admin_accounts.html": "Administration / Accounts",
-        "admin_account_form.html": "Administration / Accounts",
         "admin_account_access.html": "Administration / Accounts",
         "admin_account_training_link.html": "Administration / Accounts",
         "admin_legal_entities.html": "Administration / Legal entities",
@@ -111,8 +120,6 @@
         "admin_org_position_interview.html": "Management / Organization",
         "admin_org_positions.html": "Management / Organization",
         "admin_org_process_ownerships.html": "Management / Organization",
-        "employee_directory.html": "Administration / Employee Directory",
-        "employee_directory_detail.html": "Administration / Employee Directory",
         "bank_home.html": "Bank Reconciliation",
         "bank_sources.html": "Bank Reconciliation",
         "bank_import_session.html": "Bank Reconciliation",

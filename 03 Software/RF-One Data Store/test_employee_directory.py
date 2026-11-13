@@ -43,6 +43,21 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def count(self, model):
         return self.db.scalar(select(func.count()).select_from(model))
 
+    def hold_shift(self, location, external_id, in_time=None):
+        """A clock-in waiting in the Provider Mirror for a pending Clover ID: the
+        admission evidence for a new employee (EMPLOYEE_ACCOUNTS_001)."""
+        in_time = in_time or datetime(2026, 10, 1, 15, tzinfo=timezone.utc)
+        run = m.IngestionRun(source_system_id=self.source.id, location_id=location.id,
+                             status="COMPLETE", started_at=in_time)
+        self.db.add(run)
+        self.db.flush()
+        self.db.add(m.SourceRecord(ingestion_run_id=run.id, source_system_id=self.source.id, entity_type="shift",
+                                   source_id=f"HELD-{external_id}-{int(in_time.timestamp())}", retrieved_at=in_time,
+                                   raw_json={"id": f"HELD-{external_id}-{int(in_time.timestamp())}",
+                                             "employee": {"id": external_id},
+                                             "inTime": int(in_time.timestamp() * 1000)}))
+        self.db.flush()
+
     def test_repeated_import_reuses_legacy_id_and_preserves_management(self):
         records = [{"id": "E1", "name": "Jane Source", "customId": "EXTERNAL", "email": "jane@example.test", "role": "MANAGER"}]
         for _ in range(3):
@@ -72,6 +87,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_same_name_never_auto_merges_and_explicit_new_is_possible(self):
         _, pending = self.sync([{"id": "E2", "name": "Jane Smith"}], self.md)
         self.assertEqual(self.count(m.Employee), 1)
+        self.hold_shift(self.md, "E2")
         employee = directory.attach_link(self.db, link_id=pending[0], create_new=True)
         self.assertNotEqual(employee.id, self.legacy.id)
         self.assertEqual(self.count(m.Employee), 2)
@@ -146,6 +162,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
             self.assertEqual(result.get("NEW"), None)
             self.assertEqual(len(pending), 1)
         self.assertEqual(self.count(m.Employee), 1)
+        self.hold_shift(self.wp, "NEW")
         person = directory.attach_link(self.db, link_id=pending[0], create_new=True)
         result, pending = self.sync([{"id": "NEW", "name": "Robert Jones"}])
         self.assertEqual(result["NEW"], person.id)
@@ -162,6 +179,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_explicit_consolidation_preserves_work_and_retired_id(self):
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
+        self.hold_shift(self.md, "M2")
         duplicate_id = directory.attach_link(self.db, link_id=pending[0], create_new=True).id
         self.db.add(m.Shift(employee_id=duplicate_id, location_id=self.md.id,
             source_system_id=self.source.id, source_shift_id="MD-SHIFT",
@@ -177,6 +195,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
 
     def test_consolidation_constraint_conflict_rolls_back_every_reference(self):
         _, pending = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
+        self.hold_shift(self.md, "M2")
         duplicate_id = directory.attach_link(self.db, link_id=pending[0], create_new=True).id
         role = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id,
                             source_role_id="SHARED", name="Source role")
@@ -392,7 +411,9 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.assertFalse(self.db.dirty)
         self.assertFalse(self.db.new)
         self.assertTrue(all(statement.lstrip().upper().startswith(("SELECT", "BEGIN", "PRAGMA")) for statement in statements))
-        self.assertLessEqual(sum(statement.lstrip().upper().startswith("SELECT") for statement in statements), 6)
+        # Bounded, independent of the number of people: the employment state
+        # (EMPLOYEE_ACCOUNTS_001) adds four grouped queries.
+        self.assertLessEqual(sum(statement.lstrip().upper().startswith("SELECT") for statement in statements), 10)
 
     def test_bank_employee_choices_use_shared_state_and_exclude_aliases(self):
         from rfone_data_store.bank_reconciliation.configuration import cardholder_candidates

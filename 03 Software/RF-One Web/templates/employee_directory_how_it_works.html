@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Come funziona l’Anagrafica dipendenti · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+<style>.employee-guide section:target{outline:2px solid currentColor;outline-offset:6px;scroll-margin-top:80px}</style>
+{{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Come funziona', none)]) }}
+<div class="employee-guide">
+<h1>Come funziona l’Anagrafica dipendenti</h1>
+<nav aria-label="Indice della guida"><a href="#directory">Elenco</a> · <a href="#employee">Scheda del dipendente</a></nav>
+
+<section id="directory"><h2>Elenco dell’anagrafica</h2>
+<p><strong>Chi è un dipendente.</strong> Una persona RF1 è un dipendente quando ha almeno un clock-in o clock-out Clover attribuito. Ogni sede Clover in cui compare è una sua <em>posizione</em>: Winter Park e Mount Dora sono gestite separatamente.</p>
+<p><strong>Dipendenti attivi</strong> sono divisi per sede: una persona compare sotto ogni sede in cui ha una posizione attiva. La colonna Posizioni mostra lo stato di ogni sede; la colonna Account RF1 mostra l’account collegato o <em>Mancante</em>. Il numero di dipendenti attivi senza account è indicato sopra l’elenco.</p>
+<p><strong>Quando una posizione termina.</strong> Ad ogni sincronizzazione riuscita RF1 legge l’elenco completo dei dipendenti Clover della sede. Se una persona non vi compare più, termina soltanto la posizione di quella sede; la data è quella del suo ultimo clock-in nella sede, anche se manca il clock-out. Le posizioni nelle altre sedi restano attive, insieme al suo accesso.</p>
+<p><strong>Quando una persona cessa.</strong> Quando non le rimane alcuna posizione attiva. La data di cessazione è l’ultimo clock-in fra tutte le sue timbrature. La persona passa in <strong>Dismissis</strong> (sezione chiusa all’apertura della pagina), con posizioni, date e storico. Il suo account RF1 viene disabilitato e le sessioni già aperte terminano alla richiesta successiva; persona, account e storico sono conservati. Il proprietario dell’installazione e l’ultimo amministratore attivo non vengono disabilitati automaticamente: la scheda lo segnala.</p>
+<p><strong>Cosa non produce cessazioni.</strong> Un errore di lettura, un elenco incompleto o non valido, un elenco vuoto e una sede non configurata (oggi Mount Dora) non chiudono alcuna posizione.</p>
+<p><strong>Se la persona ricompare</strong> in Clover, la posizione torna attiva e la persona torna fra gli attivi. L’account resta disabilitato: un amministratore lo riattiva in Account.</p>
+<p><strong>Dismissis</strong> contiene anche le persone archiviate manualmente dalla scheda («Archiviazione manuale»): l’archiviazione non chiude posizioni e non disabilita l’account.</p>
+<p><strong>Collegamenti da riconciliare.</strong> Contiene i nominativi Clover non ancora confermati che hanno timbrature in attesa. Nessun abbinamento è automatico, neanche con lo stesso nome o email: scegli la persona RF1 e premi «Collega alla persona», oppure «Conferma che è una persona nuova». Le timbrature e gli ordini in attesa vengono attribuiti alla conferma. Più record Clover, anche della stessa sede, possono essere collegati alla stessa persona.</p>
+<p><strong>Nominativi Clover senza timbrature</strong> (sezione chiusa) sono osservazioni tecniche della sincronizzazione: non diventano dipendenti e non ricevono un account. Puoi soltanto collegarli a una persona RF1 esistente; quando avranno timbrature compariranno fra i collegamenti da riconciliare.</p>
+<p><strong>Altre persone RF1, non dipendenti</strong> (sezione chiusa) sono persone senza timbrature, create direttamente in RF1 o collegate a record Clover mai timbrati. Restano consultabili e selezionabili negli altri moduli, tranne chi non compare più in alcun elenco Clover (ad esempio chi ha lavorato prima dello storico acquisito): non è proposto per nuove scelte.</p>
+<p><strong>Negli altri moduli</strong> i dipendenti cessati e archiviati non compaiono fra le scelte per nuove selezioni o assegnazioni (carte Bank, responsabili di progetto). Documenti, operazioni e assegnazioni già registrati continuano a mostrarne il nome; i filtri storici (ad esempio il controllo Host di Tips) li includono.</p>
+<p><strong>Sincronizza ora</strong> avvia la stessa acquisizione Clover della sincronizzazione automatica, per la sede indicata. Richiede anche l’accesso ad Acquisizione Clover.</p>
+<p><strong>Account esterni.</strong> Persone esterne alle aziende ricevono un account creato in Account senza scheda in anagrafica: le cessazioni Clover non li riguardano.</p>
+</section>
+
+<section id="employee"><h2>Scheda del dipendente</h2>
+<p><strong>Stato e posizioni</strong> mostra lo stato della persona (Attivo, Cessato con data, Archiviato manualmente, oppure Persona RF1 non dipendente) e, per ogni sede, se la posizione è attiva o terminata, l’ultimo clock-in nella sede e la data di cessazione. Gli orari sono nell’ora locale della sede.</p>
+<p><strong>Account RF1.</strong> Ogni dipendente ha esattamente un account e ogni account appartiene al massimo a un dipendente. Se manca, un amministratore RF-One usa «Crea account RF1 per questo dipendente»: si apre il modulo di Account con nome ed email della scheda già compilati; username e password li sceglie l’amministratore e l’email va confermata. In alternativa si collega un account esistente in «Collegamenti ai domini». RF1 non inventa email o credenziali. Creare o collegare un account non concede permessi; se il dipendente è cessato l’account resta disabilitato.</p>
+<p><strong>Dati interni RF-One</strong> (nome, email, telefono, codice, archiviazione manuale) si modificano solo qui; le sincronizzazioni Clover non li sovrascrivono.</p>
+<p><strong>Collegamenti ai domini</strong> collega esplicitamente la persona a un account RF1, un’identità operativa, un account Formazione, un candidato o un responsabile di progetto, con conferma. Per l’account RF1 è proposto solo un account non ancora collegato e solo se la persona non ne ha già uno.</p>
+<p><strong>Sedi e dati importati da Clover</strong> mostra, per ogni record Clover collegato, i valori letti dal POS e se il record manca dall’ultimo elenco completo della sede. Le differenze fra sedi si esaminano e si confermano con l’apposito pulsante.</p>
+<p><strong>Storico anagrafica</strong> elenca aggiornamenti Clover, collegamenti, posizioni terminate o riattivate, cessazioni, riattivazioni e disabilitazioni di accesso, con l’autore quando è una persona.</p>
+<p><strong>Riconciliazione di identità duplicate.</strong> Se la stessa persona esiste con due identità RF1, «Riconcilia le due identità» riporta collegamenti Clover e storico sulla persona scelta. Se le due identità hanno ciascuna un account RF1, o regole di ruoli e paghe sono in conflitto, la riconciliazione è rifiutata e nulla cambia: scollega prima l’account in eccesso.</p>
+</section>
+<p><a class="btn" href="{{ url_for('employee_directory_home') }}">Torna all’Anagrafica dipendenti</a></p>
+</div>
+{% endblock %}

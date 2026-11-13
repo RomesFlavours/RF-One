@@ -229,7 +229,9 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
             self.assertEqual(person.email, "native@example.test")
         home = manager.get(ROOT, base_url=fixture.HOST)
         self.assertEqual(home.status_code, 200)
-        self.assertIn("Senza sede", home.get_data(as_text=True))
+        # EMPLOYEE_ACCOUNTS_001: without time punches a person is not an employee.
+        html = home.get_data(as_text=True)
+        self.assertIn("Native RF1 person", html[html.index('id="other-people"'):])
 
     def test_09_context_links_require_confirmation_and_target_management_rights(self):
         with SessionFactory() as db:
@@ -257,6 +259,95 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
             "action": "context_unlink", "context_link_id": link_id, "confirm_identity": "yes"}, base_url=fixture.HOST).status_code, 302)
         with SessionFactory() as db:
             self.assertIsNone(directory.context_person_id(db, "RFONE_ACCOUNT", target_id))
+
+    # EMPLOYEE_ACCOUNTS_001 — before test_10, which downgrades the schema.
+    def _account_person(self, name, external_id):
+        with SessionFactory() as db:
+            person = directory.create_person(db, display_name=name, email=f"{external_id.lower()}@example.test")
+            db.add(m.EmployeeCloverLink(employee_id=person.id, location_id=self.location_id, merchant_id="DIR-WP",
+                                        external_employee_id=external_id, state="PRESENT"))
+            db.add(m.Shift(employee_id=person.id, location_id=self.location_id, source_system_id=self.source_id,
+                           source_shift_id=f"SHIFT-{external_id}", clock_in=datetime(2026, 10, 20, 14, tzinfo=timezone.utc)))
+            db.commit()
+            return person.id
+
+    def test_09a_account_created_from_employee_is_linked_once_and_grants_nothing(self):
+        person_id = self._account_person("Account Person", "ACC-1")
+        owner = self.client("directory-owner")
+        detail = owner.get(f"{ROOT}/{person_id}", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("Nessun account RF1", detail)
+        self.assertIn(f"/admin/accounts/new?employee_id={person_id}", detail)
+        form = owner.get(f"/admin/accounts/new?employee_id={person_id}", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn('value="Account Person"', form)
+        self.assertIn('value="acc-1@example.test"', form)
+        self.assertIn(f'name="employee_id" value="{person_id}"', form)
+        payload = {"csrf_token": fixture.csrf(form.encode()), "employee_id": person_id, "username": "account-person",
+                   "display_name": "Account Person", "email": "acc-1@example.test", "password": PASSWORD,
+                   "password_confirm": PASSWORD, "status": "ACTIVE"}
+        response = owner.post("/admin/accounts/new", data=payload, base_url=fixture.HOST)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.endswith(f"{ROOT}/{person_id}"))
+        with SessionFactory() as db:
+            account = directory.person_account(db, person_id)
+            self.assertEqual((account.username, account.status), ("account-person", "ACTIVE"))
+            self.assertFalse(fixture.account_service.list_domain_access_for_account(db, account.id))
+        payload.update(username="account-person-2", email="acc-1b@example.test")
+        refused = owner.post("/admin/accounts/new", data=payload, base_url=fixture.HOST)
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn(b"already has an RF-One account", refused.data)
+        with SessionFactory() as db:
+            self.assertIsNone(db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username == "account-person-2")))
+        listing = owner.get("/admin/accounts", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("Account Person</a>", listing)
+        self.assertIn("External", listing)  # e.g. directory-user: an account without employee
+
+    def test_09b_cessation_ends_open_session_and_blocks_reactivation(self):
+        person_id = self._account_person("Ceasing Person", "ACC-2")
+        with SessionFactory() as db:
+            account = fixture.account_service.create_account(db, username="ceasing-person", display_name="Ceasing Person",
+                password=PASSWORD, status="ACTIVE", is_admin=False, email="acc-2@example.test")
+            fixture.account_service.set_domain_access(db, account_id=account.id, domain_code="EMPLOYEES", enabled=True, role_code=None)
+            directory.link_context(db, employee_id=person_id, kind="RFONE_ACCOUNT", target_id=account.id)
+            account_id = account.id
+            db.commit()
+        session = self.client("ceasing-person")
+        self.assertEqual(session.get(ROOT, base_url=fixture.HOST).status_code, 200)
+        with SessionFactory() as db:  # complete roster without ACC-2
+            present = [{"id": l.external_employee_id, "name": "x"} for l in db.scalars(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id == "DIR-WP", m.EmployeeCloverLink.state == "PRESENT"))
+                if l.external_employee_id != "ACC-2"]
+            directory.import_snapshot(db, location_id=self.location_id, merchant_id="DIR-WP", records=present)
+            db.commit()
+            self.assertEqual(db.get(m.RFOneAccount, account_id).status, "INACTIVE")
+        after = session.get(ROOT, base_url=fixture.HOST)
+        self.assertEqual(after.status_code, 302)
+        self.assertIn("/login", after.location)
+        owner = self.client("directory-owner")
+        page = owner.get(ROOT, base_url=fixture.HOST).get_data(as_text=True)
+        dismissis = page[page.index('id="dismissis"'):page.index("Collegamenti da riconciliare")]
+        self.assertIn("Ceasing Person", dismissis)
+        self.assertIn("Cessato il 2026-10-20", dismissis)
+        self.assertIn("ceasing-person · disabilitato", dismissis)
+        edit = owner.get(f"/admin/accounts/{account_id}/edit", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn("ceased", edit)
+        response = owner.post(f"/admin/accounts/{account_id}/edit", data={"csrf_token": fixture.csrf(edit.encode()),
+            "display_name": "Ceasing Person", "status": "ACTIVE"}, base_url=fixture.HOST)
+        self.assertEqual(response.status_code, 400)
+        with SessionFactory() as db:
+            self.assertEqual(db.get(m.RFOneAccount, account_id).status, "INACTIVE")
+            self.assertIsNotNone(db.get(m.Employee, person_id))
+
+    def test_09c_how_works_guides_have_a_section_per_page(self):
+        owner = self.client("directory-owner")
+        for page, section in ((ROOT, "directory"), (f"{ROOT}/{self.employee_id}", "employee"),
+                              ("/admin/accounts", "accounts"), ("/admin/accounts/new", "account-form")):
+            self.assertIn(f'data-how-works="{section}"', owner.get(page, base_url=fixture.HOST).get_data(as_text=True))
+        guide = owner.get(ROOT + "/how-it-works", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn('id="directory"', guide)
+        self.assertIn('id="employee"', guide)
+        accounts_guide = owner.get("/admin/accounts/how-it-works", base_url=fixture.HOST).get_data(as_text=True)
+        self.assertIn('id="accounts"', accounts_guide)
+        self.assertIn('id="account-form"', accounts_guide)
 
     def test_10_downgrade_refuses_to_discard_native_person_data(self):
         config = Config(str(Path(fixture._DATA_STORE_DIR) / "alembic.ini"))

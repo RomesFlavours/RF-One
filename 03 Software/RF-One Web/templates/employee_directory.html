@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% from "_employee_directory_macros.html" import how_works, person_status, position_label, account_label %}
 {% block page_title %}Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 <script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}"></script>
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', none)]) }}
+{{ how_works('directory', 'Anagrafica dipendenti') }}
 <h1>Anagrafica dipendenti</h1>
-<p>Anagrafica RF1 condivisa per dipendenti, candidati e collaboratori. Funziona anche senza POS.</p>
+<p>Dipendenti delle sedi Clover: una persona RF1, una posizione per sede, un account RF1.</p>
 {% for site in sites %}
 <div class="employee-sync">
   {% if sites|length > 1 %}<strong>{{ site.location.name }}</strong>{% endif %}
@@ -21,7 +23,7 @@
   {% endif %}
 </div>
 {% endfor %}
-{% if not md_configured %}<p><strong>Mount Dora: non configurato.</strong> Le credenziali mancanti non bloccano Winter Park.</p>{% endif %}
+{% if not md_configured %}<p><strong>Mount Dora: non configurato.</strong> Le credenziali mancanti non bloccano Winter Park e non producono cessazioni.</p>{% endif %}
 
 {% if can_manage %}
 <details><summary>Nuova persona RF1</summary>
@@ -31,44 +33,49 @@
 <label>Email <input name="email" type="email" maxlength="255"></label>
 <label>Telefono <input name="phone" maxlength="64"></label>
 <button type="submit">Crea persona in RF1</button>
-</form><p>Non è necessario un POS, un account o un rapporto di lavoro.</p></details>
+</form><p>Non è necessario un POS, un account o un rapporto di lavoro. La persona diventa dipendente quando ha timbrature Clover collegate.</p></details>
 {% endif %}
-<p>Lo stato RF1 è distinto da rapporto di lavoro, accesso e presenza nel POS.</p>
-<form method="get"><label>Cerca nome, email o codice <input name="q" value="{{ query }}" type="search"></label> <button>Cerca</button></form>
+<form method="get"><label>Cerca nome, email, codice o account <input name="q" value="{{ query }}" type="search"></label> <button>Cerca</button></form>
+{% if missing_accounts %}<p><strong>{{ missing_accounts }} dipendenti attivi senza account RF1.</strong> Ogni dipendente deve avere un account: crealo o collegalo dalla scheda del dipendente.</p>{% endif %}
 <h2>Dipendenti attivi</h2>
 {% for group in active_groups %}
 <h3>{{ group.location.name }} ({{ group.rows|length }})</h3>
 <div class="table-scroll"><table>
-<thead><tr><th>Dipendente</th><th>Ultimo aggiornamento</th><th>Da verificare</th></tr></thead>
+<thead><tr><th>Dipendente</th><th>Posizioni</th><th>Account RF1</th><th>Ultimo aggiornamento</th><th>Da verificare</th></tr></thead>
 <tbody>{% for row in group.rows %}<tr data-rr-key="employee:{{ row.employee.id }}:{{ group.location.id }}">
   <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a></td>
+  <td>{% for position in row.state.positions %}<div>{{ position_label(position, locations) }}</div>{% else %}Nessuna posizione Clover{% endfor %}</td>
+  <td>{% if row.account %}{{ account_label(row.account) }}{% else %}<strong>Mancante</strong>{% endif %}</td>
   <td>{{ row.site_link.last_seen_at|local_dt(group.location.timezone) if row.site_link and row.site_link.last_seen_at else 'Mai aggiornato' }}</td>
   <td>{% if row.conflicts %}{{ 'Differenze esaminate' if row.reviewed else 'Differenze nei dati POS' }}{% endif %}
-      {% if row.site_link and row.site_link.id in row.absence_link_ids %}{{ 'Assenza da Clover esaminata' if row.reviewed else 'Assente da Clover, posizione da verificare' }}{% elif row.site_link and row.site_link.state == 'UNVERIFIED' %}Dati precedenti da aggiornare{% endif %}</td>
+      {% if row.site_link and row.site_link.state == 'UNVERIFIED' %}Dati precedenti da aggiornare{% endif %}
+      {% if row.account and row.account.status != 'ACTIVE' %}<div>Account disabilitato: riattivalo in Account se la persona deve accedere</div>{% endif %}</td>
 </tr>{% endfor %}</tbody>
 </table></div>
 {% else %}<p>Nessun dipendente attivo trovato.</p>{% endfor %}
 
 <details class="employee-dismissed" id="dismissis">
 <summary>Dismissis ({{ dismissed|length }})</summary>
+<p>Persone cessate (nessuna posizione attiva in alcuna sede) o archiviate manualmente. Persona, account e storico sono conservati; l’accesso dei cessati è disabilitato.</p>
 <div class="table-scroll"><table>
-<thead><tr><th>Dipendente</th><th>Sedi Clover</th><th>Ultimo aggiornamento</th><th>Da verificare</th></tr></thead>
+<thead><tr><th>Dipendente</th><th>Stato</th><th>Posizioni</th><th>Account RF1</th></tr></thead>
 <tbody>{% for row in dismissed %}<tr data-rr-key="employee:{{ row.employee.id }}:dismissed">
+  {% set home = locations.get(row.employee.location_id) %}
   <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a></td>
-  <td>{% for link in row.links %}{{ locations[link.location_id].name }}{% if not loop.last %}, {% endif %}{% else %}Nessun collegamento{% endfor %}</td>
-  <td>{% for link in row.links %}<div>{{ locations[link.location_id].name }}: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</div>{% endfor %}</td>
-  <td>{% if row.conflicts %}{{ 'Differenze esaminate' if row.reviewed else 'Differenze nei dati POS' }}{% endif %}
-      {% for link in row.links %}{% if link.id in row.absence_link_ids %}<div>{{ locations[link.location_id].name }}: {{ 'assenza da Clover esaminata' if row.reviewed else 'assente da Clover, posizione da verificare' }}</div>{% elif link.state == 'UNVERIFIED' %}<div>Dati precedenti da aggiornare</div>{% endif %}{% endfor %}</td>
-</tr>{% else %}<tr><td colspan="4">Nessun dipendente non attivo trovato.</td></tr>{% endfor %}</tbody>
+  <td>{{ person_status(row.state, home.timezone if home else none) }}</td>
+  <td>{% for position in row.state.positions %}<div>{{ position_label(position, locations) }}</div>{% else %}Nessuna posizione Clover{% endfor %}</td>
+  <td>{{ account_label(row.account) }}</td>
+</tr>{% else %}<tr><td colspan="4">Nessun dipendente cessato o archiviato.</td></tr>{% endfor %}</tbody>
 </table></div>
 </details>
 
 <h2>Collegamenti da riconciliare ({{ pending|length }})</h2>
+<p>Nominativi Clover con timbrature non ancora attribuite. Nessun abbinamento è automatico: conferma l’identità prima di attribuire dati di lavoro.</p>
 {% for item in pending %}
 <section class="domain-card" data-rr-key="clover-link:{{ item.link.id }}">
   <h3>{{ item.link.snapshot.name or 'Nome non disponibile' }} · {{ locations[item.link.location_id].name }}{% if item.link.state == "MISSING_REVIEW" %} · Non più presente nel POS{% endif %}</h3>
-  <p>{{ item.link.snapshot.email or 'Email non disponibile' }}</p>
-  <p>Possibili abbinamenti: {% for suggestion in item.candidates %}{{ suggestion.employee.display_name }} ({{ suggestion.reason }}){% if not loop.last %}, {% endif %}{% else %}nessuno{% endfor %}. Conferma l’identità prima di attribuire dati di lavoro.</p>
+  <p>{{ item.link.snapshot.email or 'Email non disponibile' }} · Timbrature in attesa: {{ item.punches }}{% if item.orders %} · Ordini in attesa: {{ item.orders }}{% endif %}</p>
+  <p>Possibili abbinamenti: {% for suggestion in item.candidates %}{{ suggestion.employee.display_name }} ({{ suggestion.reason }}){% if not loop.last %}, {% endif %}{% else %}nessuno{% endfor %}.</p>
   {% if can_manage %}<form method="post" action="{{ url_for('employee_directory_link', link_id=item.link.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="q" value="{{ query }}">
@@ -78,4 +85,34 @@
   </form>{% else %}<p>Il collegamento richiede un amministratore dell’anagrafica.</p>{% endif %}
 </section>
 {% else %}<p>Nessun collegamento in attesa.</p>{% endfor %}
+
+<details id="clover-observations">
+<summary>Nominativi Clover senza timbrature ({{ observations|length }})</summary>
+<p>Osservazioni tecniche della sincronizzazione: non sono dipendenti RF1 e non ricevono un account. Se uno di essi appartiene a una persona RF1 esistente puoi collegarlo; diventerà un nominativo da riconciliare quando avrà timbrature.</p>
+{% for item in observations %}
+<section class="domain-card" data-rr-key="clover-observation:{{ item.link.id }}">
+  <h3>{{ item.link.snapshot.name or 'Nome non disponibile' }} · {{ locations[item.link.location_id].name }}{% if item.link.state == "MISSING_REVIEW" %} · Non più presente nel POS{% endif %}</h3>
+  <p>{{ item.link.snapshot.email or 'Email non disponibile' }}{% if item.orders %} · Ordini in attesa di attribuzione: {{ item.orders }}{% endif %}</p>
+  {% if can_manage %}<form method="post" action="{{ url_for('employee_directory_link', link_id=item.link.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="q" value="{{ query }}">
+    <label>Persona RF-One esistente <select name="employee_id" required><option value="">Scegli una persona</option>{% for employee in employees %}<option value="{{ employee.id }}">{{ employee.display_name or 'Nome da completare' }} · RF1 {{ employee.id }}{% if employee.location_names %} · {{ employee.location_names|join(", ") }}{% endif %}{% if not employee.is_active %} · Non attivo{% endif %}</option>{% endfor %}</select></label>
+    <button type="submit">Collega alla persona</button>
+  </form>{% endif %}
+</section>
+{% else %}<p>Nessun nominativo senza timbrature.</p>{% endfor %}
+</details>
+
+<details id="other-people">
+<summary>Altre persone RF1, non dipendenti ({{ others|length }})</summary>
+<p>Persone RF1 senza alcuna timbratura (create direttamente in RF1 o collegate a record Clover mai timbrati). Restano consultabili; non sono dipendenti. Chi non compare più in alcun elenco Clover (ad esempio collaboratori con lavoro anteriore allo storico acquisito) non è proposto nelle nuove scelte degli altri moduli.</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Persona</th><th>Record Clover</th><th>Account RF1</th></tr></thead>
+<tbody>{% for row in others %}<tr data-rr-key="employee:{{ row.employee.id }}:other">
+  <td><a href="{{ url_for('employee_directory_detail', employee_id=row.employee.id) }}">{{ row.employee.display_name or 'Nome da completare' }}</a></td>
+  <td>{% for link in row.links %}{{ locations[link.location_id].name }}{% if not loop.last %}, {% endif %}{% else %}Nessuno{% endfor %}</td>
+  <td>{{ account_label(row.account) }}</td>
+</tr>{% else %}<tr><td colspan="3">Nessuna.</td></tr>{% endfor %}</tbody>
+</table></div>
+</details>
 {% endblock %}

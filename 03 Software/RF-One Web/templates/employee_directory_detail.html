@@ -1,11 +1,36 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% from "_employee_directory_macros.html" import how_works, person_status, position_label, account_label %}
 {% block page_title %}{{ employee.display_name }} · Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
+{{ how_works('employee', 'scheda del dipendente') }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
 <p>Identità interna RF1: {{ employee.id }}</p>
+{% set home_location = locations.get(employee.location_id) %}
+<h2>Stato e posizioni</h2>
+<p><strong>{{ person_status(state, home_location.timezone if home_location else none) }}</strong></p>
+{% if state.positions %}<div class="table-scroll"><table>
+<thead><tr><th>Sede</th><th>Posizione</th><th>Ultimo clock-in nella sede</th><th>Data di cessazione</th></tr></thead>
+<tbody>{% for position in state.positions %}{% set loc = locations.get(position.location_id) %}<tr>
+  <td>{{ loc.name if loc else position.location_id }}</td>
+  <td>{{ 'Terminata' if position.status == 'ENDED' else 'Attiva' }}</td>
+  <td>{{ position.last_clock_in|local_dt(loc.timezone if loc else none) if position.last_clock_in else 'Nessuna timbratura nella sede' }}</td>
+  <td>{% if position.status == 'ENDED' %}{{ position.last_clock_in|local_dt(loc.timezone if loc else none) if position.last_clock_in else 'Non determinabile' }}{% else %}—{% endif %}</td>
+</tr>{% endfor %}</tbody></table></div>
+<p class="muted">Una posizione termina quando la persona non compare più nell’elenco completo dei dipendenti Clover della sede; la data è quella dell’ultimo clock-in, anche senza clock-out. Una sede non configurata o un import fallito non chiudono nulla.</p>
+{% else %}<p>Nessuna posizione Clover collegata.</p>{% endif %}
+<h2>Account RF1</h2>
+{% if person_account %}
+<p>{{ account_label(person_account) }}{% if person_account.status != 'ACTIVE' and state.status == 'CEASED' %} per cessazione: l’accesso resta disabilitato finché la persona non ha di nuovo una posizione attiva.{% elif person_account.status != 'ACTIVE' %}: puoi riattivarlo in Account.{% endif %}</p>
+{% if can_create_account %}<p><a href="{{ url_for('admin_account_edit', account_id=person_account.id) }}">Apri l’account</a></p>{% endif %}
+{% elif state.status == 'NOT_EMPLOYEE' %}<p>Nessun account RF1. Non è richiesto: la persona non è un dipendente.</p>
+{% else %}<p><strong>Nessun account RF1.</strong> Ogni dipendente deve avere esattamente un account. Crealo qui oppure collega un account esistente in «Collegamenti ai domini».</p>
+{% if can_create_account %}<p><a class="btn" href="{{ url_for('admin_account_new', employee_id=employee.id) }}">Crea account RF1 per questo dipendente</a></p>
+{% else %}<p>La creazione dell’account richiede un amministratore RF-One.</p>{% endif %}
+{% endif %}
+<p class="muted">Collegare o creare un account non assegna permessi: gli accessi ai domini si concedono in Account.</p>
 <h2>Dati interni RF-One</h2>
 <p>Questi campi sono gestiti in RF-One e gli import Clover non li sovrascrivono.</p>
 {% if can_manage %}
@@ -16,15 +41,15 @@
   <label>Email RF1 <input name="email" type="email" value="{{ employee.email or '' }}" maxlength="255"></label>
   <label>Telefono RF1 <input name="phone" value="{{ employee.phone or '' }}" maxlength="64"></label>
   <label>Codice interno <input type="text" name="custom_id" value="{{ employee.custom_id or '' }}" maxlength="64"></label>
-  <label>Stato anagrafica RF1 <select name="active">
-    <option value="" {% if employee.active is none %}selected{% endif %}>Non definito</option>
-    <option value="true" {% if employee.active is sameas true %}selected{% endif %}>Attivo</option>
-    <option value="false" {% if employee.active is sameas false %}selected{% endif %}>Non attivo</option>
+  <label>Archiviazione manuale <select name="active">
+    <option value="" {% if employee.active is none %}selected{% endif %}>Non definita</option>
+    <option value="true" {% if employee.active is sameas true %}selected{% endif %}>Non archiviato</option>
+    <option value="false" {% if employee.active is sameas false %}selected{% endif %}>Archiviato in Dismissis</option>
   </select></label>
   <button type="submit">Salva dati interni</button>
 </form>
-{% else %}<dl><dt>Nome completo</dt><dd>{{ employee.display_name or 'Non definito' }}</dd><dt>Email RF1</dt><dd>{{ employee.email or 'Non definita' }}</dd><dt>Telefono RF1</dt><dd>{{ employee.phone or 'Non definito' }}</dd><dt>Codice interno</dt><dd>{{ employee.custom_id or 'Non definito' }}</dd><dt>Stato interno</dt><dd>{{ employee.active if employee.active is not none else 'Non definito' }}</dd></dl><p>La modifica richiede un amministratore dell’anagrafica.</p>{% endif %}
-<p>La presenza nel POS non determina cessazioni o disabilitazioni di accesso.</p>
+{% else %}<dl><dt>Nome completo</dt><dd>{{ employee.display_name or 'Non definito' }}</dd><dt>Email RF1</dt><dd>{{ employee.email or 'Non definita' }}</dd><dt>Telefono RF1</dt><dd>{{ employee.phone or 'Non definito' }}</dd><dt>Codice interno</dt><dd>{{ employee.custom_id or 'Non definito' }}</dd><dt>Archiviazione manuale</dt><dd>{{ 'Archiviato in Dismissis' if employee.active is sameas false else 'Non archiviato' }}</dd></dl><p>La modifica richiede un amministratore dell’anagrafica.</p>{% endif %}
+<p>L’archiviazione manuale sposta la persona in Dismissis senza chiudere posizioni né disabilitare l’account. La cessazione deriva solo dalle posizioni Clover.</p>
 <h2>Collegamenti ai domini</h2>
 {% for context in contexts %}<div data-rr-key="context:{{ context.id }}">
 {{ context.kind_label }} · {{ context.label }}
@@ -47,7 +72,7 @@
   <p class="muted">Orari della sede: {{ zone_label(locations[link.location_id].timezone) }}.</p>
   <p>Merchant ID: {{ link.merchant_id }} · Employee ID: {{ link.external_employee_id }}</p>
   <p>Ultimo aggiornamento: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</p>
-  {% if link.id in absence_link_ids %}<p><strong>Assente dall’ultimo elenco completo di Clover: {{ 'assenza esaminata' if reviewed else 'posizione della sede da verificare' }}.</strong> Persona, assegnazioni e storico conservati.</p>{% elif link.state == "MISSING_REVIEW" %}<p class="muted">Account storico non più presente; la sede rimane collegata tramite un altro account.</p>{% endif %}
+  {% if link.id in absence_link_ids %}<p><strong>Assente dall’ultimo elenco completo di Clover: posizione della sede terminata.</strong> Persona, assegnazioni e storico conservati.</p>{% elif link.state == "MISSING_REVIEW" %}<p class="muted">Account storico non più presente; la sede rimane collegata tramite un altro account.</p>{% endif %}
   {% if link.snapshot %}<dl>
     <dt>Nome Clover</dt><dd>{{ link.snapshot.name or 'Non fornito' }}</dd>
     <dt>Email Clover</dt><dd>{{ link.snapshot.email or 'Non fornita' }}</dd>
@@ -87,10 +112,10 @@
 
 {% endif %}
 <h2>Storico anagrafica</h2>
-{% set home_location = locations.get(employee.location_id) %}
 <p class="muted">Orari: {{ zone_label(home_location.timezone if home_location else none) }}.</p>
-{% set actions = {'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare'} %}
+{% set actions = {'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare', 'REATTRIBUTE': 'Lavoro in attesa attribuito', 'POSITION_END': 'Posizione terminata', 'POSITION_REOPEN': 'Posizione riattivata', 'CEASE': 'Persona cessata', 'REACTIVATE': 'Persona di nuovo attiva (account da riattivare in Account)', 'ACCESS_DISABLED': 'Accesso RF1 disabilitato per cessazione', 'ACCESS_KEPT': 'Accesso RF1 non disabilitato: proprietario o ultimo amministratore'} %}
 <ul>{% for event in events %}<li>{{ event.created_at|local_dt(home_location.timezone if home_location else none) }} · {{ actions.get(event.action, event.action) }}{% if event.account_id %} · {{ actors.get(event.account_id, 'Account non disponibile')|short_name }}{% endif %}
+{% if event.details.location_id is defined and event.details.location_id in locations %}<span> · {{ locations[event.details.location_id].name }}</span>{% endif %}
 {% if event.details.snapshot is defined %}<span> · {{ event.details.snapshot.name or 'Nome non fornito' }} · {{ event.details.snapshot.email or 'Email non fornita' }}</span>{% endif %}</li>{% else %}<li>Nessuna modifica registrata.</li>{% endfor %}</ul>
 {% if can_manage and other_employees %}
 <details><summary>Questa persona esiste già con un’altra identità RF-One?</summary>

@@ -96,9 +96,105 @@ def employees_for_locations(location_ids):
     )
 
 
-def employee_is_active(employee, links):
-    """Shared display state only; never persists an employment decision."""
-    return employee.active is not False
+# EMPLOYEE_ACCOUNTS_001 (Product Owner decision, 2026-11-02). A position is a
+# person's presence at one Clover site, made of the confirmed links at that
+# site. It ends only when every one of them is absent from the site's latest
+# complete roster; the person ceases only when no position remains active.
+POSITION_ACTIVE, POSITION_ENDED = "ACTIVE", "ENDED"
+STATUS_ACTIVE, STATUS_CEASED, STATUS_ARCHIVED, STATUS_NOT_EMPLOYEE = "ACTIVE", "CEASED", "ARCHIVED", "NOT_EMPLOYEE"
+
+
+@dataclass(frozen=True)
+class SitePosition:
+    location_id: int
+    status: str
+    last_clock_in: datetime | None  # at this site; the end date once ENDED
+
+
+@dataclass(frozen=True)
+class EmploymentState:
+    """Derived, never stored: links, their roster state and time punches."""
+    employee_id: int
+    is_employee: bool  # at least one clock-in or clock-out attributed
+    positions: tuple[SitePosition, ...]
+    status: str
+    ceased_at: datetime | None  # last clock-in over every position
+
+    @property
+    def is_active(self):
+        # A non-employee whose Clover records all left their rosters (e.g. staff
+        # whose punches predate the acquired history) is not offered for new
+        # choices either; with no Clover record at all they stay available.
+        if self.status == STATUS_NOT_EMPLOYEE:
+            return not (self.positions and all(p.status == POSITION_ENDED for p in self.positions))
+        return self.status == STATUS_ACTIVE
+
+
+def roster_location_ids(db):
+    """Sites whose current link states come from a complete roster import.
+
+    `import_snapshot` sets PRESENT only from a complete, validated roster and
+    marks every other link of the site absent in the same transaction. A site
+    never imported (not configured, or failing) has no PRESENT link, so no
+    absence there can end a position. An empty roster ends nothing either.
+    """
+    return set(db.scalars(select(m.EmployeeCloverLink.location_id).where(
+        m.EmployeeCloverLink.state == "PRESENT").distinct()))
+
+
+def employment_states(db, employee_ids=None):
+    """Bounded queries for every requested person (all canonical people by default)."""
+    people = select(m.Employee.id, m.Employee.active).where(
+        ~m.Employee.id.in_(select(m.EmployeeIdentityAlias.employee_id)))
+    if employee_ids is not None:
+        people = people.where(m.Employee.id.in_(list(employee_ids)))
+    people = dict(db.execute(people).all())
+    links = {}
+    for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id.in_(people))):
+        links.setdefault(link.employee_id, {}).setdefault(link.location_id, []).append(link.state)
+    # Last clock-in even without a clock-out. Overall cessation uses every
+    # Shift of the person, including Shifts whose site is unknown.
+    punched, last_in_overall, last_by_site = set(), {}, {}
+    for identity, site, last_in in db.execute(
+            select(m.Shift.employee_id, m.Shift.location_id, func.max(m.Shift.clock_in))
+            .where(m.Shift.employee_id.in_(people),
+                   m.Shift.clock_in.is_not(None) | m.Shift.clock_out.is_not(None))
+            .group_by(m.Shift.employee_id, m.Shift.location_id)):
+        last_in = _aware(last_in)
+        punched.add(identity)
+        last_in_overall[identity] = max(filter(None, (last_in_overall.get(identity), last_in)), default=None)
+        last_by_site[(identity, site)] = last_in
+    rostered = roster_location_ids(db)
+    result = {}
+    for identity, manual_active in people.items():
+        positions = tuple(SitePosition(
+            site,
+            POSITION_ENDED if site in rostered and all(state == "MISSING_REVIEW" for state in states) else POSITION_ACTIVE,
+            last_by_site.get((identity, site)))
+            for site, states in sorted(links.get(identity, {}).items()))
+        is_employee = identity in punched
+        if is_employee and positions and all(p.status == POSITION_ENDED for p in positions):
+            status = STATUS_CEASED
+        elif manual_active is False:
+            status = STATUS_ARCHIVED  # explicit RF-One archive choice, kept as approved 2026-10-29
+        else:
+            status = STATUS_ACTIVE if is_employee else STATUS_NOT_EMPLOYEE
+        result[identity] = EmploymentState(identity, is_employee, positions, status,
+                                           last_in_overall.get(identity) if status == STATUS_CEASED else None)
+    return result
+
+
+def _aware(value):
+    # SQLite returns naive values for timezone-aware columns; they are UTC.
+    return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
+
+
+def employee_is_active(employee, links, state=None):
+    """Shared selector state: ceased and manually archived people are inactive.
+
+    `state` comes from `employment_states`; without it only the manual flag
+    is known (callers that list people pass the state)."""
+    return state.is_active if state is not None else employee.active is not False
 
 
 def employee_location_ids(employee, links, *, include_historical=False):
@@ -158,10 +254,11 @@ def employee_options(db, *, location_ids=None, include_inactive=False, selected_
             assignment_sites[identity].add(site)
     locations = {loc.id: loc.name for loc in db.scalars(
         select(m.Location) if scope is None else select(m.Location).where(m.Location.id.in_(scope)))}
+    states = employment_states(db, by_employee)
     options = []
     for employee in employees:
         links = by_employee[employee.id]
-        active = bool(employee_is_active(employee, links))
+        active = bool(employee_is_active(employee, links, states[employee.id]))
         selected = employee.id in selected_ids
         if not include_inactive and not active and not selected:
             continue
@@ -224,8 +321,9 @@ def consolidate(db, *, from_employee_id, into_employee_id, account_id=None):
                             "moved_references": moved})
             db.flush()
     except IntegrityError as exc:
-        raise ValueError("Identity consolidation conflicts with existing role, payroll or work-history rules. "
-                         "Nothing was moved. Resolve the conflicting records before retrying.") from exc
+        raise ValueError("Identity consolidation conflicts with existing role, payroll or work-history rules, "
+                         "or both identities have an RF-One account. Nothing was moved. "
+                         "Resolve the conflicting records (unlink the extra account) before retrying.") from exc
     db.expire_all()
     return db.get(m.Employee, into_employee_id)
 
@@ -279,6 +377,9 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
     # acquisition lock. Simultaneous WP/MD imports must see each other's people.
     db.scalar(select(m.SourceSystem).where(m.SourceSystem.id == source.id).with_for_update())
     ensure_legacy_links(db)
+    # Positions can change only here, from this complete roster (EMPLOYEE_ACCOUNTS_001).
+    before = employment_states(db, set(db.scalars(select(m.EmployeeCloverLink.employee_id).where(
+        m.EmployeeCloverLink.merchant_id == merchant_id, m.EmployeeCloverLink.employee_id.is_not(None)))))
     observed_at = observed_at or datetime.now(timezone.utc)
     resolved = {}
     pending = []
@@ -309,11 +410,89 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
                    details={"run_id": run_id})
             link.state = "MISSING_REVIEW"
     db.flush()
+    _record_employment_changes(db, before, run_id=run_id)
     # Historical work can still refer to people absent from today's roster.
     resolved.update({l.external_employee_id: l.employee_id for l in db.scalars(
         select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
                                          m.EmployeeCloverLink.employee_id.is_not(None)))})
     return resolved, pending
+
+
+def _iso(value):
+    return value.isoformat() if value is not None else None
+
+
+def _record_employment_changes(db, before, *, run_id):
+    """History of what a complete roster changed, then the access consequence."""
+    after = employment_states(db, before)
+    for identity, old in before.items():
+        new = after[identity]
+        previous = {position.location_id: position.status for position in old.positions}
+        for position in new.positions:
+            if previous.get(position.location_id, position.status) != position.status:
+                _event(db, "POSITION_END" if position.status == POSITION_ENDED else "POSITION_REOPEN",
+                       employee_id=identity, details={"location_id": position.location_id, "run_id": run_id,
+                                                      "last_clock_in": _iso(position.last_clock_in)})
+        if (old.status == STATUS_CEASED) != (new.status == STATUS_CEASED):
+            # A returning person keeps a disabled account: access is restored
+            # only by an administrator in Accounts, never by an import.
+            _event(db, "CEASE" if new.status == STATUS_CEASED else "REACTIVATE", employee_id=identity,
+                   details={"ceased_at": _iso(new.ceased_at), "run_id": run_id})
+    enforce_cessation_access(db, employee_ids=before, run_id=run_id)
+
+
+def person_account(db, employee_id):
+    """The RF-One account explicitly linked to this person (at most one)."""
+    return db.scalar(select(m.RFOneAccount).join(
+        m.EmployeeContextLink, m.EmployeeContextLink.rfone_account_id == m.RFOneAccount.id
+    ).where(m.EmployeeContextLink.employee_id == employee_id))
+
+
+def account_person_ids(db, account_ids=None):
+    """Account id -> person id for explicitly linked accounts. Others are external."""
+    query = select(m.EmployeeContextLink.rfone_account_id, m.EmployeeContextLink.employee_id).where(
+        m.EmployeeContextLink.rfone_account_id.is_not(None))
+    if account_ids is not None:
+        query = query.where(m.EmployeeContextLink.rfone_account_id.in_(list(account_ids)))
+    return dict(db.execute(query).all())
+
+
+def enforce_cessation_access(db, *, employee_ids=None, run_id=None, account_id=None):
+    """Disable the linked RF-One account of every ceased person. Idempotent.
+
+    INACTIVE refuses the login and every Domain, and the new session version
+    ends sessions already open. Person, account, grants and history are kept.
+    Only overall cessation counts: an ended position at one site never
+    touches access. External accounts (no person link) are never affected.
+    The owner, and the last active administrator, are never disabled
+    automatically: that is recorded once for an administrator to decide.
+    """
+    states = employment_states(db, employee_ids)
+    ceased = {identity: state for identity, state in states.items() if state.status == STATUS_CEASED}
+    if not ceased:
+        return []
+    changed = []
+    for identity, account in db.execute(select(m.EmployeeContextLink.employee_id, m.RFOneAccount).join(
+            m.RFOneAccount, m.RFOneAccount.id == m.EmployeeContextLink.rfone_account_id).where(
+            m.EmployeeContextLink.employee_id.in_(ceased), m.RFOneAccount.status == "ACTIVE"
+            ).with_for_update(of=m.RFOneAccount)).all():
+        details = {"rfone_account_id": account.id, "ceased_at": _iso(ceased[identity].ceased_at), "run_id": run_id}
+        other_admins = db.scalar(select(func.count()).select_from(m.RFOneAccount).where(
+            m.RFOneAccount.is_admin.is_(True), m.RFOneAccount.status == "ACTIVE", m.RFOneAccount.id != account.id))
+        if account.is_owner or (account.is_admin and not other_admins):
+            last = db.scalar(select(m.EmployeeDirectoryEvent).where(
+                m.EmployeeDirectoryEvent.employee_id == identity,
+                m.EmployeeDirectoryEvent.action.in_(("CEASE", "ACCESS_KEPT"))).order_by(m.EmployeeDirectoryEvent.id.desc()))
+            if last is None or last.action != "ACCESS_KEPT":
+                _event(db, "ACCESS_KEPT", employee_id=identity, account_id=account_id,
+                       details={**details, "reason": "OWNER" if account.is_owner else "LAST_ADMINISTRATOR"})
+            continue
+        account.status = "INACTIVE"
+        account.session_version += 1
+        _event(db, "ACCESS_DISABLED", employee_id=identity, account_id=account_id, details=details)
+        changed.append(account.id)
+    db.flush()
+    return changed
 
 
 def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=None):
@@ -322,6 +501,11 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
         raise ValueError("Clover link not found.")
     if link.employee_id is not None:
         raise ValueError("This link is already confirmed. Historical identities cannot be reassigned here.")
+    if create_new and not held_punch_counts(db, [link]).get(link.id):
+        # A Clover name without any clock-in or clock-out is not an employee.
+        # It may still be linked to an existing RF-One person.
+        raise ValueError("This Clover name has no clock-in or clock-out, so it cannot be registered as an "
+                         "RF-One employee. It can be linked to an existing RF-One person.")
     if create_new:
         location = db.get(m.Location, link.location_id)
         employee = m.Employee(location_id=link.location_id, display_name=(link.snapshot or {}).get("name"),
@@ -334,6 +518,7 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
         employee = db.scalar(select(m.Employee).where(m.Employee.id == resolve_employee_id(db, employee_id)).with_for_update()) if employee_id is not None else None
         if employee is None:
             raise ValueError("Choose an existing RF-One employee or explicitly create a new person.")
+    before = employment_states(db, [employee.id])
     link.employee_id = employee.id
     _event(db, "LINK", employee_id=employee.id, link=link, account_id=account_id,
            details={"create_new": create_new})
@@ -346,6 +531,8 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
     _event(db, "REATTRIBUTE", employee_id=employee.id, link=link, account_id=account_id,
            details={"external_employee_id": link.external_employee_id, "counts": counts})
     db.flush()
+    # A confirmed link can add an ended or active position (EMPLOYEE_ACCOUNTS_001).
+    _record_employment_changes(db, before, run_id=None)
     return employee
 
 
@@ -507,11 +694,17 @@ def link_context(db, *, employee_id, kind, target_id, account_id=None):
         if existing.employee_id != person.id:
             raise ValueError("Already linked to another person. Unlink explicitly before reassignment.")
         return existing
+    if kind == "RFONE_ACCOUNT" and person_account(db, person.id) is not None:
+        # One person, one RF-One account (EMPLOYEE_ACCOUNTS_001); the database enforces it too.
+        raise ValueError("This person already has an RF-One account. Unlink it explicitly before linking another.")
     link = m.EmployeeContextLink(employee_id=person.id, created_by_account_id=account_id, **{field: target_id})
     db.add(link)
     db.flush()
     _event(db, "CONTEXT_LINK", employee_id=person.id, account_id=account_id,
            details={"kind": kind, "target_id": target_id})
+    if kind == "RFONE_ACCOUNT":
+        # The link itself grants nothing; a ceased person's account is disabled.
+        enforce_cessation_access(db, employee_ids=[person.id], account_id=account_id)
     return link
 
 
@@ -539,6 +732,23 @@ def pending_requires_review(db, link):
     return db.scalar(select(m.EmployeeDirectoryEvent.id).where(
         m.EmployeeDirectoryEvent.link_id == link.id,
         m.EmployeeDirectoryEvent.action == "HISTORICAL_PENDING").limit(1)) is not None
+
+
+def held_punch_counts(db, links):
+    """Clock-ins/outs waiting in the Provider Mirror for each pending link.
+
+    Admission rule (EMPLOYEE_ACCOUNTS_001): a pending Clover name with none
+    is a technical observation, not an employee to register."""
+    from .technical.connectors.clover.identity_holds import held_shift_counts
+    by_site = {}
+    for link in links:
+        if link.employee_id is None:
+            by_site.setdefault(link.location_id, {})[link.external_employee_id] = link.id
+    counts = {}
+    for site, ids in by_site.items():
+        for external_id, count in held_shift_counts(db, location_id=site, external_ids=set(ids)).items():
+            counts[ids[external_id]] = count
+    return counts
 
 
 def source_absence_link_ids(links):

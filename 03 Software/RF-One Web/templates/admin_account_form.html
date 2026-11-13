@@ -3,11 +3,20 @@
 {% block page_title %}{{ "Create account" if mode == "create" else "Edit account" }} · RF-One{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Create account' if mode == 'create' else 'Edit account', None)]) }}
+<p class="employee-how-works"><a data-how-works="account-form" href="{{ url_for('admin_accounts_how_it_works') }}#account-form" title="How creating and editing an account works">How Works</a></p>
 <h1>{{ "Create account" if mode == "create" else "Edit account" }}</h1>
+{% if mode == "create" and employee %}
+<p>Account for the employee <strong>{{ employee.display_name or 'Employee ' ~ employee.id }}</strong> (Employee Directory). It is linked to the employee when created and grants no Domain access by itself.
+{% if employee_state and employee_state.status == 'CEASED' %}<strong>The employee has ceased: the account will be created disabled.</strong>{% endif %}</p>
+{% elif mode == "edit" %}
+<p>{% if linked %}Employee: <a href="{{ url_for('employee_directory_detail', employee_id=linked[0].id) }}">{{ linked[0].display_name or 'Employee ' ~ linked[0].id }}</a>{% if linked[1] and linked[1].status == 'CEASED' %} · <strong>ceased</strong>: the account stays inactive until the employee has an active position again{% endif %}.
+{% else %}External account: not linked to an employee, not affected by Clover cessations.{% endif %}</p>
+{% endif %}
 
 <div class="card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if mode == "create" and employee %}<input type="hidden" name="employee_id" value="{{ employee.id }}">{% endif %}
 
     <div class="field-row">
       <label for="username">Username</label>
@@ -21,13 +30,13 @@
     <div class="field-row">
       <label for="display_name">Display name</label>
       <input type="text" id="display_name" name="display_name"
-             value="{{ account.display_name if account else '' }}" required>
+             value="{{ account.display_name if account else ((employee.display_name or '') if employee else '') }}" required>
     </div>
 
     {% if mode == "create" %}
       <div class="field-row">
         <label for="email">Email</label>
-        <input type="email" id="email" name="email" required>
+        <input type="email" id="email" name="email" value="{{ (employee.email or '') if employee else '' }}" required>
         <p class="muted">A verification code will be emailed here — the account holder confirms it from their own Profile page.</p>
       </div>
       <div class="field-row">

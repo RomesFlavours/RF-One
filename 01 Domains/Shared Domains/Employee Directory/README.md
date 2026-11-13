@@ -1,6 +1,6 @@
 # Employee Directory
 
-Status: approved specification, revised by Product Owner on 2026-10-29 and 2026-11-02 (record-level identity holds).
+Status: approved specification, revised by Product Owner on 2026-10-29, 2026-11-02 (record-level identity holds) and 2026-11-02 (EMPLOYEE_ACCOUNTS_001: positions per site, cessation, admission, one account per employee). Where an earlier rule below conflicted with EMPLOYEE_ACCOUNTS_001 it has been replaced.
 
 The shared base directory is included in every RF-One Domain combination.
 RF-One owns the reference person identity; a POS is an observation source.
@@ -20,6 +20,20 @@ Imports are Clover GET only; RF-One never writes to Clover.
 Every unknown external identity stays pending, even without a name/email match.
 An authorized human must link it to an RF-One person or explicitly approve a new
 person. RF-One people can be created directly with no POS, location or employment.
+
+**Admission (EMPLOYEE_ACCOUNTS_001).** A person is an *employee* only with at
+least one Clover clock-in or clock-out attributed. A pending Clover name with
+no clock-in or clock-out (none held in the Provider Mirror either) is kept only
+as a technical observation of the synchronization: it is not shown as an
+employee, it cannot be approved as a new person and it never receives an
+account; it may only be linked explicitly to an existing RF-One person. Time
+punches never replace the human approval: no association is made from name or
+email similarity. Confirmed people without punches (created directly in RF-One,
+or linked to Clover records never punched) stay in the directory as "other
+RF-One people, not employees": consultable and selectable, never deleted. When
+all their Clover records have left the rosters (e.g. staff whose punches predate
+the acquired Shift history, which starts 2026-01-02 on AWS) they are no longer
+offered by current selectors; historical selectors still include them.
 Existing confirmed IDs and work history remain unchanged. Historical unknown
 references follow the same approval boundary; they cannot silently create people.
 
@@ -59,19 +73,48 @@ EmployeeAssignment/PositionAssignment records; pay remains EmployeeCompensationT
 No import modifies these management records. Names are full here because identity
 matching requires them; timestamps use each Location's configured timezone.
 
-The directory active flag is an explicit RF-One visibility/archive choice, not
-employment status, account access or POS presence. Only explicit false goes into
-the default-collapsed Dismissis section. Unknown state remains visible. Source
-absence remains a separate review condition. People without a site appear under
-"Senza sede". Employment and organizational assignment stay with Workforce.
+## Positions and cessation (EMPLOYEE_ACCOUNTS_001, Product Owner 2026-11-02)
+
+A **position** is a person's presence at one Clover site (WP and MD are
+separate): the person's confirmed links at that site. Positions and statuses are
+derived at read time from the links, their roster state and the Shifts; nothing
+else stores them (`employee_directory.employment_states`).
+
+- A position **ends** only when every confirmed link of the person at that site
+  is absent (`MISSING_REVIEW`) from the site's latest **complete, validated**
+  roster. Its date is the person's last **clock-in** at that site, even without
+  a clock-out.
+- A person **ceases** only when they are an employee and no position remains
+  active. The cessation date is the last clock-in over all their Shifts. If the
+  person disappears from one site but remains at the other, only the first
+  position ends; functions and access at the other site are kept.
+- Only a complete, successful roster import changes these states, in the same
+  transaction as the import (a later failure rolls it back). Failed, partial or
+  malformed reads, a wrong merchant, a site never imported (not configured, e.g.
+  MD today) and an **empty** roster end nothing: a site's absences count only
+  while that site has at least one present link from a complete roster.
+- A ceased person stays in the directory, in the default-collapsed **Dismissis**
+  section, with positions, dates and history. Person, links, account and history
+  are never deleted. A person who reappears in a roster is active again; the
+  position reopens, but the account stays disabled until an administrator
+  reactivates it in Accounts.
+- Every change is recorded as a directory event: `POSITION_END`,
+  `POSITION_REOPEN`, `CEASE`, `REACTIVATE`, `ACCESS_DISABLED`, `ACCESS_KEPT`.
+
+The directory active flag remains an explicit RF-One **manual archive** choice:
+explicit false also places the person in Dismissis ("Archiviato manualmente"),
+without ending positions or disabling the account. People active at no Clover
+site but with punches (e.g. no Clover link) appear under "Senza sede".
+Organizational assignments stay with Management / Organization and are not
+closed by a cessation.
 
 Different source values across sites produce a conflict. An explicit review
 acknowledges the exact observed state; a subsequent change reopens review. RF-One
 management values are never silently replaced by the latest site import.
 
 Only a validated, complete employee collection may mark an absent link as
-MISSING_REVIEW. This is a site-level review condition, never termination,
-deletion of a person, assignment closure, or deletion of history. Failed or
+MISSING_REVIEW. It ends the site position as described above; it never deletes
+a person, closes an organizational assignment or deletes history. Failed or
 incomplete collections cannot change absence state.
 
 ## Runtime and access
@@ -97,6 +140,11 @@ it does not prevent WP imports. No merchant ID, location or credential is invent
 Disposable-database tests cover legacy identity preservation, repeated imports,
 cross-site linking, candidate review, management preservation, differing snapshots,
 complete-only absence review, malformed/failed collections, permissions and CSRF.
+EMPLOYEE_ACCOUNTS_001 adds `test_employee_accounts.py` (two sites with removal
+from one, removal from the last, last clock-in without clock-out, names without
+punches, failed/incomplete/empty/unconfigured imports, duplicates, one account per
+employee, external accounts, session revocation, selectors and history) and the
+Employee Directory HTTP tests for account creation, session end and How Works.
 
 ## Canonical consumers and location scope
 
@@ -113,9 +161,11 @@ Existing payroll matching policy and immutable approved results remain unchanged
 
 `employee_options` is the shared read-only selector for employee choices. It
 returns canonical RF-One IDs, names, relevant sites and the same effective
-active state as the directory. Only explicit RF-One false makes a person inactive in the directory;
-POS absence never determines this state.
-Unverified or unlinked people remain available. Source absence is not termination.
+active state as the directory: **ceased** people (EMPLOYEE_ACCOUNTS_001) and
+manually archived people are inactive. A person whose position ended at one site
+remains active, with only the sites where a position is still active.
+Unverified or unlinked people, and people without punches, remain available,
+unless all their Clover records left the rosters.
 
 Operational selectors default to active people. Historical audit and identity
 reconciliation explicitly include inactive people. An existing selected identity
@@ -133,7 +183,23 @@ remains step 3 work; employee and human-account choices retain distinct labels.
 EmployeeContextLink explicitly links a canonical person to an RF-One account,
 human ActingIdentity, Training account, CandidatePerson or ProjectResponsible.
 The database enforces one context target per link and unique ownership of each
-target. Links never grant access, create accounts, merge candidates, change
+target.
+
+**One account per employee (EMPLOYEE_ACCOUNTS_001).** Every employee has
+exactly one RF-One account and an account refers to at most one employee:
+`rfone_account_id` is unique and a person has at most one account link
+(partial unique index, migration `f1a220261102`). An employee without an account
+is shown as missing; an RF-One administrator creates it from the employee's page
+(Accounts form prefilled with the directory's name and email, username and
+password chosen by the administrator, linked in the same transaction) or links
+an existing unlinked account. RF-One never invents emails, credentials or
+associations. Accounts without a person are **external accounts** (e.g. a
+consultant such as Shelbi): they need no directory record and Clover cessations
+never affect them. On overall cessation the linked account becomes INACTIVE and
+its sessions end (`10 System/Identity & Access/README.md`); linking an account to
+an already ceased person disables it in the same step. Ending one site's
+position never changes access. Identity consolidation is refused when both
+identities have an account. Links never grant access, create accounts, merge candidates, change
 Selection decisions, move attempts, or alter employment/payroll/Bank history.
 Only directory managers with management authority for the target domain may link
 or unlink; account/acting identity links require an RF-One administrator.
@@ -149,7 +215,10 @@ candidate becomes linked only through explicit confirmation, never a name match
 or an automatically interpreted selection outcome.
 
 The bridge is part of the included directory, not Identity & Access authority
-model development. No authentication/authorization table or grant is changed.
+model development. No authorization grant or profile is created or widened; the
+only access effect is the account status change on cessation described above.
+Per-site access does not exist yet: Domain access is not scoped by Location, so
+profiles management will govern continuous permission updates.
 
 Open manual RF-One assignments are never closed or replaced by POS role bootstrap.
 Workforce site evidence is read, not copied: current choices use current assignments,

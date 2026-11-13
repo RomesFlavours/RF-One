@@ -138,16 +138,16 @@ class PersonFoundationTests(unittest.TestCase):
                             "createdTime": int(now.timestamp() * 1000), "amount": 100, "result": "SUCCESS"}]
         location_id = self.site.id
         self.db.commit()
-        with self.assertRaises(acquisition.EmployeeIdentityConfirmationRequired):
-            acquisition.import_clover_period(self.db, location_id=location_id,
-                period_start=now, period_end=now, mode="LIVE_SYNC", client=client)
+        # Record-level holds (EMPLOYEE_DIRECTORY_RECORD_HOLD_001, 2026-11-02): the
+        # acquisition continues; the work waits without a person, nobody is created.
+        acquisition.import_clover_period(self.db, location_id=location_id,
+            period_start=now, period_end=now, mode="LIVE_SYNC", client=client)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Payment)), 0)
-        link = self.db.scalar(select(m.EmployeeCloverLink))
+        self.assertEqual(list(self.db.scalars(select(m.Payment.employee_id))), [None] * len(list(self.db.scalars(select(m.Payment.id)))))
+        link = self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.external_employee_id == "HISTORICAL-UNKNOWN"))
         self.assertIsNotNone(link)
         self.assertIsNone(link.employee_id)
         self.assertTrue(directory.pending_requires_review(self.db, link))
-        self.assertEqual(self.db.scalar(select(m.IngestionRun.status)), "FAILED")
 
     def test_existing_authentication_bridge_resolves_person_without_grants(self):
         person, other = self.person(), self.person("Other")

@@ -13,25 +13,42 @@ from rfone_data_store import models as m
 from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as jobs
 from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
+from rfone_data_store.technical.connectors.clover.identity_holds import held_order_counts
 
 
 def _employee_groups(rows, locations):
-    """Presentation only: an absent source roster never changes RF-One status."""
+    """Active employees under each site where a position is active; ceased and
+    archived people in Dismissis; RF-One people without time punches apart
+    (EMPLOYEE_ACCOUNTS_001). States come from `directory.employment_states`."""
     by_location = {}
-    dismissed = []
+    dismissed, others = [], []
     for row in rows:
-        employee, links = row["employee"], row["links"]
-        if not directory.employee_is_active(employee, links):
+        employee, links, state = row["employee"], row["links"], row["state"]
+        if state.status in (directory.STATUS_CEASED, directory.STATUS_ARCHIVED):
             dismissed.append(row)
             continue
-        site_ids = row.get("site_ids") or directory.employee_location_ids(employee, links)
+        if state.status == directory.STATUS_NOT_EMPLOYEE:
+            others.append(row)
+            continue
+        site_ids = ({p.location_id for p in state.positions if p.status == directory.POSITION_ACTIVE}
+                    or row.get("site_ids") or directory.employee_location_ids(employee, links))
         for location_id in site_ids or {None}:
             site_links = [l for l in links if l.location_id == location_id]
             site_link = next((l for l in site_links if l.state == "PRESENT"), site_links[0] if site_links else None)
             by_location.setdefault(location_id, []).append({**row, "site_link": site_link})
     groups = [{"location": locations.get(location_id, SimpleNamespace(id=None, name="Senza sede", timezone=None)), "rows": members} for location_id, members in by_location.items()]
     groups.sort(key=lambda group: (group["location"].name.casefold(), group["location"].id or 0))
-    return groups, dismissed
+    # Most recent cessation first; manual archives (no date) after them.
+    dismissed.sort(key=lambda row: (row["state"].ceased_at is None,
+                                    -row["state"].ceased_at.timestamp() if row["state"].ceased_at else 0))
+    return groups, dismissed, others
+
+
+def _people_accounts(db):
+    """Person id -> the one linked RF-One account."""
+    links = directory.account_person_ids(db)
+    accounts = {a.id: a for a in db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.id.in_(list(links))))}
+    return {person_id: accounts[account_id] for account_id, person_id in links.items()}
 
 
 def register_employee_directory_routes(app, *, require_domain_access, SessionFactory,
@@ -53,6 +70,8 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             links = list(db.scalars(select(m.EmployeeContextLink).where(
                 getattr(m.EmployeeContextLink, field).is_not(None))))
             by_target = {getattr(link, field): link for link in links}
+            # One RF-One account per person: no further account is offered.
+            by_target_person = {link.employee_id for link in links}
             for target in db.scalars(select(model).order_by(model.id)):
                 if kind == "ACTING_IDENTITY" and target.kind != "HUMAN_USER":
                     continue
@@ -63,7 +82,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 existing = by_target.get(target.id)
                 if existing and existing.employee_id == person_id:
                     records.append({"id": existing.id, "kind": kind, "kind_label": directory.CONTEXT_LABELS[kind], "label": label})
-                elif existing is None:
+                elif existing is None and not (kind == "RFONE_ACCOUNT" and person_id in by_target_person):
                     choices.append({"kind": kind, "kind_label": directory.CONTEXT_LABELS[kind], "id": target.id, "label": label})
         return records, choices
 
@@ -116,25 +135,45 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             all_links = list(db.scalars(select(m.EmployeeCloverLink).order_by(m.EmployeeCloverLink.id)))
             locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
             active_options = {option.id: option for option in directory.employee_options(db)}
+            states = directory.employment_states(db)
+            accounts = _people_accounts(db)
             rows = []
             for employee in employees:
                 links = [l for l in all_links if l.employee_id == employee.id]
-                searchable = [employee.display_name or "", employee.custom_id or "", employee.email or "", employee.phone or ""]
+                person_rf1 = accounts.get(employee.id)
+                searchable = [employee.display_name or "", employee.custom_id or "", employee.email or "", employee.phone or "",
+                              person_rf1.username if person_rf1 else ""]
                 searchable.extend(str((l.snapshot or {}).get("email") or "") for l in links)
                 if query and query.casefold() not in " ".join(searchable).casefold():
                     continue
                 conflicts = directory.source_conflicts(links)
                 rows.append({"employee": employee, "links": links, "conflicts": conflicts,
+                             "state": states[employee.id], "account": person_rf1,
                              "site_ids": active_options[employee.id].location_ids if employee.id in active_options else (),
                              "reviewed": directory.is_reviewed(db, employee.id, links),
                              "absence_link_ids": directory.source_absence_link_ids(links)})
-            pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
-                       for l in all_links if directory.pending_requires_review(db, l)]
+            # Only Clover names with clock-ins/outs are employees to reconcile;
+            # the others stay a technical observation (EMPLOYEE_ACCOUNTS_001).
+            waiting = [l for l in all_links if directory.pending_requires_review(db, l)]
+            punches = directory.held_punch_counts(db, waiting)
+            orders = {location_id: held_order_counts(db, location_id=location_id, external_ids={
+                l.external_employee_id for l in waiting if l.location_id == location_id})
+                for location_id in {l.location_id for l in waiting}}
+            pending, observations = [], []
+            for l in waiting:
+                item = {"link": l, "punches": punches.get(l.id, 0),
+                        "orders": orders[l.location_id].get(l.external_employee_id, 0)}
+                if item["punches"]:
+                    pending.append({**item, "candidates": directory.candidates(db, l.snapshot or {})})
+                else:
+                    observations.append(item)
             sites = _sites(db)
-            active_groups, dismissed = _employee_groups(rows, locations)
+            active_groups, dismissed, others = _employee_groups(rows, locations)
             return render_template(
-                "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
-                pending=pending, locations=locations,
+                "employee_directory.html", active_groups=active_groups, dismissed=dismissed, others=others,
+                pending=pending, observations=observations, locations=locations,
+                missing_accounts=len({row["employee"].id for group in active_groups
+                                      for row in group["rows"] if row["account"] is None}),
                 employees=directory.employee_options(db, include_inactive=True), sites=sites, query=query,
                 md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
                                   and s["configured"] for s in sites),
@@ -231,6 +270,9 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             contexts, context_options = _context_view(db, employee_id, _context_permissions(db, account))
             return render_template(
                 "employee_directory_detail.html", contexts=contexts, context_options=context_options, employee=employee, links=links, locations=locations,
+                state=directory.employment_states(db, [employee_id])[employee_id],
+                person_account=directory.person_account(db, employee_id),
+                can_create_account=bool(account and account.is_admin),
                 conflicts=directory.source_conflicts(links), reviewed=directory.is_reviewed(db, employee_id, links),
                 fingerprint=directory.review_fingerprint(links), assignments=assignments, terms=terms, events=events,
                 actors=actors, absence_link_ids=directory.source_absence_link_ids(links),
@@ -262,6 +304,12 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 db.rollback()
                 flash(str(exc) if isinstance(exc, ValueError) else "The record changed concurrently. Reload and retry.", "error")
                 return redirect(url_for("employee_directory_home"))
+
+    @app.route("/administration/employees/how-it-works")
+    @gate
+    def employee_directory_how_it_works():
+        # How Works Standard (UI_HOW_WORKS_001): one section per page.
+        return render_template("employee_directory_how_it_works.html")
 
     @app.route("/administration/employees/sync-now", methods=["POST"])
     @gate

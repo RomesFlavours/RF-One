@@ -1,0 +1,25 @@
+{# Employee Directory shared pieces. How Works Standard (UI_HOW_WORKS_001): the
+   link is rendered once, here, from the page's own section code. #}
+{% macro how_works(section, label) %}
+<p class="employee-how-works"><a data-how-works="{{ section }}" href="{{ url_for('employee_directory_how_it_works') }}#{{ section }}" title="Come funziona: {{ label }}">How Works</a></p>
+{% endmacro %}
+
+{# EMPLOYEE_ACCOUNTS_001: one readable label per person and position state. #}
+{% macro person_status(state, timezone) -%}
+{%- if state.status == 'CEASED' -%}Cessato{% if state.ceased_at %} il {{ state.ceased_at|local_dt(timezone) }}{% endif %}
+{%- elif state.status == 'ARCHIVED' -%}Archiviato manualmente
+{%- elif state.status == 'NOT_EMPLOYEE' -%}Persona RF1, non dipendente (nessuna timbratura)
+{%- else -%}Attivo{%- endif -%}
+{%- endmacro %}
+
+{% macro position_label(position, locations) -%}
+{%- set loc = locations.get(position.location_id) -%}
+{{ loc.name if loc else 'Sede ' ~ position.location_id }}: {% if position.status == 'ENDED' -%}
+terminata{% if position.last_clock_in %} il {{ position.last_clock_in|local_dt(loc.timezone if loc else none) }}{% else %} (nessuna timbratura nella sede){% endif %}
+{%- else %}attiva{% endif -%}
+{%- endmacro %}
+
+{% macro account_label(account) -%}
+{%- if account is none -%}Nessun account RF1
+{%- else -%}{{ account.username }}{% if account.status != 'ACTIVE' %} · disabilitato{% endif %}{%- endif -%}
+{%- endmacro %}
