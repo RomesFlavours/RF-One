@@ -1,0 +1,16 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Activate Training{% endblock %}
+{% block main %}
+{% if error and draft %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<h1>Activate Training</h1>
+{% if invitation %}<p>Review your details and complete activation. You will use one RF-One identity.</p>
+<section class="tw-card"><form method="post" autocomplete="off" class="tw-enrollment-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% set parts=invitation.name.split(' ',1) %}
+<div class="tw-form-grid"><label>First name<input name="first_name" required maxlength="120" autocomplete="given-name" value="{{ draft.get('first_name',parts[0]) }}"></label><label>Surname<input name="last_name" required maxlength="120" autocomplete="family-name" value="{{ draft.get('last_name',parts[1] if parts|length>1 else '') }}"></label><label>Invited email<input type="email" readonly value="{{ invitation.email }}"></label><label>Phone <span class="muted">(optional)</span><input name="phone" type="tel" maxlength="64" autocomplete="tel" value="{{ draft.get('phone',invitation.phone) }}"></label>
+{% if existing_account %}<label>Current RF-One password<input type="password" name="current_password" required maxlength="1024" autocomplete="current-password"></label>
+{% else %}<label>Choose your password<input type="password" name="password" required minlength="8" maxlength="1024" autocomplete="new-password"></label><label>Confirm password<input type="password" name="password_confirm" required minlength="8" maxlength="1024" autocomplete="new-password"></label>{% endif %}</div>
+<p>{% if existing_account %}Your account already exists. Your current username, password and access are preserved.{% else %}Your username will be generated automatically. Use at least 8 characters for your password.{% endif %} To change the invited email, ask your trainer for a new invitation.</p>
+<button type="submit">Confirm and activate Training</button>
+</form></section>{% else %}<p>Open the personal link from your trainer. This page cannot activate an account without a valid invitation.</p>{% endif %}
+{% endblock %}

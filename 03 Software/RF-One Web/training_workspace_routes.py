@@ -37,6 +37,8 @@ def install(app, *, SessionFactory, auth):
 
     from training_course_routes import register
     register(app,SessionFactory=SessionFactory,auth=auth,trainer=trainer)
+    from training_enrollment_routes import install as install_enrollment
+    install_enrollment(app,SessionFactory=SessionFactory,auth=auth,trainer=trainer)
 
     def render(page,**context):
         return render_template('training_workspace/'+page+'.html',active_tab=page,
@@ -44,7 +46,7 @@ def install(app, *, SessionFactory, auth):
 
     @app.before_request
     def first_access_gate():
-        if request.endpoint in ('tw_login','tw_password','tw_logout','tw_account','tw_activation_link','tw_activation','static','shared_brand_logo'):
+        if request.endpoint in ('tw_login','tw_password','tw_logout','tw_account','tw_activation_link','tw_activation','tw_enrollment_link','tw_enrollment_activation','static','shared_brand_logo'):
             return None
         with SessionFactory() as db:
             account=auth.load_current_account(db)

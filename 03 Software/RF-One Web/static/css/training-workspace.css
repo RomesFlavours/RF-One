@@ -2,3 +2,8 @@
 .tw-course-count{display:block;margin-top:7px;color:var(--muted)}.tw-course-general{margin-top:16px}.tw-shell textarea,.tw-shell select{display:block;width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;font:inherit;background:white;color:var(--ink)}.tw-lesson-editor{border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0;background:var(--olive-050)}.tw-lesson-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.tw-lesson-toolbar h4{margin:0}.tw-lesson-toolbar>div{display:flex;gap:5px}.tw-lesson-editor>[data-lesson-field]{margin-top:14px}.tw-course-text{white-space:pre-wrap;overflow-wrap:anywhere}.tw-course-lesson{margin-top:22px}.tw-course-video{display:block;max-width:100%;max-height:70vh}.tw-shell button:disabled{opacity:.55;cursor:default}
 
 .tw-course-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.tw-course-content-link{display:inline-block;padding:10px 18px;border:1px solid var(--line);border-radius:8px;text-decoration:none}
+
+.tw-shell .tw-enrollment-form input:not([type=radio]):not([type=hidden]){box-sizing:border-box;width:100%;max-width:none;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;color:var(--ink)}
+.tw-shell #enrollment-form fieldset>label{display:flex;align-items:center;gap:10px;margin:10px 0;color:var(--ink)}
+.tw-shell #enrollment-form input[type=radio]{display:inline-block;flex:0 0 18px;width:18px;height:18px;min-height:18px;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;accent-color:var(--olive-700)}
+.tw-shell #selection-source select{width:100%;max-width:none}

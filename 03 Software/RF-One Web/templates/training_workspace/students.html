@@ -1,7 +1,7 @@
 {% extends 'training_workspace/_base.html' %}
 {% block title %}Students · Training{% endblock %}
 {% block main %}
-<div class="tw-heading"><div><h1>Students</h1><p>Manage student details and sign-in credentials.</p></div>{% if not archived %}<button type="button" data-open="student-editor" id="new-student">+ New student</button>{% endif %}</div>
+<div class="tw-heading"><div><h1>Students</h1><p>Manage student details and sign-in credentials.</p></div>{% if not archived %}<a class="btn" href="{{ url_for('tw_enrollment') }}">Invite student</a> <button type="button" data-open="student-editor" id="new-student">+ New student</button>{% endif %}</div>
 <form method="get" class="tw-search"><label>Search by name, email or username<input name="q" value="{{ q }}"></label><input type="hidden" name="archived" value="{{ '1' if archived else '0' }}"><button class="secondary">Search</button></form>
 <div class="tw-switch"><a href="{{ url_for('tw_students') }}" {% if not archived %}aria-current="page"{% endif %}>Active students</a><a href="{{ url_for('tw_students',archived=1) }}" {% if archived %}aria-current="page"{% endif %}>Archive</a><span>{{ students|length }} students</span></div>
 <section class="tw-card"><div class="tw-table-scroll"><table><thead><tr><th>Student</th><th>Contact</th><th>Username</th><th>Access</th><th>Action</th></tr></thead><tbody>

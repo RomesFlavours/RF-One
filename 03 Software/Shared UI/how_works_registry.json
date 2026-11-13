@@ -14,7 +14,9 @@
         "training_workspace/activation.html": "help/training_activation.html#training-activation",
         "training_workspace/login.html": "help/training_login.html#training-login",
         "training_workspace/password.html": "help/training_password.html#training-password",
-        "training/student_home.html": "help/training_student_home.html#training-student-home"
+        "training/student_home.html": "help/training_student_home.html#training-student-home",
+        "training_workspace/enrollment.html": "help/training_enrollment.html#training-enrollment",
+        "training_workspace/enrollment_activation.html": "help/training_enrollment_activation.html#training-enrollment-activation"
       },
       "not_operational": {
         "base.html": "Shared layout"

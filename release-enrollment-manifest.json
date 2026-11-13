@@ -1,0 +1,23 @@
+{
+  "baseline_commit": "7a247b9a2a6fc13148a2d0c7e6fb136727d60182",
+  "baseline_image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web:registry-training-training-7a247b9a2a6f",
+  "baseline_digest": "sha256:6f228bf45a50b32bec1cc94c032296e90d12b39f603a4c50087853f902f25812",
+  "files": {
+    "03 Software/RF-One Data Store/migrations/versions/t9e120261113_training_enrollment_aws.py": "ba7935f816fe639978c226e4bd5de952b6da2b0e4dab0552ae895f0b52299680",
+    "03 Software/RF-One Data Store/rfone_data_store/selection/workspace_models.py": "8efe308f1c8d7aecc62a3f69b48223d14a3d8b466d89e55775e7b56111d2dc19",
+    "03 Software/RF-One Data Store/rfone_data_store/training/enrollment.py": "8003832bbe496bfd73b4339bd538551d8481b6d33739f9ca38052dc0667564ff",
+    "03 Software/RF-One Web/static/css/training-workspace.css": "bd68e0d283ad7126fd6bd7c8f660ee0014f32cec12716a53a50c699da61d962d",
+    "03 Software/RF-One Web/static/js/training-enrollment.js": "6720724859e9be03c54166a92d33318a7bd8a9f1af4d8cad5c6e3c4ab3006a8c",
+    "03 Software/RF-One Web/templates/help/training_enrollment.html": "cf0f701cefb979abc3f0dd7c4ab90b03574a1157599ee5cf6dc81ec5176289a7",
+    "03 Software/RF-One Web/templates/help/training_enrollment_activation.html": "26beef352b773de841f21513a63de17fd4cac13bf603fc6ab82c66bb5ae9b6b5",
+    "03 Software/RF-One Web/templates/help/training_students.html": "bf3a5b63e686b2c03573c851a41330c7516e1f59a8025478ea92eed87849befd",
+    "03 Software/RF-One Web/templates/training_workspace/enrollment.html": "4e2c518213217f6f23cb2626a263bad5a2f66271eeb8ef05f497f0e164caa808",
+    "03 Software/RF-One Web/templates/training_workspace/enrollment_activation.html": "81b23dbd357a4a0bbf1626c8d69695012b4d63544f985f90e63d70a0d91e2a2e",
+    "03 Software/RF-One Web/templates/training_workspace/students.html": "4ee7fc8bdbcbcae397ab3fdd904da250dfcffcf2c094a7b1ee2b0994a075d187",
+    "03 Software/RF-One Web/test_training_enrollment_release.py": "3e68b4ad3462490ca2367bbfd5f7e4215639047cb03e1f6262d712cda3a10adc",
+    "03 Software/RF-One Web/training_enrollment_routes.py": "c6d3a81461e0c4f39a44a9cc705b958f4281832451232e7121d19db86de9d3b0",
+    "03 Software/RF-One Web/training_workspace_routes.py": "0b5b72921662c9e7d40158b8a04619efe2963b41bbc99ecc1395870ec0b81b4d",
+    "03 Software/Shared UI/how_works_registry.json": "fc318e0896b4082cc025d965d44d40df6008d2516165a47ebd1b69c1cc6a65ff",
+    "03 Software/Training/ENROLLMENT.md": "7e69f9f966e4f52bb83cddcf788f405460924714506853d3afa5de5429c77618"
+  }
+}
