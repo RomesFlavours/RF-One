@@ -1,0 +1,1560 @@
+
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg">
+<title>Applications · Server · Mount Dora · RF-One</title>
+<link rel="icon" type="image/png" href="/selection/static/brand/rf-one.png?v=1">
+<style>/* RF-One · Selection — RF-One's shared visual identity (Rome's Flavours
+   branding), copied unchanged from Tips's `rf-one.css` per the per-application
+   convention every RF-One app follows (SELECTION_AI_INTEGRATION_001): the
+   Selection service is deployed on its own, so it carries its own copy.
+   Selection-only layout pieces live in `selection.css`, never here.
+   Palette: the logo's olive/green family only, white content areas, quiet
+   restaurant/business feel. No gradients, no dark theme, no animation. */
+
+:root {
+  /* Olive/green family — the one accent palette, lighter/darker only. */
+  --olive-900: #2f3a1f;   /* headings, strongest accent text */
+  --olive-700: #55642f;   /* primary accent — buttons, links, active nav */
+  --olive-600: #64753a;   /* button hover */
+  --olive-500: #7c8f52;   /* secondary accents */
+  --olive-300: #c7d1a8;   /* frames / card / table borders */
+  --olive-150: #e8edd8;   /* table header fill, selected states */
+  --olive-050: #f6f8ef;   /* very light olive tint — subtle backgrounds */
+
+  --paper: #ffffff;       /* page background */
+  --surface: #ffffff;     /* card/content background */
+  --ink: #24271c;         /* neutral dark text */
+  --muted: #6e735e;       /* secondary/muted text (olive-gray) */
+  --line: var(--olive-300);
+
+  --ok: #2e7d4f;
+  --warn: #a9761f;
+  --bad: #a33b2e;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 2px rgba(47, 58, 31, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  padding: 0 2rem 3rem;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; }
+
+/* ---------------------------------------------------------------------
+   Header / branding
+   --------------------------------------------------------------------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.5rem 0 1.1rem;
+  border-bottom: 1px solid var(--olive-300);
+  margin-bottom: 1.5rem;
+}
+
+.brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+
+.brand-wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--olive-900);
+  letter-spacing: .01em;
+}
+
+.brand-name-group { display: flex; flex-direction: column; line-height: 1.15; }
+
+.brand-suffix {
+  font-size: .72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-top: .15rem;
+}
+
+/* RF-One product logo — top right of .site-header (flex + space-between
+   already pushes it there since it's the second flex child). Height-capped,
+   width auto so aspect ratio is always preserved regardless of the actual
+   asset's proportions. */
+.brand-logo {
+  height: 72px;
+  width: auto;
+  max-width: 320px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .brand-logo { height: 52px; max-width: 220px; }
+}
+
+.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; font-size: .9rem; }
+.subtitle:empty { display: none; }
+
+/* ---------------------------------------------------------------------
+   Navigation
+   --------------------------------------------------------------------- */
+
+.nav-tabs { display: flex; gap: 1.4rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 1px solid var(--olive-300); }
+.nav-tabs a { padding: .55rem .1rem; font-size: .9rem; color: var(--muted); border-bottom: 2px solid transparent; text-decoration: none; }
+.nav-tabs a:hover { color: var(--olive-900); text-decoration: none; }
+.nav-tabs a.active { color: var(--olive-700); border-bottom-color: var(--olive-700); font-weight: 600; }
+
+/* ---------------------------------------------------------------------
+   Headings / links
+   --------------------------------------------------------------------- */
+
+h1 { font-size: 1.4rem; margin-bottom: .25rem; color: var(--olive-900); }
+h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--olive-900); }
+a { color: var(--olive-700); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   Content containers — cards / panels / frames
+   --------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--olive-300);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+/* Result summary blocks (e.g. Import Summary, Calculate Tips totals). */
+.meta-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.meta-item .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.meta-item .value { font-size: 1.15rem; font-weight: 600; color: var(--olive-900); }
+
+/* ---------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------- */
+
+.form-row { display: flex; gap: 1.2rem; align-items: end; flex-wrap: wrap; }
+label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .25rem; }
+
+input[type=date], input[type=text], input[type=number], select {
+  padding: .45rem .6rem;
+  border: 1px solid var(--olive-300);
+  border-radius: 6px;
+  font-size: .85rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+input:focus, select:focus, button:focus, .btn:focus {
+  outline: 2px solid var(--olive-500);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------
+   Action buttons
+   --------------------------------------------------------------------- */
+
+button, .btn {
+  background: var(--olive-700);
+  color: white;
+  border: none;
+  padding: .6rem 1.2rem;
+  border-radius: 6px;
+  font-size: .9rem;
+  cursor: pointer;
+}
+button:hover, .btn:hover { background: var(--olive-600); }
+button:disabled, .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------- */
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: .72rem;
+  color: var(--olive-900);
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  padding: .55rem .5rem;
+  background: var(--olive-150);
+  border-bottom: 1px solid var(--olive-300);
+}
+th:first-child { border-top-left-radius: 6px; }
+th:last-child { border-top-right-radius: 6px; }
+td { padding: .55rem .5rem; border-bottom: 1px solid var(--olive-150); font-size: .85rem; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--olive-050); }
+
+/* ---------------------------------------------------------------------
+   Status / error / info messages
+   --------------------------------------------------------------------- */
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); font-size: .9rem; padding: 1rem 0; }
+
+.error {
+  background: #fbeaea; border: 1px solid #e2a8a0; color: #7a2b21;
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+.info {
+  background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900);
+  padding: .6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .88rem;
+}
+
+.badge { display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 600; border: 1px solid var(--olive-300); }
+.badge.ok { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
+.badge.warn { background: #fdf1de; color: var(--warn); border-color: #eccf9c; }
+.badge.bad { background: #fbeaea; color: var(--bad); border-color: #e2a8a0; }
+
+/* ---------------------------------------------------------------------
+   Responsive foundation (TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001
+   §5/§6) — ONE surface for PC/smartphone/tablet, no separate mobile app/
+   stylesheet. Mobile-first: base rules already work at phone width; the
+   `min-width` query below only RELAXES spacing for larger screens.
+   --------------------------------------------------------------------- */
+
+body { padding: 0 1rem 2rem; }
+
+@media (min-width: 640px) {
+  body { padding: 0 2rem 3rem; }
+}
+
+/* A readable minimum touch target on every interactive control, at every
+   width — not only inside .stat-grid/.status-line below. */
+button, .btn, select, input[type=text], input[type=number], input[type=date], input[type=time] {
+  min-height: 2.4rem;
+}
+
+/* ---------------------------------------------------------------------
+   Stat grid — the mobile-first Payment Control summary (task §6): a wrap-
+   first row of tiles, always in one visual scan from the top of the page,
+   at any width.
+   --------------------------------------------------------------------- */
+
+.stat-grid { display: flex; flex-wrap: wrap; gap: .9rem 1.6rem; margin-bottom: 1.1rem; }
+.stat-tile { min-width: 9.5rem; flex: 1 1 9.5rem; }
+.stat-tile .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: .15rem; }
+.stat-tile .value { font-size: 1.2rem; font-weight: 600; color: var(--olive-900); line-height: 1.25; }
+.stat-tile .value.small { font-size: .95rem; font-weight: 500; }
+
+/* Readiness status line — the single, unmissable READY/NOT READY signal
+   (task §6), full-width on its own so it is never lost among the tiles. */
+.status-line {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+  padding: .8rem 1rem; border-radius: var(--radius); margin: .3rem 0 1.1rem;
+  border: 1px solid var(--olive-300);
+}
+.status-line.ready { background: #e7f3ea; border-color: #bcdcc6; }
+.status-line.not-ready { background: var(--olive-050); }
+.status-line .status-reason { font-size: .82rem; color: var(--muted); flex: 1 1 100%; }
+
+.badge.lg { font-size: .82rem; padding: .3rem .8rem; }
+
+/* Approve & Pay action area — full-width, stacked controls on a phone;
+   inline on a wider screen. Never a floating/fixed overlay (keeps normal
+   page flow and screen-reader order identical at every width). */
+.approve-pay-form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: stretch; }
+.approve-pay-form select { flex: 1 1 12rem; }
+.approve-pay-form button { flex: 1 1 10rem; font-weight: 600; }
+
+@media (min-width: 640px) {
+  .approve-pay-form { align-items: center; }
+  .approve-pay-form select { flex: 0 1 16rem; }
+  .approve-pay-form button { flex: 0 0 auto; }
+}
+
+/* ---------------------------------------------------------------------
+   Responsive data table -> stacked cards below ~640px (task §6/§7: the
+   Payment Instructions / detail-per-payee table must stay easily readable
+   on a phone, not merely horizontally scrollable). Applies only to tables
+   explicitly opted in via `.responsive-table` — the CSS-only technique
+   (no duplicated markup): each `<td>` re-labels itself from its own
+   `data-label` attribute, and the row becomes a bordered card. */
+@media (max-width: 640px) {
+  .responsive-table thead { display: none; }
+  .responsive-table, .responsive-table tbody, .responsive-table tr, .responsive-table td { display: block; width: 100%; }
+  .responsive-table tr {
+    border: 1px solid var(--olive-300); border-radius: var(--radius);
+    margin-bottom: .8rem; padding: .3rem .7rem; box-shadow: var(--shadow-card);
+  }
+  .responsive-table td {
+    border-bottom: 1px solid var(--olive-150);
+    padding: .5rem 0; display: flex; justify-content: space-between; align-items: center;
+    gap: .8rem; text-align: right;
+  }
+  .responsive-table td:last-child { border-bottom: none; }
+  .responsive-table td::before {
+    content: attr(data-label); font-size: .72rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .02em; text-align: left; flex: 0 0 auto;
+  }
+  .responsive-table td[data-label=""]::before { content: none; }
+  .responsive-table .table-scroll { overflow-x: visible; }
+}
+
+
+/* RF-One UI Rules §4 — breadcrumb path on every sub-page
+   (`templates/_nav_macros.html`; same rules as RF-One Web). */
+.breadcrumb { margin: 0 0 .9rem; font-size: .85rem; }
+.breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .1rem .35rem; }
+.breadcrumb li { display: inline-flex; align-items: center; }
+.breadcrumb li + li::before { content: "\203A"; margin-right: .35rem; color: #8a8a8a; }
+.breadcrumb [aria-current="page"] { color: #555; font-weight: 600; }
+
+/* IMPORTED_CLOVER_DATA_CONTROL_001 — summaries meant to be held next to
+   Clover's Orders and Transactions reports: large, aligned figures, few
+   words. */
+.control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .8rem; }
+.control-tile { border: 1px solid var(--olive-300); border-radius: 8px; padding: .7rem .9rem; background: var(--olive-050); }
+.control-tile .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.control-tile .value { font-size: 1.9rem; font-weight: 700; color: var(--olive-900); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.control-tile.sum { background: var(--olive-150); border-color: var(--olive-500); }
+.control-tile .note { font-size: .72rem; color: var(--muted); margin-top: .15rem; }
+tr.row-muted td { color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* CONFIGURATION_TAB_001 — the two sections of the Tips Configuration page. */
+.section-title { margin: 1.6rem 0 .7rem; padding-bottom: .3rem; border-bottom: 2px solid var(--olive-300); color: var(--olive-900); font-size: 1.15rem; }
+.section-title:first-of-type { margin-top: .4rem; }
+</style>
+<style>/* RF-One · Selection — layout pieces of the position workspace and of the
+   public candidate pages (SELECTION_AI_INTEGRATION_001) that `rf-one.css`
+   has no equivalent for. Only RF-One's own variables and colour family are
+   used; buttons, cards, tables, badges, messages, tabs and breadcrumb come
+   from `rf-one.css` unchanged. */
+
+.selection-navigation .configuration-link { margin-left: auto; }
+.selection-page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0 1rem; }
+.selection-page-heading h1 { margin: 0 0 .35rem; }
+.selection-search { display: flex; align-items: flex-end; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.selection-search label { margin: 0; flex: 1; min-width: 200px; }
+.selection-search input { display: block; width: 100%; margin-top: .4rem; }
+.selection-table-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.selection-table-actions form { margin: 0; }
+.selection-table td { vertical-align: middle; }
+.selection-empty { padding: 2rem 1.5rem; }
+.small { font-size: .82rem; }
+.row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.grid { display: grid; gap: 1rem; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .g2, .g3 { grid-template-columns: 1fr; } }
+.card h2:first-child, .card h3:first-child { margin-top: 0; }
+h3 { font-size: .95rem; margin: .4rem 0; color: var(--olive-900); }
+
+/* Forms: RF-One's input look also for the fields Tips's sheet does not list. */
+input[type=email], input[type=password], input[type=tel], input[type=datetime-local], textarea {
+  padding: .45rem .6rem; border: 1px solid var(--olive-300); border-radius: 6px; font: inherit;
+  font-size: .85rem; background: var(--surface); color: var(--ink);
+}
+.card input[type=text], .card input[type=email], .card input[type=password], .card input[type=tel],
+.card select, .card textarea, .auth input[type=text], .auth input[type=email], .auth input[type=password] {
+  width: 100%;
+}
+textarea { min-height: 5rem; resize: vertical; width: 100%; }
+label { margin-top: .55rem; }
+label.row { color: var(--ink); font-size: .85rem; margin: .3rem 0; }
+
+/* Buttons: RF-One's primary and secondary; small and danger are size/colour
+   variants of the same two. */
+.btn { display: inline-block; text-decoration: none; font-family: inherit; }
+.btn:hover { text-decoration: none; }
+.btn-secondary { background: var(--surface); color: var(--olive-700); border: 1px solid var(--olive-300); }
+.btn-secondary:hover { background: var(--olive-050); }
+.btn-danger { background: var(--surface); color: var(--bad); border: 1px solid #e2a8a0; }
+.btn-danger:hover { background: #fbeaea; }
+.btn-small { padding: .3rem .7rem; font-size: .8rem; min-height: 2rem; }
+.badge.info { background: var(--olive-150); color: var(--olive-900); }
+
+/* Header: the AI state and the signed-in person, right of the brand. */
+.header-meta { display: flex; gap: .8rem; align-items: center; font-size: .8rem; color: var(--muted); }
+
+/* Position page: the three proposal columns and the candidate cards. */
+.col { background: var(--olive-050); border: 1px solid var(--olive-300); border-radius: var(--radius); padding: .7rem; }
+.col h3 { display: flex; justify-content: space-between; align-items: center; }
+.cand { background: var(--surface); border: 1px solid var(--olive-300); border-radius: 8px; padding: .65rem .7rem;
+        margin: .55rem 0; }
+.cand .name { font-weight: 600; }
+.cand .why { font-size: .8rem; color: var(--muted); margin: .3rem 0; }
+.cand .acts { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .4rem; }
+
+/* Notices inside a page. */
+.banner { border-radius: 6px; padding: .6rem .9rem; margin: .6rem 0; font-size: .86rem; }
+.banner.warn { background: #fdf1de; border: 1px solid #eccf9c; color: #6b4a12; }
+.banner.info { background: var(--olive-050); border: 1px solid var(--olive-300); color: var(--olive-900); }
+.banner.off { background: var(--olive-050); border: 1px dashed var(--olive-300); color: var(--muted); }
+
+/* Evidence and quotes. */
+.ev { border-left: 3px solid var(--olive-300); padding: .15rem .5rem; margin: .25rem 0; font-size: .82rem; }
+.ev.SUPPORTS { border-color: var(--ok); }
+.ev.CONTRADICTS { border-color: var(--bad); }
+mark { background: #f3e3a6; }
+pre.cv { white-space: pre-wrap; font-family: inherit; font-size: .88rem; background: var(--surface);
+         border: 1px solid var(--olive-300); border-radius: 8px; padding: 1rem; }
+details summary { cursor: pointer; color: var(--olive-700); font-size: .85rem; margin: .3rem 0; }
+
+/* Position summary figures. */
+.stat { font-size: 1.35rem; font-weight: 700; color: var(--olive-900); }
+.statl { font-size: .74rem; color: var(--muted); }
+a.card-link { color: inherit; text-decoration: none; display: block; }
+a.card-link:hover .card { border-color: var(--olive-500); }
+
+/* Public candidate pages: one narrow column, readable on a phone. */
+.public .wrap { max-width: 680px; }
+.public .card { padding: 1.3rem; }
+.ad { white-space: pre-wrap; margin: 1rem 0; }
+.progress { height: 6px; background: var(--olive-150); border-radius: 6px; overflow: hidden; margin: .6rem 0 1rem; }
+.progress span { display: block; height: 100%; background: var(--olive-700); }
+.slot { display: flex; gap: .6rem; align-items: center; border: 1px solid var(--olive-300); border-radius: 6px;
+        padding: .6rem .8rem; margin: .4rem 0; color: var(--ink); font-size: .95rem; }
+.q { border-left: 3px solid var(--olive-300); padding: .2rem .7rem; margin: .5rem 0; font-size: .9rem; }
+.note { background: var(--olive-050); border-radius: 6px; padding: .6rem .8rem; font-size: .85rem; color: var(--muted);
+        margin: .6rem 0; }
+.auth-switch { display: flex; gap: 1.2rem; border-bottom: 1px solid var(--olive-300); margin: .8rem 0; }
+.auth-switch button { background: none; color: var(--muted); border: none; border-bottom: 2px solid transparent;
+                      border-radius: 0; padding: .5rem .1rem; font-size: .9rem; min-height: 0; }
+.auth-switch button.active { color: var(--olive-700); border-bottom-color: var(--olive-700); font-weight: 600; }
+.auth-status { min-height: 1.2rem; font-size: .86rem; margin: .5rem 0; }
+.auth-status.error { margin-bottom: .5rem; }
+.waiting::after { content: ""; display: inline-block; width: .8rem; height: .8rem; margin-left: .45rem;
+                  border: 2px solid var(--olive-300); border-top-color: var(--olive-700); border-radius: 50%;
+                  vertical-align: -1px; animation: sel-spin .8s linear infinite; }
+@keyframes sel-spin { to { transform: rotate(360deg); } }
+
+/* Guide link sits on the navigation row, above its divider. */
+.selection-page-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .55rem; }
+.selection-navigation .selection-help-link { margin-left: auto; font-size: .9rem; }
+.selection-guide { max-width: 880px; }
+.selection-guide p, .selection-guide li { line-height: 1.65; }
+.selection-guide h2 { margin-top: 0; }
+.selection-guide li + li { margin-top: .45rem; }
+.selection-guide-nav { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 1rem 0 1.5rem; }
+</style>
+
+<style>
+  .selection-navigation .tab-off { color: var(--muted); opacity: .5; cursor: not-allowed; padding: .55rem .1rem; font-size: .9rem; }
+  .job-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .2rem 0 .8rem;
+             padding: .45rem .8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #fff); }
+  .job-bar a { margin-left: auto; }
+</style>
+
+
+<style>
+  .sp { --ink:#22261c; --muted:#6b705f; --line:#dfe1d6; --card:#fff; --olive:#5d6b2f;
+        --olive-soft:#eef1e2; --red:#9b2c22; --red-soft:#f8e9e6; --amber:#8a5a00; --amber-soft:#fbf1dc;
+        --blue:#2f5470; --blue-soft:#e6eef4; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
+  .sp * { box-sizing:border-box; }
+  .sp h1 { font-size:22px; margin:4px 0 4px; } .sp h2 { font-size:16px; margin:0 0 10px; }
+  .sp .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin:14px 0; }
+  .sp .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--olive); color:#fff;
+              text-align:center; line-height:22px; font-size:12px; margin-right:6px; }
+  .sp .muted { color:var(--muted); } .sp .small { font-size:12px; }
+  .sp table { width:100%; border-collapse:collapse; }
+  .sp th, .sp td { text-align:left; vertical-align:top; padding:8px 8px; border-bottom:1px solid var(--line); }
+  .sp th { font-size:12px; color:var(--muted); font-weight:600; }
+  .sp button, .sp .btn { font:inherit; border:1px solid var(--olive); background:var(--olive); color:#fff; border-radius:6px;
+                         padding:6px 12px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .sp button.light, .sp .btn.light { background:#fff; color:var(--olive); }
+  .sp button.tiny { padding:1px 7px; font-size:12px; }
+  .sp button:disabled { opacity:.5; cursor:default; }
+  .sp input, .sp select, .sp textarea { font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:5px; }
+  .sp .badge { display:inline-block; border-radius:10px; padding:1px 8px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .sp .gA { background:var(--olive-soft); color:var(--olive); } .sp .gB { background:var(--blue-soft); color:var(--blue); }
+  .sp .gC { background:var(--amber-soft); color:var(--amber); } .sp .gD { background:var(--red-soft); color:var(--red); }
+  .sp .gX { background:#ecebe6; color:var(--muted); }
+  .sp .rank { font-size:22px; font-weight:700; color:var(--olive); }
+  .sp ul.tight { margin:0; padding-left:16px; } .sp ul.tight li { margin:1px 0; }
+  .sp .flag { color:var(--red); } .sp .verify { color:var(--amber); }
+  .sp .quote { color:var(--muted); font-style:italic; }
+  .sp .lvl { display:inline-block; width:60px; height:8px; background:var(--line); border-radius:4px; vertical-align:middle; }
+  .sp .lvl i { display:block; height:8px; border-radius:4px; background:var(--olive); }
+  .sp .s-SHOWN { color:var(--olive); } .sp .s-PARTIAL { color:var(--blue); } .sp .s-CLAIMED, .sp .s-MISSING { color:var(--amber); }
+  .sp .s-AGAINST { color:var(--red); } .sp .s-NOT_ASSESSABLE { color:var(--muted); }
+  .sp .why { font-size:12px; color:var(--muted); margin-top:4px; }
+  .sp .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .sp tr.rejected td { opacity:.7; }
+  .sp details.reject form { margin-top:6px; display:grid; gap:4px; min-width:180px; }
+  @media (max-width: 900px) { .sp .grid2 { grid-template-columns:1fr; } .sp .hide-sm { display:none; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  
+  <header class="site-header">
+    <a href="https://rfone.example.test/" class="brand">
+      <span class="brand-name-group">
+        <span class="brand-wordmark">Rome's Flavours · WP</span>
+        <span class="brand-suffix">RF-ONE</span>
+      </span>
+    </a>
+    <img class="brand-logo" src="https://rfone.example.test/shared-brand/logos/rf-one.png" alt="RF-One">
+  </header>
+  
+  
+  
+<nav class="breadcrumb" aria-label="You are here">
+  <ol>
+    <li><a href="https://rfone.example.test/">RF-One</a></li>
+    <li><a href="/selection/">Selection</a></li>
+    <li><span aria-current="page">Applications</span></li>
+  </ol>
+</nav>
+
+  
+  
+  
+  <nav class="nav-tabs selection-navigation" aria-label="Selection">
+    
+      <a href="/selection/" class="">Selection</a>
+      
+    
+      <a href="/selection/posizioni/1/sp" class="active">Applications</a>
+      
+    
+      <a href="/selection/posizioni/1/evaluation" class="">Evaluation</a>
+      
+    
+      <a href="/selection/posizioni/1/interviews" class="">Interviews</a>
+      
+    
+      <a href="/selection/posizioni/1?tab=decisioni" class="">Decisions</a>
+      
+    
+    <a class="selection-help-link" href="/selection/how-it-works">How Selection works</a>
+  </nav>
+  <div class="job-bar" aria-label="Current Job">
+    <span class="muted small">Current Job</span>
+    <b>Server</b><span>· Mount Dora</span>
+    <span class="badge ok">Active</span>
+    <span class="small muted">Server SP test</span>
+    <a class="small" href="/selection/">Change Job</a>
+  </div>
+  
+  <div class="sp">
+
+<h1>Applications</h1>
+<div class="muted">Server · Mount Dora · profile SERVER v1.0
+   · requirements v2 confirmed Nov 03, 2026 12:49 AM</div>
+
+<!-- 1. Requirements (set in the Job, Selection tab) -->
+<div class="card" id="requirements">
+  <h2><span class="step">1</span>Requirements <span class="badge gA">Confirmed v2</span></h2>
+  <details ><summary class="small">9 requirement(s) in use · change them in the <a href="/selection/posizioni/1/job#requirements">Job settings</a></summary>
+  <table>
+    <tr><th>Requirement</th><th class="hide-sm">What the CV should show</th><th>Criticality</th><th>Weight</th></tr>
+    
+    <tr>
+      <td><b>Relevant table-service experience</b></td>
+      <td class="hide-sm small">Full-service table ownership in comparable restaurants (see environment table).</td>
+      <td>Must-have</td>
+      <td>25</td>
+    </tr>
+    
+    <tr>
+      <td><b>Employment stability</b><div class="small muted">Computed from the verified CV dates</div></td>
+      <td class="hide-sm small">Tenure per employer, repeated short stays, continuity in restaurant roles. Computed from the dates.</td>
+      <td>Preferred</td>
+      <td>25</td>
+    </tr>
+    
+    <tr>
+      <td><b>Guest relationship and commercial service</b></td>
+      <td class="hide-sm small">Menu and wine guidance, recommendations, appropriate upselling, sales results.</td>
+      <td>Preferred</td>
+      <td>15</td>
+    </tr>
+    
+    <tr>
+      <td><b>Documented trusted responsibilities</b></td>
+      <td class="hide-sm small">Opening/closing, cash-out, training others, shift coordination.</td>
+      <td>Preferred</td>
+      <td>10</td>
+    </tr>
+    
+    <tr>
+      <td><b>Documented learning and adaptation</b></td>
+      <td class="hide-sm small">New systems, new service styles, training received, openings, cross-training.</td>
+      <td>Preferred</td>
+      <td>10</td>
+    </tr>
+    
+    <tr>
+      <td><b>Career progression</b></td>
+      <td class="hide-sm small">Promotions to trainer, key holder or supervisor.</td>
+      <td>Optional</td>
+      <td>5</td>
+    </tr>
+    
+    <tr>
+      <td><b>Relevant FOH versatility</b></td>
+      <td class="hide-sm small">Server, bartender, host, runner or FOH supervisor roles. Unrelated jobs do not count.</td>
+      <td>Optional</td>
+      <td>5</td>
+    </tr>
+    
+    <tr>
+      <td><b>Recency of relevant work</b></td>
+      <td class="hide-sm small">Relevant table service in the last 12–24 months.</td>
+      <td>Optional</td>
+      <td>5</td>
+    </tr>
+    
+    <tr>
+      <td><b>Italian menu knowledge</b></td>
+      <td class="hide-sm small">Italian menu knowledge</td>
+      <td>Preferred</td>
+      <td>5</td>
+    </tr>
+    
+  </table>
+  <p class="small muted">Must-haves define the ranking groups; weights order candidates inside a group. Residence and commute are not used.</p>
+  </details>
+</div>
+
+<!-- 2. CVs (uploaded from the Selection positions page) -->
+<div class="card" id="cvs">
+  <h2><span class="step">2</span>CVs <span class="small muted">(23 for this Job)</span></h2>
+  <form method="post" enctype="multipart/form-data" action="/selection/posizioni/1/sp/upload" style="margin-bottom:8px">
+    <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg">
+    <label class="btn" title="PDF, DOCX or TXT; several at once">Upload CVs<input type="file" name="cv" multiple accept=".pdf,.docx,.txt" hidden onchange="this.form.submit(); this.parentElement.style.pointerEvents='none'; this.parentElement.firstChild.textContent='Uploading… '"></label>
+    <span class="small muted">PDF, DOCX or TXT, several at once. Every upload adds only new CVs: exact duplicates are ignored, possible duplicates are flagged.</span>
+  </form>
+  
+  <p class="small muted">Application page (candidates apply and are analyzed when they complete it):
+    <a href="http://localhost/selection/jobs/Mn4XwCB9Lblso6XYo5fl2mFe" target="_blank" rel="noopener">http://localhost/selection/jobs/Mn4XwCB9Lblso6XYo5fl2mFe</a></p>
+  
+  <p class="small"><b>Last upload (#6, Nov 03, 2026 12:49 AM, Synthetic Owner):</b>
+    1 received · <b>0 new imported</b> ·
+    1 exact duplicate(s) ignored ·
+    <span class="">0 possible duplicate(s) to verify</span>
+    </p>
+  
+  <div class="small muted">Exact duplicate ignored — synthetic-scan.pdf</div>
+  
+  
+  
+  <details >
+    <summary class="small">Uploads and analysis status</summary>
+    <table class="small">
+      <tr><th>Upload</th><th>When</th><th>Received</th><th>New</th><th>Exact duplicates</th><th>Possible duplicates</th></tr>
+      <tr><td>#6</td><td>Nov 03, 2026 12:49 AM · Synthetic Owner</td><td>1</td><td>0</td><td>1</td><td>0</td></tr><tr><td>#5</td><td>Nov 03, 2026 12:49 AM · Synthetic Owner</td><td>1</td><td>1</td><td>0</td><td>1</td></tr><tr><td>#4</td><td>Nov 03, 2026 12:48 AM · Synthetic Owner</td><td>1</td><td>1</td><td>0</td><td>1</td></tr><tr><td>#3</td><td>Nov 03, 2026 12:48 AM · Synthetic Owner</td><td>1</td><td>0</td><td>1</td><td>0</td></tr><tr><td>#2</td><td>Nov 03, 2026 12:48 AM · Synthetic Owner</td><td>8</td><td>8</td><td>0</td><td>0</td></tr><tr><td>#1</td><td>Nov 03, 2026 12:48 AM · Synthetic Owner</td><td>12</td><td>12</td><td>0</td><td>0</td></tr>
+    </table>
+    <table class="small" style="margin-top:8px" id="cv-list" data-position="1"
+           data-added="[]" data-removed="[]">
+      
+      <tr data-pc="1"><td class="cv-new" style="width:44px"></td>
+        <td>cv0.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"><span class="verify">Same person (matching email or phone) as 1 other archived application(s).</span></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv0.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="2"><td class="cv-new" style="width:44px"></td>
+        <td>cv1.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv1.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="3"><td class="cv-new" style="width:44px"></td>
+        <td>cv2.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv2.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="4"><td class="cv-new" style="width:44px"></td>
+        <td>cv3.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv3.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="5"><td class="cv-new" style="width:44px"></td>
+        <td>cv4.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv4.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="6"><td class="cv-new" style="width:44px"></td>
+        <td>cv5.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"><span class="verify">Same person (matching email or phone) as 1 other archived application(s).</span></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv5.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="7"><td class="cv-new" style="width:44px"></td>
+        <td>cv6.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv6.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="8"><td class="cv-new" style="width:44px"></td>
+        <td>cv7.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv7.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="9"><td class="cv-new" style="width:44px"></td>
+        <td>cv8.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed; its history already has later events"
+            data-msg="“cv8.txt” cannot be deleted: it has already been analyzed; its history already has later events." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="10"><td class="cv-new" style="width:44px"></td>
+        <td>cv9.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv9.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="11"><td class="cv-new" style="width:44px"></td>
+        <td>cv10.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv10.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="12"><td class="cv-new" style="width:44px"></td>
+        <td>cv11.txt</td>
+        <td class="muted">upload #1</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv11.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="13"><td class="cv-new" style="width:44px"></td>
+        <td>cv12.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv12.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="14"><td class="cv-new" style="width:44px"></td>
+        <td>cv13.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv13.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="15"><td class="cv-new" style="width:44px"></td>
+        <td>cv14.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv14.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="16"><td class="cv-new" style="width:44px"></td>
+        <td>cv15.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv15.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="17"><td class="cv-new" style="width:44px"></td>
+        <td>cv16.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv16.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="18"><td class="cv-new" style="width:44px"></td>
+        <td>cv17.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv17.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="19"><td class="cv-new" style="width:44px"></td>
+        <td>cv18.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv18.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="20"><td class="cv-new" style="width:44px"></td>
+        <td>cv19.txt</td>
+        <td class="muted">upload #2</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv19.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="21"><td class="cv-new" style="width:44px"></td>
+        <td>cv5-new-version.txt</td>
+        <td class="muted">upload #4</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"><span class="verify">Same person (matching email or phone) as 1 other archived application(s).</span></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“cv5-new-version.txt” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="22"><td class="cv-new" style="width:44px"></td>
+        <td>uma.txt</td>
+        <td class="muted">public link</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: the candidate sent it from the application page; it has already been analyzed; evaluation data is recorded; the candidate&#39;s online application is recorded; its history already has later events"
+            data-msg="“uma.txt” cannot be deleted: the candidate sent it from the application page; it has already been analyzed; evaluation data is recorded; the candidate&#39;s online application is recorded; its history already has later events." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+      <tr data-pc="23"><td class="cv-new" style="width:44px"></td>
+        <td>synthetic-scan.pdf</td>
+        <td class="muted">upload #5</td>
+        <td><span class="s-SHOWN">Analyzed</span></td>
+        <td class="muted"><span class="verify">Same person (matching email or phone) as 1 other archived application(s).</span></td>
+        <td style="text-align:right"><button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: it has already been analyzed"
+            data-msg="“synthetic-scan.pdf” cannot be deleted: it has already been analyzed." onclick="alert(this.dataset.msg)">Delete</button>
+          </td></tr>
+      
+    </table>
+    
+  </details>
+  
+</div>
+
+<!-- 3. Analyze -->
+<div class="card">
+  <h2><span class="step">3</span>Analyze</h2>
+  
+  
+  
+  <form method="post" action="/selection/posizioni/1/sp/analyze" style="display:inline">
+    <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg">
+    <button disabled>Analyze</button>
+  </form>
+  <form method="post" action="/selection/posizioni/1/sp/analyze" style="display:inline">
+    <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg">
+    <input type="hidden" name="all" value="1"><button class="light" >Re-analyze all</button>
+  </form>
+  
+  <span id="progress" class="small muted">Every CV is analyzed with the approved requirements.</span>
+  <p class="small muted">One AI reading per CV (AWS Bedrock), checked by code: quotes and dates must be in the CV;
+    durations, gaps and stability are computed; skills only listed count as claims. New uploads are analyzed
+    automatically; earlier analyses are reused while the requirements do not change.</p>
+  
+</div>
+
+<!-- 4. Ranking -->
+<div class="card" id="ranking">
+  <h2><span class="step">4</span>Ranking <span class="small muted">(23 candidates)</span>
+    </h2>
+  <p class="small">
+    <b>All Candidates</b> |
+    <a href="/selection/posizioni/1/sp?view=last#ranking">Last Upload</a>
+    <span class="muted"> (upload #5: 1 new; upload #6 added no new CV: 1 exact duplicate(s))</span></p>
+  
+  <p class="small muted">Preselection priority from the approved requirements: group first (A every must-have shown · B partly shown ·
+    C must-have not documented, to verify · D documented concern), then the documented evidence weighted by the requirements.
+    Not a probability of success. Nobody is excluded automatically. Use ▲▼ to change the order; a click on a name opens Evaluation.</p>
+  <table>
+    <tr><th>#</th><th>Candidate</th><th>Relevant experience</th><th>Demonstrated competences</th><th>Red flags</th><th>To verify</th><th>Why here</th><th>Actions</th></tr>
+    
+    <tr>
+      <td><div class="rank">1</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="3"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/3">Cleo Sample2</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 2<span class="muted"> · 4 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Ivo Sample8: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/3">Evaluation</a><br><a href="/selection/posizioni/1/candidati/3/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="3">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">2</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="9"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/9">Ivo Sample8</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 8<span class="muted"> · 5 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Lia Sample11: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/9">Evaluation</a><br><a href="/selection/posizioni/1/candidati/9/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="9">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">3</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="12"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/12">Lia Sample11</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 11<span class="muted"> · 3 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Oto Sample14: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/12">Evaluation</a><br><a href="/selection/posizioni/1/candidati/12/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="12">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">4</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="15"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/15">Oto Sample14</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 14<span class="muted"> · 6 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Rae Sample17: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/15">Evaluation</a><br><a href="/selection/posizioni/1/candidati/15/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="15">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">5</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="18"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/18">Rae Sample17</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 17<span class="muted"> · 4 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Ben Sample1, same group: stronger documented evidence on Relevant table-service experience (strong vs clear).</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/18">Evaluation</a><br><a href="/selection/posizioni/1/candidati/18/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="18">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">6</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="2"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/2">Ben Sample1</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 1<span class="muted"> · 3 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Eli Sample4: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/2">Evaluation</a><br><a href="/selection/posizioni/1/candidati/2/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="2">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">7</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="5"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/5">Eli Sample4</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 4<span class="muted"> · 6 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Fay Sample5, same group: stronger documented evidence on Employment stability (strong vs clear).</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/5">Evaluation</a><br><a href="/selection/posizioni/1/candidati/5/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="5">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">8</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="6"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/6">Fay Sample5</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        <div class="small verify">Same person (matching email or phone) as 1 other archived application(s).</div></td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 5<span class="muted"> · 2 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Hana Sample7, same group: stronger documented evidence on Relevant table-service experience (strong vs clear).</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/6">Evaluation</a><br><a href="/selection/posizioni/1/candidati/6/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="6">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">9</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="8"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/8">Hana Sample7</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 7<span class="muted"> · 4 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Nia Sample13: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/8">Evaluation</a><br><a href="/selection/posizioni/1/candidati/8/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="8">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">10</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="14"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/14">Nia Sample13</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 13<span class="muted"> · 5 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Quin Sample16: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/14">Evaluation</a><br><a href="/selection/posizioni/1/candidati/14/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="14">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">11</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="17"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/17">Quin Sample16</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 16<span class="muted"> · 3 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Tess Sample19: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/17">Evaluation</a><br><a href="/selection/posizioni/1/candidati/17/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="17">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">12</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="20"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/20">Tess Sample19</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 19<span class="muted"> · 6 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Uma Sample25: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/20">Evaluation</a><br><a href="/selection/posizioni/1/candidati/20/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="20">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">13</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="22"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/22">Uma Sample25</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 25<span class="muted"> · 4 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Kai Sample10, same group: stronger documented evidence on Employment stability (strong vs clear).</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/22">Evaluation</a><br><a href="/selection/posizioni/1/candidati/22/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="22">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">14</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="11"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/11">Kai Sample10</a></b><br>
+        <span class="badge gA">A · Strong evidence</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 10<span class="muted"> · 2 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Every must-have is shown in the CV: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Dan Sample3: group A (Strong evidence) vs B — Partly shown or to verify: Relevant table-service experience.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/11">Evaluation</a><br><a href="/selection/posizioni/1/candidati/11/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="11">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">15</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="4"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/4">Dan Sample3</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 3<span class="muted"> · 5 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Gus Sample6: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/4">Evaluation</a><br><a href="/selection/posizioni/1/candidati/4/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="4">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">16</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="7"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/7">Gus Sample6</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 6<span class="muted"> · 3 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Jade Sample9: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/7">Evaluation</a><br><a href="/selection/posizioni/1/candidati/7/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="7">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">17</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="10"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/10">Jade Sample9</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 9<span class="muted"> · 6 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Max Sample12: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/10">Evaluation</a><br><a href="/selection/posizioni/1/candidati/10/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="10">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">18</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="13"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/13">Max Sample12</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 12<span class="muted"> · 4 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Sol Sample18: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/13">Evaluation</a><br><a href="/selection/posizioni/1/candidati/13/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="13">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">19</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="19"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/19">Sol Sample18</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 18<span class="muted"> · 5 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Ava Sample0, same group: stronger documented evidence on Employment stability (strong vs clear).</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/19">Evaluation</a><br><a href="/selection/posizioni/1/candidati/19/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="19">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">20</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="1"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/1">Ava Sample0</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        <div class="small verify">Same person (matching email or phone) as 1 other archived application(s).</div></td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 0<span class="muted"> · 2 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Pia Sample15: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/1">Evaluation</a><br><a href="/selection/posizioni/1/candidati/1/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="1">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">21</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="16"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/16">Pia Sample15</a></b><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        </td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 15<span class="muted"> · 2 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Same documented evidence as Ava Sample0: kept in upload order.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/16">Evaluation</a><br><a href="/selection/posizioni/1/candidati/16/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="16">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">22</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="23"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/23">Ava Sample0</a></b> <span class="badge gB">NEW</span><br>
+        <span class="badge gB">B · Promising</span>
+        
+        
+        <div class="small verify">Same person (matching email or phone) as 1 other archived application(s).</div></td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 0<span class="muted"> · 2 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        table service <span class="muted">(executed)</span>
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Partly shown or to verify: Relevant table-service experience. Also shown: Employment stability.<div class="why">Ahead of Fay Sample5: group B (Promising) vs C — Not documented in the CV: Relevant table-service experience.</div></td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/23">Evaluation</a><br><a href="/selection/posizioni/1/candidati/23/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="23">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+    <tr>
+      <td><div class="rank">23</div>
+        <form method="post" action="/selection/posizioni/1/sp/move"><input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="cid" value="21"><input type="hidden" name="view" value="all">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form></td>
+      <td><b><a href="/selection/posizioni/1/candidati/21">Fay Sample5</a></b><br>
+        <span class="badge gC">C · Key evidence missing</span>
+        
+        
+        <div class="small verify">Same person (matching email or phone) as 1 other archived application(s).</div></td>
+      <td class="small"><ul class="tight"><li>Server · Trattoria Esempio 5<span class="muted"> · 2 yr 11 mo</span></li></ul></td>
+      <td class="small">
+        
+        </td>
+      <td class="small flag"><ul class="tight"></ul></td>
+      <td class="small verify"><ul class="tight"><li>Desired weekly hours</li></ul></td>
+      <td class="small">Not documented in the CV: Relevant table-service experience. Also shown: Employment stability.</td>
+      <td class="small"><a href="/selection/posizioni/1/candidati/21">Evaluation</a><br><a href="/selection/posizioni/1/candidati/21/cv-originale" target="_blank">CV</a>
+        <details class="reject"><summary>Reject</summary>
+          <form method="post" action="/selection/posizioni/1/decisioni">
+            <input type="hidden" name="csrf_token" value="ys6OtrIN2H1zo5wVaVsuyTaABFmGwACDvztY_mY1bqg"><input type="hidden" name="pc_id" value="21">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="/selection/posizioni/1/sp#ranking">
+            <select name="reason" required><option value="">Reason…</option><option value="ESSENTIAL_VERIFIED_MISSING">Must-have requirement verified as unmet</option><option value="OTHER_CANDIDATE_CHOSEN">Another candidate selected</option><option value="AVAILABILITY">Availability incompatible (verified with candidate)</option><option value="CANDIDATE_DECLINED">Candidate declined</option><option value="POSITION_FILLED">Position filled</option><option value="OTHER">Other (explain in note)</option></select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details></td>
+    </tr>
+    
+  </table>
+  
+  
+</div>
+
+</div>
+</div>
+</body>
+</html>
