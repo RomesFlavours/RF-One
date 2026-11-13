@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block page_title %}Visual Menu · RF-One{% endblock %}
+{% block wrap_class %}vm-shell{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static',filename='css/visual-menu.css') }}">
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="{{ url_for('home') }}">RF-One</a><span aria-hidden="true">›</span>
+  <a href="{{ url_for('visual_menu_home',**{'from':entry}) }}">Visual Menu</a><span aria-hidden="true">›</span>
+  <span aria-current="page">{{ 'Content management' if visual_menu_management else card.title if card is defined else 'Dish list' }}</span>
+</nav>
+<div class="vm-navigation">
+  <nav class="vm-tabs" aria-label="Visual Menu">
+    {% if role=='trainer' %}<a href="{{ url_for('visual_menu_manage') }}" class="{{ 'active' if visual_menu_management }}" {% if visual_menu_management %}aria-current="page"{% endif %}>Content management</a>{% endif %}
+    <a href="{{ url_for('visual_menu_home',**{'from':entry}) }}" class="{{ 'active' if not visual_menu_management }}" {% if not visual_menu_management %}aria-current="page"{% endif %}>Dish list</a>
+  </nav>
+  {% set help_title='How this page works' %}{% include '_how_works.html' %}
+</div>
+<h1>{{ 'Dish cards' if visual_menu_management else 'Visual Menu' }}</h1>
+<main>{% block menu_content %}{% endblock %}</main>
+{% endblock %}
