@@ -1,0 +1,74 @@
+<section id="help-selection-old-session" class="rf-help-section">
+<h2>Selection Session</h2>
+<p>This page manages one Selection Session: its status, its Job Postings, the Selezionatori assigned to it, its <strong>Rule Set</strong> (the rules every Application in the Session is worked under), rule changes, its Applications, interview scheduling windows and notes.</p>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Check the Rule Set and, if needed, edit it with <strong>Edit Rule Set (before confirmation)</strong>.</li>
+  <li>Assign one or more Selezionatori.</li>
+  <li>Confirm the Rule Set: the Session becomes ACTIVE and its Applications can be worked.</li>
+  <li>Link Applications, generate a Job Posting draft and offer scheduling windows.</li>
+  <li>If a rule must change while the Session is ACTIVE, propose a Rule Change and confirm the new version.</li>
+</ol>
+
+<h3>Session header</h3>
+<dl>
+  <dt>Role / Branch / Location / Start date</dt>
+  <dd>The details of the hiring need.</dd>
+  <dt>Rule Set</dt>
+  <dd>The current version and whether it is Confirmed. While it is "Not confirmed", a note warns that operational work on the Session's Applications (Take In Charge, Outcome or Stage changes, screening and Trainable Gap edits) is blocked.</dd>
+  <dt>Change Session status &rarr; Save status</dt>
+  <dd>Sets DRAFT, RULES REVIEW, ACTIVE, PAUSED or CLOSED. Closing records the closing date. Applications can be worked only while the Session is ACTIVE <em>and</em> its current Rule Set is confirmed.</dd>
+</dl>
+
+<h3>Job Postings</h3>
+<dl>
+  <dt>Open &rarr;</dt>
+  <dd>Opens a Job Posting generated for this Session.</dd>
+  <dt>Generate Draft</dt>
+  <dd>Creates a plain, generic Job Posting draft from the Session's role and context (never from internal screening criteria, never with invented pay or benefits) and opens it for review. It is never published automatically. The name field is stored as typed.</dd>
+</dl>
+
+<h3>Assigned Selezionatori</h3>
+<dl>
+  <dt>Assign a Selezionatore &rarr; Assign</dt>
+  <dd>Adds a registered person to the Session, optionally with an authority level. Without a level, assigned people are peers: none can reassign an Application another one has taken in charge.{% if not rfone_login_mode %} If the person is not listed, use "Register a new Acting Identity" first.{% endif %}</dd>
+  <dt>Deactivate</dt>
+  <dd>Ends that person's assignment to the Session; the history is kept.</dd>
+</dl>
+
+<h3>Rule Set — Review</h3>
+<dl>
+  <dt>Requirements / Selection Signals / Primary Screening Criteria / Outcome Definitions referenced</dt>
+  <dd>What the current version contains: the Requirement Set with each requirement's criticality and trainability, the Signals, the screening criteria (direction, coefficient, Hard Disqualifier, level meanings) and the Outcomes.</dd>
+  <dt>Edit Rule Set (before confirmation) &rarr; Save Rule Set (new version)</dt>
+  <dd>Available only while the Rule Set is not confirmed. Saves a new version with the selected Requirement Set, criteria, Signals and Outcomes. Only the Requirement Set is pre-selected: in the three lists, select again everything you want to keep (Ctrl/Cmd-click for several), because whatever is not selected is left out of the new version.</dd>
+  <dt>Confirm Rule Set &rarr; Confirm Rule Set &amp; Activate Session</dt>
+  <dd>Confirms the current version under your acting identity{% if not rfone_login_mode %} (use "not you?" to switch identity first){% endif %}, with an optional note, and makes the Session ACTIVE. A confirmed version cannot be edited: further changes go through a Rule Change. If your role is not allowed to confirm, the page reloads without changes.</dd>
+</dl>
+
+{% if selection_session is defined and selection_session.status == 'ACTIVE' %}
+<h3>Propose a Rule Change</h3>
+<p>Shown only while the Session is ACTIVE. Enter what changed and a mandatory reason, then choose the scope: <strong>Subsequent Applications Only</strong>, or <strong>Entire Session</strong>, which also lists the Applications already processed so they can be recalculated where possible and reviewed. Leave the Requirement Set and criteria empty to carry them forward unchanged. <strong>Propose Rule Change</strong> creates a new, unconfirmed Rule Set version: the Session needs a new confirmation before work can continue. The change is recorded in the Rule Change History and in the Session notes.</p>
+{% endif %}
+
+<h3>Applications needing review after a Rule Change</h3>
+<p>When shown, lists the Applications affected by an "Entire Session" change, with their recalculation and review status. <strong>Mark reviewed</strong> records that you have checked one; it does not change the Application.</p>
+
+<h3>Applications</h3>
+<dl>
+  <dt>Candidate / Applied / Owner / Rule Set version</dt>
+  <dd>Each linked Application, who has taken it in charge ("(unclaimed)" if nobody) and the Rule Set version it was worked under. <strong>Open Dossier &rarr;</strong> opens the Application's Dossier.</dd>
+  <dt>Link an existing Application to this Session &rarr; Link to Session</dt>
+  <dd>Links an Application for the same role that is not yet in any Session. An Application already in another Session cannot be moved.</dd>
+</dl>
+
+<h3>Interview Scheduling Windows</h3>
+<p>A window is offered once for the whole Session and interview stage (Phone Interview or In Person Practical) and is shared by every eligible Application: once a slot is fully booked, it is no longer offered to anyone else. <strong>Offer a new scheduling window &rarr; Add Scheduling Window</strong> saves the date, start and end time, slot length (minutes, default 30) and capacity per slot (default 1). Candidates then book a slot through their scheduling link.</p>
+
+<h3>Session Notes</h3>
+<p><strong>Add Note</strong> saves a general note on the Session. Notes cannot be edited or deleted; RF-One also adds notes automatically for confirmations and rule changes.</p>
+
+<h3>Good to know</h3>
+<p>When an action is not allowed (for example a missing reason, or a Rule Change on a Session that is not ACTIVE), the page simply reloads unchanged, without an error message.</p>
+</section>

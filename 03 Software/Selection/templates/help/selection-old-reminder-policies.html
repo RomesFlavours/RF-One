@@ -1,0 +1,44 @@
+<section id="help-selection-old-reminder-policies" class="rf-help-section">
+<h2>Reminder Policies</h2>
+<p>A Reminder Policy decides <strong>what happens when a candidate does not reply</strong> to an automatic message of a given kind (for example "Advance To Phone Scheduling"): how many reminders to send, how long to wait before each one, the final deadline for a reply and whether RF-One may then apply a STOP Outcome automatically, with the reason "NO RESPONSE". Without an active policy, a message waits for no reply and nothing follows it.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>When a message is sent, RF-One looks for the most specific active policy for its trigger event, the Application's Stage and its role. If one exists, RF-One starts waiting for a reply and sets the final deadline.</li>
+  <li>Each reminder uses the active Communication Template with the trigger "Reminder". If no such template exists, the reminder is counted but no message goes out.</li>
+  <li>If, after all reminders, the final deadline passes with no reply, the chosen Outcome is applied automatically only if "Automatically apply STOP…" was ticked and an Outcome was chosen. Otherwise the Application stays as it is.</li>
+  <li>Changing or deactivating a policy affects messages sent afterwards; a message already waiting keeps the policy it started with.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Configured Reminder Policies</dt>
+  <dd>Each card shows the trigger event, the Stage, the number of reminders and delays, the final deadline and whether Auto-STOP is enabled (and with which Outcome).</dd>
+  <dt>Trigger event this governs</dt>
+  <dd>The kind of message whose reply is awaited.</dd>
+  <dt>Stage / Role (leave blank for any)</dt>
+  <dd>Limit the policy to one Stage, typed exactly as the Stage code (for example PHONE_INTERVIEW), and/or one role.</dd>
+  <dt>Number of reminders</dt>
+  <dd>How many reminders to send before the deadline (an empty value means none).</dd>
+  <dt>Delay before Reminder 1 / Delay between reminders (hours)</dt>
+  <dd>Waiting time after the original message, and between one reminder and the next.</dd>
+  <dt>Final response deadline (hours after original send)</dt>
+  <dd>After this time, with all reminders sent and no reply, the no-response rule applies.</dd>
+  <dt>Automatically apply STOP … / Outcome to apply automatically</dt>
+  <dd>The explicit permission for an automatic STOP, and which Outcome to apply. Both are needed.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Create Policy</dt>
+  <dd>Saves the policy as active immediately. This page has no form to edit a policy afterwards: deactivate it and create a new one.</dd>
+  <dt>Deactivate / Reactivate</dt>
+  <dd>Switches the policy off or on for future messages.</dd>
+</dl>
+
+<h3>Current limitations</h3>
+<p>Reminders and automatic stops are not processed on a timer in this version: they happen only when RF-One's reminder processing is run, and this interface has no button for it. As on Communication Templates, no real SMS or e-mail delivery service is connected, so reminders are recorded but do not reach the candidate.</p>
+
+<h3>Next steps</h3>
+<p>Make sure a "Reminder" template exists on <strong>Communication Templates</strong>, and that the Outcome used for automatic stops is configured on <strong>Selection Outcomes</strong>.</p>
+</section>

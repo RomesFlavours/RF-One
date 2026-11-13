@@ -1,0 +1,40 @@
+<section id="help-selection-old-home" class="rf-help-section">
+<h2>How Selection Old works</h2>
+<p>Selection Old is the historical Selection interface, kept available next to the current one. It screens résumés and organizes structured evidence to support the person who evaluates candidates. It never takes a hiring decision, never rejects anyone automatically and never shows a universal résumé score.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>Each imported résumé becomes a <strong>candidate</strong> (the data read from the résumé) and an <strong>application</strong> for the target role you choose at import. The same person can hold several applications, for different roles or at different times.</li>
+  <li>The candidate page separates <em>facts</em> read from the résumé, <em>derived</em> information calculated from them, <em>flags</em> worth asking about and separate <em>indicators</em>; none is combined into a score.</li>
+  <li>Applications are reviewed in the <strong>Applications</strong> queue, where a Review Priority suggests where to look first. Workflow status, stage and outcome are always set by a person.</li>
+  <li>The menu at the top leads to the configuration areas (requirement sets, screening criteria, signals, priority policies, interview questions and sections, outcomes, queues, sources, channels, templates, reminders) and to the other review lists. Each page has its own "How this page works".</li>
+  <li>Messages to candidates are recorded with their status, but in this version Selection Old has no real SMS or e-mail provider connected: no message actually reaches the candidate.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>On this page, choose the target role and import one or more résumés.</li>
+  <li>Open a candidate to check what was read from the résumé, against the original, and create a Fit Assessment against a requirement set.</li>
+  <li>In <strong>Applications</strong>, filter the review queue, compare applications of the same role and open one to review it.</li>
+  <li>On the application page, set the workflow status, run Primary Screening, create phone or in-person interview plans and resolve possible identity matches.</li>
+  <li>In the Candidate Dossier and the Decision Summary, take the application in charge, move its stage, apply an outcome and keep notes. The Audit page shows the whole journey for review.</li>
+</ol>
+
+<h3>This page: Candidates</h3>
+<dl>
+  <dt>Client, Target Roles, Candidates</dt>
+  <dd>The restaurant, the target roles this screening supports and how many candidates exist.</dd>
+  <dt>Import Résumés</dt>
+  <dd>Drag files onto the area or click it to choose them (PDF, DOCX, TXT; several at once).</dd>
+  <dt>Target role for these applications</dt>
+  <dd>Required, with no default: the one choice applies to every résumé of the batch. Without it nothing is imported.</dd>
+  <dt>Candidates table</dt>
+  <dd>Name, location, source, current or latest role, number of employment records, target role, months of direct experience ("to be clarified" when unknown), stability, number of flags, information confidence, status and how the résumé was read: <strong>REAL AI</strong>, <strong>RULE-BASED</strong> (the built-in text reader, used when no AI provider is configured) or <strong>DEMO / MOCK</strong>. Click a row to open the candidate.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Import Résumés</dt>
+  <dd>Processes each file separately, so one failed file does not stop the others, and shows each one's result: COMPLETED, PARTIAL (read only in part), DUPLICATE (already imported, skipped) or FAILED. If the same résumé was already imported for another role, a new application is created for this role. Each imported résumé creates a candidate and an application. When the batch ends the list refreshes by itself (or use <strong>Refresh candidate list</strong>).</dd>
+</dl>
+</section>

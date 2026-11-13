@@ -1,0 +1,57 @@
+<section id="help-selection-old-application" class="rf-help-section">
+<h2>Application</h2>
+<p>The working page of one application: its review priority, workflow status, stage and outcome, screening and interview plans, identity checks, earlier applications of the same person, notes and selection signals.</p>
+
+<h3>Fields and sections</h3>
+<dl>
+  {% if reference_person is defined and reference_person %}
+  <dt>Persona RF1</dt>
+  <dd>The RF-One person record this candidate is linked to.</dd>
+  {% endif %}
+  <dt>Candidate, Target Role, Applied, Workflow Status, Review Priority (effective)</dt>
+  <dd>The key facts of the application. The effective priority is the system's proposal unless a person confirmed or changed it; "System-proposed priority", "Origin" and "Why" show where it comes from.</dd>
+  <dt>Workflow Status</dt>
+  <dd>NEW, IN REVIEW, ADVANCE TO PHONE, HOLD or STOP, with its reason and when it last changed. Review Priority never sets it.</dd>
+  <dt>Stage &amp; Outcome</dt>
+  <dd>Current stage, current outcome, lifecycle (for example active or closed), current queue and active candidate flags. The full controls are in the Decision Summary.</dd>
+  <dt>Primary Screening, Phone Interview, In-Person Interview</dt>
+  <dd>Whether each exists, its status and a link to open it. "HARD DISQUALIFIER" means the screening found an active hard disqualifier; a person can override it, with a reason, from the Candidate Dossier.</dd>
+  <dt>Possible Existing CandidatePerson</dt>
+  <dd>Appears when the system found a person with a similar name but no exact e-mail or phone match. It is never merged automatically.</dd>
+  <dt>Application History (this person)</dt>
+  <dd>Earlier applications of the same person, with their outcome and notes, and what changed since the most recent one.</dd>
+  <dt>Selezionatore Notes</dt>
+  <dd>Free notes, kept separate from evidence: they never change an assessment or a signal by themselves.</dd>
+  <dt>Selection Signals</dt>
+  <dd>Each signal with its family, status, confidence, origin, the stages at which it can be assessed and its evidence. "NOT ASSESSED" means it cannot be legitimately judged with the evidence available now, which is not the same as "not detected".</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Open Candidate Dossier →</dt>
+  <dd>The short overview of the whole selection journey, where you take the application in charge and apply outcomes.</dd>
+  <dt>Refresh résumé-stage Signals</dt>
+  <dd>Detects the résumé signals again and recalculates the proposed priority. Signals touched by a person and a priority you changed are left as they are.</dd>
+  <dt>Confirm current priority / Override priority</dt>
+  <dd>Confirms the system's priority, or replaces it with another one and a reason. The system's proposal stays visible next to yours.</dd>
+  <dt>Save target role</dt>
+  <dd>Changes the target role of this application only; it may differ from the person's other applications. It changes how the candidate page classifies experience.</dd>
+  <dt>Save workflow status</dt>
+  <dd>Records the new status and its reason; it is turned into the corresponding stage and outcome. For an application that belongs to a Selection Session, the change is saved only if you have taken the application in charge (or have authority over its owner) and the session's rules are confirmed; otherwise the page reloads unchanged.</dd>
+  <dt>Run / Re-run Primary Screening</dt>
+  <dd>Evaluates the application against the primary screening criteria and opens the result.</dd>
+  <dt>Create Phone Interview Plan / Create In-Person Interview Plan</dt>
+  <dd>Prepares the interview plan for this application. A Fit Assessment of the candidate must exist first.</dd>
+  <dt>Confirm — same person / Reject — keep separate</dt>
+  <dd>Confirming moves this application to the suggested existing person; its résumé, assessments, signals and notes stay as they are. Rejecting keeps the two people separate. Add a note if useful. When in doubt, keep them separate.</dd>
+  <dt>Reassign</dt>
+  <dd>Under "Manually reassign this Application to a different CandidatePerson": moves only this application to the person you choose, for example when you recognize them by other means.</dd>
+  <dt>Add note</dt>
+  <dd>Adds a dated note to the application.</dd>
+  <dt>Confirm current status / Add evidence / Override (signals)</dt>
+  <dd>For each signal: confirm the system's status; add evidence with its source, stage, text, classification, relationship, confidence and explanation; or set a different status with a reason. The system's original reading stays in the record.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Open the Candidate Dossier or the full Decision Summary to move the stage and apply an outcome.</p>
+</section>

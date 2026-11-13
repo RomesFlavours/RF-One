@@ -1,4 +1,5 @@
 {% from "_nav_macros.html" import breadcrumb %}
+{% from "_how_works.html" import how_works_link, how_works_dialog with context %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -32,10 +33,11 @@
     <a href="{{ url_for('positions.dashboard') }}" class="{{ 'active' if current_state == 'OPEN' }}">Open positions{% if position_counts is defined %} <span class="badge">{{ position_counts.OPEN }}</span>{% endif %}</a>
     <a href="{{ url_for('positions.dashboard', stato='DRAFT') }}" class="{{ 'active' if current_state == 'DRAFT' }}">Drafts{% if position_counts is defined %} <span class="badge">{{ position_counts.DRAFT }}</span>{% endif %}</a>
     <a href="{{ url_for('positions.dashboard', stato='CLOSED') }}" class="{{ 'active' if current_state == 'CLOSED' }}">Closed{% if position_counts is defined %} <span class="badge">{{ position_counts.CLOSED }}</span>{% endif %}</a>
-    <a class="selection-help-link" href="{{ url_for('positions.how_it_works') }}">How Selection works</a>
+    {% if help_section is defined %}{{ how_works_link(help_section, help_title if help_title is defined else None) }}{% endif %}
   </nav>
   {% for msg in get_flashed_messages() %}<div class="info">{{ msg }}</div>{% endfor %}
   {% block content %}{% endblock %}
 </div>
+{% if help_section is defined %}{{ how_works_dialog(help_section, help_title if help_title is defined else None) }}{% endif %}
 </body>
 </html>

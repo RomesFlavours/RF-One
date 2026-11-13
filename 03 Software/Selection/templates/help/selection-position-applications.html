@@ -1,0 +1,34 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-position-applications" class="rf-help-section">
+<h2>2 · Applications</h2>
+<p>Shows how candidates can apply to this position and lists every application received, whether it came from the public application page or from a résumé uploaded by the team.</p>
+
+<h3>How candidates apply</h3>
+<p>Candidates start at RMAED.it, verify their e-mail with a code, choose an open position and continue to its application page. They upload a résumé and answer a short interview in English (about five minutes). They can type or, when the browser allows it, use voice input, and they can save an unfinished interview and resume it later. They never see any internal page.</p>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Application page</dt>
+  <dd>The public link of the position and its state: <strong>Open</strong> (accepting applications; share the link or use it as the "Apply on company site" link on Indeed), <strong>Closed</strong> (the page is still visible but does not accept new applications; reopen the position from <strong>5 · Decisions</strong>) or <strong>Pending approval</strong> (the page opens when the position is approved). Selection does not publish to or import from Indeed.</dd>
+  <dt>Candidate</dt>
+  <dd>Click the name to open the candidate's profile. "possible duplicate" warns that the same person or document may already be present.</dd>
+  <dt>Latest experience, Channel, Received</dt>
+  <dd>The most recent role read from the résumé, how the application arrived (public application page or manager upload) and when.</dd>
+  <dt>Status</dt>
+  <dd><strong>Application complete</strong> (résumé and interview submitted), <strong>Interview incomplete</strong>, or <strong>Résumé uploaded</strong> for a résumé added by the team, which has no online interview.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  {% if _edit %}
+  <dt>Upload résumés → Upload</dt>
+  <dd>Adds one or more résumés (PDF, DOCX or TXT) to this position. Each file is reported as imported, already present (duplicates are detected and not added twice) or not imported. If the position is approved you are taken to <strong>3 · Evaluation</strong>; otherwise the résumés are evaluated once the position is approved.{% if not ai_policy.cv_ai_authorized %} No résumé is sent to AI.{% endif %}</dd>
+  {% else %}
+  <dt>Upload résumés</dt>
+  <dd>Read only for you: only the position's manager or an owner can upload.</dd>
+  {% endif %}
+</dl>
+
+<h3>Next steps</h3>
+<p>Open <strong>3 · Evaluation</strong> to see the proposal groups, or click a candidate to review the profile.</p>
+</section>

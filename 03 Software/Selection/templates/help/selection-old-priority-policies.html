@@ -1,0 +1,36 @@
+<section id="help-selection-old-priority-policies" class="rf-help-section">
+<h2>Priority Policies</h2>
+<p>A Review Priority Policy decides <strong>how much each detected Selection Signal affects an Application's Review Priority</strong> (High Priority, Interesting, Standard or Low Priority). It is kept separate from the Signal Definitions themselves, which only say <em>what</em> is detected (configured on the <strong>Signals</strong> page). Two restaurants can use the same Signal and weigh it differently, or not at all.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>RF-One uses the restaurant's active policy; if more than one is active, the most recently changed one is used.</li>
+  <li>With no active policy, or no rule that applies, every Application's Review Priority is <strong>STANDARD</strong>.</li>
+  <li>A Selezionatore can still confirm or override an Application's priority on the Application itself; an override is never recalculated away.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Client</dt>
+  <dd>The restaurant these policies belong to.</dd>
+  <dt>Name</dt>
+  <dd>The policy name; click it (or the row, or <strong>Manage</strong>) to open the policy and its rules.</dd>
+  <dt>Status</dt>
+  <dd>ACTIVE or INACTIVE.</dd>
+  <dt>Rules</dt>
+  <dd>How many rules the policy contains.</dd>
+  <dt>Updated</dt>
+  <dd>When the policy was last changed.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Manage</dt>
+  <dd>Opens the policy page, where you add, change, deactivate or remove its rules and rename or deactivate the policy.</dd>
+  <dt>Create policy</dt>
+  <dd>Creates a new policy with the name you typed and opens it. A new policy starts <strong>ACTIVE</strong> and, being the most recently changed, becomes the one RF-One uses: until you add rules to it, newly calculated priorities are STANDARD. Deactivate it (on its page) if you only want to prepare it. If the name is empty, nothing is created.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Open a policy with <strong>Manage</strong> and add a rule for each Signal and observed status that should raise or lower the priority.</p>
+</section>

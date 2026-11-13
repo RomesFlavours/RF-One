@@ -1,0 +1,50 @@
+<section id="help-selection-old-screening-detail" class="rf-help-section">
+<h2>Primary Screening of an Application</h2>
+<p>This page shows one Primary Screening run for one Application: the result, the evaluation of each Screening Criterion with the evidence used, and the controls to confirm, enter, override or annotate each evaluation. It always shows the most recent run; earlier runs stay tied to the Criteria as they were when those runs were created.</p>
+
+<h3>Header</h3>
+<dl>
+  <dt>Candidate / Target Role</dt>
+  <dd>Who the Application belongs to and the role applied for.</dd>
+  <dt>Primary Screening</dt>
+  <dd><strong>Normal pool</strong>, or <strong>HARD DISQUALIFIER</strong> when an active Hard Disqualifier keeps it out of the normal queue.</dd>
+  <dt>Open Original CV &#8599; / View full Application / Back to Queue</dt>
+  <dd>Open the CV in a new tab, the Application page, or the screening queue.</dd>
+  <dt>Candidate Flags</dt>
+  <dd>Notes carried by this person from a previous Application. They inform, they never reject automatically.</dd>
+</dl>
+
+<h3>Each Criterion Evaluation</h3>
+<dl>
+  <dt>Badges</dt>
+  <dd>Direction, status (EVALUATED, INSUFFICIENT EVIDENCE, NOT APPLICABLE, NOT EVALUATED), origin (for example system generated or human overridden) and Hard Disqualifier state.</dd>
+  <dt>Level</dt>
+  <dd>The current level and its meaning; "(system-proposed level was N)" appears when a person changed it. The system proposal is always kept.</dd>
+  <dt>Confidence / Evidence used / explanation</dt>
+  <dd>How sure the evaluation is, the evidence it relies on (source, text, interpretation) and why the level was chosen.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Re-run Primary Screening (uses current Criteria configuration)</dt>
+  <dd>Creates a new run against the Criteria as they are now (Signal mapping first, then RF-One's AI assistant when available) and opens it. The previous run is kept, not overwritten.</dd>
+  <dt>Add note (run, or "Notes on this Criterion Evaluation")</dt>
+  <dd>Saves a dated note on the whole run or on one Criterion. Notes cannot be edited or deleted.</dd>
+  <dt>Enter / change level &rarr; Save (entered by Selezionatore)</dt>
+  <dd>Records the level you choose, with optional confidence, evidence source, evidence text and explanation, and recalculates the run.</dd>
+  <dt>Override level &rarr; Override</dt>
+  <dd>Shown on evaluated Criteria. Replaces the level with yours, records your reason and recalculates the run; the system level stays visible. For an Application in a Selection Session, only the person who has taken it in charge (or someone with authority over them), in a Session whose Rule Set is confirmed, can override.</dd>
+  <dt>Confirm current level</dt>
+  <dd>Records that a person has checked and accepted the current level.</dd>
+  <dt>Mark Not Applicable / Mark Insufficient Evidence</dt>
+  <dd>Sets the Criterion to that status; it then no longer contributes to the order of the queue. Insufficient Evidence counts as "unresolved" in the queue. A missing piece of information is never treated as a negative result.</dd>
+  <dt>Override this Hard Disqualifier &rarr; Override Hard Disqualifier</dt>
+  <dd>Requires a reason. Returns the Application to the normal pool, while the Hard Disqualifier, its level and evidence stay visible with your reason. The same ownership rule as "Override level" applies. You act as your current identity{% if not rfone_login_mode %} ("not you?" lets you switch){% endif %}.</dd>
+</dl>
+
+<h3>Good to know</h3>
+<p>When an action is refused (for example an override by someone who has not taken the Application in charge, or a Hard Disqualifier override without a reason), the page reloads unchanged without an error message.</p>
+
+<h3>Next steps</h3>
+<p>Resolve the unresolved Criteria, then go back to the queue or open the full Application to move it to the next stage.</p>
+</section>

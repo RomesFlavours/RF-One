@@ -1,0 +1,28 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-position-interviews" class="rf-help-section">
+<h2>4 · Interviews</h2>
+<p>The interview calendar of this position: scheduled phone and in-person interviews, times offered to candidates and still waiting for an answer, and the candidates marked "To interview" who have no interview yet. Times are in the location's time zone{% if position is defined %} ({{ position.timezone }}){% endif %}.</p>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Calendar</dt>
+  <dd>Interviews grouped by day: time, length, type (Phone or In person), candidate (click to open the profile) and place. "chosen by the candidate" marks a time the candidate picked from the times you offered. Cancelled interviews stay visible, crossed out.</dd>
+  <dt>Proposed times awaiting a response</dt>
+  <dd>Times offered to a candidate through a time-selection link that the candidate has not chosen yet.</dd>
+  <dt>To schedule</dt>
+  <dd>Candidates marked "To interview" without a scheduled interview.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Schedule</dt>
+  <dd>Opens the candidate's profile at the <strong>Interview</strong> section, where you book an interview or offer times.</dd>
+  {% if _edit %}
+  <dt>Cancel</dt>
+  <dd>Shown on confirmed future interviews. Cancels the appointment at once (it cannot be restored: book a new one if needed) and prepares a cancellation message in the candidate's <strong>Communications</strong>. That message is not sent until you approve and send it there.</dd>
+  {% endif %}
+</dl>
+
+<h3>Next steps</h3>
+<p>After the interview, record the outcome in the candidate's profile; the results are summarized in <strong>5 · Decisions</strong>.</p>
+</section>

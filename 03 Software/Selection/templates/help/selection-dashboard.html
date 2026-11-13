@@ -1,0 +1,72 @@
+{% set _edit = actor is defined and actor.role != 'SUPERVISOR' %}
+<section id="help-selection-dashboard" class="rf-help-section">
+<h2>How Selection works</h2>
+<p>Selection manages each job opening from its first requirements to the final decision on every candidate. Candidates apply through a public application page; your team reviews them here in RF-One. Selection organizes the evidence and proposes where to look first, but it never rejects or hires anyone on its own and never produces an overall score or ranking.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>Everything is organized by <strong>position</strong> (a job opening at a location). A position starts as a draft, becomes open when it is approved, and is closed by hand when the search ends.</li>
+  <li>Each position page has five steps as tabs (<strong>1 · Position</strong>, <strong>2 · Applications</strong>, <strong>3 · Evaluation</strong>, <strong>4 · Interviews</strong>, <strong>5 · Decisions</strong>) plus <strong>Configuration</strong>, where the AI features of that position are chosen.</li>
+  <li>Applications are compared with the position's <em>approved</em> requirements and placed in three proposal groups: <strong>To interview</strong>, <strong>Needs clarification</strong> and <strong>Must-have requirements not evidenced</strong>. "Not evidenced" means the information is missing, not that the requirement is unmet.</li>
+  <li>Messages to candidates are drafted for you, but no e-mail leaves RF-One until a person approves and sends it.</li>
+  <li>Dates and times are shown in the time zone of the position's location.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>{% if _edit %}Choose <strong>+ New position</strong>, describe the role in your own words and enter the title, role, location and number of openings.{% else %}A manager creates the position with its title, role, location and number of openings.{% endif %}</li>
+  <li>In the position's <strong>Configuration</strong> tab, add the position context and choose its AI features.</li>
+  <li>In <strong>1 · Position</strong>, write the requirements (or copy a template, or use an AI draft), the English job ad and up to six standard interview questions, then choose <strong>Approve and open position</strong>. This opens the public application page.</li>
+  <li>Share the application page link. Candidates verify their e-mail, upload a résumé and answer a short English interview. You can also upload résumés yourself in <strong>2 · Applications</strong>.</li>
+  <li>Review the proposal groups in <strong>3 · Evaluation</strong>, open each candidate to check the evidence, and compare candidates side by side.</li>
+  <li>From the candidate page, book an interview or offer times to choose from; follow the calendar in <strong>4 · Interviews</strong>.</li>
+  <li>Record the decision for each candidate (Hired, On hold, Not selected…), approve and send the messages, then close the position in <strong>5 · Decisions</strong>.</li>
+</ol>
+
+<h3>AI features, chosen per position</h3>
+<ul>
+  <li><strong>AI position drafts</strong>: proposes requirements, the number of openings when stated, and an English job ad. You choose what to use.</li>
+  <li><strong>AI message drafts</strong>: prepares English messages for review, without sharing candidate data. Drafting never sends an e-mail.</li>
+  <li><strong>Résumé-based questions</strong>: adds up to three interview questions about the candidate's résumé.</li>
+  <li><strong>AI résumé and answer evaluation</strong>: checks the résumé and interview answers against the approved requirements; every quotation is checked word for word against the source.</li>
+</ul>
+<p>A feature works only when it is enabled for the position and available on this installation. Without AI, Selection still evaluates résumés with its rule-based engines and uses standard message texts. Changes in one position never affect the others.</p>
+
+<h3>Who can do what</h3>
+<p>Owners and administrators manage every position. Managers manage the positions assigned to them. Supervisors can open every position but only read it.{% if actor is defined %} Your access: <strong>{% if actor.role == 'OWNER' %}you manage every position{% elif actor.role == 'SUPERVISOR' %}read only{% else %}you manage the positions assigned to you{% endif %}</strong>.{% endif %}</p>
+
+<h3>This page: the positions list</h3>
+<dl>
+  <dt>Open positions / Drafts / Closed</dt>
+  <dd>The three lists of positions, with how many each contains. <strong>Drafts</strong> are waiting for approval; <strong>Closed</strong> positions keep their applications and can be reopened.</dd>
+  <dt>Search by position, role, location or manager</dt>
+  <dd>Filters the current list. <strong>Clear search</strong> shows the whole list again.</dd>
+  <dt>Position, Location, Manager</dt>
+  <dd>The position title (click it to open the position), its role and status, where it is and who manages it.</dd>
+  <dt>Applications</dt>
+  <dd>How many applications the position has received, and how many candidates are marked "to interview".</dd>
+  <dt>Hired / openings</dt>
+  <dd>Candidates recorded as hired compared with the number of openings.</dd>
+  <dt>Upcoming interviews</dt>
+  <dd>Scheduled interviews of the next 14 days for the positions you can see; click a name to open that candidate.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  {% if _edit %}
+  <dt>+ New position</dt>
+  <dd>Opens the form to create a position. It is saved as a draft: nothing is published until it is approved.</dd>
+  {% endif %}
+  <dt>Manage / Complete and open</dt>
+  <dd>Opens the position: an open or closed one on its applications, a draft on its <strong>1 · Position</strong> step so you can complete and approve it.</dd>
+  <dt>Application page</dt>
+  <dd>Opens, in a new tab, the public page where candidates apply (open positions only). Share this link with candidates or use it as the "Apply on company site" link on Indeed; Selection does not publish to or import from Indeed.</dd>
+  {% if _edit %}
+  <dt>Close / Reopen</dt>
+  <dd>Shown on the positions you manage. <strong>Close</strong> stops the application page from accepting new applications; existing applications stay available. <strong>Reopen</strong> opens it again with its approved content (a position that was never approved goes back to the drafts). You stay on this list.</dd>
+  {% endif %}
+</dl>
+{% if help_in_guide is not defined %}
+<p>The complete guide, with an explanation of every step, is on the page <a href="{{ url_for('positions.how_it_works') }}">How Selection works — full guide</a>.</p>
+{% endif %}
+</section>

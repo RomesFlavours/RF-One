@@ -1,0 +1,54 @@
+<section id="help-selection-old-outcomes" class="rf-help-section">
+<h2>Selection Outcomes</h2>
+<p>A Selection Outcome is the <strong>operational decision that currently applies to an Application</strong> (for example Hire, Hold, Stop, Withdrawn). It is separate from the Stage, which says where the Application is in the process. This page defines the restaurant's Outcomes and what happens each time a Selezionatore chooses one. The first time the page opens, RF-One adds a few common examples (and the default queues); you can edit them or add your own.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>A Selezionatore applies an Outcome from an Application's pages; RF-One then applies the settings below (lifecycle change, queue move, follow-up, Candidate Flag) and, if a matching Communication Template exists, sends its message.</li>
+  <li>No Outcome is permanently irreversible: a closed Application can always be reopened.</li>
+  <li>Editing an Outcome increases its version and applies to future decisions; decisions already taken keep the version that was used.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Card</dt>
+  <dd>Name, the lifecycle it leads to (&rarr; ACTIVE, SUSPENDED or CLOSED), INACTIVE when switched off, version, description and a summary of its settings.</dd>
+  <dt>What should this Outcome be called? / Describe it …</dt>
+  <dd>The name (required) and a plain description of when to choose it.</dd>
+  <dt>What should happen to the Application when this Outcome is chosen?</dt>
+  <dd>Stays ACTIVE (still being considered), becomes SUSPENDED (paused) or becomes CLOSED (no longer worked).</dd>
+  <dt>This Outcome is normally expected to be reopenable later</dt>
+  <dd>If unticked, a warning appears when someone reopens it; reopening is never blocked.</dd>
+  <dt>Require a Note / Require a reason every time …</dt>
+  <dd>The Selezionatore cannot apply the Outcome without writing a note or giving a reason.</dd>
+  <dt>Optional: offer a pick-list of reasons (one per line)</dt>
+  <dd>Ready-made reasons the Selezionatore can choose from.</dd>
+  <dt>Optional: move the Application into this operational queue/list</dt>
+  <dd>Moves the Application to the chosen queue (see <strong>Selection Queues</strong>). A queue is organisational only.</dd>
+  <dt>Create a follow-up reminder … / Follow up after how many days?</dt>
+  <dd>Creates a reminder on the Application; once due, it appears under "Reminders Due" on the Primary Screening page. RF-One never acts on it by itself.</dd>
+  <dt>Should this restaurant contact the candidate again in the future?</dt>
+  <dd>Records whether future contact is fine, discouraged or to be avoided.</dd>
+  <dt>Create a Candidate Flag … / Flag name / Flag scope / How seriously … / Default reason / Flag expires after how many days?</dt>
+  <dd>Adds a note that follows the <em>person</em> to future Applications (for example "RECONSIDER AFTER 6 MONTHS"): its name (default: the Outcome's name), scope, how prominently it is shown (information only, a warning, or requiring Selezionatore attention — never an automatic rejection), a default reason and an optional expiry.</dd>
+  <dt>Who normally has authority to apply this Outcome?</dt>
+  <dd>Informational only; it does not restrict who can apply it.</dd>
+  <dt>Is this Outcome normally restaurant-driven or candidate-driven?</dt>
+  <dd>Restaurant, Candidate, Either, or unspecified — informational.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Manage operational queues/lists &rarr;</dt>
+  <dd>Opens the Selection Queues page.</dd>
+  <dt>Create this Outcome</dt>
+  <dd>Saves a new active Outcome. If the name is empty, nothing is saved.</dd>
+  <dt>Edit this Outcome &rarr; Save changes</dt>
+  <dd>Saves every field of the form as shown (an unticked box is saved as "no") and increases the version.</dd>
+  <dt>Deactivate / Reactivate</dt>
+  <dd>Removes the Outcome from (or returns it to) the choices offered for new decisions. Past decisions are kept.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>To send a message when an Outcome is applied, create a Communication Template naming this Outcome and the Stage. To include the Outcome in a Session's rules, select it in the Session's Rule Set.</p>
+</section>

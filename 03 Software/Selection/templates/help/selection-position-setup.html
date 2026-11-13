@@ -1,0 +1,56 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-position-setup" class="rf-help-section">
+<h2>1 · Position</h2>
+<p>Defines what this position needs and what candidates will see: the requirements used to evaluate applications, the English job ad, the number of openings and the standard interview questions. Approving this step opens the application page.</p>
+
+<h3>The top of the position page</h3>
+<ul>
+  <li>Under the title: role, location, number of openings, manager and status (<strong>Pending approval</strong>, <strong>Open</strong> or <strong>Closed</strong>).</li>
+  <li><strong>Application page ↗</strong> (after the first approval) opens the public page candidates use, in a new tab.</li>
+  <li>The banner <strong>There are unapproved changes</strong> means you edited requirements, job ad or questions after the last approval: candidates and the evaluation still use the approved version until you approve again.</li>
+  <li>The tabs lead to the other steps of the same position; each has its own help.</li>
+</ul>
+
+<h3>Fields and sections</h3>
+<dl>
+  <dt>What you need (manager's description)</dt>
+  <dd>The description written when the position was created.</dd>
+  <dt>AI draft (pending approval)</dt>
+  <dd>Appears when AI has proposed requirements, a number of openings and a job ad. Tick what you want to keep; items marked "Still to decide" are open questions AI did not invent answers for.</dd>
+  <dt>Requirements</dt>
+  <dd>What the job needs. Each one has a <strong>Type</strong> (Must-have, Preferred, Optional, Condition to verify), an <strong>Area</strong> and whether it is <strong>Trainable?</strong>. Must-have requirements decide the proposal groups. Résumés are matched against the name and the description, so write the English words that appear in résumés (for example "server, waiter, table service"). Use only job-related requirements.</dd>
+  <dt>Number of openings</dt>
+  <dd>How many people you want to hire; used to show "Hired / openings".</dd>
+  <dt>English job ad (published on the application page)</dt>
+  <dd>The text candidates read before applying. Text in square brackets is treated as an unfinished placeholder.</dd>
+  <dt>Standard interview questions</dt>
+  <dd>One per line, in English, up to six (any extra lines are dropped). Candidates answer them in the online interview. {% if ai_policy.allows("cv_questions") %}AI adds up to three more questions based on each candidate's résumé.{% else %}Résumé-based AI questions are not active for this position.{% endif %} "Other standard questions already available in Selection" lists questions you can copy.</dd>
+</dl>
+
+{% if _edit %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Use selected items / Discard (AI draft)</dt>
+  <dd><strong>Use selected items</strong> adds the ticked requirements and, if ticked, replaces the job ad and the number of openings. <strong>Discard</strong> drops the draft. Either way the changes still need approval.</dd>
+  <dt>Edit → Save / Remove</dt>
+  <dd>Changes a requirement, or removes it from the position. Both take effect for candidates only after approval.</dd>
+  <dt>+ Add requirement → Add</dt>
+  <dd>Adds a new requirement with its name, description and keywords, type, area and trainability.</dd>
+  <dt>+ Copy from an existing Selection template → Copy</dt>
+  <dd>Adds the requirements of a ready-made template to this position; you can then edit or remove them.</dd>
+  {% if ai_policy.allows("position_drafting") %}
+  <dt>+ Request a new AI draft → Draft</dt>
+  <dd>Asks AI for a new proposal, optionally with extra details. The result appears at the top of this step for you to choose from.</dd>
+  {% endif %}
+  <dt>Save (job ad, openings and questions)</dt>
+  <dd>Saves the job ad, the number of openings and the questions. They become effective only after approval.</dd>
+  <dt>Approve and open position / Approve changes</dt>
+  <dd>Makes the current requirements, job ad and questions the approved version. The first approval opens the application page and moves the position to <strong>Open positions</strong>. Approval is refused while there is no requirement, no job ad text, no standard question, or placeholders in square brackets are left in the ad; a warning appears if no requirement is Must-have. Existing applications are evaluated again against the new approved version.</dd>
+</dl>
+{% else %}
+<p>You can read this position but not change it.</p>
+{% endif %}
+
+<h3>Next steps</h3>
+<p>After approval, go to <strong>2 · Applications</strong> to share the application page or upload résumés.</p>
+</section>

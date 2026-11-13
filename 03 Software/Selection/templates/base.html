@@ -1,3 +1,4 @@
+{% from "_how_works.html" import how_works_link, how_works_dialog with context %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -313,7 +314,9 @@
     <a href="{{ url_for('compliance_reviews_home') }}" class="{{ 'active' if active_nav == 'compliance' else '' }}">Compliance Reviews</a>
     {% if not rfone_login_mode %}<a href="{{ url_for('identity_switch') }}" class="{{ 'active' if active_nav == 'identity' else '' }}">Acting Identity</a>{% endif %}
   </div>
+  {% if help_section is defined %}<div class="rf-help-row">{{ how_works_link(help_section, help_title if help_title is defined else None) }}</div>{% endif %}
   {% block content %}{% endblock %}
 </div>
+{% if help_section is defined %}{{ how_works_dialog(help_section, help_title if help_title is defined else None) }}{% endif %}
 </body>
 </html>

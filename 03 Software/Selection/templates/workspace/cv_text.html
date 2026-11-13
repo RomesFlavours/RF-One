@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% set help_section = "selection-cv-text" %}
 {% set name = candidate.full_name or pc.declared_name or 'Candidate' %}
 {% block title %}CV · {{ name }}{% endblock %}
 {% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id)), (name, url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id)), ('Extracted résumé text', None)] %}

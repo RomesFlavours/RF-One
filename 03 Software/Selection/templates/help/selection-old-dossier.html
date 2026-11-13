@@ -1,0 +1,58 @@
+<section id="help-selection-old-dossier" class="rf-help-section">
+<h2>Candidate Dossier</h2>
+<p>A two-to-three-minute read of this application's whole selection journey: screening, evidence, trainable gaps, interviews, decisions, communication, history and notes. It is never a hiring recommendation. From here you also take the application in charge and record decisions.</p>
+
+<h3>Sections</h3>
+<dl>
+  <dt>Header</dt>
+  <dd>Candidate, target role, date applied, current stage, current outcome and lifecycle; links to the original CV and the candidate page; the repeated-applicant badge, open follow-ups and any earlier training check (historical information, never an automatic rejection).</dd>
+  <dt>Selection Session</dt>
+  <dd>Shown when the application belongs to a session: the session, its role and location, any rule change that affected it, and who has the application in charge, with its ownership history.</dd>
+  <dt>Primary Screening</dt>
+  <dd>The strongest positive and negative factors, active hard disqualifiers and criteria with insufficient evidence.</dd>
+  <dt>Evidence Summary</dt>
+  <dd>Requirements with strong, weak, conflicting or unresolved evidence, and the important selection signals.</dd>
+  <dt>Trainable Gaps</dt>
+  <dd>Missing capabilities that appear trainable, with RF-One's initial level (0 to 4) and yours. Informational only: never an automatic decision or a training plan. Important gaps that are not trainable are listed apart as non-trainable concerns.</dd>
+  <dt>Interview Journey</dt>
+  <dd>The state of the phone and in-person interviews, items not yet resolved and inconsistencies to verify.</dd>
+  <dt>Decision &amp; Outcome</dt>
+  <dd>Stage and outcome controls, the candidate communication summary (latest message, how many, any awaited response, appointments, open alerts), the application intake (source, channel, answers, questionnaire) and the outcome history.</dd>
+  <dt>Information / Events, Candidate History, All Notes</dt>
+  <dd>Factual reports, earlier applications of the person with their flags, and every note of the journey in date order.</dd>
+</dl>
+
+<h3>Windows opened by the buttons</h3>
+<p>Each window has a close × and a <strong>Cancel</strong> button that closes it without saving.{% if not rfone_login_mode %} Each shows who you are acting as, with a link to change the acting identity.{% else %} Each shows that you act as your own RF-One account.{% endif %}</p>
+<dl>
+  <dt>Take In Charge</dt>
+  <dd>Makes you the owner of the application. For applications of a session, only the owner (or someone with authority over the owner) can change stage, outcome, screening overrides and trainable gaps.</dd>
+  <dt>✎ Reassign</dt>
+  <dd>Gives the application to another owner. Choose the new owner and write the reason (mandatory). People without an acting identity cannot be chosen.</dd>
+  <dt>✎ Override (hard disqualifier)</dt>
+  <dd>Sets aside a hard disqualifier found by the screening, with a mandatory reason. The original detection stays visible in the history.</dd>
+  <dt>✎ Edit (trainable gap)</dt>
+  <dd>Sets your initial level of the gap (0 to 4). Choosing RF-One's level means you agree; a different level needs a reason. A note is optional.</dd>
+  <dt>✎ Apply Outcome</dt>
+  <dd>Applies an outcome at any moment, without requiring any stage to be completed. A reason is required when it changes an existing decision to a different outcome; some outcomes also require a note. The outcome may trigger the communication configured for it.</dd>
+  <dt>✎ Record (Information / Event)</dt>
+  <dd>Records a factual report (what happened, its type, who reported it, the original source). It never changes stage or outcome by itself.</dd>
+  <dt>✎ Add Note</dt>
+  <dd>Adds a note to the application; it appears in All Notes.</dd>
+</dl>
+
+<h3>Other buttons</h3>
+<dl>
+  <dt>Move Stage</dt>
+  <dd>Moves the application to any stage, forward or backward. When moving to PHONE INTERVIEW you can also choose a communication: a link to the candidate scheduling page, a standard "you'll be contacted" message, or none.</dd>
+  <dt>Reopen Application</dt>
+  <dd>Shown for closed or suspended applications: reopens it with an active outcome and a note.</dd>
+  <dt>Add Scheduling Window</dt>
+  <dd>An exceptional time window for this application only (stage, date, start and end time, slot length, capacity). Normal windows belong on the Selection Session page.</dd>
+  <dt>Full Decision Summary → / Selection Audit / Explainability →</dt>
+  <dd>Open the full decision page or the complete audit of this application.</dd>
+  <dt>View full Communication History →</dt>
+  <dd>Every outbound and inbound message of this application.</dd>
+</dl>
+<p>Changes that are not allowed (for example by someone who is not the owner of a session application) are not saved: the page reloads unchanged. Messages are recorded but, in this version, no SMS or e-mail actually reaches the candidate.</p>
+</section>

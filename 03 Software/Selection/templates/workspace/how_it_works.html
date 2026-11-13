@@ -1,73 +1,26 @@
 {% extends "workspace/base.html" %}
 {% block title %}How Selection works{% endblock %}
 {% block content %}
+{#- The full guide is assembled from the same help sections every page opens in
+    its "How … works" window (templates/help/), so the guide and the page help
+    never disagree. `help_in_guide` lets a section leave out the link back here. -#}
+{% set help_in_guide = True %}
 <div class="selection-guide">
   <h1>How Selection works</h1>
-  <p class="muted">Manage each job opening from the first requirements to the final decision. Candidates apply through RMAED.it; your team manages the process here in RF-One.</p>
+  <p class="muted">Manage each job opening from the first requirements to the final decision. Candidates apply through RMAED.it; your team manages the process here in RF-One. Every Selection page also explains itself through its own "How this page works" link.</p>
   <nav class="selection-guide-nav" aria-label="Guide sections">
-    <a href="#setup">Set up a position</a><a href="#applications">Receive applications</a>
-    <a href="#evaluation">Review candidates</a><a href="#interviews">Arrange interviews</a>
-    <a href="#decisions">Record decisions</a><a href="#ai">AI features</a>
+    <a href="#help-selection-dashboard">Overview</a><a href="#help-selection-position-new">New position</a>
+    <a href="#help-selection-position-configuration">Configuration</a><a href="#help-selection-position-setup">1 · Position</a>
+    <a href="#help-selection-position-applications">2 · Applications</a><a href="#help-selection-position-evaluation">3 · Evaluation</a>
+    <a href="#help-selection-compare">Compare</a><a href="#help-selection-candidate">Candidate profile</a>
+    <a href="#help-selection-position-interviews">4 · Interviews</a><a href="#help-selection-position-decisions">5 · Decisions</a>
   </nav>
-
-  <section class="card" id="setup">
-    <h2>1. Set up and open a position</h2>
-    <ol>
-      <li>Choose <b>New position</b>. Enter the title, role, location, number of openings and manager. Describe what the role needs in your own words.</li>
-      <li>Open the position’s <b>Configuration</b> tab. Add its specific context: service style, shifts, responsibilities, team and training. Select the AI features you want and save. Each position keeps its own settings.</li>
-      <li>In <b>1 · Position</b>, write requirements, copy an existing template or request an AI draft. Review each requirement’s priority and trainability. Must-have requirements drive the evaluation groups.</li>
-      <li>Complete the English job ad and up to six standard interview questions. Replace any placeholders in the ad.</li>
-      <li>Choose <b>Approve and open position</b>. This publishes the application page. Later edits to requirements, the ad or standard questions need approval before candidates and evaluations use the new version.</li>
-    </ol>
-    <p class="small muted"><b>Drafts</b> contains positions waiting for approval. <b>Open positions</b> contains active openings. <b>Closed</b> keeps closed positions and their applications.</p>
-  </section>
-
-  <section class="card" id="applications">
-    <h2>2. Receive applications and the first interview</h2>
-    <p>Candidates start at <a href="https://www.rmaed.it/" target="_blank" rel="noopener">RMAED.it</a>, verify their email with a code, choose an open position and continue to Selection on AWS. They upload a résumé and answer a short interview in English. They can type, use the browser’s voice input when available, and save an unfinished interview to resume later.</p>
-    <p>In <b>2 · Applications</b>, review received résumés and see whether each interview is complete. You can also upload résumés yourself, including multiple PDF, DOCX or TXT files. Duplicate checks help avoid adding the same document twice.</p>
-    <p>Each candidate profile includes the original résumé, extracted text, work history and submitted interview answers. A résumé uploaded by a manager does not automatically include a completed online interview.</p>
-    <p class="small muted">Share a position’s <b>Application page</b> link directly or use it as an “Apply on company site” link on Indeed. Selection does not automatically publish or import Indeed applications.</p>
-  </section>
-
-  <section class="card" id="evaluation">
-    <h2>3. Review evidence and compare candidates</h2>
-    <p><b>3 · Evaluation</b> compares applications with the position’s approved requirements. The proposal groups are <b>To interview</b>, <b>Needs clarification</b> and <b>Must-have requirements not evidenced</b>. Open a candidate profile to inspect the evidence, source and suggested questions.</p>
-    <p>Rule-based analysis is available without AI. When AI evaluation is enabled for the position, it can also read the résumé and interview answers. Supporting quotations are checked against the source text. Missing information is not proof that a requirement is unmet.</p>
-    <p>Select candidates and choose <b>Compare selected candidates</b> to view requirement evidence, recent experience and answers side by side. Full experience indicators are available for Server and FOH Team Leader; other roles are assessed against requirements.</p>
-    <p class="small muted">Proposals support the manager’s review. Selection does not automatically reject or hire candidates and does not create an overall ranking.</p>
-  </section>
-
-  <section class="card" id="interviews">
-    <h2>4. Arrange interviews and communicate</h2>
-    <p>From a candidate profile, book a phone or in-person interview directly, or propose future times and create a link for the candidate to choose. <b>4 · Interviews</b> shows scheduled interviews and proposed times. Dates and times use the position’s location time zone.</p>
-    <p><b>Communications</b> supports interview invitations, menu-study invitations, general updates, cancellations and outcome messages. Review or edit a draft, then choose <b>Approve and send</b>. AWS manages the queue and <b>RomesFlavoursCareers@RMAED.it</b> sends the email. Candidate-selected appointment times queue a confirmation automatically.</p>
-    <p class="small muted">Drafting or approving without sending does not email the candidate. Delivery status is shown in the profile; acceptance by the mail server is not confirmation that the recipient has read the message.</p>
-  </section>
-
-  <section class="card" id="decisions">
-    <h2>5. Record decisions and close the position</h2>
-    <p>Record a decision in the candidate profile: <b>To interview</b>, <b>Needs clarification</b>, <b>Hired</b>, <b>On hold</b> or <b>Not selected</b>. A reason is required for “Not selected”. The position’s <b>5 · Decisions</b> tab summarizes outcomes and retains its history.</p>
-    <p>Close the position manually when the search ends. Its public page stops accepting new applications, while existing applications remain available. A closed position can be reopened.</p>
-    <p class="small muted">Recording an outcome does not automatically create an employee or transfer the person into Management, Training or Organization.</p>
-  </section>
-
-  <section class="card" id="ai">
-    <h2>AI features, controlled per position</h2>
-    <ul>
-      <li><b>AI position drafts:</b> proposes requirements, headcount when stated, and an English job ad using the position context. You review and approve what to use.</li>
-      <li><b>AI message drafts:</b> prepares English communications for review. Drafting does not send an email.</li>
-      <li><b>Résumé-based questions:</b> adds up to three questions about the candidate’s résumé and the approved requirements when starting the online interview.</li>
-      <li><b>AI résumé and answer evaluation:</b> checks evidence against approved requirements and proposes points to clarify, with verified source quotations.</li>
-    </ul>
-    <p>Open <b>Configuration</b> within the position to enable or disable these features. The <b>Enabled</b> badge shows the feature is available and selected. Other positions do not inherit your changes.</p>
-    <p>Use <b>Test selected AI features</b> to make real calls to the configured model with synthetic content. Saved results show whether each call passed and let you inspect its output. These tests do not send emails, change approved requirements or modify candidate records.</p>
-  </section>
-
-  <section class="card">
-    <h2>Who can manage a position?</h2>
-    <p>Owners and administrators manage all positions. Managers manage positions assigned to them. Supervisors can review positions in read-only mode.</p>
-  </section>
+  {% for section in ["selection-dashboard", "selection-position-new", "selection-position-configuration",
+                     "selection-position-setup", "selection-position-applications", "selection-position-evaluation",
+                     "selection-compare", "selection-candidate", "selection-cv-text",
+                     "selection-position-interviews", "selection-position-decisions"] %}
+  <div class="card">{% include "help/" ~ section ~ ".html" %}</div>
+  {% endfor %}
   <p><a href="{{ url_for('positions.dashboard') }}">← Back to open positions</a></p>
 </div>
 {% endblock %}

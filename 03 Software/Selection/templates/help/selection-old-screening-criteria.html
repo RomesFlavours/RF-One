@@ -1,0 +1,52 @@
+<section id="help-selection-old-screening-criteria" class="rf-help-section">
+<h2>Primary Screening Criteria</h2>
+<p>Screening Criteria are the restaurant's own rules for the <strong>first, quick screening of Applications</strong>, before any interview. Every Criterion uses the same 0-4 level scale, but what each level means, how important the Criterion is, whether it counts for or against, and whether it can exclude an Application (Hard Disqualifier) are the restaurant's choices. The first time the page opens, RF-One adds a set of starter Criteria, which you can edit or deactivate.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>When Primary Screening runs on an Application, every active Criterion for its role (or for every role) is copied as it is at that moment, so later edits never change a screening already done.</li>
+  <li>Each Criterion is evaluated first from its linked Signal, if one is configured; otherwise RF-One asks its AI assistant to propose a level from the evidence already in the Application, using only the level meanings written here. If no AI service is available, or the evidence is insufficient, the Criterion stays unresolved for the Selezionatore. A level is never invented.</li>
+  <li>Evaluated levels, multiplied by the coefficient and signed by the direction, determine the order of the screening queue. An Application reaching a Hard Disqualifier's trigger level (or higher) goes to the separate Hard Disqualifier pool until a Selezionatore overrides it.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Card badges</dt>
+  <dd>Direction, coefficient, "HARD DISQUALIFIER @ level N", target role, INACTIVE and version.</dd>
+  <dt>Name / Description / Category (free text)</dt>
+  <dd>What the Criterion is about.</dd>
+  <dt>Target role (leave blank to apply to every role) / Location/context</dt>
+  <dd>Limits the Criterion to one role; the location is descriptive.</dd>
+  <dt>Coefficient</dt>
+  <dd>How important the Criterion is (default 1.0).</dd>
+  <dt>Direction</dt>
+  <dd>POSITIVE (a higher level helps) or NEGATIVE (a higher level counts against).</dd>
+  <dt>Hard Disqualifier / Hard Disqualifier trigger level (0-4)</dt>
+  <dd>When ticked, an evaluated level equal to or above the trigger level moves the Application to the Hard Disqualifier pool. It is never deleted.</dd>
+  <dt>Level meanings (0-4)</dt>
+  <dd>What each level means for this Criterion, in the restaurant's own words. Both people and the AI assistant choose among these meanings.</dd>
+  <dt>Allowed evidence sources</dt>
+  <dd>Which evidence may be used (résumé facts, application, application history, Fit Assessment, Selection Signal, consistency information, Selezionatore input, other).</dd>
+  <dt>Evaluation / Positive / Contrary / Insufficient evidence guidance</dt>
+  <dd>Instructions for whoever evaluates the Criterion.</dd>
+  <dt>Optional: auto-evaluate from an existing Selection Signal / Signal status &rarr; level mapping</dt>
+  <dd>Links the Criterion to a Signal and says which level each Signal status gives (for example DETECTED &rarr; 4). Leave a status unmapped to skip it.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Create Criterion</dt>
+  <dd>Saves a new active Criterion; it is used by screenings run from now on. A name is required.</dd>
+  <dt>Edit this Criterion &rarr; Save Criterion</dt>
+  <dd>Saves all fields as shown and increases the version. Existing screenings keep the version they used; use "Re-run Primary Screening" on an Application to apply the new rules to it.</dd>
+  <dt>Deactivate / Reactivate</dt>
+  <dd>Stops or resumes using the Criterion in new screenings. Reactivation is refused (the page reloads unchanged) while its latest Compliance Review has an unresolved HIGH CONCERN.</dd>
+  <dt>Compliance Review &rarr; Run Compliance Review</dt>
+  <dd>Checks the Criterion's text automatically for wording about personal characteristics, vague wording, characteristics hard to judge at this stage, or missing information treated as negative, and stores the result. It is an aid, not legal advice.</dd>
+  <dt>Record Decision</dt>
+  <dd>Stores your response to the latest review (Accept Rewrite, Edit Manually, Keep Original, Deactivate, Acknowledge High Concern) under your acting identity; the "Your name" field is not used. A reason is required for Acknowledge High Concern, and for Keep Original against a High Concern. The decision does not change the Criterion's text or status by itself; Accept Rewrite, Edit Manually and Acknowledge High Concern lift the block on reactivation.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Run screenings from the <strong>Primary Screening</strong> page, and include the Criteria in a Selection Session's Rule Set.</p>
+</section>

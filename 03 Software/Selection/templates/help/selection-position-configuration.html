@@ -1,0 +1,29 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-position-configuration" class="rf-help-section">
+<h2>Configuration</h2>
+<p>The settings of this position only: its specific context and the AI features it uses. Other positions keep their own settings and do not inherit changes made here.</p>
+
+<h3>Fields</h3>
+<dl>
+  <dt>Position context</dt>
+  <dd>Service style, shifts, responsibilities, team, training and other verified facts about this opening (up to 16,000 characters). It is used when drafting the requirements and the job ad.</dd>
+  <dt>AI features for this position</dt>
+  <dd>Tick the features to use: <strong>AI position drafts</strong>, <strong>AI message drafts</strong>, <strong>Résumé-based questions</strong>, <strong>AI résumé and answer evaluation</strong>. The badge <strong>Enabled</strong> means the feature is selected and available; <strong>Disabled</strong> means it is not selected or not available. "Currently unavailable on this installation" means your choice is kept but has no effect until the installation allows it; résumé-based features need résumé processing to be authorized for the installation.</dd>
+  <dt>Service information</dt>
+  <dd>The AI provider in use, who sends the e-mails, and which company facts are known or missing. Missing facts are never invented.</dd>
+  <dt>Test selected AI features</dt>
+  <dd>The result of the last test of each feature: <strong>Passed</strong> or <strong>Failed</strong>, when it ran, the provider and, with "View test output", what the model returned.</dd>
+</dl>
+
+{% if _edit %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Save position configuration</dt>
+  <dd>Saves the context and the feature choices for this position and records the change in its history.</dd>
+  <dt>Test …</dt>
+  <dd>One button per enabled feature. It makes a real call to the configured AI model with a synthetic résumé and saves the result here. It sends no e-mail and does not change requirements or candidate records. Save your feature choices before testing.</dd>
+</dl>
+{% else %}
+<p>You can read this configuration but not change it.</p>
+{% endif %}
+</section>

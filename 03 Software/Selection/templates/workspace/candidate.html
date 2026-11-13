@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% set help_section = "selection-candidate" %}
 {% set name = candidate.full_name or pc.declared_name or '(name not extracted)' %}
 {% block title %}{{ name }}{% endblock %}
 {% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id)), (name, None)] %}

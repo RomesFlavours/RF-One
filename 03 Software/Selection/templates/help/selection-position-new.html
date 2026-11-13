@@ -1,0 +1,40 @@
+<section id="help-selection-position-new" class="rf-help-section">
+<h2>New position</h2>
+<p>Creates a new job opening. The position is saved as a <strong>draft</strong>: candidates cannot see it and nothing is published until you complete and approve it on the position page.</p>
+
+<h3>Fields</h3>
+<dl>
+  <dt>Who are you looking for? Describe the role in your own words</dt>
+  <dd>Free description of the need (shifts, experience, what can be taught). It is shown on the position page and, when AI position drafts are available, used to draft the requirements and the job ad.</dd>
+  <dt>Title</dt>
+  <dd>The name of the position as your team and candidates will see it (for example "Server"). Required.</dd>
+  <dt>Role</dt>
+  <dd>The type of role. Full experience analysis is available for Server and FOH Team Leader; other roles are assessed against the requirements you write. Required.</dd>
+  <dt>Location</dt>
+  <dd>The restaurant or place of work. Required.</dd>
+  <dt>Number of openings</dt>
+  <dd>How many people you want to hire (at least 1). You can change it later.</dd>
+  {% if actor.is_owner %}
+  <dt>Position manager</dt>
+  <dd>The person who will manage this position. Managers see and manage only the positions assigned to them.</dd>
+  {% else %}
+  <dt>Manager</dt>
+  <dd>You become the manager of the positions you create.</dd>
+  {% endif %}
+  <dt>Location time zone</dt>
+  <dd>Opens with a click. All interview dates and times of this position are entered and shown in this time zone. Change it only if the location is in a different time zone.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Create position</dt>
+  <dd>Saves the draft and opens its <strong>1 · Position</strong> step. If AI position drafts are available, an AI draft of requirements and job ad is prepared at once for you to review; nothing is used until you choose it. If a required field is missing or the time zone is not valid, the form stays open with a message and nothing is saved.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<ol>
+  <li>In the position's <strong>Configuration</strong> tab, add the position context and select its AI features.</li>
+  <li>In <strong>1 · Position</strong>, complete the requirements, the English job ad and the standard questions.</li>
+  <li>Choose <strong>Approve and open position</strong>: this opens the application page.</li>
+</ol>
+</section>

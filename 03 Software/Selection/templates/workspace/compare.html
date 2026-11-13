@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% set help_section = "selection-compare" %}
 {% block title %}Comparison · {{ position.title }}{% endblock %}
 {% set crumbs = [(position.title, url_for('positions.position_detail', position_id=position.id, tab='valutazione')), ('Comparison', None)] %}
 {% block content %}

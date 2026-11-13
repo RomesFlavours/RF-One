@@ -1,0 +1,25 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-position-decisions" class="rf-help-section">
+<h2>5 · Decisions</h2>
+<p>Summarizes the final outcomes of this position, lets you close or reopen it, and keeps the complete history of what was done and by whom.</p>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Hired / On hold / Not selected</dt>
+  <dd>The candidates with each outcome. "Hired" also shows how many openings the position has. Outcomes are recorded in each candidate's profile, not here.</dd>
+  <dt>History</dt>
+  <dd>Every event of the position (creation, approvals, uploads, AI drafts, interviews, messages, decisions, closing) with when and who. Times use the location's time zone.</dd>
+</dl>
+
+{% if _edit %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Close position</dt>
+  <dd>Asks for confirmation, then closes the position: its application page stops accepting new applications. Existing applications, decisions and history remain available. Positions are never closed automatically, not even when all openings are filled.</dd>
+  <dt>Reopen</dt>
+  <dd>Opens a closed position again with its approved content, so the application page accepts applications again.</dd>
+</dl>
+{% endif %}
+
+<p>Recording an outcome does not create an employee and does not transfer the person to other RF-One areas.</p>
+</section>

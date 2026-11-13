@@ -1,0 +1,48 @@
+<section id="help-selection-old-communication-templates" class="rf-help-section">
+<h2>Communication Templates</h2>
+<p>A Communication Template is the <strong>standard SMS and/or e-mail RF-One sends to a candidate automatically</strong> when something happens in the selection process: an Outcome is applied (for example a stop after Primary Screening, a hold or stop after a Phone or In-Person interview, Hirable), the Application advances to the next stage, an interview appointment is confirmed, a reminder is due, or a missing-information questionnaire is sent. The Selezionatore does not rewrite the message for each candidate.</p>
+
+<h3>How the right template is chosen</h3>
+<ul>
+  <li>For an <strong>Outcome</strong>, RF-One uses an active template that names that exact Outcome and the Stage the Application is in at that moment. If none exists, no message is sent.</li>
+  <li>For a <strong>stage advance, reminder, confirmation or questionnaire</strong>, RF-One uses an active template with that trigger event, matching the Stage and role (a blank field matches any). When several match, the most specific one wins.</li>
+  <li>When equally specific templates exist in several languages, the English ("en") one is used: candidates have no recorded language preference yet.</li>
+  <li>The automatic sending does not know the branch: a template limited to a <strong>Branch/location</strong> is never chosen in this version, so leave that field blank.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Card title and badges</dt>
+  <dd>The purpose (or the trigger event), the trigger event, the Stage, the Outcome and role it is limited to, INACTIVE when switched off, and the version and language (for example "v2 · en").</dd>
+  <dt>Trigger event</dt>
+  <dd>What makes the message go out.</dd>
+  <dt>Stage this applies at</dt>
+  <dd>The Application's Stage (APPLICATION RECEIVED, PRIMARY SCREENING, PHONE INTERVIEW, IN PERSON PRACTICAL) when the event happens; "(any)" matches every Stage.</dd>
+  <dt>Outcome this answers</dt>
+  <dd>Required for Outcome-triggered events; leave "(none …)" for stage-advance, reminder and confirmation events.</dd>
+  <dt>Role / Branch/location</dt>
+  <dd>Limits the template to one role (for example SERVER). Blank means any. See the branch limitation above.</dd>
+  <dt>Purpose / label</dt>
+  <dd>Your own name for the template (for example "Rejection after CV Review").</dd>
+  <dt>Language</dt>
+  <dd>Language code of the text, "en" by default.</dd>
+  <dt>SMS text / Email subject / Email body</dt>
+  <dd>The message. You can insert <code>$candidate_name</code>, <code>$role</code>, <code>$restaurant_name</code> and, where a scheduling link applies, <code>$scheduling_link</code>; they are replaced when the message is sent. The SMS goes out only if the candidate has a phone number and SMS text exists; the e-mail only if there is an e-mail address and a subject or body.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Create Template</dt>
+  <dd>Saves a new active template (version 1). It is used from the next matching event onwards.</dd>
+  <dt>Edit content (bumps version — sent history is unaffected) &rarr; Save new version</dt>
+  <dd>Changes the purpose and texts and increases the version. Messages already sent keep exactly the text they were sent with. Trigger, Stage, Outcome, role and language cannot be changed here: create a new template instead.</dd>
+  <dt>Deactivate / Reactivate</dt>
+  <dd>Stops or resumes using the template for future messages. Nothing already sent changes.</dd>
+</dl>
+
+<h3>Current limitation</h3>
+<p>In this version no real SMS or e-mail delivery service is connected to these templates: each message is prepared and recorded in the Application's Communication History as sent, but it does not actually reach the candidate.</p>
+
+<h3>Next steps</h3>
+<p>Set how many reminders follow a message, and whether a missing reply stops the Application, on <strong>Reminder Policies</strong>.</p>
+</section>

@@ -1,0 +1,39 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-position-evaluation" class="rf-help-section">
+<h2>3 · Evaluation</h2>
+<p>Compares every application with the position's <em>approved</em> requirements and proposes where to look first. It is a proposal only: nobody is excluded, nothing is ranked and no overall score is calculated. Evaluation starts once the position is approved.</p>
+
+<h3>How the proposal is made</h3>
+<ul>
+  <li>Selection's rule-based engines match the résumé against the approved requirements.{% if ai_policy.allows("cv_evaluation") %} AI evaluation is also active for this position: it reads the résumé and the interview answers, and each quotation it uses is checked word for word against the source.{% endif %}</li>
+  <li>The Must-have requirements decide the group. "Not evidenced" means the information is missing, not that the requirement is unmet.</li>
+  <li>Full experience indicators are available for Server and FOH Team Leader; other roles are assessed against the requirements only.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>To interview / Needs clarification / Must-have requirements not evidenced</dt>
+  <dd>The three proposal groups, with how many candidates each contains.</dd>
+  <dt>Candidate card</dt>
+  <dd>Name (click to open the profile), the source of the proposal (<strong>AI</strong> or <strong>Rules</strong>), latest experience and months of direct experience, the main reason for the proposal, "Interview incomplete" when the online interview was not finished, the next appointment and any duplicate warning.</dd>
+  <dt>Awaiting evaluation</dt>
+  <dd>Applications that have no proposal yet.</dd>
+  <dt>Already reviewed by the manager</dt>
+  <dd>Candidates you already marked "To interview" or "Needs clarification"; they leave the proposal groups.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Compare selected candidates</dt>
+  <dd>Tick at least two cards, then choose this to see them side by side (up to six). With fewer than two you stay here with a message.</dd>
+  {% if _edit %}
+  <dt>To interview / Needs clarification (on a card)</dt>
+  <dd>Records your decision for that candidate at once; the card moves to "Already reviewed by the manager". You can change it later from the candidate's profile.</dd>
+  <dt>Re-evaluate all</dt>
+  <dd>Evaluates every application of the position again against the approved version (for example after you approved new requirements). Your recorded decisions are not changed.</dd>
+  {% endif %}
+</dl>
+
+<h3>Next steps</h3>
+<p>Open a candidate to check the evidence and the interview answers, then book an interview or record a decision there.</p>
+</section>

@@ -1,0 +1,50 @@
+<section id="help-selection-old-applications" class="rf-help-section">
+<h2>Applications</h2>
+<p>The review queue of every application. It helps you decide where to look first and pick applications to compare. Review Priority is a starting point, never a ranking and never an automatic discard: lower-priority applications stay fully available.</p>
+
+<h3>Filter &amp; sort</h3>
+<p>No filter is preselected. Filters combine with each other; <strong>Results</strong> shows how many applications match.</p>
+<dl>
+  <dt>Review Priority, Workflow status, Target role, Stage, Outcome</dt>
+  <dd>Show only the applications with that value ("No outcome yet" for those without an outcome).</dd>
+  <dt>Sort by</dt>
+  <dd>Application date (default), Review Priority, Workflow status or Target role.</dd>
+  <dt>Repeated applicants only</dt>
+  <dd>Only people who applied before.</dd>
+  <dt>Direct experience / Propedeutic experience (months)</dt>
+  <dd>Minimum and maximum months. A documented zero counts as 0; unknown months never match unless you tick <strong>Include data to be clarified</strong>.</dd>
+  <dt>Stability</dt>
+  <dd>Tick one or more categories; unknown stability matches only with "Include data to be clarified".</dd>
+  <dt>Declared coordination</dt>
+  <dd>At least one declared responsibility, none documented in the CV, or a specific kind.</dd>
+  <dt>Missing or uncertain information</dt>
+  <dd>Applications with missing information, uncertain résumé readings, or either.</dd>
+</dl>
+
+<h3>Review Queue columns</h3>
+<dl>
+  <dt>Review Priority</dt>
+  <dd>The priority with its main reasons; a second badge shows when it was confirmed or changed by a person.</dd>
+  <dt>Workflow</dt>
+  <dd>NEW, IN REVIEW, ADVANCE TO PHONE, HOLD or STOP. Set only by a person; Review Priority never changes it.</dd>
+  <dt>Stage, Outcome, Direct exp., Propedeutic exp., Stability, Declared coordination, Missing / uncertain</dt>
+  <dd>The current state and the main figures read from the résumé. "to be clarified" is never zero; "not documented" means the CV does not mention it.</dd>
+  <dt>History, CV</dt>
+  <dd>How many earlier applications the person has, and a link to the original CV when the file is available.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Apply / Clear all filters</dt>
+  <dd>Applies the filters, or returns to the full, unfiltered list.</dd>
+  <dt>Compare selected</dt>
+  <dd>Tick 2 to 4 applications of the same target role in the Compare column, then choose this to see them side by side. Otherwise a message explains why the comparison cannot open.</dd>
+  <dt>Candidate name / Review →</dt>
+  <dd>Opens the application to review it.</dd>
+  {% if pending_identity_matches is defined and pending_identity_matches %}
+  <dt>Pending identity matches</dt>
+  <dd>Possible matches between people waiting for your confirmation; the link opens Identity Matches.</dd>
+  {% endif %}
+</dl>
+<p>This page only reads: nothing is changed until you act on an application.</p>
+</section>

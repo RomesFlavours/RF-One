@@ -1,0 +1,38 @@
+<section id="help-selection-old-decision-summary" class="rf-help-section">
+<h2>Decision Summary</h2>
+<p>The current state of one application in one place, usable at any moment of the selection, with every decision control and the complete history. The summary text at the top describes the current state; it is not a recommendation: the decision is entirely yours.</p>
+
+<h3>Fields and sections</h3>
+<dl>
+  <dt>Candidate, Target Role, Current Stage, Current Outcome, Application Lifecycle, Current Queue</dt>
+  <dd>Where the application stands now.</dd>
+  <dt>Open Follow-ups</dt>
+  <dd>Reminders created by outcomes, with their due date.</dd>
+  <dt>Primary Screening, Evidence Overview</dt>
+  <dd>The screening result (with any active hard disqualifier), the requirements with strongest, weaker, conflicting or unresolved evidence, gaps that appear trainable and important signals.</dd>
+  <dt>Candidate Flags</dt>
+  <dd>Active facts attached to the person (for example a training check not passed), with scope, reason and expiry.</dd>
+  <dt>Outcome History, Stage History, Queue Movement History, Selection Notes History</dt>
+  <dd>Everything recorded on the application, in date order, with reasons and authors.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<p>Each decision form shows who you are acting as{% if rfone_login_mode %}: your own RF-One account{% endif %}.</p>
+<dl>
+  <dt>Move Stage</dt>
+  <dd>Moves the application to any stage, forward, backward, repeated or skipped, with an optional note.</dd>
+  <dt>Apply Outcome</dt>
+  <dd>Applies the chosen outcome at any moment; the list shows the lifecycle effect of each (for example active or closed). Some outcomes require a reason or a note. The outcome may trigger the communication configured for it.</dd>
+  <dt>Reopen Application</dt>
+  <dd>Shown for closed or suspended applications: reopens it with an active outcome and a note.</dd>
+  <dt>Record Information / Event</dt>
+  <dd>Records a factual report from staff (what happened, type, who entered it, original source). It never changes stage, outcome or anything else; you decide separately.</dd>
+  <dt>Move Queue</dt>
+  <dd>Moves the application to another queue, with an optional note. Purely organizational: stage and outcome do not change.</dd>
+  <dt>Mark resolved</dt>
+  <dd>Closes an open follow-up.</dd>
+  <dt>Deactivate / Create Flag</dt>
+  <dd>Deactivates an active candidate flag, or creates a new one with its name, description, reason, scope (informational, role, location, temporary or the whole restaurant), operational effect, note and optional expiry in days. Flags apply to the person, so they also appear on that person's other applications.</dd>
+</dl>
+<p>For an application that belongs to a Selection Session, stage, outcome and reopen changes are saved only if you have it in charge (or authority over its owner); otherwise the page reloads unchanged.</p>
+</section>

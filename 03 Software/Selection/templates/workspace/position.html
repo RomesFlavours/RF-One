@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% set help_section = {"posizione": "selection-position-setup", "candidature": "selection-position-applications", "valutazione": "selection-position-evaluation", "colloqui": "selection-position-interviews", "configuration": "selection-position-configuration"}.get(tab, "selection-position-decisions") %}
 {% block title %}{{ position.title }}{% endblock %}
 {% set crumbs = [(position.title, None)] %}
 

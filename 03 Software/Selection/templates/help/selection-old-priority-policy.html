@@ -1,0 +1,46 @@
+<section id="help-selection-old-priority-policy" class="rf-help-section">
+<h2>Review Priority Policy</h2>
+<p>This page shows one Review Priority Policy and its rules. Each rule says how one Selection Signal, observed with one status, <strong>contributes to an Application's Review Priority</strong>. Contributions are qualitative (from Strongly Increase to Strongly Decrease), never numeric scores.</p>
+
+<h3>How the rules produce a priority</h3>
+<ul>
+  <li>Only active rules count, and only for Signals observed on the Application. A NEUTRAL contribution counts as nothing.</li>
+  <li>A Strongly Increase, or two or more Increase, with nothing lowering: <strong>HIGH PRIORITY</strong>. A single Increase alone: <strong>INTERESTING</strong>.</li>
+  <li>The same on the lowering side: a Strongly Decrease or two or more Decrease give <strong>LOW PRIORITY</strong>; a single Decrease alone gives <strong>INTERESTING</strong>.</li>
+  <li>Contributions in both directions: <strong>INTERESTING</strong>, with the reasons on both sides shown. Nothing contributing: <strong>STANDARD</strong>.</li>
+  <li>Changes apply the next time an Application's priority is calculated (for example when its Signals are refreshed); priorities already calculated are not changed by saving here, and a Selezionatore's manual override is never replaced.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Policy / Status</dt>
+  <dd>The policy name and whether it is ACTIVE. If several policies are active, RF-One uses the most recently changed one.</dd>
+  <dt>Signal Definition</dt>
+  <dd>The Signal the rule refers to.</dd>
+  <dt>Observed status</dt>
+  <dd>The status the Signal must have on the Application: DETECTED, POSSIBLE, CONFLICTING, NOT DETECTED or NOT ASSESSED. The rule counts only when the Signal's current observation on the Application has exactly this status.</dd>
+  <dt>Contribution</dt>
+  <dd>STRONGLY INCREASE, INCREASE, NEUTRAL, DECREASE or STRONGLY DECREASE.</dd>
+  <dt>Status (rule)</dt>
+  <dd>ACTIVE rules count; INACTIVE rules are kept for reference only.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Deactivate this policy / Reactivate this policy</dt>
+  <dd>Stops or resumes using the policy. With no active policy every newly calculated priority is STANDARD.</dd>
+  <dt>Rename policy &rarr; Save name</dt>
+  <dd>Changes only the name.</dd>
+  <dt>Contribution (drop-down in a row)</dt>
+  <dd>Saves the new contribution as soon as you choose it.</dd>
+  <dt>Deactivate / Reactivate (row)</dt>
+  <dd>Keeps the rule but stops (or resumes) counting it.</dd>
+  <dt>Remove</dt>
+  <dd>Deletes the rule permanently, with no confirmation and no undo. It does not touch the Signal Definition or any Signal already observed. Prefer Deactivate if you may need the rule again.</dd>
+  <dt>Add rule</dt>
+  <dd>Adds a rule for the chosen Signal Definition, observed status and contribution.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Go back to <strong>Priority Policies</strong> with the link at the top, or define new Signals on the <strong>Signals</strong> page.</p>
+</section>

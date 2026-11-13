@@ -1,0 +1,42 @@
+<section id="help-selection-old-signals" class="rf-help-section">
+<h2>Signals</h2>
+<p>A Selection Signal is something worth noticing about an Application (for example "Recent relevant experience" or "Long gap in relevant work"). This page holds the restaurant's <strong>Signal Definitions</strong>: what each Signal means, at which stages it can be judged and from which evidence. How much a Signal changes an Application's Review Priority is set separately, on <strong>Priority Policies</strong>.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>The definitions are grouped by family: Fit Experience, Readiness Recency, Motivation Personal, Motivation Professional.</li>
+  <li>When the stages include RESUME and the definition has a <strong>Subtype</strong> that matches one of RF-One's built-in detectors (recent_relevant_experience, long_relevant_gap, progression_since_previous_application, explicit_interest_statement, fit_assessment_strength), RF-One checks résumé facts automatically and records the Signal on each Application as Detected, Possible, Conflicting or Not Detected. Without a matching subtype, the Signal is assessed by people (for example from interview answers).</li>
+  <li>Detectors look only at professional facts (dates, roles, certifications, explicit résumé text); they never infer personal reasons.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Card</dt>
+  <dd>Name, subtype, INACTIVE when switched off, version (for example v3), description, the stages where it can be assessed, the allowed evidence sources and the evidence guidance.</dd>
+  <dt>Name / Signal family</dt>
+  <dd>The Signal's label and its group. Both are required.</dd>
+  <dt>Subtype (optional …)</dt>
+  <dd>The code of a built-in detector (see above). Leave blank if the Signal is only assessed manually.</dd>
+  <dt>Description</dt>
+  <dd>What the Signal means and why it matters to the restaurant.</dd>
+  <dt>Applicable assessment stage(s)</dt>
+  <dd>Where it can be judged: RESUME, PHONE INTERVIEW, IN PERSON INTERVIEW, PRACTICAL ASSESSMENT, REFERENCE CHECK, OTHER.</dd>
+  <dt>Allowed evidence source(s)</dt>
+  <dd>Which kinds of evidence may support it (résumé fact, phone answer, in-person observation…).</dd>
+  <dt>Detection guidance / Supporting / Contrary / Insufficient evidence guidance</dt>
+  <dd>Written guidance for the people assessing the Signal: how to recognise it, what supports it, what goes against it and what is not enough to conclude.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Create Signal Definition</dt>
+  <dd>Saves a new active definition. If the name or family is missing, nothing is saved.</dd>
+  <dt>Edit this Signal Definition &rarr; Save Signal Definition</dt>
+  <dd>Saves the changes and increases the version. Signals already recorded on Applications are not recalculated by saving; new checks use the new definition.</dd>
+  <dt>Deactivate / Reactivate</dt>
+  <dd>Stops or resumes using the definition for new checks. The definition and existing observations are kept.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>On <strong>Priority Policies</strong>, decide which Signals (and which observed status) should raise or lower the Review Priority. Signals can also be used to evaluate a Primary Screening Criterion automatically.</p>
+</section>

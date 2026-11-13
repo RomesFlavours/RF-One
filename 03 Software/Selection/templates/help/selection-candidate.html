@@ -1,0 +1,59 @@
+{% set _edit = can_edit if can_edit is defined else (actor is defined and actor.role != 'SUPERVISOR') %}
+<section id="help-selection-candidate" class="rf-help-section">
+<h2>Candidate profile</h2>
+<p>Everything about one candidate for this position: the evaluation against the approved requirements, the interview answers, the résumé data, interviews, your decision and the messages to the candidate.</p>
+
+<h3>The top of the page</h3>
+<ul>
+  <li>Under the name: how the application arrived, when, the e-mail and phone. <strong>verified identity</strong> means the candidate applied after verifying an e-mail or SMS code. A green badge shows your current decision.</li>
+  <li><strong>Original résumé</strong> opens the uploaded file in a new tab; <strong>Extracted text</strong> shows the text Selection read from it.</li>
+  <li>Yellow banners warn about possible duplicates or notes from the import.</li>
+</ul>
+
+<h3>Sections</h3>
+<dl>
+  <dt>Evaluation</dt>
+  <dd>The proposal group (To interview, Needs clarification or Must-have requirements not evidenced), who proposed it and why. The table shows each approved requirement with its status from the rule-based engines{% if ai %} and from AI{% endif %}; click a piece of evidence to see it in the résumé{% if ai %} or in the answers. AI quotations are checked word for word; quotations that could not be found are discarded and counted{% endif %}. "Not evidenced" means missing information, not proof that the requirement is unmet.</dd>
+  <dt>Questions for the interview</dt>
+  <dd>Points to clarify suggested by the evaluation.</dd>
+  <dt>Candidate interview</dt>
+  <dd>The answers given in the online interview, whether typed or dictated, and when. A résumé uploaded by the team has no online interview.</dd>
+  <dt>Experience, To clarify</dt>
+  <dd>For Server and FOH Team Leader, Selection's experience indicators (no overall score) and points flagged for clarification.</dd>
+  <dt>Experience, Education, Certifications, Skills, Languages, Availability</dt>
+  <dd>The data read from the résumé. Age, demographic background and other irrelevant personal information are neither shown nor used.</dd>
+  <dt>Interview</dt>
+  <dd>Booked interviews (with "chosen by the candidate" when the candidate picked the time) and times offered and still awaiting an answer, with their link. Times are in the location's time zone.</dd>
+  <dt>Decision</dt>
+  <dd>Your decisions for this candidate, newest first, with who recorded them and a note when the decision differs from the proposal.</dd>
+  <dt>Communications</dt>
+  <dd>Messages for the candidate, in English, with their state (<strong>draft</strong> or <strong>approved</strong>), whether they come from AI or from a standard text, the recipient address, and the <strong>Delivery status</strong> of each e-mail (Queued, Accepted by mail server, Delivery failed, Outcome uncertain…). "Accepted by mail server" does not prove the candidate has read it.</dd>
+</dl>
+
+{% if _edit %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Book appointment</dt>
+  <dd>Choose Type, Duration, Place / phone, the date and time and an optional note. The interview is saved in the calendar (with a warning if it overlaps another interview of the same manager) and an interview invitation is prepared in Communications. The invitation is not sent until you approve and send it.</dd>
+  <dt>Create time-selection link</dt>
+  <dd>Offer up to three future times. Selection creates a link where the candidate picks one, and prepares a "Proposed times" message containing the link, ready for approval. When the candidate picks a time, the interview is booked and a confirmation e-mail is queued automatically.</dd>
+  <dt>Save (Decision)</dt>
+  <dd>Records the chosen decision: To interview, Needs clarification, Hired, On hold or Not selected. "Not selected" requires a reason (and a note for "Other"). A new decision does not delete the previous ones; they stay in the history. No message is sent by saving a decision.</dd>
+  <dt>Draft message</dt>
+  <dd>Prepares a new message of the chosen kind (interview invitation, menu study invitation, general message, cancellation, not selected, job offer, on hold…){% if ai_policy.allows("message_drafting") %} with AI, without sharing candidate data{% else %} from the standard texts{% endif %}. Nothing is sent.</dd>
+  <dt>Approve and send</dt>
+  <dd>Saves your edits, approves the draft and queues the e-mail, sent from RomesFlavoursCareers@RMAED.it. Unavailable while the recipient address is missing or invalid. A sent e-mail cannot be recalled.</dd>
+  <dt>Approve without sending / Send approved email</dt>
+  <dd>Approves the text without sending it; you can send it later with <strong>Send approved email</strong>, or copy it with <strong>Copy text</strong> to send it another way.</dd>
+  <dt>Delete</dt>
+  <dd>Deletes a draft. Approved messages cannot be deleted.</dd>
+  <dt>Retry delivery</dt>
+  <dd>Shown when a delivery failed or its outcome is uncertain. Queues the e-mail again; for an uncertain outcome you must first confirm you checked that the earlier attempt did not arrive, to avoid sending it twice.</dd>
+</dl>
+{% else %}
+<p>You can read this profile but not change it: booking, decisions and messages are available to the position's manager and to owners.</p>
+{% endif %}
+
+<h3>Next steps</h3>
+<p>Go back to the position (path at the top) to review the next candidate, or open <strong>4 · Interviews</strong> to see the calendar.</p>
+</section>
