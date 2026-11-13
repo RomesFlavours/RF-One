@@ -42,7 +42,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
@@ -375,23 +375,34 @@ def _base_amount_for(calculation_base: str, voluntary_minor: int, gratuity_minor
     return None
 
 
-def _roles_held_by_employee_at(
-    session: Session, *, restaurant_id: int, employee_id: int, location_id: int, at: datetime,
-) -> set[int]:
-    """Which `RestaurantRole.id`(s) `employee_id` held at `at` (task §4/§10
-    — reuses the existing `EmployeeAssignment` structure, the canonical
-    RF-One "who holds which Role, when" fact, rather than inventing a new
-    role-membership concept)."""
-    rows = session.scalars(
-        select(m.EmployeeAssignment.restaurant_role_id).where(
-            m.EmployeeAssignment.restaurant_id == restaurant_id,
-            m.EmployeeAssignment.employee_id == employee_id,
-            m.EmployeeAssignment.valid_from <= at,
-            (m.EmployeeAssignment.valid_to.is_(None)) | (m.EmployeeAssignment.valid_to > at),
-            (m.EmployeeAssignment.location_id.is_(None)) | (m.EmployeeAssignment.location_id == location_id),
-        )
-    ).all()
-    return set(rows)
+def _active_between(start, end, instant):
+    return _aware_utc(start) <= instant and (end is None or instant < _aware_utc(end))
+
+
+class _PeriodEligibility:
+    """Assignments and shifts overlapping the open/settlement instants in one calculation."""
+
+    def __init__(self, session, restaurant_id, location_ids, first, end):
+        a, sh = m.EmployeeAssignment, m.Shift
+        self.assignments = session.execute(
+            select(a.employee_id, a.restaurant_role_id, a.location_id, a.valid_from, a.valid_to)
+            .where(a.restaurant_id == restaurant_id, a.valid_from <= end,
+                   a.valid_to.is_(None) | (a.valid_to > first),
+                   a.location_id.is_(None) | a.location_id.in_(location_ids))
+        ).all()
+        self.shifts = session.execute(
+            select(sh.employee_id, sh.location_id, sh.clock_in, sh.clock_out)
+            .where(sh.clock_in <= end, sh.clock_out.is_(None) | (sh.clock_out > first),
+                   sh.location_id.is_(None) | sh.location_id.in_(location_ids))
+        ).all()
+
+    def holders(self, role_id, location, at):
+        return {emp for emp, role, loc, start, end in self.assignments
+                if role == role_id and loc in (None, location) and _active_between(start, end, at)}
+
+    def on_shift(self, candidates, location, at):
+        return {emp for emp, loc, start, end in self.shifts
+                if emp in candidates and loc in (None, location) and _active_between(start, end, at)}
 
 
 def _employees_with_role_at(
@@ -436,7 +447,7 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
 
 def _apply_rule_to_order(
-    session: Session, *, order: m.Order, restaurant_id: int,
+    eligibility: _PeriodEligibility, *, role_name: str, order: m.Order,
     source_employee_id: int, settlement_time: datetime, order_open_time: datetime,
     rule_version: m.TipDistributionRuleVersion,
     voluntary_minor: int, gratuity_minor: int, summary: CalculationSummary,
@@ -477,8 +488,6 @@ def _apply_rule_to_order(
 
     summary.rules_applied += 1
 
-    recipient_role = session.get(m.RestaurantRole, rule_version.recipient_role_id)
-    role_name = recipient_role.name if recipient_role is not None else str(rule_version.recipient_role_id)
 
     if rule_version.distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
         return [
@@ -511,12 +520,8 @@ def _apply_rule_to_order(
         eligibility_label = "ACTIVE_AT_SETTLEMENT"
         eligibility_instant_label = "Settlement Time"
 
-    role_holders = _employees_with_role_at(
-        session, restaurant_id=restaurant_id, restaurant_role_id=rule_version.recipient_role_id,
-        location_id=order.location_id, at=eligibility_at,
-    )
-    shift_active = _employees_shift_active_at(session, location_id=order.location_id, at=eligibility_at)
-    eligible_ids = sorted(role_holders & shift_active)
+    role_holders = eligibility.holders(rule_version.recipient_role_id, order.location_id, eligibility_at)
+    eligible_ids = sorted(eligibility.on_shift(role_holders, order.location_id, eligibility_at))
 
     if eligible_ids:
         # The pool is computed HERE and nowhere else: a pool only exists
@@ -596,33 +601,40 @@ def _apply_rule_to_order(
     ]
 
 
-def _orders_in_scope(
-    session: Session, *, restaurant_id: int, period_start: datetime, period_end: datetime,
-) -> list[m.Order]:
-    """Every Order at this Restaurant's Location(s) whose Settlement Time
-    (task §5's canonical helper) falls within `[period_start, period_end)`.
-    `Order.created_at <= period_end` is a safe, non-excluding prefilter (an
-    Order cannot settle before it is created); the authoritative filter is
-    always the actual computed Settlement Time, never `created_at` itself.
-
-    `period_start`/`period_end` are normalized to timezone-aware UTC here
-    (never assumed) since a caller may pass a `TipDistributionCalculationRun`
-    attribute that came back offset-naive after a SQLite round-trip
-    (`_aware_utc`'s own docstring)."""
-    period_start = _aware_utc(period_start)
-    period_end = _aware_utc(period_end)
-    location_ids = _restaurant_location_ids(session, restaurant_id)
-    if not location_ids:
-        return []
-    candidates = session.scalars(
-        select(m.Order).where(m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end)
+def _settlements_in_scope(session, location_ids, start, end):
+    # Aggregate before testing the period: an order with a later successful
+    # payment belongs to the later period even if it has payments in both.
+    last = func.max(m.Payment.created_at)
+    settled = (
+        select(m.Order.id.label("order_id"), last.label("settled_at"))
+        .join(m.Payment, m.Payment.order_id == m.Order.id)
+        .where(m.Order.location_id.in_(location_ids), m.Order.created_at <= end,
+               m.Payment.result == "SUCCESS")
+        .group_by(m.Order.id).having(last >= start, last < end).subquery()
+    )
+    return session.execute(
+        select(m.Order, settled.c.settled_at).join(settled, settled.c.order_id == m.Order.id)
+        .order_by(m.Order.id)
     ).all()
-    in_scope = []
-    for order in candidates:
-        settlement_time = get_order_settlement_time(session, order.id)
-        if settlement_time is not None and period_start <= _aware_utc(settlement_time) < period_end:
-            in_scope.append(order)
-    return in_scope
+
+
+def _gross_by_order(session, order_ids):
+    # Separate aggregates prevent multiple payments and fee lines on the
+    # same order from multiplying each other's amounts.
+    voluntary, gratuity = {}, {}
+    for offset in range(0, len(order_ids), 500):
+        batch = order_ids[offset:offset + 500]
+        voluntary.update(session.execute(
+            select(m.Payment.order_id, func.sum(m.PaymentTip.amount))
+            .join(m.PaymentTip, m.PaymentTip.payment_id == m.Payment.id)
+            .where(m.Payment.order_id.in_(batch), m.Payment.result == "SUCCESS")
+            .group_by(m.Payment.order_id)
+        ).all())
+        gratuity.update(session.execute(
+            select(m.OrderFee.order_id, func.sum(m.OrderFee.amount))
+            .where(m.OrderFee.order_id.in_(batch)).group_by(m.OrderFee.order_id)
+        ).all())
+    return {oid: (voluntary.get(oid) or 0, gratuity.get(oid) or 0) for oid in order_ids}
 
 
 def calculate_tips(
@@ -664,19 +676,32 @@ def calculate_tips(
     summary = result.summary
     rule_version_ids: set[int] = set()
 
-    candidates = session.scalars(
-        select(m.Order).where(m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end)
-    ).all()
+    settled = _settlements_in_scope(session, location_ids, period_start, period_end)
+    amounts = _gross_by_order(session, [order.id for order, _ in settled])
+    has_settlement = select(m.Payment.id).where(
+        m.Payment.order_id == m.Order.id, m.Payment.result == "SUCCESS",
+        m.Payment.created_at.is_not(None),
+    ).exists()
+    summary.orders_with_no_settlement_time = session.scalar(
+        select(func.count(m.Order.id)).where(
+            m.Order.location_id.in_(location_ids), m.Order.created_at <= period_end, ~has_settlement,
+        )
+    )
 
-    for order in candidates:
-        settlement_time = get_order_settlement_time(session, order.id)
-        if settlement_time is None:
-            summary.orders_with_no_settlement_time += 1
-            continue
+    if not settled:
+        return result
+    # Orders can open before the requested period and settle inside it.
+    first = min(period_start, *(_aware_utc(order.created_at) for order, _ in settled))
+    eligibility = _PeriodEligibility(session, restaurant_id, location_ids, first, period_end)
+    role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name)).all())
+    versions = {
+        rule.id: [v for v in rule_svc.list_versions(session, rule.id)
+                  if v.status != m.TIP_RULE_VERSION_STATUS_CANCELLED]
+        for rule in active_rules
+    }
+
+    for order, settlement_time in settled:
         settlement_time = _aware_utc(settlement_time)
-        if not (period_start <= settlement_time < period_end):
-            continue
-
         summary.orders_considered += 1
 
         # §6 — the authoritative Order Open Time is `Order.created_at`,
@@ -684,7 +709,7 @@ def calculate_tips(
         # Never `client_created_at` (a device clock), never a payment time.
         order_open_time = _aware_utc(order.created_at)
 
-        voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
+        voluntary_minor, gratuity_minor = amounts[order.id]
         result.voluntary_total_minor += voluntary_minor
         result.gratuity_total_minor += gratuity_minor
 
@@ -692,13 +717,9 @@ def calculate_tips(
             summary.orders_skipped_no_employee += 1
             continue
 
-        owner_role_ids = _roles_held_by_employee_at(
-            session, restaurant_id=restaurant_id, employee_id=order.employee_id, location_id=order.location_id,
-            at=settlement_time,
-        )
-
         for rule in active_rules:
-            version = rule_svc.get_version_effective_at(session, rule.id, settlement_time)
+            version = next((v for v in versions[rule.id]
+                            if _active_between(v.effective_from, v.effective_to, settlement_time)), None)
             if version is None:
                 continue
             # ORDER_SERVICE_OWNER_SOURCE_SEMANTICS_001 — a ROLE-semantics
@@ -707,12 +728,14 @@ def calculate_tips(
             # is unconditionally sourced from `order.employee_id` — that
             # Employee's RestaurantRole, if any, is irrelevant to source
             # qualification.
-            if version.source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE and version.source_role_id not in owner_role_ids:
+            if (version.source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE and order.employee_id not in
+                    eligibility.holders(version.source_role_id, order.location_id, settlement_time)):
                 continue
             rule_version_ids.add(version.id)
             result.lines.extend(
                 _apply_rule_to_order(
-                    session, order=order, restaurant_id=restaurant_id, source_employee_id=order.employee_id,
+                    eligibility, role_name=role_names.get(version.recipient_role_id, str(version.recipient_role_id)),
+                    order=order, source_employee_id=order.employee_id,
                     settlement_time=settlement_time, rule_version=version, voluntary_minor=voluntary_minor,
                     order_open_time=order_open_time,
                     gratuity_minor=gratuity_minor, summary=summary,
@@ -889,11 +912,11 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     `TipCalculationResult` plus source facts — it reads no persisted
     allocation rows and no stored aggregate
     (TIPS_STATELESS_CALCULATION_001)."""
-    orders_in_scope = _orders_in_scope(
-        session, restaurant_id=result.restaurant_id,
-        period_start=result.period_start, period_end=result.period_end,
-    )
+    location_ids = _restaurant_location_ids(session, result.restaurant_id)
+    settled = _settlements_in_scope(session, location_ids, _aware_utc(result.period_start), _aware_utc(result.period_end))
+    orders_in_scope = [order for order, _ in settled]
     orders_by_id = {order.id: order for order in orders_in_scope}
+    amounts = _gross_by_order(session, list(orders_by_id))
 
     # §1/§3 — accumulated SEPARATELY. `Order.employee_id` is the Order
     # Service Owner, which is what attributes a tip to a person; no Role is
@@ -904,7 +927,7 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
     for order in orders_in_scope:
         if order.employee_id is None:
             continue
-        voluntary_minor, gratuity_minor = _order_gross_tip_components(session, order)
+        voluntary_minor, gratuity_minor = amounts[order.id]
         voluntary_by_employee[order.employee_id] = (
             voluntary_by_employee.get(order.employee_id, 0) + voluntary_minor
         )

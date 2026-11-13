@@ -1,0 +1,9 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "TipsOpenAIModel",
+    "Effect": "Allow",
+    "Action": "bedrock:InvokeModel",
+    "Resource": "arn:aws:bedrock:us-east-1::foundation-model/openai.gpt-oss-120b-1:0"
+  }]
+}

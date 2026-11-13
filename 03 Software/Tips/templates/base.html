@@ -67,6 +67,7 @@
     <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">Saved Periods</a>
     <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">Payment Control (Mercury Sandbox pilot)</a>
     <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">Configuration</a>
+    {% if help_section is defined %}{% include '_how_works.html' %}{% endif %}
   </div>
   {% block content %}{% endblock %}
 </div>

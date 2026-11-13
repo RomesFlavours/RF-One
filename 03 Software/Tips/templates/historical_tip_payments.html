@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% set help_section = 'historical_tip_payments' %}
+{% macro usd(cents) %}{{ "{:,.2f}".format(cents / 100) }}{% endmacro %}
+{% block page_title %}RF-One · Tips · Historical paid tips{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Historical paid tips</h2>
+  <p>Imported payment evidence. These amounts were recorded as paid in the source document; they do not create new payments or finalized calculation periods.</p>
+  {% if documents %}
+  <form method="get"><label>Source document <select name="document">
+    {% for document in documents %}<option value="{{ document.run_id }}" {{ 'selected' if report and report.document.run_id == document.run_id else '' }}>{{ document.file_name }} · import {{ document.run_id }} · {{ document.document_sha256[:12] }}</option>{% endfor %}
+  </select></label> <button type="submit">Open document</button></form>
+  {% else %}<p>No historical payment documents imported.</p>{% endif %}
+</div>
+{% if report %}
+<div class="card">
+  <p>Period stated in memos: <strong>{{ report.document.scope[0] }} – {{ report.document.scope[1] }}</strong> · USD</p>
+  <h3>Recorded paid tips: ${{ usd(report.totals.in_scope) }}</h3>
+  <p>Only completed payments explicitly labelled Tip/Tips with a complete earnings period inside the selected scope are included. Pay and blank memos are not inferred as tips. The first January days cannot be separated from cross-year memos.</p>
+  <p>Cross-boundary tips, separate: ${{ usd(report.totals.cross_boundary) }}. Explicit tips with unclear period: ${{ usd(report.totals.tip_period_unclear) }}.</p>
+  <p>Possible exact repeated entries: ${{ usd(report.repeat_extra) }}. Retained in the total; the PDF has no transaction identifiers to confirm duplication. No amount was redistributed using Clover.</p>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>Recipient</th><th>Employee link</th><th>Paid tips (USD)</th><th>Cross-boundary (USD)</th><th>Unclear period (USD)</th><th>Rows</th></tr></thead>
+    <tbody>{% for person in report.people %}<tr><td><a href="#recipient-{{ loop.index }}">{{ person.name }}</a></td><td>{{ 'Needs identity review' if person.unresolved else ('Matched by exact name' if person.employee_id else 'No matched payment') }}</td><td>{{ usd(person.in_scope) }}</td><td>{{ usd(person.cross_boundary) }}</td><td>{{ usd(person.tip_period_unclear) }}</td><td>{{ person.payment_count }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% for person in report.people %}
+<div class="card" id="recipient-{{ loop.index }}"><details><summary><strong>{{ person.name }}</strong> · ${{ usd(person.in_scope) }}</summary>
+  {% if person.unresolved %}<p>Recipient has no unique employee identity. The source payment is preserved without inventing an employee or classifying this person as a trial.</p>{% endif %}
+  {% if person.exact_repeat_extra %}<p>Exact repeated entries to review: ${{ usd(person.exact_repeat_extra) }}.</p>{% endif %}
+  <div style="overflow-x:auto"><table><thead><tr><th>Date sent</th><th>USD</th><th>Memo</th><th>Earnings period</th><th>Status / treatment</th><th>PDF page / row</th></tr></thead>
+  <tbody>{% for item in person.payments %}{% set payment = item.observation %}<tr><td>{{ payment.date }}</td><td>{{ usd(payment.amount_minor) }}</td><td>{{ payment.memo or '(blank)' }}</td><td>{{ payment.period_start or 'Unspecified' }}{% if payment.period_end %} – {{ payment.period_end }}{% endif %}{% if payment.nonstandard_week %}<br>Nonstandard interval: memo preserved{% endif %}</td><td>{{ payment.status }} / {{ {'in_scope':'Included paid tip','cross_boundary':'Cross-boundary: separate','outside_scope':'Outside period','tip_period_unclear':'Tip: clarify period','no_explicit_tip':'Not classified as tip','not_completed':'Not completed: excluded'}.get(payment.category, payment.category) }}</td><td>{{ payment.page }} / {{ payment.pdf_row }}</td></tr>{% endfor %}</tbody></table></div>
+</details></div>
+{% endfor %}
+<div class="card"><p>Source: {{ report.document.file_name }} · SHA256 {{ report.document.document_sha256 }} · import {{ report.document.run_id }} · {{ report.rows }} preserved observations.</p><p>Bank, calculation runs, entitlements and payment instructions are unchanged by this import. This page cannot send a payment or finalize a period.</p></div>
+{% endif %}
+{% endblock %}
