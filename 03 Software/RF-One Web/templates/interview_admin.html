@@ -4,6 +4,7 @@
 {% include "_interview_test_banner.html" %}
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <span>Organization</span> / Interviews</p>
 <h1>Interviews</h1>
+<p class="how-works-link"><a href="{{ url_for('interviews_how_it_works') }}#request">How Works</a></p>
 <p>{% if interview_directory_access %}<a href="{{ url_for('people_home') }}">People directory</a>{% endif %}{% if selected_person %} / {% if interview_directory_access %}<a href="{{ url_for('person_detail', person_id=selected_person.id) }}">{{ selected_person.full_name }}</a>{% else %}{{ selected_person.full_name }}{% endif %} · <a href="{{ url_for('interview_admin') }}">All interviews</a>{% endif %}</p>
 <h2>Request an interview</h2>
 <form method="post">
@@ -14,14 +15,15 @@
     {% for person in people %}{% set login = delivery.get(person.id) %}<option value="{{ person.id }}" data-record-url="{{ url_for('person_detail', person_id=person.id) if interview_directory_access else '' }}" data-login="{{ login.username if login else 'No active linked account' }}" {% if selected_person and selected_person.id == person.id %}selected{% endif %} {% if not login %}disabled{% endif %}>{{ person.full_name or 'Name not available' }}{% if not login %} — no active linked account{% endif %}</option>{% endfor %}
   </select>
   <p><a id="interview-person-link" {% if selected_person and interview_directory_access %}href="{{ url_for('person_detail', person_id=selected_person.id) }}"{% else %}hidden{% endif %}>Open person record</a> <span id="interview-person-login"></span></p>
-  {% if selected_person and not delivery.get(selected_person.id) %}<p>Link an active RF-One account in the person record before requesting an interview.</p>{% endif %}
+  {% if selected_person and not selected_is_current %}<p>{{ selected_person.full_name }} is not a current employee. Their past interviews remain listed below; a new interview cannot be requested.</p>
+  {% elif selected_person and not delivery.get(selected_person.id) %}<p>Link an active RF-One account in the person record before requesting an interview.</p>{% endif %}
   <label for="purpose">Purpose to explain to the AI</label>
   <textarea id="purpose" name="purpose" rows="5" maxlength="4000" required placeholder="What would you like to learn through this interview?">{{ request.form.get('purpose', '') }}</textarea>
   <p>The recipient will find the request on their MyRFOne home page and can answer by voice or text.</p>
   <button type="submit">Request interview</button>
 </form>
 <h2>All interviews</h2>
-<p>Everyone with Interviews access sees every interview and its results.</p>
+<p>Domain administrators of Organization see every interview; other people with Interviews access see the interviews they requested.</p>
 {% if rows %}
 <table class="table-stack">
   <thead><tr><th>Person</th><th>Purpose</th><th>Requested by</th><th>Status</th><th>Requested on</th><th></th></tr></thead>

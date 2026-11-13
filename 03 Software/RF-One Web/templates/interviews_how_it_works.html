@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block page_title %}How Interviews works · RF-One{% endblock %}
+{% block content %}
+{% include "_interview_test_banner.html" %}
+<p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <span>Organization</span> / How Interviews works</p>
+<h1>How Interviews works</h1>
+<p>An interview collects a person's know-how through a conversation with the AI. A manager requests it, the person answers by text or voice, and the manager reviews the results.</p>
+<nav aria-label="Guide contents"><a href="#request">Request an interview</a> · <a href="#results">Results</a> · <a href="#session">Answer an interview</a></nav>
+
+<section id="request"><h2>Request an interview</h2>
+<p>Open <strong>Organization / Interviews</strong>. This page needs the Interviews item of the Organization Domain.</p>
+<ol><li><strong>Choose the person.</strong> The list shows only current employees, as the Employee Directory decides. Dismissed people never appear, including the owner when the owner's person record is dismissed.</li><li><strong>Login required.</strong> The person needs one active RF-One account linked to their person record. Without it the name is shown but cannot be selected.</li>
+<li><strong>Describe the purpose</strong> the AI should explore (up to 4000 characters) and press <em>Request interview</em>. The person finds the request on their MyRFOne home page.</li></ol>
+<p>RF-One checks the person again when you press <em>Request interview</em>. If they were dismissed after you opened the page, the request is refused and nothing is created. An old person number that was merged into another record counts as that record.</p>
+<p>Opening Interviews from the record of a person who is no longer a current employee shows their past interviews, with a notice that a new interview cannot be requested.</p>
+<p><strong>All interviews.</strong> Domain administrators of Organization see every interview. Other people with Interviews access see the interviews they requested. Past interviews, answers and results stay available after a person is dismissed.</p></section>
+
+<section id="results"><h2>Results</h2>
+<p>Open an interview from the list to see its purpose, status, interviewee and, once completed, the answers and the AI results. AI-generated results require human review.</p>
+<p>Interviews started before participants were asked for consent show <em>Consent not recorded</em>: their answers and results are visible only to the person who requested them until the participant agrees on their next answer.</p>
+<p>Domain administrators of Organization can delete an interview by ticking the confirmation box. The interview, its answers and results are removed; the person's directory history keeps who deleted it and when, not its content.</p></section>
+
+<section id="session"><h2>Answer an interview</h2>
+<p>Open the request from your MyRFOne home page. Read what we would like to learn, tick <em>I agree</em> and press <em>Start interview</em>. Your answers are saved in RF-One and used to build the company's know-how.</p>
+<p>Answer each question by typing or with <em>Speak</em>; review the text and press <em>Send answer</em>. You can listen to the question aloud. When you have answered at least one question, press <em>Complete interview</em>.</p>
+<p>If the page says the interview has changed, it was updated in another tab: reload the page and continue.</p></section>
+{% endblock %}

@@ -76,6 +76,8 @@ def request_interview(db, requester, recipient_id, purpose, specialization="KNOW
     person = people.person_for_account(db, recipient.id)
     if person is None:
         raise ValueError("Link this login to its person record in the existing RF-One directory first.")
+    # The owner's login stays active after a dismissal; the person still may not be chosen.
+    person = people.require_recipient(db, person.id)
     row = InterviewSession(id=str(uuid.uuid4()), requester_id=requester.id,
         recipient_id=recipient.id, person_id=person.id if person else None,
         purpose=purpose, specialization=specialization,
@@ -87,9 +89,7 @@ def request_interview(db, requester, recipient_id, purpose, specialization="KNOW
 
 def request_for_person(db, requester, person_id, purpose):
     require_manager(db, requester)
-    person = people.get_person(db, person_id)
-    if person is None:
-        raise ValueError("Select a person from the people directory.")
+    person = people.require_recipient(db, person_id)
     recipient = people.delivery_account(db, person.id)
     if recipient is None:
         raise ValueError("Link an active RF-One account to this person before requesting an interview.")

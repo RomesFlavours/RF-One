@@ -26,6 +26,7 @@ from db import SessionFactory, _engine
 from rfone_data_store import models as m
 from rfone_data_store.interviews import directory_bridge as people
 from rfone_data_store import employee_directory as directory
+from rfone_data_store import employee_applicability as applicability
 from rfone_data_store.interviews import service as svc
 from rfone_data_store.interviews.models import InterviewSession
 from rfone_data_store.interviews.provider import ProviderError
@@ -83,6 +84,18 @@ class InterviewTests(unittest.TestCase):
             session[auth.SESSION_ACCOUNT_KEY] = account.id
             session[auth.SESSION_VERSION_KEY] = account.session_version
             session[auth.SESSION_CSRF_KEY] = "test-csrf"
+
+    def make_restaurants(self, *names):
+        restaurants = [m.Restaurant(name=name + "-" + uuid.uuid4().hex[:6]) for name in names]
+        self.db.add_all(restaurants); self.db.flush()
+        return restaurants
+
+    def scope(self, account_or_person_id, kind, *restaurants):
+        """Set applicability the only way RF-One allows: the Employee Directory service."""
+        person_id = (self.person_records[account_or_person_id.id].id
+                     if isinstance(account_or_person_id, m.RFOneAccount) else account_or_person_id)
+        applicability.set_applicability(self.db, person_id, kind=kind, restaurant_ids=[r.id for r in restaurants])
+        self.db.commit()
 
     def create(self, purpose="Capire come risolvere un reclamo difficile"):
         row = svc.request_interview(self.db, self.admin, self.person.id, purpose)
@@ -580,7 +593,14 @@ class InterviewTests(unittest.TestCase):
                 down = declared.get('down_revision')
                 parents[declared['revision']] = tuple(down) if isinstance(down, (list, tuple)) else ((down,) if down else ())
         children = {p for ups in parents.values() for p in ups}
-        self.assertEqual(sorted(r for r in parents if r not in children), ['e1b220261102'])
+        heads = sorted(r for r in parents if r not in children)
+        self.assertEqual(len(heads), 1)
+        # Later revisions (the Employee Directory lifecycle) build on the consent revision.
+        ancestry, todo = set(), list(heads)
+        while todo:
+            current = todo.pop()
+            ancestry.add(current); todo.extend(parents.get(current, ()))
+        self.assertIn('e1b220261102', ancestry)
         self.assertEqual(parents['e1b220261102'], ('e0a120261101',))
         loaded = []
         for name in ('e0a120261101_add_interviews_test.py', 'e1b220261102_add_interview_consent.py'):
@@ -623,6 +643,261 @@ class InterviewTests(unittest.TestCase):
                 self.assertFalse(inspect(c).has_table('interview_sessions'))
                 self.assertTrue(inspect(c).has_table('employees'))
         engine.dispose()
+
+
+class ActiveRecipientTests(unittest.TestCase):
+    """New recipients come from the shared Employee Directory; never a live database."""
+
+    setUpClass = classmethod(InterviewTests.setUpClass.__func__)
+    setUp = InterviewTests.setUp
+    tearDown = InterviewTests.tearDown
+    login = InterviewTests.login
+    create = InterviewTests.create
+    make_restaurants = InterviewTests.make_restaurants
+    scope = InterviewTests.scope
+
+    def dropdown(self, person_id=None, account=None):
+        self.login(account or self.admin)
+        url = "/admin/interviews" + ("?person_id=" + str(person_id) if person_id else "")
+        response = self.client.get(url, base_url="https://localhost")
+        self.assertEqual(response.status_code, 200)
+        return response.text.split('<select id="person_id"', 1)[1].split('</select>', 1)[0]
+
+    def count(self):
+        return self.db.scalar(select(func.count()).select_from(InterviewSession))
+
+    def manager(self):
+        from rfone_data_store import rfone_account_service as accounts
+        accounts.set_domain_access(self.db, account_id=self.other.id,
+            domain_code="ORGANIZATION", enabled=True, role_code=None,
+            scope=m.DOMAIN_ACCESS_SCOPE_SELECTED, item_codes=["interviews"])
+        self.db.commit()
+        return self.other
+
+    def test_active_only_and_no_retained_dismissed_selection(self):
+        person = self.db.get(m.Employee, self.person_record.id)
+        self.assertIn('value="' + str(person.id) + '"', self.dropdown())
+        person.active = False
+        self.db.commit()
+        # Keep the login active: an active account is not employment evidence.
+        self.assertEqual(self.person.status, "ACTIVE")
+        self.assertNotIn('value="' + str(person.id) + '"', self.dropdown(person.id))
+        page = self.client.get("/admin/interviews?person_id=" + str(person.id), base_url="https://localhost")
+        self.assertIn("is not a current employee", page.text)
+
+    def test_ineligible_technical_person_is_not_a_recipient(self):
+        person = self.db.get(m.Employee, self.person_record.id)
+        person.directory_eligible = False
+        self.db.commit()
+        self.assertNotIn('value="' + str(person.id) + '"', self.dropdown())
+        with self.assertRaises(ValueError):
+            svc.request_for_person(self.db, self.admin, person.id, "Purpose")
+
+    def test_stale_form_and_direct_account_creation_rejected_after_dismissal(self):
+        self.dropdown()  # The page is rendered while the person is still employed.
+        person = self.db.get(m.Employee, self.person_record.id)
+        person.dismissed_at = func.now(); person.active = False
+        self.db.commit()
+        before = self.count()
+        response = self.client.post("/admin/interviews", data={
+            "csrf_token": "test-csrf", "person_id": person.id, "purpose": "Purpose"},
+            base_url="https://localhost")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("dismissed or outside", response.text)
+        with self.assertRaises(ValueError):
+            svc.request_interview(self.db, self.admin, self.person.id, "Purpose")
+        self.db.rollback()
+        self.assertEqual(self.count(), before)
+
+    def test_external_account_is_not_a_recipient(self):
+        external = m.RFOneAccount(username="external-" + uuid.uuid4().hex,
+            display_name="External reviewer", password_hash="unused", status="ACTIVE")
+        self.db.add(external)
+        self.db.commit()
+        with self.assertRaises(ValueError):
+            svc.request_interview(self.db, self.admin, external.id, "Purpose")
+        self.assertNotIn("External reviewer", self.dropdown())
+
+    def test_retired_ids_resolve_without_bypassing_active_check(self):
+        alias = m.Employee(display_name="Retired identity")
+        self.db.add(alias); self.db.flush()
+        self.db.add(m.EmployeeIdentityAlias(employee_id=alias.id,
+            canonical_employee_id=self.person_record.id))
+        self.db.flush()
+        row = svc.request_for_person(self.db, self.admin, alias.id, "Purpose")
+        self.assertEqual(row.person_id, self.person_record.id)
+        self.db.get(m.Employee, self.person_record.id).active = False
+        self.db.flush()
+        with self.assertRaises(ValueError):
+            svc.request_for_person(self.db, self.admin, alias.id, "Purpose")
+        # A manipulated form carrying the retired ID is refused the same way.
+        self.db.commit()
+        before = self.count()
+        self.login(self.admin)
+        response = self.client.post("/admin/interviews", data={
+            "csrf_token": "test-csrf", "person_id": alias.id, "purpose": "Purpose"},
+            base_url="https://localhost")
+        self.assertIn("dismissed or outside", response.text)
+        self.assertEqual(self.count(), before)
+
+    def test_dismissal_preserves_existing_interview_and_manager_history(self):
+        row = self.create()
+        row.status = "COMPLETED"
+        row.transcript = json.dumps([{"role": "user", "text": "Original testimony"}])
+        row.results = json.dumps({"summary": "Saved summary", "knowledge": [], "open_questions": []})
+        row.consent_given = True
+        self.db.get(m.Employee, self.person_record.id).active = False
+        self.db.commit()
+        self.login(self.admin)
+        response = self.client.get("/admin/interviews/" + row.id, base_url="https://localhost")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Original testimony", response.text)
+        self.assertIn("Saved summary", response.text)
+        self.assertEqual(svc.interview_person(self.db, row).id, self.person_record.id)
+        self.assertIn(row.id, self.client.get("/admin/interviews", base_url="https://localhost").text)
+        self.assertIn(row.id, self.client.get("/admin/interviews?person_id=" + str(self.person_record.id),
+                                              base_url="https://localhost").text)
+        self.assertIsNotNone(self.db.get(InterviewSession, row.id).results)
+
+    def people_with_scopes(self):
+        """A server on one restaurant, one on two, one elsewhere, a group director, one not configured."""
+        wp, md, dt = self.make_restaurants("WP", "MD", "DT")
+        made = {}
+        for label, kind, places in (("wp", "RESTAURANT", (wp,)), ("wpmd", "RESTAURANTS", (wp, md)),
+                                    ("dt", "RESTAURANT", (dt,)), ("group", "GROUP", ()), ("unset", None, ())):
+            person = directory.create_person(self.db, display_name="Person " + label, account_id=self.admin.id)
+            if kind:
+                self.scope(person.id, kind, *places)
+            made[label] = person.id
+        self.db.commit()
+        return (wp, md, dt), made
+
+    def test_requester_applicability_does_not_limit_recipients(self):
+        (wp, md, dt), people_ids = self.people_with_scopes()
+        manager = self.manager()
+        for requester_scope in ((None,), ("RESTAURANT", wp), ("RESTAURANTS", md, dt), ("GROUP",)):
+            if requester_scope[0]:
+                self.scope(manager, *requester_scope)
+            options = self.dropdown(account=manager)
+            for label in people_ids:  # every current employee, whatever either applicability
+                self.assertIn('value="' + str(people_ids[label]) + '"', options, (requester_scope[0], label))
+            self.assertNotIn("pplicability", options)
+        page = self.client.get("/admin/interviews", base_url="https://localhost").text
+        self.assertNotIn("organizational applicability", page)
+
+    def test_both_creation_paths_ignore_applicability_and_recheck_active(self):
+        wp, md = self.make_restaurants("WP", "MD")
+        manager = self.manager()
+        self.scope(manager, "RESTAURANT", wp)
+        self.scope(self.person, "RESTAURANT", md)  # a different restaurant: still selectable
+        self.assertEqual(svc.request_for_person(self.db, manager, self.person_record.id, "Purpose").person_id,
+                         self.person_record.id)
+        self.assertEqual(svc.request_interview(self.db, manager, self.person.id, "Purpose").person_id,
+                         self.person_record.id)
+        self.db.commit()
+        # Scope fields smuggled into the request change nothing.
+        self.login(manager)
+        response = self.client.post("/admin/interviews?scope_kind=RESTAURANT", data={
+            "csrf_token": "test-csrf", "person_id": self.person_record.id, "purpose": "Purpose",
+            "scope_kind": "RESTAURANT", "restaurant_id": str(wp.id), "location_ids": "1"}, base_url="https://localhost")
+        self.assertEqual(response.status_code, 302)
+        # The active-state recheck still applies to both paths.
+        self.db.get(m.Employee, self.person_record.id).active = False
+        self.db.commit()
+        before = self.count()
+        with self.assertRaises(ValueError):
+            svc.request_for_person(self.db, manager, self.person_record.id, "Purpose")
+        with self.assertRaises(ValueError):
+            svc.request_interview(self.db, manager, self.person.id, "Purpose")
+        self.db.rollback()
+        self.assertEqual(self.count(), before)
+
+    def test_requester_not_configured_is_neither_a_block_nor_the_whole_group(self):
+        manager = self.manager()
+        manager_person = self.person_records[manager.id].id
+        self.assertEqual(applicability.get_applicability(self.db, manager_person), applicability.UNCONFIGURED)
+        self.assertIn('value="' + str(self.person_record.id) + '"', self.dropdown(account=manager))
+        row = svc.request_for_person(self.db, manager, self.person_record.id, "Purpose")
+        self.db.commit()
+        self.assertEqual(row.person_id, self.person_record.id)
+        # Nothing is assigned automatically to either person.
+        for person_id in (manager_person, self.person_record.id):
+            self.assertEqual(applicability.get_applicability(self.db, person_id), applicability.UNCONFIGURED)
+            self.assertNotEqual(applicability.get_applicability(self.db, person_id).kind, applicability.GROUP)
+        # A dismissed manager loses Interviews access altogether (unchanged lifecycle rule).
+        self.db.get(m.Employee, manager_person).active = False
+        self.db.commit()
+        self.assertIn(self.client.get("/admin/interviews", base_url="https://localhost").status_code, (302, 403))
+
+    def test_applicability_never_grants_interviews_access(self):
+        self.scope(self.other, "GROUP")  # whole group, but no Interviews item
+        self.login(self.other)
+        self.assertEqual(self.client.get("/admin/interviews", base_url="https://localhost").status_code, 403)
+        with self.assertRaises(PermissionError):
+            svc.request_for_person(self.db, self.other, self.person_record.id, "Purpose")
+
+    def test_dismissed_owner_keeps_access_but_is_never_a_recipient(self):
+        owner = self.admin2
+        self.assertIsNone(self.db.scalar(select(m.RFOneAccount.id).where(m.RFOneAccount.is_owner.is_(True))))
+        owner.is_owner = True
+        record = self.db.get(m.Employee, self.person_records[owner.id].id)
+        record.dismissed_at = func.now(); record.active = False
+        self.db.commit()
+
+        owner_id = owner.id
+
+        def restore():  # runs after tearDown closed the fixture session
+            with SessionFactory() as db:
+                db.get(m.RFOneAccount, owner_id).is_owner = False
+                db.commit()
+        self.addCleanup(restore)
+        self.assertEqual(owner.status, "ACTIVE")
+        self.assertTrue(directory.account_employee_allows_access(self.db, owner.id))
+        # The owner still administers Interviews...
+        options = self.dropdown(account=owner)
+        self.assertIn('value="' + str(self.person_record.id) + '"', options)
+        # ...but the owner's dismissed person is not offered and cannot be requested.
+        self.assertNotIn('value="' + str(record.id) + '"', options)
+        self.assertNotIn('value="' + str(record.id) + '"', self.dropdown())
+        before = self.count()
+        for requester in (self.admin, owner):
+            with self.assertRaises(ValueError):
+                svc.request_for_person(self.db, requester, record.id, "Purpose")
+            with self.assertRaises(ValueError):
+                svc.request_interview(self.db, requester, owner.id, "Purpose")
+            self.db.rollback()
+        self.assertEqual(self.count(), before)
+
+    def test_permissions_and_csrf_unchanged(self):
+        before = self.count()
+        self.login(self.other)  # no Interviews access
+        self.assertEqual(self.client.get("/admin/interviews", base_url="https://localhost").status_code, 403)
+        self.assertEqual(self.client.post("/admin/interviews", data={"csrf_token": "test-csrf",
+            "person_id": self.person_record.id, "purpose": "Purpose"}, base_url="https://localhost").status_code, 403)
+        with self.assertRaises(PermissionError):
+            svc.request_for_person(self.db, self.other, self.person_record.id, "Purpose")
+        self.login(self.admin)
+        response = self.client.post("/admin/interviews", data={
+            "person_id": self.person_record.id, "purpose": "Purpose"}, base_url="https://localhost")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.count(), before)
+
+    def test_how_works_links_open_their_own_section(self):
+        row = self.create()
+        guide = self.client.get("/interviews/how-it-works", base_url="https://localhost")
+        self.assertEqual(guide.status_code, 302)  # sign-in required
+        self.login(self.admin)
+        guide = self.client.get("/interviews/how-it-works", base_url="https://localhost").text
+        for section in ("request", "results", "session"):
+            self.assertIn('id="' + section + '"', guide)
+        self.assertNotIn("applicability", guide)  # recipients are not limited by it
+        self.assertIn("/interviews/how-it-works#request",
+                      self.client.get("/admin/interviews", base_url="https://localhost").text)
+        self.assertIn("/interviews/how-it-works#results",
+                      self.client.get("/admin/interviews/" + row.id, base_url="https://localhost").text)
+        self.login(self.person)
+        self.assertIn("/interviews/how-it-works#session",
+                      self.client.get("/interviews/" + row.id, base_url="https://localhost").text)
 
 
 class AIClientLimitTests(unittest.TestCase):

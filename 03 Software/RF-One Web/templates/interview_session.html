@@ -7,6 +7,7 @@
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / Interview</p>
 <div class="interview-heading"><div><h1>Interview</h1><p class="interview-meta">Requested by {{ requester.display_name|short_name }}</p></div>
 <span id="interview-state" class="interview-state">{{ interview_status_labels[row.status] }}</span></div>
+<p class="how-works-link"><a href="{{ url_for('interviews_how_it_works') }}#session">How Works</a></p>
 {% if person %}<p class="interview-meta">Interview for {{ person.full_name }}</p>{% endif %}
 <section class="interview-purpose" aria-labelledby="interview-purpose-title">
 <h2 id="interview-purpose-title">What we would like to learn</h2>

@@ -7,6 +7,7 @@
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <a href="{{ url_for('interview_admin') }}">Interviews</a> / Results</p>
 <div class="interview-heading"><div><h1>{{ 'Interview results' if result else 'Interview requested' }}</h1><p class="interview-meta">{{ person.full_name if person else recipient.display_name }}</p></div><span class="interview-state">{{ interview_status_labels[row.status] }}</span></div>
 <section class="interview-purpose"><h2>Interview purpose</h2><p>{{ row.purpose }}</p></section>
+<p class="how-works-link"><a href="{{ url_for('interviews_how_it_works') }}#results">How Works</a></p>
 <p class="interview-hint">Times shown in {{ zone_label(tz) }}.</p>
 <dl class="interview-metadata">
 <div><dt>Interviewee</dt><dd>{% if person %}{% if interview_directory_access %}<a href="{{ url_for('person_detail', person_id=person.id) }}">{{ person.full_name }}</a>{% else %}{{ person.full_name }}{% endif %}{% else %}{{ recipient.display_name }}{% endif %}<span>{{ recipient.username }}</span></dd></div>

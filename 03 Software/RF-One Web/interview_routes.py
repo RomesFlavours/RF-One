@@ -36,6 +36,11 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
         if not svc.available(db) or not people.available(db):
             abort(503, description="Interviews are not available yet. Please contact your administrator.")
 
+    @app.get("/interviews/how-it-works")
+    @require_login
+    def interviews_how_it_works():
+        return render_template("interviews_how_it_works.html")
+
     @app.route("/admin/interviews", methods=["GET", "POST"])
     @admin_gate
     def interview_admin():
@@ -71,7 +76,8 @@ def register_interview_routes(app, *, SessionFactory, require_login, require_adm
             names = {a.id: a.display_name for a in db.scalars(select(m.RFOneAccount))}
             row_people = {row.id: svc.interview_person(db, row) for row in rows}
             return render_template("interview_admin.html", people=persons, delivery=delivery,
-                rows=rows, names=names, row_people=row_people, selected_person=selected)
+                rows=rows, names=names, row_people=row_people, selected_person=selected,
+                selected_is_current=bool(selected) and any(p.id == selected.id for p in persons))
 
     @app.get("/admin/interviews/<session_id>")
     @admin_gate
