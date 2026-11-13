@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% set help_section = "interviews-request" %}
+{% set help_title = "Interviews" %}
 {% block page_title %}Interviews · RF-One{% endblock %}
 {% block content %}
 {% include "_interview_test_banner.html" %}
 <p class="breadcrumb"><a href="{{ url_for('home') }}">MyRFOne</a> / <span>Organization</span> / Interviews</p>
 <h1>Interviews</h1>
-<p class="how-works-link"><a data-how-works href="{{ url_for('interviews_how_it_works') }}#request">How Works</a></p>
 <p>{% if interview_directory_access %}<a href="{{ url_for('people_home') }}">People directory</a>{% endif %}{% if selected_person %} / {% if interview_directory_access %}<a href="{{ url_for('person_detail', person_id=selected_person.id) }}">{{ selected_person.full_name }}</a>{% else %}{{ selected_person.full_name }}{% endif %} · <a href="{{ url_for('interview_admin') }}">All interviews</a>{% endif %}</p>
 <h2>Request an interview</h2>
 <form method="post">

@@ -1,0 +1,34 @@
+<section id="help-interviews-request" class="rf-help-section">
+<h2>How Interviews works</h2>
+<p>An interview collects a person's know-how through a conversation with an AI interviewer. You request it and explain what you want to learn; the person answers by voice or text from their MyRFOne home page; you then review the answers and the results the AI proposes. Interviews is a test prototype: AI-generated results require human review.</p>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>Choose the <strong>Person to interview</strong>.</li>
+  <li>Write the <strong>Purpose to explain to the AI</strong>: what you would like to learn (up to 4000 characters).</li>
+  <li>Press <strong>Request interview</strong>. The person finds the request on their MyRFOne home page.</li>
+  <li>The person agrees to take part, answers the AI's questions and completes the interview.</li>
+  <li>Open the interview from <strong>All interviews</strong> to read the summary, the candidate knowledge, the open questions and the full conversation.</li>
+</ol>
+
+<h3>Fields</h3>
+<dl>
+  <dt>Person to interview</dt>
+  <dd>Only current employees are listed, as the employee directory decides; dismissed people never appear. A person needs one active RF-One account linked to their record to receive the interview: without it the name is shown with "no active linked account" and cannot be chosen. When you choose a person, the page shows their RF-One access{% if interview_directory_access is defined and interview_directory_access %} and an <em>Open person record</em> link{% endif %}.</dd>
+  <dt>Purpose to explain to the AI</dt>
+  <dd>What the AI should explore with the person. The person reads it before starting.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Request interview</dt>
+  <dd>Creates the interview and opens its page. RF-One checks the person again at this moment: if they were dismissed after you opened the page, the request is refused and nothing is created. A request is not sent by e-mail; it appears on the person's MyRFOne home page.</dd>
+  <dt>View request / View results</dt>
+  <dd>Opens an interview: its request while it is not completed, its results once it is.</dd>
+</dl>
+
+<h3>All interviews</h3>
+<p>Domain administrators of Organization see every interview; other people with Interviews access see the interviews they requested. Status shows where each interview is; "Consent not recorded" marks interviews started before participants were asked to agree. Past interviews, answers and results stay available after a person is dismissed. When the page is opened for one person{% if interview_directory_access is defined and interview_directory_access %} (for example from their record){% endif %}, the list shows only that person's interviews; <em>All interviews</em> returns to the full list. If the person is no longer a current employee, their past interviews are shown but a new one cannot be requested.</p>
+
+<p>Full guide: <a href="{{ url_for('interviews_how_it_works') }}#request">How Interviews works</a>.</p>
+</section>

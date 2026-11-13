@@ -1,0 +1,37 @@
+<section id="help-interviews-results" class="rf-help-section">
+<h2>Interview results</h2>
+<p>Shows one interview: its purpose, who was interviewed, who requested it, when, and its status. Once the person has completed it, the page shows what the AI proposed from the answers, with the original answers to check them against. While it is not completed, the page shows the request and says that results will be available later.</p>
+
+<h3>What the page shows</h3>
+<dl>
+  <dt>Interviewee, Requested by, Requested on, Completed on / Progress</dt>
+  <dd>Who answers, who asked, and when, in the local time shown on the page.</dd>
+  <dt>Summary</dt>
+  <dd>The AI's summary of the conversation. It is AI-generated and not validated.</dd>
+  <dt>Candidate knowledge</dt>
+  <dd>Pieces of know-how the AI proposes, each with the supporting quotation and a <em>View the original answer</em> link. Proposals whose quotation was not found in the answers, or was too short to support them, are left out, and the page says how many.</dd>
+  <dt>Open questions</dt>
+  <dd>Topics the AI suggests exploring further. An empty list does not mean every relevant topic was covered.</dd>
+  <dt>Full conversation</dt>
+  <dd>Every question and answer, in order. Open it to check a quotation in context.</dd>
+  <dt>Consent not recorded</dt>
+  <dd>The interview started before participants were asked to agree. Until the participant agrees with their next answer, its answers and results are visible only to the person who requested it.</dd>
+</dl>
+<p>These results are proposals, not validated knowledge: read them against the original answers before relying on them.</p>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  {% if can_delete %}
+  <dt>Delete this interview → Delete interview</dt>
+  <dd>After you tick "Yes, delete this interview for everyone", permanently removes the interview, every answer and the results, for everyone. It cannot be undone. The person's directory history keeps who deleted it and when, not its content.</dd>
+  {% endif %}
+  <dt>Back to interviews</dt>
+  <dd>Returns to the list of interviews.</dd>
+  {% if person %}
+  <dt>Request another interview</dt>
+  <dd>Opens the request form with the same person already chosen.</dd>
+  {% endif %}
+</dl>
+
+<p>Full guide: <a href="{{ url_for('interviews_how_it_works') }}#results">Results</a>.</p>
+</section>
