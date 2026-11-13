@@ -1,0 +1,42 @@
+<section id="help-clover-acquisition" class="rf-help-section">
+<h2>How Clover Acquisition works</h2>
+<p>Clover Acquisition brings the restaurant's Clover data (Orders, Payments, Tips, Gratuity and Shifts) into RF-One, so that Tips, Compensation and the other areas work on up-to-date figures. It only reads from Clover: nothing is ever written back to Clover.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>Each acquisition reads one period of Clover data for the Clover Location of this Restaurant and updates what RF-One already holds. Reading the same period again updates the records with Clover's current values; nothing is duplicated.</li>
+  <li>Only one acquisition at a time can run for a Location. It runs on its own: you can leave the page while it works.</li>
+  <li>Every acquisition you start is recorded as requested by you, the signed-in person.</li>
+  <li>A Correction Sync runs automatically about every minute and re-reads what was modified in Clover after it was first acquired.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li>The first time, run a <strong>Historical Backfill</strong> for the period you need: it also sets the starting point for Sync Now.</li>
+  <li>Afterwards, press <strong>Sync Now</strong> whenever you need RF-One up to date. It reads from the last completed synchronization up to now.</li>
+  <li>Watch <strong>Acquisition in progress</strong>; the page refreshes itself when the acquisition ends.</li>
+  <li>Check the result in <strong>Acquisition history</strong>.</li>
+</ol>
+
+<h3>What this page shows</h3>
+<dl>
+  <dt>Acquisition in progress</dt>
+  <dd>The acquisition currently queued or running, its type, period and who requested it. While it is shown, the Sync Now and Run Historical Backfill buttons are disabled.</dd>
+  <dt>Last completed synchronization</dt>
+  <dd>Where the next Sync Now will start. When there has been no synchronization yet it starts from the end of the latest Historical Backfill; "none yet" means a Historical Backfill is needed first.</dd>
+  <dt>Live Sync</dt>
+  <dd>Whether continuous automatic synchronization is ACTIVE, ENABLED, NOT RUNNING or NOT ACTIVE. When it is not active, RF-One is updated only by Sync Now and Historical Backfill.</dd>
+  <dt>Acquisition history</dt>
+  <dd>The recent acquisitions: number, type, who requested it ("System (automatic)" for automatic ones), status (COMPLETE, PARTIAL means completed with warnings, FAILED; "no sign of life" means the job stopped responding), the period read, start and end, the Orders, Payments and Shifts processed and any errors. A "-" count means the acquisition was recorded before counts were tracked.</dd>
+</dl>
+<p>All times are the Location's local time.</p>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Sync Now</dt>
+  <dd>Starts an acquisition from the last completed synchronization up to now. No dates to choose. Disabled while another acquisition is running, when no Clover Location is configured, or before the first Historical Backfill.</dd>
+  <dt>Run Historical Backfill</dt>
+  <dd>Reads one specific historical period, given as whole local days from 00:00 of the <em>From date</em> through 23:59 of the <em>Through date</em>. Use it for a first load, a known gap or a correction; it is not the everyday way to update RF-One. The Through date cannot be before the From date.</dd>
+</dl>
+<p>An acquisition cannot be cancelled from this page once it has started.</p>
+</section>
