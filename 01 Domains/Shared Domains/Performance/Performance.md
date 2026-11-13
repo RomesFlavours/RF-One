@@ -119,6 +119,6 @@ Neither the margin difference nor the named-mention pattern is canonized here as
 - [PerformanceContext.md](PerformanceContext.md)
 - [../Selection/README.md](../Selection/README.md)
 - [../Continuous Productivity Development/README.md](../Continuous%20Productivity%20Development/README.md)
-- [../Personnel Decisions/README.md](../Personnel%20Management/Personnel%20Decisions/README.md)
+- [../Management/Organization/README.md](../Management/Organization/README.md) — comparison of alternatives and decisions reserved to authorized people (formerly Personnel Decisions)
 - [../../../00 Core/ConceptualArchitecture/01_Subject_and_Reality.md](../../../00%20Core/ConceptualArchitecture/01_Subject_and_Reality.md)
 - [../../../00 Core/ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md](../../../00%20Core/ConceptualArchitecture/04_Temporal_Coherence_and_Evolution.md)

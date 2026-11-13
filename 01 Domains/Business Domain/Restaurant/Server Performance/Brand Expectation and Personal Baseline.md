@@ -83,5 +83,5 @@ A result that is below Brand Expectation but represents a genuine improvement ov
 
 - [README.md](README.md), [Server Performance.md](Server%20Performance.md)
 - [Individual Performance Profile.md](Individual%20Performance%20Profile.md)
-- [../../Personnel Management/Performance/PerformanceContext.md](../../../Shared%20Domains/Performance/PerformanceContext.md)
+- [../../../Shared Domains/Performance/PerformanceContext.md](../../../Shared%20Domains/Performance/PerformanceContext.md)
 - [../Commercial Catalog/README.md](../Commercial%20Catalog/README.md)

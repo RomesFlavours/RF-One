@@ -18,7 +18,7 @@ The objective is **not** to rank Servers against one another. The objective is t
 - identify economically meaningful gaps;
 - support Training / continuous development ([Coaching Model.md](Coaching%20Model.md));
 - support [Service Copilot](../Service%20Copilot/README.md);
-- support management decisions (via [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md), never autonomously — see [Exclusions.md](Exclusions.md));
+- support management decisions (via Management / [Organization](../../../Shared%20Domains/Management/Organization/README.md) — formerly Personnel Decisions — never autonomously — see [Exclusions.md](Exclusions.md));
 - measure improvement over time.
 
 This document assembles a productivity-specific reading of concepts that already exist in this Domain (Productivity, Quality of Sale, Opportunity Capture, Concurrent Service Load — see [Server Performance.md](Server%20Performance.md), "Performance is multidimensional") and in the Shared Domain [Performance](../../../Shared%20Domains/Performance/README.md) model. It does not redefine any of them.
@@ -225,7 +225,7 @@ This document does **not** define:
 - a final Economic Performance Delta formula;
 - Support Dependency Decay formula;
 - compensation/pay decisions;
-- automatic employment decisions (remain [Personnel Decisions](../../../Shared%20Domains/Personnel%20Management/Personnel%20Decisions/README.md)' exclusive, human-applied authority — see [Individual Performance Profile.md](Individual%20Performance%20Profile.md), "The Profile is never used to autonomously decide employment");
+- automatic employment decisions (remain the exclusive, human-applied authority of the authorized people identified by Management / [Organization](../../../Shared%20Domains/Management/Organization/README.md), formerly Personnel Decisions — see [Individual Performance Profile.md](Individual%20Performance%20Profile.md), "The Profile is never used to autonomously decide employment");
 - dashboard redesign;
 - an implementation schema, database model, or migration.
 

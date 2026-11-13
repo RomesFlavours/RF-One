@@ -24,7 +24,7 @@ RF-One does **not** begin from the list of available Clover fields. For every ca
 10. How can RF-One use it for coaching?
 ```
 
-This mirrors, for the Server role specifically, the generic KPI-discovery principle already established (`01 Domains/Domain Architecture.md` §8; `Personnel Management/Performance/PerformanceIndicator.md`): no Measure is canonized as a permanent, universal KPI. The families below are candidates — grounded in the dimensions defined by [Server Performance.md](Server%20Performance.md), [Quality of Sale.md](Quality%20of%20Sale.md), [Opportunity Capture.md](Opportunity%20Capture.md), [Concurrent Service Load.md](Concurrent%20Service%20Load.md) and [Perceived Service Quality.md](Perceived%20Service%20Quality.md) — not a finalized formula set. **No formula here is fully optimized; each is a starting definition, further specified by a future task once real evidence volume exists to validate it.**
+This mirrors, for the Server role specifically, the generic KPI-discovery principle already established (`01 Domains/Domain Architecture.md` §8; `Shared Domains/Performance/PerformanceIndicator.md`): no Measure is canonized as a permanent, universal KPI. The families below are candidates — grounded in the dimensions defined by [Server Performance.md](Server%20Performance.md), [Quality of Sale.md](Quality%20of%20Sale.md), [Opportunity Capture.md](Opportunity%20Capture.md), [Concurrent Service Load.md](Concurrent%20Service%20Load.md) and [Perceived Service Quality.md](Perceived%20Service%20Quality.md) — not a finalized formula set. **No formula here is fully optimized; each is a starting definition, further specified by a future task once real evidence volume exists to validate it.**
 
 ---
 
@@ -112,7 +112,7 @@ Because Tips appear in both Service Quality Evidence and Coaching's economic-mot
 
 - It does not fix exact formulas, time windows, rounding rules or aggregation methods for any KPI listed above.
 - It does not implement any calculation, database field, or software.
-- It does not declare any Measure a permanent Indicator — relevance is Goal/Brand/context-dependent and derived, per `Personnel Management/Performance/PerformanceIndicator.md`.
+- It does not declare any Measure a permanent Indicator — relevance is Goal/Brand/context-dependent and derived, per `Shared Domains/Performance/PerformanceIndicator.md`.
 
 ---
 
@@ -120,5 +120,5 @@ Because Tips appear in both Service Quality Evidence and Coaching's economic-mot
 
 - [Server Performance.md](Server%20Performance.md)
 - [Quality of Sale.md](Quality%20of%20Sale.md), [Opportunity Capture.md](Opportunity%20Capture.md), [Concurrent Service Load.md](Concurrent%20Service%20Load.md), [Perceived Service Quality.md](Perceived%20Service%20Quality.md)
-- [../../Personnel Management/Performance/PerformanceMeasure.md](../../../Shared%20Domains/Performance/PerformanceMeasure.md), [../../Personnel Management/Performance/PerformanceIndicator.md](../../../Shared%20Domains/Performance/PerformanceIndicator.md)
+- [../../../Shared Domains/Performance/PerformanceMeasure.md](../../../Shared%20Domains/Performance/PerformanceMeasure.md), [../../../Shared Domains/Performance/PerformanceIndicator.md](../../../Shared%20Domains/Performance/PerformanceIndicator.md)
 - [../../Domain Architecture.md](../../../Domain%20Architecture.md) §8

@@ -18,12 +18,12 @@ Performance is not a fixed score and is not a predefined KPI dashboard. It groun
 
 ## Domain boundary
 
-Performance answers **"what did the person actually produce"**. It is distinct from Selection, Continuous Productivity Development (sibling Shared Domains) and from Personnel Management's own modules:
+Performance answers **"what did the person actually produce"**. It is distinct from Selection, Continuous Productivity Development (sibling Shared Domains) and from the Management / Organization responsibilities formerly documented as Personnel Management modules:
 
-- [Workforce](../Personnel%20Management/Workforce/README.md) (Personnel Management module) answers "who currently occupies the role";
+- Workforce — now [Management / Organization](../Management/Organization/README.md) §3 — answers "who currently occupies the role";
 - [Selection](../Selection/README.md) (sibling Shared Domain) answers "who else is a credible alternative," and predicts rather than observes — see "Relationship to Selection" below;
 - [Continuous Productivity Development](../Continuous%20Productivity%20Development/README.md) (sibling Shared Domain) answers "how do we close an evidenced gap or capture an opportunity" — Performance is what evidences the gap, and later shows whether the chosen intervention worked;
-- [Personnel Decisions](../Personnel%20Management/Personnel%20Decisions/README.md) (Personnel Management module) answers "what should be done about the person currently in the role," using Performance as one input among others, without Performance itself making that Decision.
+- Personnel Decisions — now [Management / Organization](../Management/Organization/README.md) §4–§5 — answers "what should be done about the person currently in the role," using Performance as one input among others, without Performance itself making that Decision.
 
 **No universal performance score is defined here, and none should be assumed to exist. No fixed KPI list is hard-coded by this Domain.**
 
@@ -45,7 +45,7 @@ This Domain does not redefine any of these concepts. It specializes them into th
 
 ## Relationship to Workforce
 
-Performance must be attributable to a relevant person/role/Assignment context, but Workforce itself (Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule, Employment Relationship) is not modeled in depth by this Domain or by [Workforce/README.md](../Personnel%20Management/Workforce/README.md) yet. Where a Performance document needs one of these concepts (e.g. Assignment as part of Performance Context), it references it as an external dependency without defining it — the same dependency pattern already used by [Selection/README.md](../Selection/README.md), "Future Workforce dependency."
+Performance must be attributable to a relevant person/role/Assignment context, but Workforce itself (Person/Worker, Role, Position, Assignment, Responsibility, Availability, Schedule, Employment Relationship) is not modeled in depth by this Domain or by [Management / Organization](../Management/Organization/README.md) yet (Organization links the existing Restaurant Employee Assignment and System Position records without a new register). Where a Performance document needs one of these concepts (e.g. Assignment as part of Performance Context), it references it as an external dependency without defining it — the same dependency pattern already used by [Selection/README.md](../Selection/README.md), "Future Workforce dependency."
 
 ---
 
@@ -86,7 +86,7 @@ See also [Selection/TrainableGap.md](../Selection/TrainableGap.md) for the curre
 
 ## Relationship to Personnel Decisions
 
-[Personnel Decisions](../Personnel%20Management/Personnel%20Decisions/README.md) may use Performance to compare the current person with alternatives Selection has identified. **Performance itself does not decide retain / train / move / replace** — it provides Reality-grounded evidence for that Decision, together with economics, Constraints, uncertainty and authority that belong to Personnel Decisions, not to Performance. Economic replacement logic is not modeled in this Domain.
+[Management / Organization](../Management/Organization/README.md) (formerly Personnel Decisions) may use Performance to compare the current person with alternatives Selection has identified. **Performance itself does not decide retain / train / move / replace** — it provides Reality-grounded evidence for that Decision, together with economics, Constraints, uncertainty and authority that belong to Organization's comparison of alternatives and to the authorized people who decide, not to Performance. Performance evidence also informs, without becoming automatically, People's professional knowledge ([Management / People](../Management/People/README.md)). Economic replacement logic is not modeled in this Domain.
 
 ---
 
@@ -112,7 +112,7 @@ Restaurant is used throughout this Domain's documents only as a first validation
 
 ## Relationship to Customer Feedback and Review
 
-Customer Feedback and Review remain separate transversal Domain candidates, not modules of Personnel Management (see [../README.md](../Personnel%20Management/README.md), "Relationship to Customer Feedback and Review," and [../../Domain Architecture.md](../../Domain%20Architecture.md) §6). Performance does not own, move, or duplicate their concepts. It may consume a specific relevant item from either as [Performance Evidence](PerformanceEvidence.md) — for example, a customer explicitly naming an employee, or review text describing specific service behavior — without importing the rest of that Domain's record or redefining what Customer Feedback or Review are. See "Cross-Domain evidence" in [PerformanceEvidence.md](PerformanceEvidence.md).
+Customer Feedback and Review remain separate transversal Domain candidates, not components of Management (see [../../Domain Architecture.md](../../Domain%20Architecture.md) §6). Performance does not own, move, or duplicate their concepts. It may consume a specific relevant item from either as [Performance Evidence](PerformanceEvidence.md) — for example, a customer explicitly naming an employee, or review text describing specific service behavior — without importing the rest of that Domain's record or redefining what Customer Feedback or Review are. See "Cross-Domain evidence" in [PerformanceEvidence.md](PerformanceEvidence.md).
 
 ---
 
@@ -157,4 +157,4 @@ Those are Product/Runtime concerns, to be designed later on top of this Domain i
 
 ## Deferred
 
-Detailed modeling of Workforce and Personnel Decisions (Personnel Management's own modules) and of Continuous Productivity Development (a sibling Shared Domain) remains deferred to future tasks (see their own READMEs). Within Performance itself, deferred items include: how Performance Evidence is actually captured or ingested from a specific technical Domain or integration; any concrete normalization method for cross-context comparison; and any KPI-discovery mechanism. See `07 Tasks/Reports/TASK_PERSONNEL_001_REPORT.md` for the full list of open questions.
+Detailed modeling of the Workforce and Personnel Decisions responsibilities (now Management / Organization) and of Continuous Productivity Development (a sibling Shared Domain) remains deferred to future tasks (see their own READMEs). Within Performance itself, deferred items include: how Performance Evidence is actually captured or ingested from a specific technical Domain or integration; any concrete normalization method for cross-context comparison; and any KPI-discovery mechanism. See `07 Tasks/Reports/TASK_PERSONNEL_001_REPORT.md` for the full list of open questions.
