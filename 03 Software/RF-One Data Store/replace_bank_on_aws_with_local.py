@@ -112,10 +112,16 @@ def run(local_path: str, target: str, apply: bool) -> dict:
     if L.execute("select version_num from alembic_version").fetchone()[0] != REVISION:
         raise Refusal("the local copy is not at the release revision")
     report = {"target": target, "applied": False, "checks": [], "tables": {}}
-    engine = sa.create_engine(target_url(target))
+    engine = sa.create_engine(target_url(target), isolation_level="REPEATABLE READ")
+    with engine.connect() as pre:  # the table list, read before the transaction's snapshot is taken
+        locked = bank_tables(pre)
+        pre.rollback()
     with engine.connect() as A:
         tr = A.begin()
         try:
+            # FIRST statement: no write to Bank during the replacement (reads keep working); the REPEATABLE READ
+            # snapshot starts after the lock, so other Domains writing meanwhile (Clover jobs) never confuse the checks.
+            A.execute(sa.text("LOCK TABLE " + ", ".join(f'"{t}"' for t in locked) + " IN EXCLUSIVE MODE"))
             if [r[0] for r in A.execute(sa.text("select version_num from alembic_version"))] != [REVISION]:
                 raise Refusal("AWS is not at the release revision")
             tables = bank_tables(A)
@@ -145,8 +151,8 @@ def run(local_path: str, target: str, apply: bool) -> dict:
             others = [t for t in sa.inspect(A).get_table_names() if t not in tables and t != "alembic_version"]
             others_before = {t: digest(A, t) for t in others}
 
-            # no write to Bank during the replacement (reads keep working)
-            A.execute(sa.text("LOCK TABLE " + ", ".join(f'"{t}"' for t in tables) + " IN EXCLUSIVE MODE"))
+            if tables != locked:
+                raise Refusal("the Bank tables changed while locking")
             A.execute(sa.text("SET LOCAL session_replication_role = replica"))
             md = sa.MetaData()
             md.reflect(A, only=tables)
