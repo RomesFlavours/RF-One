@@ -40,7 +40,7 @@
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
       {% if employees_available %}
-      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti</strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
+      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Anagrafica dipendenti <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; Identità RF-One, sedi e collegamenti Clover.</a>
       {% endif %}
       {% if bank_available %}
       <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Import and reconcile bank transactions.</a>

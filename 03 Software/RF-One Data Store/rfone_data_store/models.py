@@ -1157,9 +1157,12 @@ class Employee(Base):
     source_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     system_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # No active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
+    # No direct active/inactive field is exposed by Clover (TASK_CLOVER_003 §B) —
     # nullable, never defaulted to True/False from an absent source signal.
     active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    directory_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
 
     source_created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1172,7 +1175,8 @@ class Employee(Base):
 class EmployeeContextLink(Base):
     """Explicit person association; no account authority or domain fact ownership."""
     __tablename__ = "employee_context_links"
-    __table_args__ = (CheckConstraint(
+    __table_args__ = (Index("uq_employee_one_rfone_account", "employee_id", unique=True,
+        postgresql_where=text("rfone_account_id IS NOT NULL"), sqlite_where=text("rfone_account_id IS NOT NULL")), CheckConstraint(
         "(CASE WHEN rfone_account_id IS NULL THEN 0 ELSE 1 END + "
         "CASE WHEN acting_identity_id IS NULL THEN 0 ELSE 1 END + "
         "CASE WHEN training_account_id IS NULL THEN 0 ELSE 1 END + "
@@ -1205,6 +1209,10 @@ class EmployeeCloverLink(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
     state: Mapped[str] = mapped_column(String(24), nullable=False, default="PRESENT")
+    last_clock_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_clock_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    clocks_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EmployeeIdentityAlias(Base):

@@ -112,3 +112,23 @@ ActingIdentity and Training records. It reuses existing authenticated account↔
 Training↔human identity associations to resolve the same person. This adds no
 permission, AuthorityGrant, authentication mechanism or changes to access tables.
 The structural freeze on Identity & Access itself remains in force.
+
+
+### Employee lifecycle exception approved 2026-11-03
+
+The Product Owner revised the directory/account relationship: each canonical
+employee must have one RF1 account, while external RF1 accounts need no employee.
+Directory creation/migration provisions INACTIVE account shells with unusable
+password markers, no fabricated email and no permission grants. Approved existing
+accounts may replace provisional shells; a replaced shell stays INACTIVE, unusable,
+ungranted and unlinked, is never deleted automatically, and can never be linked again
+as a real account (ACCOUNT_REPLACED keeps the trace). Complete source dismissal blocks
+login, revokes sessions and disables the linked account. Owner exception, approved by
+the Product Owner on 2026-11-03: the owner keeps RF1 administrative access
+(ADMIN_PERMISSIONS_001) and OWNER_ACCESS_PROTECTED records it; the linked person
+still stays dismissed and out of interview recipients and new operational selections.
+External accounts are unaffected. Rehire does not automatically restore account
+access, and re-enabling the account of a dismissed person does not grant access. Training login
+and sessions follow the same confirmed employment linkage. No authority table or
+profile permission model is introduced; profile-driven grants remain future work.
+This explicit approval supersedes incompatible earlier no-account-change rules.

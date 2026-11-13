@@ -60,3 +60,16 @@ See 07 Tasks/Reports/PERSON_FOUNDATION_003_REPORT.md from the repository root.
 
 The person foundation was subsequently published on AWS on 2026-10-29. Exact
 release and backup references: 07 Tasks/Reports/PERSON_FOUNDATION_003_AWS_REPORT.md.
+
+## 2026-11-03 — Employee lifecycle and mandatory RF1 account (local, not deployed)
+
+Branch codex/employee-directory, migration e3f120261103 (after d9e220261029).
+Complete Clover roster + clock scans end single-site positions; the last ended
+position dismisses the person at the latest clock-in and blocks RF1/Training access
+(owner excepted). No-clock identities stay technical observations. Every registered
+employee has exactly one RF1 account (INACTIVE shell or confirmed existing account).
+Shared service: interview_employee_options / require_active_employee. Not on AWS;
+AWS is ahead of this checkout (rfone-web 34a91a8, schema e1b220261102): rebase the
+migration's down_revision and reconcile with current main before any release.
+PO decisions approved 2026-11-03: owner keeps RF1 access while the person stays
+dismissed; Workforce closes assignments; replaced shells stay INACTIVE, unlinked.
