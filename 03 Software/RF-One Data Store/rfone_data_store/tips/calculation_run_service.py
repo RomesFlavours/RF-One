@@ -178,7 +178,7 @@ def identity_hold_blockers(
     days = ", ".join(held["business_dates"]) or f"{run.first_business_date} to {run.last_business_date}"
     return [
         f"Business Dates {days} still have Clover work waiting for an employee identity to be confirmed "
-        f"in Employee Directory (orders {held['orders']}, payments {held['payments']}, refunds "
+        f"in Registry (orders {held['orders']}, payments {held['payments']}, refunds "
         f"{held['refunds']}, shifts {held['shifts']}). Tips would allocate them to nobody, so these days "
         "cannot be final yet. Confirm the identity; the work is attributed automatically."
     ]

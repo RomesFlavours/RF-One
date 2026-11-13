@@ -2,6 +2,7 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Tips · Calculation Run {{ run.id }} · RF-One{% endblock %}
 {% block content %}
+{% with help_section='tips_validation', ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}
 {# The saved Calculation Run Report (TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001
    §18), read back from what was persisted — never recalculated — plus the one
    human validation action (§14/§15). Mirrors Tips/templates/tips_run_report.html. #}
@@ -111,7 +112,7 @@
     </p>
   {% else %}
     {% for blocker in finalization_blockers %}
-      <div class="error">{{ blocker }}</div>
+      <div class="error">{{ blocker }}{% if can_manage_profiles and 'employee identity' in blocker %} <a href="{{ url_for('role_profiles_home', tab='people', _anchor='clover-identities') }}">{{ 'Conferma le identità Clover in Registry' if registry_it else 'Confirm Clover identities in Registry' }}</a>{% endif %}</div>
     {% endfor %}
     {% if not finalization_blockers %}
       <form method="post" action="{{ url_for('tips_validation_validate', run_id=run.id) }}">
