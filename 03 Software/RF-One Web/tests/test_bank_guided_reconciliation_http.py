@@ -13,6 +13,7 @@ store, both created here and deleted at the end. Needs the C-Bank worktree
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import shutil
@@ -106,9 +107,10 @@ def main() -> int:
     login(client, "guided_operator")
     home = client.get("/bank").data.decode("utf-8")
     tabs = TABS_RE.findall(home)
-    check("3. 'Guided Reconciliation' is a Bank tab, right after Import and Review",
-          [label for _, label in tabs][:2] == ["Import and Review", "Guided Reconciliation"]
-          and ("/bank/reconcile/", "Guided Reconciliation") in tabs, tabs)
+    # BANK_WHO_RULES_001 (2026-10-25): WHO Rules is the only rules engine in the menu; this page stays
+    # reachable by its address, out of the menu.
+    check("3. 'Guided Reconciliation' is not a Bank menu tab (reachable by its address)",
+          all(label != "Guided Reconciliation" for _, label in tabs) and ("/bank/who-search-text", "WHO Rules") in tabs, tabs)
 
     resp = client.get("/bank/reconcile")
     check("4. /bank/reconcile leads to /bank/reconcile/", resp.status_code in (301, 308)
@@ -121,14 +123,32 @@ def main() -> int:
           resp.status_code == 200 and "Guided Reconciliation" in page and 'class="site-header"' in page
           and "css/rf-one.css" in page and token is not None, resp.status_code)
     crumb = page[page.find('class="breadcrumb"'):][:600]
-    check("6. breadcrumb RF-One › Bank Reconciliation › Guided Reconciliation, its tab active",
-          "RF-One" in crumb and "Bank Reconciliation" in crumb and "Guided Reconciliation" in crumb
-          and re.search(r'module-tab is-active"\s+href="/bank/reconcile/"', page) is not None, crumb)
+    check("6. breadcrumb RF-One › Bank Reconciliation › Guided Reconciliation",
+          "RF-One" in crumb and "Bank Reconciliation" in crumb and "Guided Reconciliation" in crumb, crumb)
     check("7. the page calls its API under the Bank prefix", 'const B="/bank/reconcile"' in page)
 
     check("8. a C-Bank write without its token is refused (403)",
           client.post("/bank/reconcile/api/runs", data={"kind": "month", "month": "2026-09"}).status_code == 403)
 
+    # BANK_UPLOAD_AND_RECONCILE_001: a run is automatic processing — refused until the data are complete, then
+    # accepted once a complete file set is uploaded on Upload and Reconcile.
+    resp = client.post("/bank/reconcile/api/runs", data={"kind": "month", "month": "2026-09"},
+                       headers={"X-CBank-Token": token})
+    check("8b. with no complete data the run is refused by the one completeness gate (409)", resp.status_code == 409
+          and "Upload and Reconcile" in resp.get_json()["error"], resp.data[:200])
+    with SessionFactory() as db:
+        from rfone_data_store.bank_reconciliation import configuration as config_service
+        llc = config_service.create_entity(db, name="Guided Test, LLC", legal_name="Guided Test, LLC")
+        db.add(m.PaymentInstrument(display_name="Guided checking", instrument_type="BANK_ACCOUNT", institution="Chase",
+                                   last_four="0101", status="ACTIVE", owner_reporting_entity_id=llc.id))
+        db.commit()
+    work = client.get("/bank/work").data.decode("utf-8")
+    client.post("/bank/work/upload", content_type="multipart/form-data", data={
+        "csrf_token": CSRF_RE.search(work).group(1),
+        "files": (io.BytesIO(b"Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #\n"
+                             b"DEBIT,09/02/2026,GUIDED TEST SUPPLIER,-12.00,DEBIT_CARD,88.00,\n"),
+                  "Chase0101_Activity_20260930.csv")})
+    check("8c. after the upload the data are ready", "Data ready for reconciliation" in client.get("/bank/work").data.decode())
     before = bank_rows()
     resp = client.post("/bank/reconcile/api/runs", data={"kind": "month", "month": "2026-09"},
                        headers={"X-CBank-Token": token})

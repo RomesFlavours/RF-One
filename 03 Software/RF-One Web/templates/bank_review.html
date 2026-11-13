@@ -207,7 +207,7 @@
                   </form>
                 {% endif %}
               </td>
-              <td data-label="Example" class="bank-example-cell"><button type="button" class="btn-secondary" data-profile-research="{{ txn.id }}">AI</button><button type="button" class="btn-secondary bank-example-open" data-example-description="{{ txn.description_original }}" data-example-rule="{{ url_for('bank_ai_rules', transaction_id=txn.id, return_to=request.full_path.rstrip('?') ~ '#t-' ~ txn.id) }}" data-example-photo="{{ url_for('bank_ai_rules', transaction_id=txn.id, capture=1, return_to=request.full_path.rstrip('?') ~ '#t-' ~ txn.id) }}">Use as example</button><div class="bank-pipeline-status" data-pipeline-id="{{ txn.id }}"></div></td>
+              <td data-label="Example" class="bank-example-cell"><button type="button" class="btn-secondary" data-movement-research="{{ txn.id }}">AI</button><button type="button" class="btn-secondary bank-example-open" data-example-description="{{ txn.description_original }}" data-example-rule="{{ url_for('bank_ai_rules', transaction_id=txn.id, return_to=request.full_path.rstrip('?') ~ '#t-' ~ txn.id) }}" data-example-photo="{{ url_for('bank_ai_rules', transaction_id=txn.id, capture=1, return_to=request.full_path.rstrip('?') ~ '#t-' ~ txn.id) }}">Use as example</button><div class="bank-pipeline-status" data-pipeline-id="{{ txn.id }}"></div></td>
             </tr>
           {% endfor %}
         </tbody>
@@ -253,4 +253,5 @@ document.querySelectorAll("[data-for-whom-select]").forEach(function (select) {
 </style>
 <dialog id="bank-research-dialog" aria-label="Guided reconciliation"><div class="bank-research-toolbar"><button type="button" id="bank-research-close">Stop</button><button type="button" id="bank-run-skip" class="btn-secondary">Skip this transaction</button><span id="bank-research-position" role="status"></span><button type="button" class="rf-modal-x" style="margin:0 0 0 auto;float:none" aria-label="Close" onclick="document.getElementById('bank-research-close').click()">&times;</button></div><iframe id="bank-research-frame" title="Current transaction and recognition profile"></iframe></dialog>
 <script defer src="{{ url_for('static',filename='js/bank-profile-research.js') }}?v=transaction-context1"></script>
+{% include '_bank_movement_research.html' %}
 {% endblock %}

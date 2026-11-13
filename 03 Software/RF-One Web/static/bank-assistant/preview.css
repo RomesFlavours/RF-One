@@ -57,3 +57,40 @@ body.flow-embedded #flow-chat .close-button{display:none}
 
 /* RF-One UI standard UI_MODAL_CLOSE_X_001: the heading with the close X stays visible while a dialog scrolls. */
 dialog>.dialog-heading{position:sticky;top:0;z-index:5;background:var(--paper);box-shadow:0 -28px 0 var(--paper)}
+
+/* Discover WHY Patterns (BANK_WHY_PATTERNS_001) */
+.why-proposal ul{margin:.25rem 0 .5rem 1.1rem;padding:0}
+.why-proposal .why-facts li,.why-list li{margin:.15rem 0}
+.why-proposal.why-warn{border-left:4px solid var(--olive-300)}
+.why-confirm{border:1px solid var(--olive-300);border-radius:var(--radius);padding:.5rem .75rem;margin-top:.5rem}
+.why-discuss textarea{width:100%}
+.why-state{font-weight:600}
+#why-filters{flex-wrap:wrap}
+
+/* WHO format review (BANK_WHO_FORMAT_REVIEW_001) */
+.who-scroll{max-height:26rem;overflow:auto;border:1px solid var(--olive-300);border-radius:var(--radius);margin:.5rem 0}
+.who-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.who-table th,.who-table td{padding:.25rem .4rem;border-bottom:1px solid var(--olive-300);text-align:left;vertical-align:top}
+.who-table thead th{position:sticky;top:0;background:var(--paper)}
+.who-table td.num{text-align:right;white-space:nowrap}
+.who-table tr.who-wrong td{text-decoration:line-through;opacity:.75}
+.who-note{display:inline-flex;flex-direction:column;flex:1;min-width:14rem}
+
+/* WHO Pattern Training (BANK_WHO_TRAINING_001) */
+.wt-filters{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:end;margin-bottom:.5rem}
+.wt-filters label{display:flex;flex-direction:column;font-size:.85rem}
+.wt-scroll{max-height:60vh}
+.wt-who{display:flex;gap:.5rem;align-items:end;flex-wrap:wrap}
+.wt-desc{font-family:ui-monospace,Consolas,monospace;line-height:2;padding:.5rem;border:1px solid var(--olive-300);border-radius:var(--radius);word-break:break-all}
+.wt-tok{cursor:pointer;border-radius:3px;padding:0 1px}
+.wt-tok:hover{outline:1px solid var(--olive-300)}
+.wt-is-who{background:#d9ead3;font-weight:700}
+.wt-is-var{background:#fde7c4;font-style:italic}
+.wt-check{display:block;margin:.25rem 0}
+.wt-mode{margin-right:1rem}
+
+/* AI rules check (BANK_AI_RULE_CHECK_001) */
+.rc-bad td{text-decoration:none!important;opacity:1!important;background:#fbe3e0}
+
+/* BANK_WHO_SEARCH_TEXT_001: the save choices sit above the preview table, always in sight. */
+.preview-save-bar{margin:.6rem 0 1rem;padding:.7rem .9rem;border:1px solid var(--olive-300);border-radius:8px;background:var(--olive-050)}.preview-save-bar p{margin:0 0 .5rem}

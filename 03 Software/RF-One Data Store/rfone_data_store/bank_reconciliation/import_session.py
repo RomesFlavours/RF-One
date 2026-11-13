@@ -111,10 +111,10 @@ def identify_file(file_name: str, content: bytes) -> FileIdentity:
     """Layout from the content, account from the name. Purchase files are
     recognised by their own headers and never handed to a bank parser."""
     header = set(_header(content))
-    if _AMAZON_HEADERS <= header:
+    if _AMAZON_HEADERS <= header or {"Order ID", "Order Date", "Charge Identifier", "Title", "ASIN"} <= header:
         return FileIdentity(file_name, KIND_AMAZON, note=(
             "Amazon Business orders report: purchases and their item lines, to link to the card movement "
-            "that paid them. Its importer is not available yet."))
+            "that paid them. Reports with Charge Identifier are imported as purchase evidence after bank statements."))
     if _PAYPAL_HEADERS <= header:
         return FileIdentity(file_name, KIND_PAYPAL, note=(
             "PayPal activity export: PayPal movements (and item details when present). Its importer is "

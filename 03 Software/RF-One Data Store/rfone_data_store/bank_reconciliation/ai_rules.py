@@ -1475,6 +1475,8 @@ def spec_usable(spec: dict | None) -> bool:
     "Personal" as "owner is a Person" (`source_owner_kind`) is not."""
     if not spec:
         return False
+    if spec.get("engine") == "BANK_WHY_PATTERN":     # a WHY pattern rule: executed by why_patterns, never here
+        return False
     if spec.get("version") in USABLE_SPEC_VERSIONS:
         return True
     return "source_owner_kind" not in json.dumps(spec)

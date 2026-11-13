@@ -19,7 +19,8 @@ the existing profile conversation, research, Preview, Save, versions and rollbac
 | Versions and rollback | Immutable versions, history, guarded rollback of applications | existing |
 
 Labels are context only: they never become a classification and never prevail over a profile or an approved
-WHO → WHY association. Human decisions are never changed by a profile proposal.
+WHO → WHY association. Since BANK_WHY_PATTERNS_001 (2026-10-25) a Label may also be a deterministic condition of
+an approved WHY rule — verified against counterexamples, never an absolute proof. Human decisions are never changed by a profile proposal.
 
 ## 2. What is a proposal today
 

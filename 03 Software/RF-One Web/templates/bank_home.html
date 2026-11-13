@@ -4,6 +4,7 @@
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 {{ bank.module_nav('import') }}
+<p><a class="btn-secondary" href="{{ url_for('bank_amazon') }}">Amazon · WHY proposals</a></p>
 {#- BANK_IMPORT_AND_REVIEW_001 — the monthly Bank work for ONE month, in four
     compact steps. Operational only: explanations live on the Instructions tab.
     Every form sends the month back with `return_to`, so the operator stays

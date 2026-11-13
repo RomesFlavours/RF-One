@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WHO Rules · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-search-text2">
+  <style>.st-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.st-scroll{max-height:70vh}.st-null{color:var(--muted)}.st-fields td:first-child{color:var(--muted);white-space:nowrap}.st-whys{max-height:16rem;overflow:auto;border:1px solid var(--olive-300);border-radius:6px;padding:.3rem .5rem;margin-top:.4rem}.st-whys label{display:flex!important;gap:.4rem;margin:.2rem 0!important;font-size:.85rem}.st-whys small{color:var(--muted)}.st-error{color:var(--bad)}</style>
+  <script defer src="/static/bank-assistant/flow.js?v=who-why-existing3"></script><script defer src="/static/bank-assistant/who_search_text.js?v=4"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="/">RF-One</a></li><li><a href="/bank">Bank Reconciliation</a></li><li aria-current="page">WHO Rules</li></ol></nav>
+  <div class="page-heading"><div><h2>WHO Rules</h2><p class="muted">WHO is recognised in two ways, in this order — here and in the reconciliation engine alike: first the <strong>WHO recognition rules</strong> you approve below; then, only where no rule read a WHO, <strong>WHO Search Text</strong>: the name or an alias of a registered WHO found in the description. Several WHO, or rules that disagree: the movement goes to review. A WHO confirmed by a person is never replaced. Nothing here changes a WHO, WHY or WHAT of a movement.</p><p><a href="#st-list-h">WHO Search Text: add a WHO or an alias from a transaction ↓</a></p></div></div>
+  {#- BANK_WHO_SEARCH_TEXT_001: WHO recognition rules, run BEFORE the WHO names and aliases. The same AI rules,
+      editor and routes as Rules and profiles (flow.js): describe the rule with the AI, preview the movements, save;
+      Discuss / Rename / Delete on each saved rule. -#}
+  <section class="card" aria-labelledby="extractors-heading"><div class="section-heading"><div><span class="eyebrow">READ THE DESCRIPTION · RUN FIRST</span><h2 id="extractors-heading">WHO recognition rules <span class="badge" id="rules-count">—</span></h2></div><div class="flow-actions"><button id="new-extractor" class="btn-secondary">+ AI rule</button></div></div><p class="muted">Describe the rule to the AI, e.g. “If you find PAYPAL, the WHO is what comes after IND ID: up to IND NAME:”. Check the movements it applies to in the preview, then save. A movement read by a rule is not searched again by names and aliases.</p><label class="search-label">Search rules<input id="rule-search" type="search"></label><div id="rules-list"></div></section>
+  {#- BANK_WHO_SEARCH_TEXT_001: the second recognition, WHO Search Text — the name or an alias of a registered WHO
+      found in the description, only where no rule above read a WHO. "Text" on a movement saves a text to search. -#}
+  <section class="card" aria-labelledby="st-list-h"><div class="section-heading"><div><span class="eyebrow">THEN · NAMES AND ALIASES</span><h2 id="st-list-h">WHO Search Text <span class="badge" id="st-count">—</span></h2></div></div><p class="muted">Where no rule read a WHO, the WHO is the one whose name or alias appears in the description as whole words. On any movement, <strong>Text</strong> saves the text to search: as an alias of an existing WHO, or as the name of a new WHO. Every bank movement is listed with the WHO recognised and how.</p>
+    <div class="st-filters">
+      <label>Search<input id="st-q" type="search" placeholder="Description or WHO"></label>
+      <label>Show<select id="st-show"><option value="">All</option><option value="RULE">Recognised by a rule</option><option value="TEXT">Recognised by WHO Search Text</option><option value="review">To review (several WHO)</option><option value="null">WHO not recognised</option></select></label>
+    </div>
+    <div class="who-scroll st-scroll"><table class="who-table"><thead><tr><th>Source</th><th>Date</th><th>Description</th><th>Amount</th><th>WHO recognised</th><th>By</th><th></th></tr></thead><tbody id="st-rows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
+  </section>
+</div>
+
+<dialog id="st-text" aria-labelledby="st-text-h">
+  <div class="dialog-heading"><h2 id="st-text-h">Text to search</h2><button type="button" class="close-button" data-cancel="st-text" aria-label="Close">&times;</button></div>
+  <p><strong id="st-desc"></strong></p>
+  <table class="who-table st-fields"><tbody id="st-fields"></tbody></table>
+  <label>Text to search<input id="st-input" maxlength="200" autocomplete="off"></label>
+  <label>Alias of WHO<select id="st-who"></select></label>
+  <p class="inline-note">Leave the WHO empty to create a new WHO with this text as its name.</p>
+  <p class="st-error" id="st-text-error" role="alert"></p>
+  <div class="dialog-actions"><button type="button" class="btn-secondary" data-cancel="st-text">Cancel</button><button type="button" id="st-save">Save WHO</button></div>
+</dialog>
+
+<dialog id="st-assoc" aria-labelledby="st-assoc-h">
+  <div class="dialog-heading"><h2 id="st-assoc-h">WHO-WHY-WHAT association</h2><button type="button" class="close-button" data-cancel="st-assoc" aria-label="Close">&times;</button></div>
+  <p><strong id="st-assoc-who"></strong> has no WHY yet. Choose its possible WHY: each WHY carries its WHAT.</p>
+  <label>Search WHY<input id="st-why-q" type="search" autocomplete="off"></label>
+  <div class="st-whys" id="st-whys"></div>
+  <label>Default WHY<select id="st-default"></select></label>
+  <p class="st-error" id="st-assoc-error" role="alert"></p>
+  <div class="dialog-actions"><button type="button" class="btn-secondary" data-cancel="st-assoc">Cancel</button><button type="button" id="st-assoc-save">Save</button></div>
+</dialog>
+{% include "_bank_flow_rule_dialogs.html" %}
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

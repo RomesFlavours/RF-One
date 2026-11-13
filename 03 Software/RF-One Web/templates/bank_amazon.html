@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Amazon · WHY proposals · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('import', leaf='Amazon') }}
+<h2>Amazon · WHY proposals</h2>
+<p>Upload the Amazon report together with your monthly bank files. After bank processing, Charge Identifier links each purchase to its movement. ChatGPT proposes WHY using the products and the card's WHOM. Confirmed movements are protected.</p>
+<p><a href="{{ url_for('bank_home') }}">Import and Review</a> · <a href="{{ url_for('bank_amazon') }}">Refresh results</a></p>
+{% if reports %}
+<details><summary>{{ reports|length }} saved report(s)</summary><ul>{% for r in reports %}<li>{{ r.file_name }} · {{ r.rows|length }} products · {{ r.charges }} charges · {{ r.without_code }} rows without code</li>{% endfor %}</ul></details>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Retry / refresh Amazon analysis</button></form>
+{% else %}<p>No Amazon purchase report imported yet.</p>{% endif %}
+{% if run %}
+<p><strong>{{ run.status }}</strong>{% if run.error %} · {{ run.error }}{% endif %}</p>
+{% if stale %}<p class="muted">Bank data, WHOM, catalog or report details changed after this analysis. Refresh the analysis before using its proposals.</p>{% endif %}
+{% if run.status == 'QUEUED' %}<p>Waiting for bank processing. If processing was interrupted, use Retry.</p>{% endif %}
+{% if run.status == 'RUNNING' %}<p>ChatGPT is analyzing the matched products. Refresh this page to see the result.</p>{% endif %}
+{% if run.results %}
+<div class="table-scroll"><table class="table-compact table-stack">
+<thead><tr><th>Charge / movement</th><th>WHOM / card</th><th>Product / dates</th><th>WHY proposal</th><th>Reason / question</th></tr></thead><tbody>
+{% for c in run.results %}
+{% if not c.get('items') %}<tr><td>{{ c.charge }}</td><td>—</td><td>{% for p in c.products %}{{ p.fields.Title }}<br>{% endfor %}</td><td>{{ c.status }}</td><td>{{ 'Several bank movements carry this code; human review required.' if c.status == 'AMBIGUOUS' else 'No canonical bank movement found yet. Saved for the next import.' }}</td></tr>
+{% else %}{% for i in c['items'] %}<tr>
+<td>{{ c.charge }}<br>#{{ c.movement.id }} · {{ c.movement.description }}<br>{{ c.movement.date }} · {{ c.movement.currency }} {{ '%.2f'|format(c.movement.amount_minor / 100) }}</td>
+<td>{{ c.movement.whom.name or 'WHOM missing' }}<br>{{ c.movement.source }}</td>
+<td>{{ i.product.Title }}<br>Qty: {{ i.product.get('Item Quantity', '—') }} · ASIN: {{ i.product.ASIN }}<br>Order: {{ i.product['Order ID'] }} · {{ i.product['Order Date'] }}<br>Payment: {{ i.product.get('Payment Date', '—') }}</td>
+<td>{% if c.status == 'PROTECTED' %}Confirmed · protected{% elif stale %}Outdated · refresh analysis{% elif c.status == 'NEEDS_WHOM' %}WHOM missing or split · review required{% else %}{{ i.why or 'Needs clarification' }}{% if i.what %}<br>{{ i.what }}{% endif %}{% endif %}</td>
+<td>{% if c.status == 'PROTECTED' %}No new WHY requested for this movement.{% elif not stale %}{{ i.reason or '' }}{% if i.question %}<br>{{ i.question }}{% endif %}{% endif %}</td>
+</tr>{% endfor %}{% endif %}{% endfor %}
+</tbody></table></div>
+{% endif %}{% endif %}
+{% endblock %}

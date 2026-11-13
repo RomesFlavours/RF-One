@@ -91,7 +91,7 @@ def main() -> int:
     csrf = (BANK_CSRF_RE.search(page) or [None, None])[1]
     script = client.get("/static/bank-assistant/flow.js").data.decode("utf-8")
     check("3. the profile page opens the conversation of a WHO from a link (who_id, propose=1)",
-          "flow.js?v=whom-resolution2" in page and "params.get('who_id')" in script
+          "flow.js?v=who-search-text3" in page and "params.get('who_id')" in script
           and "params.get('propose')==='1'" in script)
 
     resp = client.post("/bank/flow/conversation", data={"csrf_token": csrf, "kind": "PHOTO", "who_id": who_id})

@@ -1066,6 +1066,10 @@ def register_bank_routes(
                         db, files=files, issues=state["check"]["issues"], decisions=state.get("decisions") or {},
                         uploaded_by_account_id=account_id,
                     )
+                    import bank_amazon
+                    amazon_reports = bank_amazon.ingest(db, [dict(
+                        file_name=f['file_name'], content=contents[f['index']])
+                        for f in import_session_routes.amazon_files(state)], account_id)
                     db.commit()
                     pipeline_worker.wake()
                     # BANK_WHO_IDENTIFICATION_001 — the movements just imported, for
@@ -1087,9 +1091,15 @@ def register_bank_routes(
                 _report_missing_accounts(db, covered_months)
             from bank_who_identification_routes import enqueue_new
             enqueue_new(app, SessionFactory, new_transaction_ids, account_id=account_id)
-            # Phase 3A: the single engine reconciles the new movements (no-op where it is not mounted).
-            import bank_guided_reconciliation
-            bank_guided_reconciliation.run_after_import()
+            # BANK_UPLOAD_AND_RECONCILE_001 (2026-11-02): an upload never starts the reconciliation; the person
+            # starts it on Upload and Reconcile once the completeness check passes (was: Phase 3A run after import).
+            for report in amazon_reports:
+                flash(f"{report['file_name']}: {len(report['rows'])} Amazon product row(s), "
+                      f"{report['charges']} Charge Identifier(s) saved"
+                      + (" (already imported)" if not report['created'] else "")
+                      + ". Confirmed movements are protected.", 'info')
+            flash("Nothing was reconciled yet: start the automatic reconciliation on Upload and Reconcile "
+                  "once its check is complete.", "info")
             held = [f for f in state["files"] if f["status"] == import_session_routes.HELD]
             if held:
                 kept = os.path.join(root, "held", token)
@@ -1875,6 +1885,11 @@ def register_bank_routes(
             month_label=date(year, month, 1).strftime("%B %Y") if year and month else None,
         )
 
+    # BANK_UPLOAD_AND_RECONCILE_001 — the daily path, with no month to choose.
+    import bank_work_routes
+    bank_work_routes.register(app, gate=gate, SessionFactory=SessionFactory, current_account=_current_account,
+                              require_csrf=require_csrf, instruments=_instruments)
+
     # BANK_TWO_PASS_IMPORT_001 — the import session (Pass 1 / Pass 2).
     import_session_routes.register_bank_import_session_routes(
         app, gate=gate, SessionFactory=SessionFactory, require_csrf=require_csrf,
@@ -1896,6 +1911,14 @@ def register_bank_routes(
         app, gate=gate, SessionFactory=SessionFactory,
         load_current_account=load_current_account, require_csrf=require_csrf,
     )
+
+    from bank_amazon import register as register_amazon
+    register_amazon(app, gate=gate, SessionFactory=SessionFactory,
+        load_current_account=load_current_account, require_csrf=require_csrf)
+
+    from bank_movement_research import register as register_movement_research
+    register_movement_research(app, gate=gate, SessionFactory=SessionFactory,
+        load_current_account=load_current_account, require_csrf=require_csrf)
 
     # The real Bank Configuration page (BANK_CONFIGURATION_001).
     from bank_configuration_routes import register_bank_configuration_routes

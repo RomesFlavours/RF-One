@@ -8,11 +8,23 @@
     describes behaviour the Bank pages already have; the wording comes from
     those pages and their code. Nothing on this page is a rule of its own. -#}
 
-<div class="card" id="monthly-sequence">
-  <h2>The monthly work</h2>
+<div class="card" id="daily-work">
+  <h2>The daily work</h2>
   <p>
-    Bank reconciliation is done once a month, for the previous month, on
-    <a href="{{ url_for('bank_home') }}">Import and Review</a>. The page opens on the previous
+    The Bank work is done on <a href="{{ url_for('bank_work') }}">Upload and Reconcile</a>, with no month to
+    choose: upload the files you have, settle what the completeness check asks, start the automatic
+    reconciliation, complete the open cases and check the QuickBooks Online preview. How each step works:
+    <a href="{{ url_for('bank_how_it_works') }}#upload-and-reconcile">How Bank works</a>.
+  </p>
+  <p class="small muted">An upload never starts the reconciliation, also on the page below: you start it on
+    Upload and Reconcile once its check is complete.</p>
+</div>
+
+<div class="card" id="monthly-sequence">
+  <h2>Month by month: Import and Review (by month)</h2>
+  <p>
+    The earlier month-by-month page stays available, by address and from Upload and Reconcile:
+    <a href="{{ url_for('bank_home') }}">Import and Review (by month)</a>. It opens on the previous
     calendar month (local time of the Location); any other month can be chosen there.
   </p>
   <ol>

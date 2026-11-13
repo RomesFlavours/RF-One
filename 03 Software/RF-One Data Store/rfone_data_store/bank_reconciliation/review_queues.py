@@ -1,6 +1,6 @@
 """The two Review queues: To Reconcile and Reconciled (BANK_TWO_STAGE_REVIEW_001).
 
-Both are VIEWS over facts already persisted — no status is stored to decide
+Both are read-only VIEWS over current WHO decisions and shared WHO recognition — no status is stored to decide
 where a transaction belongs:
 
     Reconciled    the WHO question is ANSWERED — which is not the same as a
@@ -9,6 +9,8 @@ where a transaction belongs:
                     -> `BankTransactionExplanation.occurrence_id`) names a
                     WHO — from a person, an AI rule, or an earlier decision;
                     or
+                  * the shared WHO recogniser reads an unambiguous name
+                    through approved rules or catalog names/aliases; or
                   * it is an own-account movement, for which the model
                     deliberately records NO WHO: one side of a confirmed
                     INTERNAL_TRANSFER match (`FinancialTransactionMatch`,
@@ -44,7 +46,7 @@ from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
-from . import accounting_dedup
+from . import accounting_dedup, review_who
 from . import export as export_service
 
 TO_RECONCILE = "to_reconcile"
@@ -79,7 +81,7 @@ def _contains(column, text: str):
     return column.ilike(f"%{escaped}%", escape=_LIKE_ESCAPE)
 
 
-def _search_condition(text: str):
+def _search_condition(text: str, session):
     """BANK_REVIEW_SEARCH_001 — the text appears in ONE of four fields, and
     only these: the description, the name of the current decision's WHO, the
     name of its WHY, the name of the Source. Correlated EXISTS, so a
@@ -88,6 +90,8 @@ def _search_condition(text: str):
     explanation = m.BankTransactionExplanation
     return or_(
         _contains(m.FinancialTransaction.description_original, text),
+        m.FinancialTransaction.id.in_([tid for tid, proposal in review_who.proposals(session).items()
+                                      if text.casefold() in proposal["who"].casefold()]),
         exists().where(m.BankOccurrence.id == explanation.occurrence_id,
                        _contains(m.BankOccurrence.canonical_name, text)),
         exists().where(m.BankTransactionReason.id == explanation.transaction_reason_id,
@@ -108,18 +112,19 @@ def own_account_movement():
     )
 
 
-def _who_resolved():
-    """The ONE split condition, on the current decision joined in: the WHO
+def _who_resolved(session):
+    """The ONE split condition, including read-only recognised proposals: the WHO
     question is answered (a WHO named, or an own-account movement that has
     none) and no duplicate question is open."""
     return and_(
-        or_(m.BankTransactionExplanation.occurrence_id.is_not(None), own_account_movement()),
+        or_(m.BankTransactionExplanation.occurrence_id.is_not(None), own_account_movement(),
+            m.FinancialTransaction.id.in_(list(review_who.proposals(session)))),
         or_(m.FinancialTransaction.duplicate_status.is_(None),
             m.FinancialTransaction.duplicate_status != "CANDIDATE_DUPLICATE"),
     )
 
 
-def _scoped(query, filters: ReviewFilters, *, with_suppressed: bool = False):
+def _scoped(query, filters: ReviewFilters, *, session, with_suppressed: bool = False):
     query = query.outerjoin(
         m.BankTransactionExplanation,
         m.BankTransactionExplanation.id == m.FinancialTransaction.explanation_id,
@@ -137,7 +142,7 @@ def _scoped(query, filters: ReviewFilters, *, with_suppressed: bool = False):
     if filters.batch_id:
         query = query.where(m.FinancialTransaction.import_batch_id == filters.batch_id)
     if filters.search:
-        query = query.where(_search_condition(filters.search))
+        query = query.where(_search_condition(filters.search, session))
     if filters.allowed_ids is not None:
         query = query.where(m.FinancialTransaction.id.in_(sorted(filters.allowed_ids)))
     return query
@@ -179,13 +184,16 @@ def column_texts(session: Session, transactions: list["m.FinancialTransaction"])
     entities = dict(session.execute(select(m.ReportingEntity.id, m.ReportingEntity.name)).all())
     for_whom = row_reconciliation.for_whom_values(session, transactions, instruments, allocations)
     own_account = row_reconciliation._own_account_labels(session, ids)
+    proposals = review_who.proposals(session)
+    from . import engine_view
+    engine_values = engine_view.values(session, transactions)
     result = {}
     for t in transactions:
         e = explanations.get(t.explanation_id)
         on_date = t.posting_date or t.transaction_date
         who = (whos.get(e.occurrence_id) if e and e.occurrence_id else None) or (e.occurrence_name_snapshot if e else None)
         if who is None:
-            who = own_account.get(t.id) or ""
+            who = proposals.get(t.id, {}).get("who") or own_account.get(t.id) or ""
         why = (whys.get(e.transaction_reason_id) if e and e.transaction_reason_id else None) or (
             e.transaction_reason_name_snapshot if e else None) or ""
         destination = whats.get(e.accounting_classification_id) if e and e.accounting_classification_id else None
@@ -206,6 +214,11 @@ def column_texts(session: Session, transactions: list["m.FinancialTransaction"])
             "who": who, "why": why, "what": what,
             "status": reconciliation_status.status_of(t, e, allocations.get(t.id, [])),
         }
+    for tid, value in engine_values.items():
+        texts = result[tid]
+        texts.update(who=value.get('who_name') or '', why=value.get('why') or '',
+                     what=value.get('category') or '', for_whom=value.get('beneficiary') or '')
+        texts['classification'] = ' '.join(texts[key] for key in ('who', 'why', 'what', 'status'))
     return result
 
 
@@ -217,7 +230,7 @@ def with_column_filters(session: Session, view: str, filters: ReviewFilters) -> 
     if not columns:
         return replace(filters, columns=(), allowed_ids=None)
     base = replace(filters, columns=(), allowed_ids=None)
-    candidates = list(session.scalars(_queue_query(view, base).order_by(None)).all())
+    candidates = list(session.scalars(_queue_query(session, view, base).order_by(None)).all())
     texts = column_texts(session, candidates)
     allowed = frozenset(t.id for t in candidates
                         if all(text.casefold() in texts[t.id][key].casefold() for key, text in columns))
@@ -226,10 +239,10 @@ def with_column_filters(session: Session, view: str, filters: ReviewFilters) -> 
 
 def counts(session: Session, filters: ReviewFilters) -> dict[str, int]:
     """{To Reconcile: n, Reconciled: m} for the same filters — one query."""
-    resolved = case((_who_resolved(), 1), else_=0)
+    resolved = case((_who_resolved(session), 1), else_=0)
     rows = session.execute(
         _scoped(select(resolved, func.count(m.FinancialTransaction.id))
-                .select_from(m.FinancialTransaction), filters)
+                .select_from(m.FinancialTransaction), filters, session=session)
         .group_by(resolved)
     ).all()
     by_flag = {flag: count for flag, count in rows}
@@ -241,7 +254,7 @@ def reconciled_ids(session: Session, filters: ReviewFilters) -> set[int]:
     the same split condition as the tabs, ids only. Lets the Monthly
     Accountant Export say which tab a blocking transaction is fixed on."""
     return set(session.scalars(
-        _scoped(select(m.FinancialTransaction.id), filters).where(_who_resolved())
+        _scoped(select(m.FinancialTransaction.id), filters, session=session).where(_who_resolved(session))
     ).all())
 
 
@@ -287,7 +300,7 @@ def _sorted(query, sort: str, direction: str):
 def queue(session: Session, view: str, filters: ReviewFilters,
           limit: int = ROW_LIMIT, sort: str | None = None,
           direction: str | None = None) -> list["m.FinancialTransaction"]:
-    query = _queue_query(view, filters)
+    query = _queue_query(session, view, filters)
     sort, direction = valid_sort(sort, direction)
     if sort is not None:
         query = _sorted(query, sort, direction)
@@ -299,7 +312,7 @@ def to_reconcile_ids(session: Session, transaction_ids: list[int]) -> set[int]:
     To Reconcile tab right now (no filter): the same query as the tab."""
     if not transaction_ids:
         return set()
-    query = _queue_query(TO_RECONCILE, ReviewFilters()).with_only_columns(m.FinancialTransaction.id).order_by(None)
+    query = _queue_query(session, TO_RECONCILE, ReviewFilters()).with_only_columns(m.FinancialTransaction.id).order_by(None)
     return set(session.scalars(query.where(m.FinancialTransaction.id.in_(list(transaction_ids)))).all())
 
 
@@ -308,7 +321,7 @@ def search_summary(session: Session, view: str, filters: ReviewFilters) -> dict:
     filters (search included), not only the rows shown: how many, and the
     algebraic total of their amounts PER CURRENCY (the Source's currency;
     currencies are never added together). Each transaction counted once."""
-    ids = _queue_query(view, filters).with_only_columns(m.FinancialTransaction.id).order_by(None).subquery()
+    ids = _queue_query(session, view, filters).with_only_columns(m.FinancialTransaction.id).order_by(None).subquery()
     rows = session.execute(
         select(m.PaymentInstrument.currency, func.count(m.FinancialTransaction.id),
                func.coalesce(func.sum(m.FinancialTransaction.amount_minor), 0))
@@ -323,7 +336,7 @@ def search_summary(session: Session, view: str, filters: ReviewFilters) -> dict:
                        for currency, count, total in rows]}
 
 
-def _queue_query(view: str, filters: ReviewFilters):
+def _queue_query(session: Session, view: str, filters: ReviewFilters):
     """The query of ONE queue — the other queue's rows are never
     loaded. To Reconcile: newest first, as the Review always listed them.
     Reconciled: rows still waiting for an acceptance (no COMPLETE allocation
@@ -331,19 +344,19 @@ def _queue_query(view: str, filters: ReviewFilters):
     then read by `reconciliation_status`. Suppressed accounting copies close
     To Reconcile, for audit only."""
     if view == RECONCILED:
-        query = _scoped(select(m.FinancialTransaction), filters)
+        query = _scoped(select(m.FinancialTransaction), filters, session=session)
         accepted = exists().where(
             m.BankTransactionAllocation.financial_transaction_id == m.FinancialTransaction.id,
             m.BankTransactionAllocation.status == m.ALLOCATION_COMPLETE,
         )
-        query = query.where(_who_resolved()).order_by(
+        query = query.where(_who_resolved(session)).order_by(
             case((accepted, 1), else_=0),
             m.FinancialTransaction.posting_date.desc(), m.FinancialTransaction.id.desc(),
         )
     else:
         suppressed = m.FinancialTransaction.accounting_status == accounting_dedup.DUPLICATE_SUPPRESSED
-        query = _scoped(select(m.FinancialTransaction), filters, with_suppressed=True).where(
-            or_(~_who_resolved(), suppressed)
+        query = _scoped(select(m.FinancialTransaction), filters, session=session, with_suppressed=True).where(
+            or_(~_who_resolved(session), suppressed)
         ).order_by(
             case((suppressed, 1), else_=0),
             m.FinancialTransaction.posting_date.desc(), m.FinancialTransaction.id.desc(),

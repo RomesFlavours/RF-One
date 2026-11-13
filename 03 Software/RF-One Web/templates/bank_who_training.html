@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WHO Pattern Training · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-training1">
+  <script defer src="/static/bank-assistant/who_training.js?v=who-training2"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="/">RF-One</a></li><li><a href="/bank">Bank Reconciliation</a></li><li><a href="/bank/ai-rules">Rules and profiles</a></li><li aria-current="page">WHO Pattern Training</li></ol></nav>
+  <div class="page-heading"><div><h2>WHO Pattern Training</h2><p class="muted">Teach RF-One who the counterparty is. Select movements, give their WHO and show where it is in the description. RF-One builds the rule from your examples, tests it on every movement and activates it only when you approve it. Nothing you do here changes a WHO, WHY or WHAT of a movement.</p></div></div>
+  <section class="card" aria-labelledby="wt-summary-h"><h2 id="wt-summary-h">Summary</h2><div id="wt-summary">Loading…</div></section>
+  <section class="card" aria-labelledby="wt-list-h"><h2 id="wt-list-h">All bank movements <span class="badge" id="wt-count">—</span></h2>
+    <div class="wt-filters">
+      <label>Search<input id="wt-q" type="search" placeholder="Description or WHO"></label>
+      <label>Source<select id="wt-source"><option value="">All</option></select></label>
+      <label>Amount from<input id="wt-min" type="number" step="0.01"></label><label>to<input id="wt-max" type="number" step="0.01"></label>
+      <label>Date from<input id="wt-from" type="date"></label><label>to<input id="wt-to" type="date"></label>
+      <label>Show<select id="wt-status"><option value="">All</option><option value="todo">To examine</option><option value="mine">Confirmed by you</option><option value="human">Human decision in Bank</option><option value="rule">Read by an approved rule</option></select></label>
+    </div>
+    <div class="who-scroll wt-scroll"><table class="who-table"><thead><tr><th><input type="checkbox" id="wt-all" aria-label="Select all shown"></th><th>Source</th><th>Date</th><th>Description</th><th>Amount</th><th>WHO now</th></tr></thead><tbody id="wt-rows"></tbody></table></div>
+  </section>
+  <section class="card" id="wt-teach" aria-labelledby="wt-teach-h" hidden><h2 id="wt-teach-h">Teach WHO for the selected movements <span class="badge" id="wt-selected">0</span></h2>
+    <div class="wt-who"><label>WHO<input id="wt-who" list="wt-whos" maxlength="200" placeholder="Choose an existing WHO"></label><datalist id="wt-whos"></datalist><button type="button" class="btn-secondary" id="wt-create">Create WHO</button></div>
+    <label>Example to show the WHO on<select id="wt-focus"></select></label>
+    <p class="muted">Click on the description: <label class="wt-mode"><input type="radio" name="wt-mode" value="who" checked> marks the WHO</label> <label class="wt-mode"><input type="radio" name="wt-mode" value="var"> marks a part that varies (date, number, code)</label> — click again to unmark.</p>
+    <p id="wt-desc" class="wt-desc"></p>
+    <label class="wt-check"><input type="checkbox" id="wt-external"> The WHO is not in the description: it needs external knowledge</label>
+    <label class="wt-check"><input type="checkbox" id="wt-single"> Only for these movements: do not use them to build a rule</label>
+    <div class="flow-actions"><button id="wt-save">Save as examples</button><button class="btn-secondary" id="wt-remove">Remove my examples from the selected</button></div>
+    <p role="status" id="wt-teach-status"></p>
+  </section>
+  <section class="card" aria-labelledby="wt-rules-h"><h2 id="wt-rules-h">Rules from your examples</h2>
+    <p class="muted">Only examples with the WHO marked on the description are used, never the single-movement ones. Each proposal is tested on every movement.</p>
+    <div class="flow-actions"><button id="wt-propose">Build rule proposals from my examples</button></div><p role="status" id="wt-propose-status"></p>
+    <div id="wt-proposals"></div>
+  </section>
+  <section class="card" aria-labelledby="wt-single-h"><h2 id="wt-single-h">WHO identified movement by movement</h2><p class="muted">Your identifications that are not a description rule: they stay decisions on those movements only.</p><div id="wt-singles"></div></section>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

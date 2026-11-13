@@ -80,9 +80,11 @@ JUNE_CSV = (
     "DEBIT,06/10/2026,JUNE ONLY VENDOR,-10.00,ACH_DEBIT,100.00,\n"
 ).encode("utf-8")
 
-APPROVED_TABS = [  # Product Owner order, 2026-10-05 (BANK_SOURCE_AND_IMPORT_REVIEW_001)
-    "Import and Review", "Review Transactions", "Monthly Export", "Source",
-    "AI Rules", "Configuration", "Instructions",  # AI Rules: BANK_AI_RULES_001
+APPROVED_TABS = [  # Product Owner order, 2026-10-05 (BANK_SOURCE_AND_IMPORT_REVIEW_001), as changed since:
+    # BANK_WHO_RULES_001 (WHO Rules), BANK_WHO_WHY_MODE_001 (WHY Rules), BANK_SPLIT_ALLOCATION_001 (Split), and
+    # BANK_UPLOAD_AND_RECONCILE_001 (2026-11-02): Upload and Reconcile first; Import and Review (by month) by address.
+    "Upload and Reconcile", "Review Transactions", "Monthly Export", "Source",
+    "WHO Rules", "WHY Rules", "Split", "Configuration", "Instructions",
 ]  # BANK_RULES_RESET_001: the old "Rules" tab (Classification page) is retired
 
 

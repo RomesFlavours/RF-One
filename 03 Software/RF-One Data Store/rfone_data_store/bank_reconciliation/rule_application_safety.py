@@ -12,6 +12,7 @@ import json
 from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, delete, select
+from sqlalchemy import inspect as sa_inspect
 from .. import models as m
 
 FILL_MISSING = "FILL_MISSING"
@@ -44,7 +45,9 @@ def prepare_target(target, row, planner):
 def _values(obj):
     if obj is None:
         return None
-    values = {col.name: getattr(obj, col.name) for col in obj.__table__.columns}
+    # Keyed by column name, read through the mapped attribute: a column may be mapped under another name
+    # (FinancialTransactionMatch.owner_relationship is the column "relationship").
+    values = {prop.columns[0].name: getattr(obj, prop.key) for prop in sa_inspect(obj).mapper.column_attrs}
     # SQLite drops timezone offsets on reload; PostgreSQL retains them.
     # Normalize both before comparing snapshots across commit boundaries.
     for key, value in values.items():

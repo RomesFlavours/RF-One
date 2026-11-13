@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Split · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-search-text2">
+  <style>
+    .sp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.6rem;margin:.6rem 0}
+    .sp-tile{border:1px solid var(--olive-300);border-radius:8px;padding:.6rem .8rem}
+    .sp-tile strong{display:block;font-size:1.5rem}
+    .sp-muted{color:var(--muted)}
+    .sp-bad{color:var(--bad)}
+    .sp-ok{color:var(--good,#2e7d32)}
+    .sp-pill{font-size:.75rem;border:1px solid var(--olive-300);border-radius:999px;padding:0 .45rem;white-space:nowrap}
+    .sp-scroll{max-height:60vh;overflow:auto}
+    .sp-lines input,.sp-lines select{width:100%}
+    .sp-lines td{vertical-align:top}
+    .sp-sum{display:flex;gap:1.2rem;flex-wrap:wrap;margin:.5rem 0;font-size:1.05rem}
+    .sp-actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+    pre.sp-json{max-height:40vh;overflow:auto;background:var(--olive-50,#f7f8f2);padding:.6rem;border-radius:6px;font-size:.8rem}
+    dialog .dialog-heading{position:sticky;top:0;background:var(--surface,#fff);z-index:1;display:flex;justify-content:space-between;align-items:center}
+    @media (max-width:640px){.sp-lines thead{display:none}.sp-lines tr{display:grid;grid-template-columns:1fr;gap:.3rem;margin-bottom:.6rem}}
+  </style>
+  <script defer src="/static/bank-assistant/split.js?v=1"></script>
+</head>
+<body data-txn="{{ txn_id or '' }}">
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="/">RF-One</a></li><li><a href="/bank">Bank Reconciliation</a></li>
+    {% if txn_id %}<li><a href="/bank/split">Split</a></li><li aria-current="page">Movement #{{ txn_id }}</li>{% else %}<li aria-current="page">Split</li>{% endif %}</ol></nav>
+  <div class="page-heading"><div><h2>Split{% if txn_id %} · movement #{{ txn_id }}{% endif %}</h2>
+    <p class="muted">One bank movement stays one movement and may carry several lines, each with its amount, WHY, the WHAT of that WHY and the products or documents behind it. The lines must add up to the movement exactly. Products with the same WHY are one line; different WHYs are different lines. When amounts per product are missing the split stays incomplete: the movement is never divided in equal parts and the prevailing category is never used. WHOM follows the Source owner at the date (or the WHOM chosen for the movement).</p></div></div>
+
+  {% if not txn_id %}
+  <section class="card" aria-labelledby="sp-amz-h">
+    <div class="section-heading"><div><span class="eyebrow">AMAZON ORDERS · CHARGE IDENTIFIER</span><h2 id="sp-amz-h">Linked movements <span class="badge" id="sp-count">—</span></h2></div></div>
+    <div class="sp-tiles" id="sp-tiles"></div>
+    <div class="table-wrap sp-scroll"><table><thead><tr><th>Date</th><th>Movement</th><th>Source · owner</th><th class="num">Amount</th><th>Link</th><th>Split</th></tr></thead><tbody id="sp-rows"></tbody></table></div>
+  </section>
+  <section class="card" aria-labelledby="sp-free-h">
+    <div class="section-heading"><div><span class="eyebrow">NO MOVEMENT WITH THE CODE</span><h2 id="sp-free-h">Charges without a bank movement <span class="badge" id="sp-free-count">—</span></h2></div></div>
+    <p class="muted">Charge Identifiers of the reports that no bank description carries. A movement with the same amount and a compatible date is listed above only as a candidate.</p>
+    <div class="table-wrap sp-scroll"><table><thead><tr><th>Charge</th><th>Order(s)</th><th>Payment date</th><th class="num">Amount</th><th class="num">Rows</th></tr></thead><tbody id="sp-free"></tbody></table></div>
+  </section>
+  <section class="card" aria-labelledby="sp-done-h">
+    <div class="section-heading"><div><span class="eyebrow">CONFIRMED IN BANK</span><h2 id="sp-done-h">Movements already split <span class="badge" id="sp-done-count">—</span></h2></div></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Movement</th><th>Source</th><th class="num">Amount</th><th class="num">Lines</th></tr></thead><tbody id="sp-done"></tbody></table></div>
+  </section>
+  {% else %}
+  <section class="card" aria-labelledby="sp-mv-h">
+    <div class="section-heading"><div><span class="eyebrow">BANK MOVEMENT</span><h2 id="sp-mv-h">—</h2></div></div>
+    <div id="sp-mv"></div>
+  </section>
+  <section class="card" aria-labelledby="sp-doc-h">
+    <div class="section-heading"><div><span class="eyebrow">DOCUMENTS · PRODUCTS</span><h2 id="sp-doc-h">Linked documents <span class="badge" id="sp-doc-count">—</span></h2></div></div>
+    <div id="sp-link"></div>
+    <div class="table-wrap sp-scroll"><table><thead><tr><th>Order</th><th>Product</th><th>Family · Class · Commodity</th><th>Amazon category</th><th class="num">Qty</th><th>Source row</th></tr></thead><tbody id="sp-items"></tbody></table></div>
+  </section>
+  <section class="card" aria-labelledby="sp-lines-h">
+    <div class="section-heading"><div><span class="eyebrow">SPLIT</span><h2 id="sp-lines-h">Lines <span class="badge" id="sp-state">—</span></h2></div>
+      <div class="flow-actions"><button type="button" class="btn-secondary" id="sp-reset">Back to the proposal</button></div></div>
+    <div id="sp-reasons"></div>
+    <div class="table-wrap"><table class="sp-lines"><thead><tr><th style="width:9rem">Amount</th><th style="width:22rem">WHY</th><th>WHAT</th><th>Description</th><th class="num">Products</th><th></th></tr></thead><tbody id="sp-lines"></tbody></table></div>
+    <div class="sp-actions"><button type="button" class="btn-secondary" id="sp-add">Add line</button></div>
+    <div class="sp-sum"><span>Movement <strong id="sp-total">—</strong></span><span>Split <strong id="sp-alloc">—</strong></span><span>Difference <strong id="sp-diff">—</strong></span></div>
+    <div class="sp-actions"><button type="button" class="btn-secondary" id="sp-draft">Keep as draft</button><button type="button" id="sp-confirm">Confirm split…</button></div>
+    <p class="sp-muted" id="sp-draft-note"></p>
+  </section>
+  <section class="card" aria-labelledby="sp-saved-h">
+    <div class="section-heading"><div><span class="eyebrow">ALLOCATIONS IN BANK</span><h2 id="sp-saved-h">Confirmed split</h2></div></div>
+    <div id="sp-saved"></div>
+    <details><summary>QuickBooks Online preview (local, nothing is sent)</summary><div id="sp-qbo"></div></details>
+  </section>
+  {% endif %}
+  <dialog id="sp-dialog" aria-labelledby="sp-dialog-h">
+    <div class="dialog-heading"><h3 id="sp-dialog-h">Confirm split</h3><button type="button" class="dialog-close" aria-label="Close" data-close>&times;</button></div>
+    <p id="sp-dialog-text"></p>
+    <div class="sp-actions"><button type="button" id="sp-dialog-ok">Confirm</button><button type="button" class="btn-secondary" data-close>Cancel</button></div>
+  </dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+</div>
+</body>
+</html>

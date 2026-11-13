@@ -340,6 +340,9 @@ the already-approved future behaviour:
 Kermali performs the QuickBooks split manually. A QuickBooks API is
 future work and out of scope.
 
+> **Superseded for the export shape (Product Owner, 2026-11-01):** a multi-category movement exports as ONE
+> QuickBooks Online Purchase with several lines — see `BANK_SPLIT_ALLOCATION_001.md` §7 (local preview only).
+
 ---
 
 ## What this task deliberately does not do

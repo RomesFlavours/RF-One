@@ -95,10 +95,6 @@ class Engine:
                                    .where(m.BankOccurrenceReasonAssociation.active.is_(True))):
             if rid in self.usable:
                 self.possible.setdefault(oid, []).append(rid)
-        self.labels = {}
-        for oid, name in db.execute(select(m.BankOccurrenceLabel.occurrence_id, m.BankWhoLabel.name)
-                                    .join(m.BankWhoLabel, m.BankWhoLabel.id == m.BankOccurrenceLabel.label_id)):
-            self.labels.setdefault(oid, []).append(name)
         self.groups = {k.key: k.occurrence_id for k in db.scalars(select(m.BankWhoRecognitionKey).where(
             m.BankWhoRecognitionKey.status == m.WHO_ID_IDENTIFIED, m.BankWhoRecognitionKey.occurrence_id.is_not(None)))}
         self.counts = Counter()
@@ -184,7 +180,7 @@ class Engine:
 
     # ------------------------------------------------------------ AI director
     def _ai_item(self, case):
-        who_cands = [dict(name=self.whos[oid].canonical_name, labels=self.labels.get(oid, []), witnesses=w)
+        who_cands = [dict(name=self.whos[oid].canonical_name, witnesses=w)
                      for oid, w in case.who_witnesses.items()]
         options = case.why_options if case.who_id else []
         if case.who_id and not options:

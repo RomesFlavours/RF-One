@@ -2,8 +2,8 @@
 """HTTP test for the single Bank engine (Bank unification Phase 3A).
 
 With RFONE_BANK_SINGLE_ENGINE=1: a CSV import writes no automatic decision (the old import classification,
-matcher and workers are off); right after it the single engine runs and records its results in the Bank
-database; a second identical import starts no new run; a person's decision from Guided Reconciliation goes
+matcher and workers are off); the single engine, started by a person (never by the import,
+BANK_UPLOAD_AND_RECONCILE_001), records its results in the Bank database; a second identical import starts no new run; a person's decision from Guided Reconciliation goes
 through Bank's manual service and stays protected; any automatic decision row from an old path is refused;
 the export per LLC follows the Source owner.
 
@@ -104,10 +104,12 @@ def main() -> int:
           count(m.BankTransactionExplanation) == 0, count(m.BankTransactionExplanation))
     check("3. the old automatic matcher wrote nothing", count(m.FinancialTransactionMatch) == 0)
     wait_engine()
+    check("4a. an import never starts the engine (BANK_UPLOAD_AND_RECONCILE_001: the person starts it)",
+          count(m.BankEngineRun) == 0, count(m.BankEngineRun))
+    guided.recalculate_classification()
     runs = count(m.BankEngineRun)
     results = count(m.BankEngineResult)
-    check("4. right after the import the single engine ran and recorded every movement",
-          runs == 1 and results == 3, (runs, results))
+    check("4. started, the single engine records every movement", runs == 1 and results == 3, (runs, results))
 
     upload_and_confirm(client, {"csrf_token": csrf, "files": (io.BytesIO(CSV), "Chase0101_Activity_20260920.csv")})
     wait_engine()
@@ -131,7 +133,10 @@ def main() -> int:
     check("6. any automatic decision row from an old path is refused", refused)
     check("7. the old background workers do not start",
           (web_app.app.extensions["bank_import_worker"].wake() or web_app.app.extensions["bank_import_worker"].thread is None)
-          and (web_app.app.extensions["bank_who_worker"].wake() or web_app.app.extensions["bank_who_worker"].thread is None))
+          # The legacy WHO worker was removed (2026-10-26: `bank_who_identification_routes` is a compatibility
+          # stub that registers no worker): absent counts as "does not start".
+          and (web_app.app.extensions.get("bank_who_worker") is None
+               or web_app.app.extensions["bank_who_worker"].wake() or web_app.app.extensions["bank_who_worker"].thread is None))
     with SessionFactory() as s:
         check("8. the old matcher hook is off", matching.on_financial_transaction_acquired(s, s.get(m.FinancialTransaction, txn_id)) is None)
 

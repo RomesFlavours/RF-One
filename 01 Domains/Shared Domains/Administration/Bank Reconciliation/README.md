@@ -10,6 +10,14 @@
 
 > **Current state (2026-10-13).** Since `BANK_RULES_RESET_001.md` Bank classifies only through **AI Rules** (`BANK_AI_RULES_001.md`) and by a person; `BANK_OLD_RULES_REMOVAL_001.md` removes the residues of the old rule system (Phase 1 done, Phase 2 — file deletions, model and migration — pending). Superseded, kept as history: `BANK_SIMPLE_WHO_RULE_001.md`, `BANK_GENERAL_RULES_001.md`, `BANK_CLASSIFICATION_LEARNING_001.md`, `BANK_WHO_MANUAL_ONLY_001.md`, `BANK_RECONCILIATION_STANDARDS_001.md` (the inline exception editor remains), and in part `BANK_RECONCILIATION_001.md` and `BANK_FINAL_CLEANUP_001.md`. Where the sections below describe recognition rules, the automatic WHY engine, learned rules, General Rules or Standards, they describe the retired system.
 
+> **WHY patterns (2026-10-25).** Deterministic WHY rules discovered and consolidated by AI, approved by a person and executed by the single engine as code: `BANK_WHY_PATTERNS_001.md`.
+
+> **WHO WHY mode (2026-11-01).** Recognising WHO ≠ determining WHY: a UNIQUE WHO takes its WHY from the WHO + Source classification, a MULTIPLE WHO only from WHO WHY rules (Source, subject at the date, description, documents such as the Amazon order report); open reasons and the *WHY Rules* page: `BANK_WHO_WHY_MODE_001.md`.
+
+> **Upload and Reconcile (2026-11-02).** The daily path with no month to choose: upload files → completeness check from the data (blocking gaps, uncertainties) → automatic reconciliation started by the person only when nothing blocks → confirm or complete the cases → QBO preview: `BANK_UPLOAD_AND_RECONCILE_001.md`.
+
+> **Split (2026-11-01).** One bank movement, several classification lines (QuickBooks Online Split) on the existing allocations; Amazon order evidence by Charge Identifier with amount/date checks; "Importi di dettaglio mancanti" instead of equal parts or the prevailing category; QBO Purchase preview with duplicate protection: `BANK_SPLIT_ALLOCATION_001.md`.
+
 ---
 
 ## Purpose
@@ -187,3 +195,7 @@ RF-One's reconciliation/classification learning mechanism (the Purchased Domain'
 ## Relationship to Core 2.0
 
 Bank Reconciliation is built on the RF-One Core Conceptual Architecture and reuses its concepts without redefining them — a Payment Instrument Transaction is a Reality fact recorded after the fact (not a Decision), and a confirmed cross-ledger match is Learning-eligible evidence, consistent with Temporal Coherence and the Decision/Action/Outcome/Learning chain (`00 Core/ConceptualArchitecture/`).
+
+## Regole per ambito, categoria WHO e guida contestuale
+
+Le decisioni approvate del 2026-11-03 su regole generali, categorie WHO, singoli WHO, accorpamento approvato e dichiarazioni contestuali dell’utente sono registrate in [BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md](BANK_RULE_SCOPE_AND_WHO_CATEGORY_001.md). Il documento distingue requisiti approvati da funzioni effettivamente implementate e ricorda la guida specifica per pagina e modale.

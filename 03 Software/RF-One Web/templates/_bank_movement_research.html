@@ -1,0 +1,19 @@
+<style>
+#bank-movement-research-dialog{width:94vw;max-width:1250px;max-height:94vh;padding:0;border:1px solid var(--olive-300);border-radius:12px}
+.mr-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--olive-150)}
+.mr-header h2{margin:0}.mr-header .rf-modal-x{float:none;margin:0}.mr-body{padding:18px 22px;max-height:75vh;overflow:auto}.mr-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:12px 0}
+.mr-facts div{background:var(--olive-50,#f6f7ef);padding:10px;border-radius:8px}.mr-facts dt{font-size:.85em;color:var(--muted)}.mr-facts dd{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mr-message{padding:12px 0;border-bottom:1px solid var(--olive-150)}.mr-message p{white-space:pre-wrap;overflow-wrap:anywhere}.mr-related{overflow:auto;max-height:340px}.mr-related table{width:100%}.mr-related td{padding:7px;vertical-align:top}
+#mr-question{width:100%;min-height:85px;box-sizing:border-box}#mr-status{white-space:pre-wrap}#mr-analysis-form{margin-top:16px}.mr-advisory{color:var(--muted);font-size:.9em}
+</style>
+<dialog id="bank-movement-research-dialog" aria-labelledby="mr-title">
+  <header class="mr-header"><h2 id="mr-title" tabindex="-1">Ricerca movimento con ChatGPT</h2><button type="button" id="mr-close" class="rf-modal-x" aria-label="Chiudi">&times;</button></header>
+  <div class="mr-body">
+    <p class="mr-advisory">Analisi consultiva: nessuna classificazione viene modificata.</p>
+    <div id="mr-context"></div>
+    <p id="mr-status" role="status" aria-live="polite"></p>
+    <div id="mr-messages" aria-live="polite"></div>
+    <form id="mr-analysis-form"><label for="mr-question">Continua la ricerca con ChatGPT</label><textarea id="mr-question" maxlength="4000" placeholder="Aggiungi informazioni sul viaggio o chiedi chiarimenti…"></textarea><button type="submit" id="mr-send">Invia a ChatGPT</button><button type="button" id="mr-retry" class="btn-secondary">Ripeti la ricerca</button></form>
+  </div>
+</dialog>
+<script defer src="{{ url_for('static',filename='js/bank-movement-research.js') }}?v=context-travel2"></script>

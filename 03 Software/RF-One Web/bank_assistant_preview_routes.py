@@ -158,7 +158,8 @@ def register_bank_assistant_preview_routes(app, *, gate, SessionFactory,
     @app.route('/bank/ai-rules')
     @gate
     def bank_ai_rules():
-        return render_template('bank_flow.html')
+        from bank_why_pattern_routes import enabled as why_enabled
+        return render_template('bank_flow.html', why_patterns_enabled=why_enabled())
 
     @app.route('/bank/ai-rules/chat', methods=['POST'])
     @gate

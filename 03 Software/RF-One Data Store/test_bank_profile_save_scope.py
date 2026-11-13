@@ -10,7 +10,17 @@ from rfone_data_store.bank_reconciliation import ai_rule_operations as ops,rule_
 from sqlalchemy import select,func
 
 class SaveControls(unittest.TestCase):
- setUp=FlowTests.setUp;tearDown=FlowTests.tearDown;post=FlowTests.post;state=FlowTests.state;decide=FlowTests.decide
+ tearDown=FlowTests.tearDown;post=FlowTests.post;state=FlowTests.state;decide=FlowTests.decide
+ def setUp(self):
+  FlowTests.setUp(self)
+  # BANK_UPLOAD_AND_RECONCILE_001: a reconciliation run needs complete data, and the synthetic fixture has no uploaded
+  # file. These tests are about saving a profile inside a run, so completeness is declared satisfied here;
+  # test_run_is_refused_until_data_are_complete verifies the gate itself on the same fixture.
+  self.ready=patch('rfone_data_store.bank_reconciliation.intake.require_ready');self.ready.start();self.addCleanup(self.ready.stop)
+ def test_run_is_refused_until_data_are_complete(self):
+  self.ready.stop();before=self.state()
+  r=self.post('/bank/flow/runs');self.assertEqual(r.status_code,409,r.get_json());self.assertIn('not available until the data are complete',r.get_json()['error'])
+  self.assertEqual(self.state(),before);self.ready.start()
  research_fixture=FlowTests.research_fixture;saved=FlowTests.saved;photo=FlowTests.photo
  def prepare(self,guided=True):
   self.what,_,_=self.research_fixture();self.rid=self.saved(self.photo())

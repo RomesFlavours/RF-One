@@ -26,6 +26,8 @@ def main(port: int) -> None:
     if not os.environ.get("RFONE_DATABASE_URL") or not os.environ.get("RFONE_LOCAL_ENV_PC"):
         sys.exit("Refused: the Bank server is started only by “Avvia Bank” (bank_local_env start).")
     os.environ.setdefault("RFONE_WEB_TEST_SECRET_KEY", "local-working-environment-only")
+    # UI_DEVELOPMENT_LANGUAGE_001: the PO local interface is Italian; shared apps default to English.
+    os.environ.setdefault("RFONE_UI_LANGUAGE", "it")
     _guided_reconciliation_environment()
     sys.path.insert(0, str(WEB_DIR))
     os.chdir(WEB_DIR)
@@ -70,6 +72,20 @@ def _guided_reconciliation_environment() -> None:
     os.environ.setdefault("CBANK_BANK_CODE_ROOT", str(REPO_ROOT))
     # Approved WHO -> WHY knowledge, as "Avvia C-Bank" ran it (Product Owner, 2026-10-24).
     os.environ.setdefault("CBANK_WHO_WHY", "1")
+    _domain_data_environment()
+
+
+def _domain_data_environment() -> None:
+    """BANK_WHY_PATTERNS_001: the evidence of WHY rules from other RF-One domains (Clover employees, Tips
+    runs) is read, read-only, from the newest local copy of the RF-One database when one exists
+    (%LOCALAPPDATA%\RF-One\AWS-Copy\<timestamp>\local-connection.json). Without it that evidence is
+    simply missing and the rules needing it stay undecided. RFONE_DOMAIN_DATA set (even empty) wins."""
+    if "RFONE_DOMAIN_DATA" in os.environ:
+        return
+    root = Path(os.environ.get("LOCALAPPDATA", "")) / "RF-One" / "AWS-Copy"
+    copies = sorted(root.glob("*/local-connection.json")) if root.is_dir() else []
+    if copies:
+        os.environ["RFONE_DOMAIN_DATA"] = str(copies[-1])
 
 
 if __name__ == "__main__":

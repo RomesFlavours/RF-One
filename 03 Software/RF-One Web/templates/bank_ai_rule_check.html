@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI rules check · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=rule-check1">
+  <script defer src="/static/bank-assistant/rule_check.js?v=rule-check1"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="/">RF-One</a></li><li><a href="/bank">Bank Reconciliation</a></li><li><a href="/bank/ai-rules/advanced">AI Rules</a></li><li aria-current="page">AI rules check</li></ol></nav>
+  <div class="page-heading"><div><h2>AI rules check</h2><p class="muted">Every operative rule run on every movement of the database, with the same code the reconciliation engine uses. Read-only: nothing here changes a WHO, WHY or WHAT. Next to each result you see the human decision and the engine's last result.</p></div></div>
+  <section class="card"><h2>Summary</h2><div id="rc-summary">Running every rule on every movement… (about 10 seconds)</div></section>
+  <section class="card"><h2>Movements where the rules disagree</h2><details data-list="conflicts"><summary>Show them</summary><p class="muted">Loading…</p></details></section>
+  <section class="card"><h2>Movements no rule reads</h2><details data-list="unread"><summary>Show them</summary><p class="muted">Loading…</p></details></section>
+  <section class="card"><h2>Rules <span class="badge" id="rc-count">—</span></h2><label class="search-label">Search rules<input id="rc-q" type="search"></label><div id="rc-rules"></div></section>
+</div>
+</body>
+</html>

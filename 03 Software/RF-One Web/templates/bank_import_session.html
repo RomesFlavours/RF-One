@@ -19,7 +19,7 @@
     <button type="submit" class="btn-secondary">Cancel import</button>
   </form>
 </div>
-<p class="muted">Nothing is saved as a bank movement until <strong>Confirm Import</strong>. Pass 1 only creates or reuses Sources.</p>
+<p class="muted">Include the Amazon purchase report with your monthly bank files. Its products provide WHY proposals after bank processing. Nothing is saved as a bank movement until <strong>Confirm Import</strong>. Pass 1 only creates or reuses Sources.</p>
 
 {# ------------------------------------------------------------------ Pass 1 #}
 <section class="card" id="pass-1">
@@ -44,26 +44,28 @@
             <td data-label="Layout">{{ kind_labels[f.kind] }}{% if f.format %}<span class="cell-note">{{ f.format }}</span>{% endif %}</td>
             <td data-label="Account (name)" class="col-narrow">{{ f.digits or '—' }}</td>
             <td data-label="Source">
-              {% if source %}{{ source.display_name }}{% if f.created %}<span class="cell-note">created in this session</span>{% else %}<span class="cell-note">existing Source</span>{% endif %}{% else %}<span class="muted">&mdash;</span>{% endif %}
+              {% if f.status == 'AMAZON_READY' %}Linked through Charge Identifier; WHOM comes from the bank card.{% elif source %}{{ source.display_name }}{% if f.created %}<span class="cell-note">created in this session</span>{% else %}<span class="cell-note">existing Source</span>{% endif %}{% else %}<span class="muted">&mdash;</span>{% endif %}
               {#- The row's ONE action, always shown: the ONE Source modal, with
                   this row's Source or what the file states; Save links the
                   Source to this file and returns to this row. -#}
-              <button type="button" class="btn-secondary btn-inline import-complete" data-source-edit
+              {% if f.status != 'AMAZON_READY' %}<button type="button" class="btn-secondary btn-inline import-complete" data-source-edit
                       data-source-return="#file-{{ f.index }}"
                       data-source-file='{{ row_modal[f.index]|tojson }}'
-                      {% if source %}data-source='{{ source_edit_data[source.id]|tojson }}'{% endif %}>Complete Source</button>
+                      {% if source %}data-source='{{ source_edit_data[source.id]|tojson }}'{% endif %}>Complete Source</button>{% endif %}
             </td>
             <td data-label="Source status">
-              {% if source and not missing %}<span class="badge ok">Source complete</span>
+              {% if f.status == 'AMAZON_READY' %}<span class="badge ok">Purchase details</span>
+              {% elif source and not missing %}<span class="badge ok">Source complete</span>
               {% elif source %}<span class="badge warn">Source incomplete</span><span class="cell-note">Missing: {{ missing|join(', ') }}</span>
               {% elif f.status == 'AMBIGUOUS' %}<span class="badge warn">Source to choose</span><span class="cell-note">{{ f.candidates|length }} Sources match the name.</span>
               {% else %}<span class="badge warn">Source not set</span>{% endif %}
             </td>
             <td data-label="Importer">
-              {% if f.kind == 'BANK' %}<span class="badge">Bank statement</span><span class="cell-note">{{ 'Included in this import.' if f.status == 'READY' else 'Included once its Source is set.' }}</span>
+              {% if f.status == 'AMAZON_READY' %}<span class="badge ok">Amazon report ready</span><span class="cell-note">{{ f.amazon.rows }} products · {{ f.amazon.charges }} charges. Imported after bank statements; WHY proposals only. {{ f.amazon.without_code }} rows without a Charge Identifier are kept for reference.</span>
+              {% elif f.kind == 'BANK' %}<span class="badge">Bank statement</span><span class="cell-note">{{ 'Included in this import.' if f.status == 'READY' else 'Included once its Source is set.' }}</span>
               {% elif f.kind in ('PAYPAL_ACTIVITY', 'AMAZON_BUSINESS_ORDERS') %}<span class="badge warn">Importer not available &mdash; file kept for a later import</span>
               {% else %}<span class="badge bad">Not a known layout</span><span class="cell-note">{{ f.note }}</span>{% endif %}
-              {% if f.kind != 'BANK' %}<span class="cell-note">{{ 'Left out of this upload: confirmed in the review log.' if f.status in ('HELD', 'EXCLUDED') else 'Leave-out to confirm in the review log, before Confirm Import.' }}</span>{% endif %}
+              {% if f.kind != 'BANK' and f.status != 'AMAZON_READY' %}<span class="cell-note">{{ 'Left out of this upload: confirmed in the review log.' if f.status in ('HELD', 'EXCLUDED') else 'Leave-out to confirm in the review log, before Confirm Import.' }}</span>{% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -88,7 +90,7 @@
   {#- BANK_FILE_LEAVE_OUT_001 — the files this import cannot read are never
       left out automatically: the person confirms each one here, in the
       review log, before Confirm Import. -#}
-  {% set not_importable = files|rejectattr('kind', 'equalto', 'BANK')|list %}
+  {% set not_importable = files|rejectattr('kind', 'equalto', 'BANK')|rejectattr('status', 'equalto', 'AMAZON_READY')|list %}
   {% if not_importable %}
     <div class="import-log" id="files-left-out">
       <h4>Files that cannot be imported now &mdash; confirm they stay out of this upload{% if leave_outs_open %} ({{ leave_outs_open }} to confirm){% endif %}</h4>

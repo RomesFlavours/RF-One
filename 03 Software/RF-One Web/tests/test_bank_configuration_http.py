@@ -74,9 +74,14 @@ from rfone_data_store.bank_reconciliation import card_configuration  # noqa: E40
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "d2b6f8a4c0e7"  # the single Alembic head a fresh database reaches (check 1)
+CURRENT_HEAD = "d3a520261103"  # the single Alembic head a fresh database reaches (check 1)
 LAST_RULES_REVISION = "a3c7e5b9d1f4"  # last revision with bank_recognition_rules (check 3)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
+SEED_REVISION = "f6c2e8a4b1d7"  # seeds COUNTERPARTY (D10)
+IRREVERSIBLE_REVISION = "f4b120261026"  # removes WHO labels; its downgrade refuses on purpose
+GLOBAL_QBO_REVISION = "c8f420261103"  # last revision with QBO correspondences for no company
+# The one working database (Local Database Policy): this test must never open it for writing.
+OPERATIONAL_DB = os.path.join(os.environ.get("LOCALAPPDATA", ""), "RF-One", "Bank", "rfone.db")
 
 
 def _alembic_config(url: str, buffer=None):
@@ -108,7 +113,20 @@ def main() -> int:
             failed.append(description)
             print(f"  FAIL  {description}" + (f"   [{str(detail)[:300]}]" if detail else ""))
 
+    def operational_state():
+        try:
+            st = os.stat(OPERATIONAL_DB)
+            return (st.st_size, st.st_mtime_ns)
+        except OSError:
+            return None
+
+    operational_before = operational_state()
     try:
+        from db import _engine
+        check("0. the test runs on its own disposable copy, never on the working database",
+              os.path.normcase(str(_engine.url.database)) == os.path.normcase(_TEST_DB_PATH.replace(os.sep, "/"))
+              or os.path.normcase(os.path.abspath(str(_engine.url.database))) == os.path.normcase(_TEST_DB_PATH),
+              str(_engine.url))
         # ------------------------------------------------------------ fixture
         with SessionFactory() as db:
             for username, bank in (("cfg_operator", True), ("cfg_outsider", False)):
@@ -277,18 +295,60 @@ def main() -> int:
         types_after_upgrade = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
         conn.close()
         from alembic import command
-        try:
-            command.downgrade(_alembic_config(old_url), NEW_REVISION)
-        finally:
-            os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
-        _upgrade(old_url, "head")
-        conn = sqlite3.connect(old_path)
-        types_after_rerun = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
+
+        def _downgrade(url, target):
+            try:
+                command.downgrade(_alembic_config(url), target)
+            finally:
+                os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
+
+        # The seed is re-run on its own disposable database, between the seed revision and the one before it: a
+        # downgrade from head would have to cross f4b120261026, which refuses on purpose (removed label data cannot
+        # be restored) and must not be made reversible for a test.
+        fd, seed_path = tempfile.mkstemp(suffix=".db", prefix="rfoneweb_bank_config_seed_")
+        os.close(fd)
+        os.remove(seed_path)
+        extra_paths.append(seed_path)
+        seed_url = f"sqlite:///{seed_path.replace(os.sep, '/')}"
+        _upgrade(seed_url, SEED_REVISION)
+        _downgrade(seed_url, NEW_REVISION)
+        _upgrade(seed_url, SEED_REVISION)
+        conn = sqlite3.connect(seed_path)
+        seeded_rerun = conn.execute("SELECT code, name FROM bank_occurrence_types").fetchall()
         conn.close()
         check("D10. an existing COUNTERPARTY is left unchanged (no duplicate), and re-running the seed "
               "after a downgrade still leaves exactly one",
               types_after_upgrade == [(1, "COUNTERPARTY", "Counterparty", None)]
-              and types_after_rerun == types_after_upgrade, f"{types_after_upgrade} {types_after_rerun}")
+              and seeded_rerun == [("COUNTERPARTY", "Counterparty")], f"{types_after_upgrade} {seeded_rerun}")
+
+        # The intentionally irreversible revision stays irreversible (checked on a disposable copy at head).
+        refused = ""
+        try:
+            _downgrade(old_url, IRREVERSIBLE_REVISION + "-1")
+        except RuntimeError as exc:
+            refused = str(exc)
+        check("1b. the irreversible migration f4b120261026 still refuses its downgrade (restore the backup instead)",
+              "restore the pre-migration backup" in refused, refused or "no refusal")
+
+        # QBO correspondences made before they were per company: kept, attributed to NO company.
+        fd, qbo_path = tempfile.mkstemp(suffix=".db", prefix="rfoneweb_bank_config_qbo_")
+        os.close(fd)
+        os.remove(qbo_path)
+        extra_paths.append(qbo_path)
+        qbo_url = f"sqlite:///{qbo_path.replace(os.sep, '/')}"
+        _upgrade(qbo_url, GLOBAL_QBO_REVISION)
+        conn = sqlite3.connect(qbo_path)
+        conn.execute("INSERT INTO bank_qbo_account_maps (kind, local_id, qbo_account_id, qbo_account_name) "
+                     "VALUES ('CATEGORY', 5, '61', 'Supplies')")
+        conn.commit()
+        conn.close()
+        _upgrade(qbo_url, "head")
+        conn = sqlite3.connect(qbo_path)
+        legacy = conn.execute("SELECT kind, local_id, qbo_account_id, qbo_account_name, reporting_entity_id, status "
+                              "FROM bank_qbo_account_maps").fetchall()
+        conn.close()
+        check("1c. an existing global QBO correspondence survives, attributed to no company (GLOBAL_LEGACY)",
+              legacy == [("CATEGORY", 5, "61", "Supplies", None, "GLOBAL_LEGACY")], legacy)
         check("3. an existing rule survives the upgrade unchanged, WHY included; the new "
               "WHO/entity table starts empty",
               # Later additive columns (e.g. f3b7d9a1c5e8's literal_pattern) start NULL.
@@ -670,6 +730,8 @@ def main() -> int:
               "to an address supplied by the request",
               all(re.fullmatch(r"(http://localhost)?/bank/configuration#cp-why", loc) for loc in locations),
               str(locations))
+        check("31. the working database was not written (size and modification time unchanged)",
+              operational_state() == operational_before, f"{operational_before} -> {operational_state()}")
     finally:
         for path in [_TEST_DB_PATH] + extra_paths:
             try:

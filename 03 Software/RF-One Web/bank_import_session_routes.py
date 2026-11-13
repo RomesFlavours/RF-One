@@ -36,6 +36,7 @@ from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import import_session
 
 import bank_import_staging
+import bank_amazon
 
 STATE_KEY = "two_pass"
 PENDING, READY, AMBIGUOUS = "PENDING", "READY", "AMBIGUOUS"
@@ -65,15 +66,24 @@ def ensure_state(staged) -> dict:
     for entry in file_entries(staged):
         identity = import_session.identify_file(entry["file_name"], entry["content"])
         status = PENDING
+        amazon = None
         if identity.kind in import_session.DOCUMENT_KINDS:
             status = IMPORTER_MISSING
+            if identity.kind == import_session.KIND_AMAZON and 'Charge Identifier' in import_session._header(entry['content']):
+                try:
+                    parsed = bank_amazon.parse_report(entry['content'])
+                    amazon = dict(rows=len(parsed['rows']), charges=parsed['charges'], without_code=parsed['without_code'])
+                    status = 'AMAZON_READY'
+                except ValueError as exc:
+                    identity.note = str(exc)
+                    status = UNRECOGNIZED
         elif identity.kind == import_session.KIND_UNRECOGNIZED:
             status = UNRECOGNIZED
         files.append({"index": entry["index"], "file_name": entry["file_name"], "kind": identity.kind,
                       "format": identity.detected_format, "institution": identity.institution,
                       "instrument_type": identity.instrument_type, "digits": identity.account_digits,
                       "note": identity.note, "status": status, "source_id": None, "created": False,
-                      "candidates": []})
+                      "candidates": [], "amazon": amazon})
     state = {"files": files, "check": None, "decisions": {}}
     bank_import_staging.save_state(staged, STATE_KEY, state)
     return state
@@ -148,6 +158,10 @@ def bank_files(state: dict) -> list[dict]:
     return [f for f in state["files"] if f["kind"] == import_session.KIND_BANK and f["status"] == READY]
 
 
+def amazon_files(state: dict) -> list[dict]:
+    return [f for f in state['files'] if f['status'] == 'AMAZON_READY']
+
+
 def unresolved_issues(state: dict) -> list[dict]:
     check = state.get("check") or {}
     decisions = state.get("decisions") or {}
@@ -190,8 +204,8 @@ def ready_to_confirm(state: dict, *, incomplete: dict[int, list[str]]) -> tuple[
         return False, "The Sources changed after the check: run Read and check again."
     if unresolved_issues(state):
         return False, f"{len(unresolved_issues(state))} row(s) still need a decision."
-    if not bank_files(state):
-        return False, "No bank file to import."
+    if not bank_files(state) and not amazon_files(state):
+        return False, "No bank statement or supported Amazon report to import."
     return True, ""
 
 
@@ -297,6 +311,8 @@ def register_bank_import_session_routes(app, *, gate, SessionFactory, require_cs
         leave_out = request.form.get("decision") == "LEAVE_OUT"
         for f in state["files"]:
             if f["index"] != index:
+                continue
+            if f["status"] == "AMAZON_READY":
                 continue
             if f["kind"] in import_session.DOCUMENT_KINDS:
                 f["status"] = HELD if leave_out else IMPORTER_MISSING

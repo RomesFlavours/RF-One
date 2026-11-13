@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Come funziona Bank · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('work', leaf='Come funziona Bank') }}
+<div class="bank-guide">
+<h1>Come funziona Bank</h1>
+<nav class="bank-guide-nav small" aria-label="Sezioni della guida">
+<a href="#upload-and-reconcile">Carica e riconcilia</a><a href="#quickbooks-online">QuickBooks Online</a><a href="#rules-and-profiles">Regole e profili</a>
+</nav>
+<section class="card" id="upload-and-reconcile">
+<h2>Carica e riconcilia</h2>
+<p>Il lavoro quotidiano è su una sola pagina: <strong>carica i file → controlla la completezza → riconcilia automaticamente → completa a mano → esporta per QuickBooks Online</strong>. Non devi scegliere un mese, un periodo o una sessione.</p>
+<h3 id="work-upload">1. Quali file caricare</h3>
+<ul>
+<li>Carica gli estratti CSV dei conti e delle carte Chase e First Citizens e i report ordini Amazon Business con il campo <em>Charge Identifier</em>, tutti nello stesso punto e in qualsiasi ordine.</li>
+<li>Bank riconosce il tipo dal contenuto e il conto o carta dal nome del file, quando possibile. Chiede solo ciò che non riesce a ricavare: conto di origine, dati mancanti, righe illeggibili o file già presenti su un altro conto. I file attività PayPal sono conservati ma non utilizzati.</li>
+<li>Quando il file è <em>Integrato</em>, i nuovi movimenti sono già salvati in Bank. Ricaricare lo stesso file non li duplica; un file più completo aggiunge soltanto quelli mancanti. Gli acquisti reali ripetuti restano distinti e le decisioni precedenti sono conservate.</li>
+<li>Caricare un file non avvia la riconciliazione.</li>
+</ul>
+<h3 id="work-check">2. Come Bank rileva ciò che manca</h3>
+<ul>
+<li>Il controllo parte dalla data di inizio configurata oppure dal primo giorno dei file. Ogni conto o carta viene controllato fino all’ultimo giorno coperto dai propri file, senza richiedere giorni successivi. Se si ferma prima degli altri viene segnalato in <em>Da verificare</em>.</li>
+<li>Il periodo è quello dichiarato nel nome del file, quando disponibile. Altrimenti sono noti soltanto primo e ultimo movimento: questo non prova che l’intero estratto sia completo. Puoi confermare il periodo effettivo dall’elenco dei file.</li>
+<li>Bank richiede una risposta quando non ci sono file per un conto, quando la data iniziale di utilizzo non è nota o quando rimangono intervalli non coperti tra i file. Carica gli estratti richiesti o indica un fatto verificabile: nessun movimento, conto non in uso fino a nuovo avviso, data di inizio utilizzo o chiusura.</li>
+<li>Tra due estratti con periodo dichiarato, qualsiasi intervallo scoperto segnala un estratto mancante. Se il periodo non è dichiarato, intervalli oltre 31 giorni o un mese intero richiedono chiarimento; i buchi più brevi sono segnalazioni non bloccanti. Giorni senza movimenti non dimostrano da soli che manchi un file.</li>
+<li>Per le carte già collegate a report Amazon Business vengono richiesti i report che coprono i movimenti Amazon fuori dagli intervalli disponibili.</li>
+<li>Le risposte sono registrate con utente e data; il controllo si aggiorna dopo ogni risposta o caricamento. Non c’è un pulsante generico per ignorare i file mancanti.</li>
+<li>La classificazione incompleta di un singolo movimento non blocca l’avvio: quel caso viene completato al passaggio 4.</li>
+</ul>
+<h3 id="work-reconcile">3. Riconciliazione automatica</h3>
+<p><strong>Avvia riconciliazione automatica</strong> si abilita quando compare <em>Dati pronti per la riconciliazione</em>. Il controllo protegge anche gli avvii dalle pagine secondarie. Lettura, configurazione e decisioni manuali sui singoli movimenti restano disponibili.</p>
+<p>L’elaborazione prosegue in background anche se lasci la pagina:</p>
+<ul>
+<li>propone il WHY degli articoli Amazon tramite ChatGPT, secondo le autorizzazioni registrate;</li>
+<li>esegue abbinamenti di giroconti e pagamenti carta, regole WHO, ricerca dei nomi e alias, regole WHY per WHO univoci o multipli, collegamenti Amazon e ripartizioni;</li>
+<li>ricava sempre il WHAT dal WHY e il WHOM dalla titolarità del conto o carta alla data del movimento;</li>
+<li>se autorizzata, ricerca online i movimenti ancora aperti, anche con WHO noto e WHY mancante. Un WHO certo viene mantenuto. Regole in conflitto, documenti mancanti, pagamenti carta e rapporti tra titolari da decidere restano da esaminare;</li>
+<li>per ristoranti, bar e caffetterie usa il criterio approvato: conto o carta personale → Owner Personal — Restaurant; aziendale → Business Meals &amp; Entertainment.</li>
+</ul>
+<h4 id="work-research-authorization">Autorizzazione della ricerca internet</h4>
+<p>La pagina elenca i dati inviabili e chiede l’autorizzazione: descrizione con numeri lunghi mascherati, data, direzione, tipo di conto o carta, titolarità personale o aziendale, WHO noto o candidati e catalogo WHY. Non invia importi né numeri di conto. Le richieste contengono al massimo tre movimenti.</p>
+<p>L’autorizzazione è registrata con utente e data su questo PC. Senza consenso la fase internet viene saltata e i casi sono indicati come <em>Ricerca internet non autorizzata</em>, non come esiti negativi di una ricerca.</p>
+<p>Le risposte sono riutilizzate solo se il contesto rilevante non cambia: descrizione mascherata, direzione, tipo di conto, titolare alla data, cataloghi, modalità WHO e regole WHY. Una risposta su una carta personale non vale per una aziendale. Errori del provider o risposte incomplete sono segnalati separatamente e ritentati al prossimo avvio.</p>
+<p>Se l’elaborazione si interrompe, avviala di nuovo: le risposte riuscite e ancora valide sono riutilizzate. Non vengono applicate due volte decisioni già confermate.</p>
+<h3 id="work-complete">4. Risultati e casi da completare</h3>
+<p>Ogni movimento appartiene a un solo stato:</p>
+<ul>
+<li><strong>Deciso</strong>: decisione registrata da una persona o confermata da te.</li>
+<li><strong>Applicato automaticamente</strong>: giroconto o pagamento carta già abbinato e registrato come abbinamento.</li>
+<li><strong>Risolto automaticamente</strong>: proposta completa, ancora da confermare prima di registrare la decisione.</li>
+<li><strong>Da confermare</strong>: proposta della ricerca internet o caso che richiede una scelta. Se il WHO è generico, l’identità esatta non è verificata.</li>
+<li><strong>Da riconciliare a mano</strong>: WHO sconosciuto, WHY mancante, conflitto tra regole, ripartizione incompleta o ricerca non eseguita/non riuscita.</li>
+</ul>
+<p>Un secondo riepilogo mostra l’origine del WHO. Entrambi i conteggi devono quadrare sul totale. WHO senza WHY e ripartizioni incomplete non sono riconciliazioni complete. Prima della conferma compare il riepilogo per WHY; le decisioni già prese nel frattempo non vengono sovrascritte. I periodi precedenti ancora aperti sono conteggiati separatamente.</p>
+<h4 id="work-guided-group">Completare un gruppo in Riconciliazione guidata</h4>
+<p>Nel riepilogo ogni gruppo (motivo e WHO) ha un solo pulsante, <strong>Controlla</strong>; anche il clic sulla riga apre la stessa finestra. La finestra mostra WHO, numero di movimenti, motivo concreto e tutte le occorrenze con data, descrizione, importo e conto/carta.</p>
+<ul>
+<li><strong>Analizza il gruppo e proponi una regola</strong> esamina tutte le occorrenze e lo storico del WHO e propone regole con condizioni verificabili, WHY e WHAT, movimenti risolti, sottogruppi ed esclusi. Non salva e non applica nulla. File mancanti di altri conti/carte non la bloccano; sono segnalati solo i dati mancanti dei conti/carte del gruppo.</li>
+<li><strong>Definisci regola</strong> (o «Definisci regola con questa proposta») apre nella stessa finestra l’editor delle regole WHY: ambito (solo questo WHO, categoria del WHO, generale), WHY dall’elenco con il WHAT che ne deriva, condizioni ed eccezioni. <strong>Simula</strong> confronta la regola con quelle degli altri ambiti (equivalenti, complementari, in contrasto) e mostra i movimenti prima → dopo senza salvare. <strong>Salva bozza</strong> la salva non attiva; <strong>Salva e applica ora</strong>, solo senza conflitti aperti e dopo conferma con il numero di movimenti che cambiano, la attiva anche per i caricamenti futuri, sostituisce soltanto le regole che hai scelto (con storico e ripristino) e rivaluta i movimenti aperti; poi torni allo stesso gruppo con i conteggi aggiornati.</li><li>Nello stesso riquadro: la <strong>categoria del WHO</strong> (proposta dall’AI con ricerca internet sul solo nome, con evidenze e certezza, usata solo dopo la tua conferma) e le <strong>dichiarazioni contestuali</strong> (per esempio «Io uso UBER soltanto per trasporto»), valide solo sulle Source indicate. L’editor dei profili di riconoscimento resta raggiungibile, ma si applica solo ai movimenti con WHO letto da una regola di estrazione e ancora da riconciliare.</li><li>Ogni finestra ha il suo «?», che apre la sezione della guida di quella finestra sopra di essa: campi, bozza, selezioni e posizione restano come sono.</li>
+<li>L’avvio della riconciliazione automatica complessiva e l’indagine AI sui movimenti selezionati (nei Dettagli avanzati) richiedono ancora dati completi.</li>
+</ul>
+<h3 id="work-saving">Quando vengono salvati dati e decisioni</h3>
+<ul><li>I file si salvano al caricamento; le risposte al controllo quando le registri; le risposte internet quando arrivano.</li><li>I risultati del motore e dell’AI sono proposte: diventano decisioni alla tua conferma o quando completi manualmente un caso. Gli abbinamenti automatici sono indicati separatamente.</li></ul>
+</section>
+<section class="card" id="quickbooks-online">
+<h2>QuickBooks Online</h2>
+<p>Dal passaggio 5 accedi a conti ed esportazione. <strong>Tutto è separato per azienda</strong>: piano dei conti, corrispondenze e file. Scegli l’azienda nella pagina QBO, non un mese.</p>
+<p>Ogni movimento pronto produce una registrazione: spesa o rimborso con righe per categoria, deposito per un’entrata bancaria, oppure un solo trasferimento per entrambe le gambe di un giroconto o pagamento carta. Questi ultimi non vengono registrati come spese.</p>
+<p>Restano bloccati i movimenti non decisi, i trasferimenti tra aziende, i rapporti economici da chiarire, le ripartizioni che non quadrano e i movimenti senza azienda determinabile. Le origini personali non vengono esportate.</p>
+<ul>
+<li><strong>Piano dei conti</strong>: esporta da QuickBooks dell’azienda il report <em>Account List</em> in CSV e caricalo nella pagina. L’elenco contiene nomi e tipi, non ID QBO. Un nuovo caricamento sostituisce l’elenco: i conti assenti non sono più utilizzabili.</li>
+<li><strong>Corrispondenze</strong>: associa una volta il conto QBO al conto/carta Bank e alla categoria WHAT. Ogni corrispondenza è verificata nel piano dell’azienda. Quelle copiate da altre aziende sono solo proposte finché non le verifichi; quelle globali precedenti restano suggerimenti senza azienda.</li>
+</ul>
+<h3 id="qbo-states">Anteprima, file e importazione sono stati distinti</h3>
+<table class="table-compact"><thead><tr><th>Stato</th><th>Significato</th></tr></thead><tbody>
+<tr><td>Anteprima JSON</td><td>Mostra le registrazioni proposte e i controlli. Non esporta nulla.</td></tr>
+<tr><td>File generato</td><td>CSV per la funzione QBO <em>Import journal entries</em>, una sola azienda e fino a 990 righe. Le registrazioni hanno numero RFB-&lt;movimento&gt;; i movimenti non finiscono in altri lotti.</td></tr>
+<tr><td>File scaricato</td><td>È sempre lo stesso file; i download sono conteggiati. Scaricarlo non dimostra che QBO lo abbia importato.</td></tr>
+<tr><td>Importazione confermata</td><td>Con «Importato in QuickBooks» dichiari l’esito positivo. Se non è stato importato, puoi ritirare il file indicando il motivo; resta nello storico e i movimenti possono entrare in un nuovo lotto. Un file confermato non può essere ritirato.</td></tr>
+<tr><td>Accettato dalle API QBO</td><td>Non disponibile: richiede app Intuit, autorizzazione per azienda, ID dei conti e verifica su ambiente di prova.</td></tr>
+</tbody></table>
+<ul>
+<li><strong>Flusso bancario QBO</strong>: prima di generare il file confermi che i corrispondenti movimenti del bank feed verranno esclusi, non aggiunti, per evitare doppie registrazioni. Il percorso CSV di scritture contabili non equivale all’invio di una spesa tramite API.</li>
+<li><strong>Modifiche successive</strong>: un movimento cambiato dopo l’inclusione in un file è segnalato e non viene riesportato silenziosamente. La rettifica va gestita in QuickBooks.</li>
+<li>Le scritture contabili non riportano il fornitore nei report fornitori QBO. L’importazione reale del CSV in QBO è ancora da verificare.</li>
+</ul>
+</section>
+<section class="card" id="rules-and-profiles">
+<h2>Regole e profili</h2>
+<p>La pagina <strong>Regole e profili</strong> raccoglie le regole AI che leggono il WHO dalla descrizione e i profili di riconoscimento che scelgono WHY e WHAT per un WHO. L’interfaccia locale è in italiano; i nomi WHO, le descrizioni, i nomi del catalogo e i testi delle conversazioni restano come sono registrati.</p>
+<h3 id="rules-editor">L’editor di regole e profili</h3>
+<ul>
+<li>Spieghi nella conversazione come leggere il formato o come scegliere WHY e WHOM; <strong>Ricerca online</strong> propone l’identità del WHO e le liste WHY e WHAT da cui scegliere. Il WHAT segue il WHY: puoi scegliere solo il WHAT dei WHY selezionati, una coppia incoerente è rifiutata.</li>
+<li><strong>Simula</strong> mostra i movimenti interessati senza scrivere nulla. Se cambi la conversazione o i dati cambiano, la simulazione non è più valida e va ripetuta prima di salvare; una simulazione già usata non può essere salvata di nuovo.</li>
+<li><strong>Salva bozza</strong> esiste solo per le regole AI che leggono il WHO: congela la definizione senza pubblicarla. Per i profili di riconoscimento non c’è bozza.</li>
+<li><strong>Salva e applica nel futuro</strong> pubblica la versione per i caricamenti successivi; <strong>Salva e applica agli esistenti</strong> la applica anche ai movimenti ancora da riconciliare indicati nella simulazione. Le decisioni umane confermate restano protette e le applicazioni si possono annullare in Cronologia e ripristino.</li>
+<li>Un profilo di riconoscimento si applica soltanto ai movimenti il cui WHO è letto da una regola AI di estrazione e che sono ancora da riconciliare. Per i gruppi di Riconciliazione guidata con WHO già riconosciuto (per esempio «WHO riconosciuto, WHY da determinare») usa <strong>Definisci regola</strong> nella finestra <strong>Controlla</strong>: le regole WHY per singolo WHO, categoria o generali si simulano e si applicano lì.</li>
+<li>Aprire questa guida dall’editor la apre in una nuova scheda: conversazione, scelte e simulazione restano come sono.</li>
+</ul>
+<h3 id="rules-manage">Rinominare o eliminare</h3>
+<p><strong>Rinomina</strong> cambia soltanto il nome mostrato. <strong>Elimina</strong> chiede conferma nella stessa finestra: per un profilo rimuove profilo, conoscenza e casi del WHO, mentre movimenti e cronologia dei ripristini restano conservati.</p>
+<h3 id="rules-history">Cronologia e ripristino</h3>
+<p>Elenca le applicazioni delle regole. Il ripristino riporta indietro soltanto i movimenti che corrispondono ancora al risultato dell’applicazione; le modifiche successive sono conservate e segnalate.</p>
+<h3 id="rules-catalog">Nuova voce di catalogo</h3>
+<p>Crea un WHY o un WHOM solo dopo la tua conferma esplicita; per un WHY indichi la destinazione contabile da cui deriva il WHAT.</p>
+</section>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+Journal No,Journal Date,Account Name,Debits,Credits,Description
+RFB-1,10/01/2026,Chase Checking 1001,,42.50,RF-One Bank #1 · OFFICE DEPOT 1182
+RFB-1,10/01/2026,Supplies,42.50,,RF-One Bank #1 · Restaurant Operating Supplies
+RFB-2,10/05/2026,Chase Checking 1001,250.00,,RF-One Bank #2 · CATERING DEPOSIT EVENT 7
+RFB-2,10/05/2026,Catering income,,250.00,RF-One Bank #2 · Catering Sales (sample)
+RFB-3,10/08/2026,Chase Savings 1002,500.00,,RF-One Bank #3+#5 · ONLINE TRANSFER TO SAV 1002
+RFB-3,10/08/2026,Chase Checking 1001,,500.00,RF-One Bank #3+#5 · ONLINE TRANSFER TO SAV 1002
+RFB-4,10/20/2026,Ink Card 2001,300.00,,RF-One Bank #4+#8 · CHASE CREDIT CRD AUTOPAY
+RFB-4,10/20/2026,Chase Checking 1001,,300.00,RF-One Bank #4+#8 · CHASE CREDIT CRD AUTOPAY
+RFB-6,10/03/2026,Ink Card 2001,,100.00,RF-One Bank #6 · COSTCO WHSE 0123
+RFB-6,10/03/2026,Supplies,60.00,,RF-One Bank #6 · Paper goods and supplies
+RFB-6,10/03/2026,Cleaning,40.00,,RF-One Bank #6 · Cleaning products
+RFB-7,10/10/2026,Ink Card 2001,15.99,,RF-One Bank #7 · HOME DEPOT RETURN 44
+RFB-7,10/10/2026,Supplies,,15.99,RF-One Bank #7 · Restaurant Operating Supplies

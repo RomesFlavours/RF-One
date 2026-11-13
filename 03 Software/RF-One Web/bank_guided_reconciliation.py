@@ -22,6 +22,7 @@ on 5090 still works as before.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -59,8 +60,11 @@ def _cbank_app():
 
 
 def start_auto_runs() -> None:
-    """C-Bank's own watcher (a full run after a new Bank import), as the 5090 server ran it."""
-    if not available() or os.environ.get("CBANK_AUTO_RUN", "1") == "0":
+    """C-Bank's own watcher (a full run after a new Bank import), as the 5090 server ran it.
+
+    Off unless `CBANK_AUTO_RUN=1` (BANK_UPLOAD_AND_RECONCILE_001, 2026-11-02): the person starts the
+    reconciliation on Upload and Reconcile once the completeness check passes, never an upload."""
+    if not available() or os.environ.get("CBANK_AUTO_RUN", "0") != "1":
         return
     try:
         con = _cbank_app().config["CON"]   # first: it puts the C-Bank code on the path
@@ -70,12 +74,14 @@ def start_auto_runs() -> None:
         print(f"Guided Reconciliation: automatic runs not started: {exc}", flush=True)
 
 
-def run_after_import() -> None:
+def run_after_import(*, after=None) -> None:
     """Phase 3A: right after a CSV import, the single engine processes the Bank in the background (new
     movements, transfers and card payments, WHO rules, labels, profiles, approved WHO -> WHY, WHY/WHAT,
     exceptions for the Guided Wizard). Idempotent: a run starts only when the imported data changed, and
     runs never overlap (`service.run_if_bank_changed`). Never raises into the import."""
     if not available():
+        if after:
+            threading.Thread(target=after, daemon=True, name="bank-amazon-after-import").start()
         return
 
     def work():
@@ -85,10 +91,20 @@ def run_after_import() -> None:
             run_id = service.run_if_bank_changed(con)
             if run_id:
                 print(f"Single engine: run #{run_id} after the import.", flush=True)
+            if after:
+                after()
         except Exception as exc:  # noqa: BLE001 — the import is already committed; the watcher retries
             print(f"Single engine: run after the import not completed: {exc}", flush=True)
 
     threading.Thread(target=work, daemon=True, name="bank-engine-after-import").start()
+
+
+_AUTOMATIC = re.compile(r"api/runs|api/runs/\d+/investigate")
+
+
+def _session_factory():
+    from db import SessionFactory
+    return SessionFactory
 
 
 def register(app, *, require_domain_access) -> None:
@@ -101,13 +117,34 @@ def register(app, *, require_domain_access) -> None:
     @app.route(PREFIX + "/<path:sub>", methods=["GET", "POST"], endpoint=ENDPOINT)
     @require_domain_access("BANK")
     def guided(sub):
+        # BANK_UPLOAD_AND_RECONCILE_001: a new engine run or an AI investigation is automatic processing and passes
+        # the same completeness gate as Upload and Reconcile; reading, decisions, approvals and chat do not.
+        # (Without its token C-Bank refuses the call itself: the gate only stands before a call it would accept.)
+        if request.method == "POST" and _AUTOMATIC.fullmatch(sub or "") and request.headers.get("X-CBank-Token"):
+            import bank_work_gate
+            from flask import jsonify
+            refused = bank_work_gate.refusal(_session_factory(), "Automatic reconciliation from Guided Reconciliation")
+            if refused:
+                return jsonify(ok=False, error=refused), 409
         environ = dict(request.environ)
         environ["SCRIPT_NAME"] = PREFIX
         environ["PATH_INFO"] = "/" + sub
+        from auth import current_account_id
+        environ["rfone.account_id"] = current_account_id()   # who confirms rules, categories and declarations
         if request.method == "GET" and not sub:
             # The page only: the Bank shell (header, local environment, breadcrumb and Bank tabs) around the C-Bank page.
             environ["rfone.bank_shell"] = {
-                "css": url_for("static", filename="css/rf-one.css") + "?v=29",
+                "css": url_for("static", filename="css/rf-one.css") + "?v=30",
                 "header": render_template("bank_guided_shell.html"),
             }
         return Response.from_app(_cbank_app().wsgi_app, environ, buffered=True)
+
+
+def recalculate_classification():
+    """Explicit Configuration action: refresh engine proposals, preserving confirmed human decisions."""
+    if not available():
+        raise ValueError("The single reconciliation engine is not available in this environment.")
+    con = _cbank_app().config["CON"]
+    from cbank import service, store
+    run_id = service.execute(con, "all")
+    return run_id, store.run(con, run_id)["summary"]

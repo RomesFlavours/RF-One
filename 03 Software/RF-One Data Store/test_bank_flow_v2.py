@@ -29,6 +29,15 @@ class FlowTests(unittest.TestCase):
         v=m.BankAiRuleVersion(rule_id=r.id,version_no=1,rule_text='Synthetic human-approved policy',method='CODE',spec=json.dumps(spec),create_missing_who=False,override_protected=True)
         self.s.add(v);self.s.commit();return r.id
 
+    def legacy_queued(self,txn):
+        """Phase 3A (single engine): an import is planned deterministically and its job ends MATCHED or AMBIGUOUS,
+        never QUEUED for AI. The import worker still processes jobs QUEUED outside that mode; this reproduces one
+        (status, stage and eligible versions as the queued import wrote them) to keep verifying its guarantees."""
+        job=self.s.scalar(select(m.BankImportReconciliation).where(m.BankImportReconciliation.financial_transaction_id==txn.id))
+        self.assertIsNotNone(job,'the import registers a job for the movement')
+        job.status='QUEUED';job.stage='PHOTOS';job.input_state=safety.snapshot(self.s,txn)
+        job.eligible_versions_json=json.dumps([(r.id,v.id) for r,v,_ in flow.entries(self.s,future=True)]);self.s.commit()
+
     def prepare(self,spec):
         response=self.post('/bank/flow/conversation',kind=spec['kind'])
         self.assertEqual(response.status_code,200,response.get_json());id=response.get_json()['id']
@@ -286,7 +295,7 @@ class FlowTests(unittest.TestCase):
         rid=self.saved(spec);txn=self.txns[2];txn.description_original='Zelle payment to OLD WHO JPM123';self.s.commit();before=safety.snapshot(self.s,txn)
         self.assertFalse(flow.import_new(self.s,txn));self.s.flush()
         self.assertEqual(safety.snapshot(self.s,txn),before)
-        job=self.s.scalar(select(m.BankImportReconciliation));self.assertEqual(job.status,'QUEUED');self.assertEqual(json.loads(job.context_json)['extracted_who'],'OLD WHO')
+        job=self.s.scalar(select(m.BankImportReconciliation));self.assertEqual((job.status,job.stage),('AMBIGUOUS','GUIDED'));self.assertEqual(json.loads(job.context_json)['extracted_who'],'OLD WHO')
 
     def test_complete_photo_reconciles_and_rollback_skips_later_change(self):
         self.saved(self.extractor());self.saved(self.photo())
@@ -354,8 +363,15 @@ class FlowTests(unittest.TestCase):
             self.assertTrue(job.input_state)
             self.assertTrue(json.loads(job.eligible_versions_json))
             self.assertEqual(json.loads(job.context_json)['engine'],flow.ENGINE)
-        # A subsequent application also resets existing jobs safely.
-        chat=self.prepare(spec)
+        # A second rule for the same format is refused (no copy is saved): the existing rule is reopened instead.
+        rid=response.get_json()['rule_id'];dup=self.prepare(spec)
+        p2=self.post(f'/bank/flow/conversation/{dup}/preview').get_json()
+        refused=self.post(f'/bank/flow/conversation/{dup}/save',preview_id=p2['id'],action='ALL')
+        self.assertEqual(refused.status_code,409);self.assertIn('already exists for this format',refused.get_json()['error'])
+        # A subsequent application of the reopened rule also resets existing jobs safely.
+        chat=self.post('/bank/flow/conversation',rule_id=rid).get_json()['id']
+        with patch('bank_chatgpt.generate_json',return_value=dict(ready=True,reply='Same format, applied again.',title='Human validated',spec=spec)):
+            self.assertEqual(self.post(f'/bank/flow/conversation/{chat}',message='Apply it again.').status_code,200)
         preview=self.post(f'/bank/flow/conversation/{chat}/preview').get_json()
         response=self.post(f'/bank/flow/conversation/{chat}/save',preview_id=preview['id'],action='ALL')
         self.assertEqual(response.status_code,200,response.get_json())
@@ -556,29 +572,33 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(result.status_code,409);self.assertIn('changed',result.get_json()['error'])
         self.assertEqual(self.s.scalar(select(m.BankAiRule).where(m.BankAiRule.title=='Human validated')),None)
 
-    def test_ai_photo_match_applies_only_safe_and_complete_photo(self):
+    def test_background_import_never_asks_the_ai_to_match_a_photo(self):
+        # Phase 0/3A (bank_flow_worker.process): a queued import gets the same deterministic pass as any import;
+        # an unrecognised description is left for a guided run, no AI is called and nothing is written.
         rid=self.saved(self.photo());txn=self.txns[2];txn.description_original='Unfamiliar merchant text';self.s.commit();flow.import_new(self.s,txn);self.s.commit()
+        self.legacy_queued(txn);before=self.state()
         import bank_import_worker as worker
         factory=sessionmaker(self.engine);id=worker.claim(factory)
-        worker.process(factory,id,match_fn=lambda *_:dict(matches=[dict(photo_id=rid,certain=True,confidence=.99)]),research_fn=lambda _:self.fail('No web lookup after complete safe photo'))
-        self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual(job.status,'MATCHED',job.last_error)
-        self.assertEqual(self.s.get(m.BankTransactionExplanation,self.s.get(m.FinancialTransaction,txn.id).explanation_id).occurrence_id,self.oldwho.id)
+        worker.process(factory,id,match_fn=lambda *_:self.fail('A background import never calls the AI'),research_fn=lambda *_:self.fail('A background import never searches the web'),generate=lambda *_:self.fail('A background import never calls the AI'))
+        self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual((job.status,job.stage),('AMBIGUOUS','GUIDED'),job.last_error)
+        self.assertEqual(self.state(),before)
 
-    def test_uncertain_ai_goes_to_web_without_writing_identity(self):
+    def test_background_import_never_researches_the_web_or_writes_identity(self):
         rid=self.saved(self.photo());txn=self.txns[2];flow.import_new(self.s,txn);self.s.commit();before=self.state()
+        self.legacy_queued(txn)
         import bank_import_worker as worker
         factory=sessionmaker(self.engine);id=worker.claim(factory)
-        worker.process(factory,id,match_fn=lambda *_:dict(matches=[dict(photo_id=rid,certain=False,confidence=.8)]),research_fn=lambda _:dict(probable_who='PROBABLE WHO',summary='Uncertain identity',sources=[dict(title='Official',url='https://example.com')]))
-        self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual(job.status,'PROPOSED',job.last_error);self.assertEqual(self.state(),before)
+        worker.process(factory,id,match_fn=lambda *_:self.fail('A background import never calls the AI'),research_fn=lambda *_:self.fail('A background import never searches the web'),generate=lambda *_:self.fail('A background import never calls the AI'))
+        self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual(job.status,'AMBIGUOUS',job.last_error);self.assertEqual(self.state(),before)
 
-    def test_manual_change_during_ai_is_preserved(self):
+    def test_manual_change_after_queueing_is_preserved(self):
+        # A person decides the movement after it was queued: the worker finds it changed (STALE) and keeps the decision.
         rid=self.saved(self.photo());txn=self.txns[2];flow.import_new(self.s,txn);self.s.commit()
+        self.legacy_queued(txn)
         import bank_import_worker as worker
         factory=sessionmaker(self.engine);id=worker.claim(factory)
-        def match(*args):
-            self.decide(txn,self.newwho.id,self.newwhy.id);self.s.commit()
-            return dict(matches=[dict(photo_id=rid,certain=True,confidence=.99)])
-        worker.process(factory,id,match_fn=match,research_fn=lambda _:self.fail('Do not research a stale record'))
+        self.decide(txn,self.newwho.id,self.newwhy.id);self.s.commit()
+        worker.process(factory,id,match_fn=lambda *_:self.fail('A background import never calls the AI'),research_fn=lambda *_:self.fail('A background import never searches the web'),generate=lambda *_:self.fail('A background import never calls the AI'))
         self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual(job.status,'STALE')
         self.assertEqual(self.s.get(m.BankTransactionExplanation,self.s.get(m.FinancialTransaction,txn.id).explanation_id).occurrence_id,self.newwho.id)
 
@@ -600,27 +620,30 @@ class FlowTests(unittest.TestCase):
         response=self.post('/bank/flow/catalog',confirmed='yes',kind='WHOM',name='New virtual beneficiary')
         self.assertEqual(response.status_code,200,response.get_json())
 
-    def test_known_who_retrieves_required_facts_before_identity_ai(self):
+    def test_profile_needing_facts_waits_for_a_guided_run(self):
+        # A known WHO whose profile needs retrieved facts: the background pass neither calls the AI nor a provider; the
+        # movement waits for a guided run, unchanged.
         self.saved(self.extractor());spec=self.photo()
         spec['requirements']=[dict(provider='purchase_details',instruction='Retrieve the actual order category')]
         spec['branches'][0]['conditions']=[dict(field='category',op='is',value='FOOD')]
         self.saved(spec);txn=self.txns[2];txn.description_original='Zelle payment to OLD WHO JPMabc';self.s.commit()
         self.assertFalse(flow.import_new(self.s,txn));self.s.commit()
+        self.legacy_queued(txn);before=self.state()
         import bank_import_worker as worker
         factory=sessionmaker(self.engine);id=worker.claim(factory)
-        worker.process(factory,id,match_fn=lambda *_:self.fail('Known WHO does not need identity AI'),research_fn=lambda _:self.fail('No web lookup'),
-            evidence_fn=lambda *_:{'purchase_details':dict(verified=True,facts={'category':'FOOD'},source='Synthetic order')})
-        self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual(job.status,'MATCHED',job.last_error)
+        worker.process(factory,id,match_fn=lambda *_:self.fail('A background import never calls the AI'),research_fn=lambda *_:self.fail('A background import never searches the web'),generate=lambda *_:self.fail('A background import never calls the AI'),
+            evidence_fn=lambda *_:self.fail('No provider call in the background'))
+        self.s.expire_all();job=self.s.get(m.BankImportReconciliation,id);self.assertEqual(job.status,'AMBIGUOUS',job.last_error)
+        self.assertEqual(json.loads(job.context_json)['extracted_who'],'OLD WHO');self.assertEqual(self.state(),before)
 
-    def test_branch_ai_call_preserves_a_concurrent_manual_change(self):
+    def test_ai_branch_is_not_decided_in_the_background_and_manual_change_wins(self):
         self.saved(self.extractor());spec=self.photo();spec['branches'][0].update(mode='AI',instruction='Use verified facts to decide this case')
         self.saved(spec);txn=self.txns[2];txn.description_original='Zelle payment to OLD WHO JPM123';self.s.commit();flow.import_new(self.s,txn);self.s.commit()
+        self.legacy_queued(txn)
         import bank_import_worker as worker
         factory=sessionmaker(self.engine);id=worker.claim(factory)
-        def generate(_):
-            self.decide(txn,self.newwho.id,self.newwhy.id);self.s.commit()
-            return dict(certain=True,confidence=.99,branch_index=0)
-        worker.process(factory,id,generate=generate,match_fn=lambda *_:self.fail('No identity call'),research_fn=lambda _:self.fail('No web call'))
+        self.decide(txn,self.newwho.id,self.newwhy.id);self.s.commit()
+        worker.process(factory,id,generate=lambda *_:self.fail('A background import never calls the AI'),match_fn=lambda *_:self.fail('A background import never calls the AI'),research_fn=lambda *_:self.fail('A background import never searches the web'))
         self.s.expire_all();self.assertEqual(self.s.get(m.BankImportReconciliation,id).status,'STALE')
 
     def test_archive_groups_changes_in_one_guarded_rollback(self):

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WHY Rules · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-search-text2">
+  <style>
+    .ws-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:.6rem;margin:.6rem 0}
+    .ws-tile{border:1px solid var(--olive-300);border-radius:8px;padding:.6rem .8rem;background:none;text-align:left;cursor:pointer;color:inherit;font:inherit}
+    .ws-tile[aria-pressed="true"]{outline:2px solid var(--olive-600,#556b2f)}
+    .ws-tile strong{display:block;font-size:1.5rem}
+    .ws-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+    .ws-scroll{max-height:65vh}
+    .ws-mode{font-size:.75rem;border:1px solid var(--olive-300);border-radius:999px;padding:0 .45rem;margin-left:.3rem;white-space:nowrap}
+    .ws-mode.multiple{background:var(--olive-100,#eef2e2)}
+    .ws-muted{color:var(--muted)}
+    .ws-error{color:var(--bad)}
+    .ws-cond{display:grid;grid-template-columns:minmax(10rem,1.2fr) minmax(8rem,.8fr) minmax(10rem,1.5fr) auto;gap:.4rem;align-items:end;margin:.3rem 0}
+    .ws-cond label{margin:0!important}
+    .ws-sim-summary{display:flex;gap:1rem;flex-wrap:wrap;margin:.4rem 0}
+    .ws-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+    dialog.ws-wide{width:min(1000px,96vw)}
+    dialog .dialog-heading{position:sticky;top:0;background:var(--surface,#fff);z-index:1}
+    @media (max-width:640px){.ws-cond{grid-template-columns:1fr}}
+  </style>
+  <script defer src="/static/bank-assistant/why_signals.js?v=1"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="/">RF-One</a></li><li><a href="/bank">Bank Reconciliation</a></li><li aria-current="page">WHY Rules</li></ol></nav>
+  <div class="page-heading"><div><h2>WHY Rules</h2>
+    <p class="muted">Recognising the WHO and determining the WHY are two steps. For a <strong>UNIQUE</strong> WHO the WHY is the one set on its WHO + Source classification. For a <strong>MULTIPLE</strong> WHO the WHY depends on the single movement: only a <strong>WHO WHY rule</strong> decides it — conditions on Source, accounting subject at the date, description, Source information or documents — and a WHY registered on the pair is not used. WHAT always comes from the WHY; WHOM from the Source. Below: the movements whose WHO is recognised but whose WHY cannot be determined, grouped by WHO, Source and reason. Nothing here changes a movement.</p></div></div>
+
+  <section class="card" aria-labelledby="ws-groups-h">
+    <div class="section-heading"><div><span class="eyebrow">RECOGNISED WHO · WHY OPEN</span><h2 id="ws-groups-h">WHY to determine <span class="badge" id="ws-count">—</span></h2></div>
+      <div class="flow-actions"><button type="button" class="btn-secondary" id="ws-refresh">Recompute</button></div></div>
+    <div class="ws-tiles" id="ws-tiles"></div>
+    <div class="ws-filters"><label>Search<input id="ws-q" type="search" placeholder="WHO or Source"></label></div>
+    <div class="who-scroll ws-scroll"><table class="who-table"><thead><tr><th>WHO</th><th>Source</th><th>Reason</th><th class="num">Movements</th><th class="num">Amount</th><th>Action</th></tr></thead>
+      <tbody id="ws-rows"><tr><td colspan="6">Computing with the reconciliation engine (read-only)…</td></tr></tbody></table></div>
+  </section>
+
+  <section class="card" aria-labelledby="ws-rules-h">
+    <div class="section-heading"><div><span class="eyebrow">AFTER WHO RECOGNITION</span><h2 id="ws-rules-h">WHO WHY rules <span class="badge" id="ws-rules-count">—</span></h2></div>
+      <div class="flow-actions"><button type="button" id="ws-new-rule">+ Define rule</button></div></div>
+    <p class="muted">These rules never identify a WHO (that is done by the WHO Rules): they determine the WHY of a WHO already recognised. A new rule is simulated on its movements first and saved inactive unless you activate it.</p>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Rule</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="ws-rules"></tbody></table></div>
+  </section>
+
+  <section class="card" aria-labelledby="ws-modes-h">
+    <div class="section-heading"><div><span class="eyebrow">WHO WHY MODE</span><h2 id="ws-modes-h">MULTIPLE WHO <span class="badge" id="ws-modes-count">—</span></h2></div></div>
+    <p class="muted">Every WHO is UNIQUE unless set here. A WHO with different WHYs on different Sources is still UNIQUE: each WHO + Source classification resolves it. Set MULTIPLE only when the WHY changes movement by movement on the same Source.</p>
+    <div class="ws-filters"><label>WHO<select id="ws-mode-who"></select></label><label>Mode<select id="ws-mode-value"><option value="MULTIPLE">MULTIPLE</option><option value="UNIQUE">UNIQUE</option></select></label><label>Note<input id="ws-mode-note" maxlength="500"></label><button type="button" id="ws-mode-save">Save mode</button></div>
+    <p class="ws-error" id="ws-mode-error" role="alert"></p>
+    <ul id="ws-modes"></ul>
+  </section>
+</div>
+
+<dialog id="ws-movements" class="ws-wide" aria-labelledby="ws-movements-h">
+  <div class="dialog-heading"><h2 id="ws-movements-h">Movements</h2><button type="button" class="close-button" data-cancel="ws-movements" aria-label="Close">&times;</button></div>
+  <p id="ws-movements-note" class="muted"></p>
+  <div class="who-scroll"><table class="who-table"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Detail</th></tr></thead><tbody id="ws-movements-rows"></tbody></table></div>
+  <div class="dialog-actions"><button type="button" class="btn-secondary" data-cancel="ws-movements">Close</button></div>
+</dialog>
+
+<dialog id="ws-rule" class="ws-wide" aria-labelledby="ws-rule-h">
+  <div class="dialog-heading"><h2 id="ws-rule-h">Define WHO WHY rule</h2><button type="button" class="close-button" data-cancel="ws-rule" aria-label="Close">&times;</button></div>
+  <label>WHO (one or more)<select id="ws-rule-who" multiple size="5"></select></label>
+  <h3>Conditions <small class="ws-muted">(all must be true)</small></h3>
+  <div id="ws-conds"></div>
+  <button type="button" class="btn-secondary" id="ws-add-cond">+ Condition</button>
+  <h3>Result</h3>
+  <label><input type="radio" name="ws-result" value="why" checked> WHY <select id="ws-rule-why"></select></label>
+  <label><input type="radio" name="ws-result" value="document"> WHY read from a document <select id="ws-rule-doc"></select></label>
+  <p class="inline-note">WHAT derives from the WHY; WHOM stays the Source owner. A condition that cannot be evaluated (missing information) leaves the movement open with “Serve un documento o un chiarimento”.</p>
+  <p class="ws-error" id="ws-rule-error" role="alert"></p>
+  <div id="ws-sim" hidden>
+    <h3>Simulation <small class="ws-muted">(read-only; the draft counts as active)</small></h3>
+    <p id="ws-sim-text"></p>
+    <div class="ws-sim-summary" id="ws-sim-summary"></div>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Date</th><th>Source</th><th>Description</th><th class="num">Amount</th><th>Rule</th><th>WHY before</th><th>WHY after</th></tr></thead><tbody id="ws-sim-rows"></tbody></table></div>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" class="btn-secondary" data-cancel="ws-rule">Cancel</button>
+    <button type="button" class="btn-secondary" id="ws-simulate">Simulate</button>
+    <button type="button" class="btn-secondary" id="ws-save-inactive" disabled>Save inactive</button>
+    <button type="button" id="ws-save-active" disabled>Save and activate</button>
+  </div>
+</dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

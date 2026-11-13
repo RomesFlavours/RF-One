@@ -127,6 +127,8 @@ class MergeResult:
 def merge(session: Session, *, keep_id: int | None, absorb_id: int | None, default_reason_id: int | None = None,
           account_id: int | None = None) -> MergeResult:
     keep, absorb = _pair(session, keep_id, absorb_id)
+    from . import source_classification
+    source_classification.merge_pairs(session, keep.id, absorb.id)
     for conflict in conflicts(session, keep, absorb):
         if conflict.key == "default_why":
             if default_reason_id not in (keep.default_transaction_reason_id, absorb.default_transaction_reason_id):

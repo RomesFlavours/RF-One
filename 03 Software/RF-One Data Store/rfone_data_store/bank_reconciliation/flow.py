@@ -61,6 +61,32 @@ def planner(db):
     return value
 
 
+# Variable parts of a description format (BANK_WHO_FORMAT_REVIEW_001): a delimiter may contain these
+# placeholders where the bank writes a date, a number or a reference that changes on every movement.
+PLACEHOLDERS = {'{date}': r'\d{1,2}/\d{1,2}(?:/\d{2,4})?', '{number}': r'\d+', '{code}': r'[A-Za-z0-9]*\d[A-Za-z0-9]*'}
+_PLACEHOLDER_RE = re.compile(r'(\{date\}|\{number\}|\{code\})')
+
+
+def is_generic(spec):
+    """A WHO rule anchored on nothing (WHO from the beginning, no prefix): it reads a movement only when no
+    anchored rule does — an anchored rule (a start text, a prefix or a required text) always takes precedence."""
+    return not spec.get('fixed_who') and bool(spec.get('from_beginning')) and not (spec.get('prefix') or '').strip() and not spec.get('require')
+
+
+def has_placeholder(text):
+    return bool(text) and '{' in text
+
+
+def locate(text, delimiter):
+    """(start, end) of the first occurrence of a delimiter in text, any case; placeholders match their part."""
+    if has_placeholder(delimiter):
+        pattern = ''.join(PLACEHOLDERS.get(part, re.escape(part)) for part in _PLACEHOLDER_RE.split(delimiter))
+        found = re.search(pattern, text, re.IGNORECASE)
+        return (found.start(), found.end()) if found else None
+    pos = text.casefold().find(delimiter.casefold())
+    return (pos, pos + len(delimiter)) if pos >= 0 else None
+
+
 def extract(spec, description, *, highlight=False):
     original = description or ''
     text = original.strip()
@@ -70,11 +96,33 @@ def extract(spec, description, *, highlight=False):
     if prefix and prefix[-1].isalnum() and len(text)>len(prefix) and not text[len(prefix)].isspace():return None
     if any(x.casefold() in lower for x in spec.get('exclude', [])):
         return None
-    start = spec.get('start', '')
-    pos = lower.find(start.casefold()) if start else -1
-    if pos < 0:
+    # BANK_WHO_SEARCH_TEXT_001: the rule reads only descriptions containing every required text. Runs of
+    # spaces do not count: bank files pad fields ("NAME:PAYPAL        ORIG") while a person types one space.
+    squeezed = ' '.join(lower.split())
+    if not all(' '.join(x.casefold().split()) in squeezed for x in spec.get('require', [])):
         return None
-    name = text[pos + len(start):]
+    if spec.get('fixed_who'):
+        # A named merchant can occur after card/date prefixes and other # references.
+        # Literal whole-name matching avoids returning text before the first #.
+        fixed = spec['fixed_who']
+        pattern = r'(?<!\w)' + r'\s+'.join(re.escape(part) for part in fixed.split()) + r'(?!\w)'
+        match = re.search(pattern, original, re.IGNORECASE)
+        if not match:
+            return None
+        if highlight:
+            return dict(before=original[:match.start()],who=original[match.start():match.end()],
+                        after=original[match.end():],uncertain=False)
+        return ' '.join(fixed.split()).upper()
+    start = spec.get('start', '')
+    if spec.get('from_beginning'):
+        # The WHO opens the description (after the prefix, when there is one).
+        begin_at = len(prefix)
+    else:
+        found = locate(text, start) if start else None
+        if found is None:
+            return None
+        begin_at = found[1]
+    name = text[begin_at:]
     mode = spec.get('end_mode', 'marker')
     if mode == 'last_code':
         # The LAST token is the payment reference, never an interior name number.
@@ -84,8 +132,7 @@ def extract(spec, description, *, highlight=False):
         name = parts[0]
     elif mode == 'marker':
         markers = spec.get('end_markers') or [spec.get('end', '')]
-        ends = [name.casefold().find(x.casefold()) for x in markers if x]
-        ends = [i for i in ends if i >= 0]
+        ends = [found[0] for found in (locate(name, x) for x in markers if x) if found]
         if not ends:
             return None
         name = name[:min(ends)]
@@ -110,10 +157,18 @@ def extract(spec, description, *, highlight=False):
     uncertain=policy=='review_numbers' and clean(selected) not in exceptions and bool(re.search(r'(?:^|\s)[0-9]+(?:/[0-9]+)*$',selected))
     if highlight:
         # Slice the exact source selection, retaining casing and excluding padding.
-        begin = len(original) - len(original.lstrip()) + pos + len(start) + len(name) - len(name.lstrip())
+        begin = len(original) - len(original.lstrip()) + begin_at + len(name) - len(name.lstrip())
         end = begin + len(selected)
         return dict(before=original[:begin], who=original[begin:end], after=original[end:],uncertain=uncertain)
-    return None if uncertain else selected.upper()
+    if uncertain:
+        return None
+    if spec.get('name_cleanup') == 'letters':
+        # BANK_WHO_SEARCH_TEXT_001: digits are dropped, every other non-letter becomes a space
+        # ("WIX 1259622963" -> "WIX", "SPOTIFY*P4742E4" -> "SPOTIFY PE"). Nothing left: no WHO.
+        selected = ' '.join(''.join(c if c.isalpha() or c.isspace() else ('' if c.isdigit() else ' ') for c in selected).split())
+        if not selected:
+            return None
+    return selected.upper()
 
 
 def identity(db, txn, configured):
@@ -130,7 +185,10 @@ def identity(db, txn, configured):
             execution = ai_rules.execute(spec, current_row)
             name = execution.who if execution.outcome == 'MATCH' else None
         if name:
-            found.append((name.strip().upper(), rule.id))
+            found.append((name.strip().upper(), rule.id, spec.get('engine') == ENGINE and is_generic(spec)))
+    if any(not generic for _, _, generic in found):
+        found = [f for f in found if not f[2]]          # anchored rules first
+    found = [(n, r) for n, r, _ in found]
     names = {clean(n) for n, _ in found}
     return (found[0][0] if len(names) == 1 else None, [r for _, r in found], len(names) > 1)
 
@@ -166,15 +224,26 @@ def validate(db, spec, providers=()):
     if spec['kind'] == 'EXTRACTOR':
         if any(k in spec for k in ('why_id', 'whom_id', 'branches', 'allowed_why_ids')):
             raise ValueError('An AI rule extracts WHO only.')
-        if not isinstance(spec.get('start'), str) or not spec['start'].strip() or spec.get('end_mode') not in ('marker', 'last_code', 'end'):
+        if spec.get('fixed_who') is not None and (not isinstance(spec['fixed_who'],str) or not 2<=len(spec['fixed_who'])<=255 or sum(c.isalpha() for c in spec['fixed_who'])<2):
+            raise ValueError('Name the literal merchant to read from the description.')
+        if not spec.get('fixed_who') and (not isinstance(spec.get('start', ''), str) or not (spec.get('start', '').strip() or spec.get('from_beginning') is True) or spec.get('end_mode') not in ('marker', 'last_code', 'end')):
             raise ValueError('Clarify where WHO begins and ends.')
-        if spec['end_mode'] == 'marker' and not (spec.get('end') or spec.get('end_markers')):
+        if 'from_beginning' in spec and not isinstance(spec['from_beginning'], bool):
+            raise ValueError('Invalid start of WHO.')
+        if is_generic(spec) and spec['end_mode'] == 'end':
+            raise ValueError('The whole description is not a WHO: say where WHO ends, or add a prefix.')
+        for value in [spec.get('start', ''), spec.get('end', '')] + list(spec.get('end_markers') or []):
+            if isinstance(value, str) and '{' in value and any(p not in PLACEHOLDERS for p in re.findall(r'\{[^}]*\}', value)):
+                raise ValueError('Only {date}, {number} and {code} may stand for the variable parts.')
+        if not spec.get('fixed_who') and spec.get('end_mode') == 'marker' and not (spec.get('end') or spec.get('end_markers')):
             raise ValueError('The end delimiter for WHO is missing.')
         for key in ('start','end','prefix'):
             if key in spec and (not isinstance(spec[key],str) or len(spec[key]) > 500): raise ValueError('Invalid delimiter.')
         if spec.get('suffix_policy','none') not in ('none','dates','numbers','review_numbers'):
             raise ValueError('Invalid numeric suffix policy.')
-        for key in ('exclude','end_markers','numeric_name_exceptions'):
+        if spec.get('name_cleanup','none') not in ('none','letters'):
+            raise ValueError('Invalid name cleanup.')
+        for key in ('exclude','require','end_markers','numeric_name_exceptions'):
             if key in spec and (not isinstance(spec[key],list) or any(not isinstance(x,str) or not x.strip() or len(x)>500 for x in spec[key])): raise ValueError('Invalid delimiters.')
         return spec
     if not isinstance(spec.get('who'),str) or not spec['who'].strip() or len(spec['who'])>200:
@@ -332,7 +401,7 @@ def signature(db):
     return hashlib.sha256(safety.encode(data).encode()).hexdigest()
 
 
-def write(db, txn, choice, *, mode='IMPORT', account_id=None, applications=None):
+def write(db, txn, choice, *, mode='IMPORT', account_id=None, applications=None, human_confirmed=False):
     rule=db.get(m.BankAiRule,choice['rule_id']);version=db.get(m.BankAiRuleVersion,choice['version_id'])
     if not rule or rule.deleted_at or rule.status!='ACTIVE' or not version or version.rule_id!=rule.id: raise ValueError('Profile no longer available.')
     reason=db.get(m.BankTransactionReason,choice['why_id']);entity=db.get(m.ReportingEntity,choice['whom_id'])
@@ -358,10 +427,18 @@ def write(db, txn, choice, *, mode='IMPORT', account_id=None, applications=None)
     note=f'Foto segnaletica #{rule.id} v{version.version_no}; applicazione #{app.id}.'
     if choice.get('evidence'):note+=' Evidenze: '+json.dumps(choice['evidence'],ensure_ascii=False)
     if choice.get('identity_match'):note+=' Recognition: '+json.dumps(choice['identity_match'],ensure_ascii=False)
-    recognition._create_decision_row(db,txn,occurrence_id=who_id,transaction_reason_id=reason.id,decision_source='RULE',decision_status='AUTO_APPLIED',confidence='HIGH',explanation_notes=note,accounting_classification_id=choice.get('destination_id'))
-    allocation.set_allocations(db,financial_transaction_id=txn.id,specs=[allocation.AllocationSpec(amount_minor=txn.amount_minor,reporting_entity_id=entity.id,transaction_reason_id=reason.id,
-        accounting_classification_id=choice.get('destination_id'),status=allocation_status,decision_source=('HUMAN' if choice.get('manual_whom') or (oldalloc and oldalloc[0].decision_source=='HUMAN' and oldalloc[0].reporting_entity_id==entity.id) else 'RULE'),notes=note)])
-    txn.review_status='REQUIRES_REVIEW' if choice.get('review_before_confirm') else 'ACCEPTED';db.flush()
+    if human_confirmed:
+        # Explicit approval of the exact preview uses the canonical human decision
+        # service. Do not bypass the single-engine guard for automatic writes.
+        from . import row_reconciliation
+        row_reconciliation.save_row(db, transaction_id=txn.id, occurrence_id=who_id,
+            reason_id=reason.id, destination_id=choice.get('destination_id'),
+            reporting_entity_id=entity.id, account_id=account_id)
+    else:
+        recognition._create_decision_row(db,txn,occurrence_id=who_id,transaction_reason_id=reason.id,decision_source='RULE',decision_status='AUTO_APPLIED',confidence='HIGH',explanation_notes=note,accounting_classification_id=choice.get('destination_id'))
+        allocation.set_allocations(db,financial_transaction_id=txn.id,specs=[allocation.AllocationSpec(amount_minor=txn.amount_minor,reporting_entity_id=entity.id,transaction_reason_id=reason.id,
+            accounting_classification_id=choice.get('destination_id'),status=allocation_status,decision_source=('HUMAN' if choice.get('manual_whom') or (oldalloc and oldalloc[0].decision_source=='HUMAN' and oldalloc[0].reporting_entity_id==entity.id) else 'RULE'),notes=note)])
+        txn.review_status='REQUIRES_REVIEW' if choice.get('review_before_confirm') else 'ACCEPTED';db.flush()
     app.items.append(m.BankAiRuleApplicationItem(financial_transaction_id=txn.id,outcome='UPDATED',before_state=before,after_state=safety.snapshot(db,txn),who_before=(db.get(m.BankOccurrence,previous.occurrence_id).canonical_name if previous and previous.occurrence_id else None),who_after=choice['who'],why_after=reason.name,for_whom_after=entity.name,note=note))
     rule.last_applied_at=now;db.flush()
     return app.id

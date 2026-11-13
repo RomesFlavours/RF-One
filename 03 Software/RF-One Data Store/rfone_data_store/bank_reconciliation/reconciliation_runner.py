@@ -16,7 +16,7 @@ def pending(db):
     # completeness. Never reopen a resolved WHO because WHY/WHAT is incomplete.
     from . import review_queues
     eligible={t.id for t in flow.eligible(db) if t.duplicate_status!='CANDIDATE_DUPLICATE'}
-    return [t for t in db.scalars(review_queues._queue_query(
+    return [t for t in db.scalars(review_queues._queue_query(db,
         review_queues.TO_RECONCILE,review_queues.ReviewFilters())) if t.id in eligible]
 
 

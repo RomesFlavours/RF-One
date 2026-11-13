@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Riconciliazione bancaria · Carica e riconcilia · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('work', how_works=('upload-and-reconcile', 'Carica e riconcilia')) }}
+{#- BANK_UPLOAD_AND_RECONCILE_001 — the daily Bank path on one page, with no month to choose:
+    upload -> check completeness -> reconcile automatically -> complete by hand -> QuickBooks Online.
+    Explanations live in the Bank guide (Come funziona); this page only says what to do next. -#}
+{%- set c = check %}
+{%- macro money(minor) %}{{ "{:,.2f}".format((minor or 0) / 100).replace(",", "_").replace(".", ",").replace("_", ".") }}{% endmacro %}
+{%- macro day(value) %}{% if value %}{{ value.strftime('%d/%m/%Y') if value.strftime is defined else value }}{% else %}—{% endif %}{% endmacro %}
+{%- macro iso(value) %}{{ value.isoformat() if value else '' }}{% endmacro %}
+{%- set step = 'upload' if not c.has_data else ('check' if not ready else ('reconcile' if not results else 'complete')) %}
+<ol class="work-steps" aria-label="Avanzamento">
+  {%- for code, label in [('upload', '1 Carica i file'), ('check', '2 Controlla la completezza'), ('reconcile', '3 Riconcilia automaticamente'), ('complete', '4 Completa a mano'), ('export', '5 QuickBooks Online')] %}
+  {%- set order = ['upload', 'check', 'reconcile', 'complete', 'export'] %}
+  <li class="{{ 'is-current' if code == step else ('is-done' if order.index(code) < order.index(step) else '') }}">{{ label|bank_ui_it }}</li>
+  {%- endfor %}
+</ol>
+
+<div class="card" id="upload">
+  <h2>1 · Carica i file</h2>
+  <p class="muted small">Carica gli estratti di conti e carte (CSV) e i report ordini Amazon Business, così come li hai scaricati, in qualsiasi ordine e momento. Non devi scegliere un mese: Bank legge le date dai file. I file già caricati non creano duplicati. Il caricamento non avvia la riconciliazione.</p>
+  <form method="post" action="{{ url_for('bank_work_upload') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="files" multiple accept=".csv,.CSV" required>
+    <button type="submit" class="btn-primary">Carica e controlla</button>
+  </form>
+</div>
+
+<div class="card" id="files">
+  <h2>File ricevuti <span class="muted small">({{ files|length }})</span></h2>
+  {% if not files %}<p class="muted">Non hai ancora caricato file da questa pagina.</p>{% else %}
+  <div class="table-scroll">
+  <table class="table-compact table-stack">
+    <thead><tr><th>File</th><th>Tipo</th><th>Conto o carta</th><th>Periodo</th><th>Record</th><th>Stato</th></tr></thead>
+    <tbody>
+    {% for f in files[:60] %}
+      {%- set fp = periods.get(f.batch_id) if f.batch_id else none %}
+      <tr id="file-{{ f.id }}" data-rr-key="file-{{ f.id }}">
+        <td data-label="File" class="col-description">{{ f.file_name }}</td>
+        <td data-label="Tipo">{{ f.kind_label or '—' }}</td>
+        <td data-label="Conto o carta">{{ f.source or ('Amazon Business' if f.kind == 'AMAZON_BUSINESS_ORDERS' else '—') }}</td>
+        <td data-label="Periodo">
+          {% if fp %}{{ day(fp.start) }} – {{ day(fp.end) }}
+            <span class="muted small">({{ {'DECLARED': 'dichiarato nel nome del file', 'CONFIRMED': 'confermato dall’utente', 'MOVEMENTS': 'primo e ultimo movimento'}[fp.basis] }})</span>
+            {% if fp.note %}<div class="small muted">{{ fp.note }}</div>{% endif %}
+            {% if fp.basis == 'MOVEMENTS' %}
+            <details class="small"><summary>Conferma il periodo dell’estratto</summary>
+              <form method="post" action="{{ url_for('bank_work_fact') }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="fact" value="STATEMENT_PERIOD">
+                <input type="hidden" name="source_id" value="{{ f.source_id }}">
+                <input type="hidden" name="batch_id" value="{{ f.batch_id }}">
+                <input type="date" name="start" value="{{ iso(fp.first) }}" max="{{ iso(fp.first) }}" required aria-label="Estratto dal">
+                <input type="date" name="end" value="{{ iso(fp.last) }}" min="{{ iso(fp.last) }}" required aria-label="Estratto fino al">
+                <button type="submit" class="btn-secondary">Conferma il periodo indicato nell’estratto</button>
+              </form></details>
+            {% endif %}
+          {% elif f.period_start %}{{ f.period_start }} – {{ f.period_end }}
+            <span class="muted small">(first and last {{ 'ordine' if f.kind == 'AMAZON_BUSINESS_ORDERS' else 'movimento' }})</span>
+          {% else %}—{% endif %}</td>
+        <td data-label="Record">{{ f.rows if f.rows is not none else '—' }}
+          {% if f.state in ('INTEGRATED', 'ALREADY_LOADED') and f.kind == 'BANK' %}<br><span class="small muted">{{ f.new_rows or 0 }} nuovi · {{ f.already_stored or 0 }} già presenti{% if f.left_out_unreadable %} · {{ f.left_out_unreadable }} righe illeggibili escluse{% endif %}</span>{% endif %}</td>
+        <td data-label="Stato">
+          <span class="badge {{ 'bad' if f.blocking else ('ok' if f.state in ('INTEGRATED', 'AMAZON_LOADED', 'ALREADY_LOADED') else 'warn') }}">{{ f.state_label }}</span>
+          {% if f.question %}<div class="small">{{ f.question|bank_ui_it }}</div>{% elif f.note and f.state == 'KEPT_ASIDE' %}<div class="small muted">{{ f.note|bank_ui_it }}</div>{% endif %}
+          {% if f.blocking %}
+            {% if f.state in ('NEEDS_SOURCE', 'CHECK_SOURCE', 'SOURCE_INCOMPLETE') %}
+            <form method="post" action="{{ url_for('bank_work_file_action', file_id=f.id, action='source') }}" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="source_id" required aria-label="Conto o carta di {{ f.file_name }}">
+                <option value="">Scegli il conto o la carta…</option>
+                {% for s in sources %}<option value="{{ s.id }}" {% if s.id == f.source_id %}selected{% endif %}>{{ bank.instrument_identity(s) }}</option>{% endfor %}
+              </select>
+              <button type="submit" class="btn-secondary">Usa questo conto o carta</button>
+            </form>
+            {% endif %}
+            {% if f.state == 'SOURCE_INCOMPLETE' %}
+              <a class="small" href="{{ url_for('bank_sources', edit=f.source_id) }}">Completa i dati del conto o carta</a>
+              <form method="post" action="{{ url_for('bank_work_file_action', file_id=f.id, action='retry') }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-secondary">Controlla di nuovo</button></form>
+            {% endif %}
+            {% if f.state == 'CHECK_SOURCE' %}
+              <form method="post" action="{{ url_for('bank_work_file_action', file_id=f.id, action='confirm-source') }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-secondary">Sì, è {{ f.source }}</button></form>
+            {% endif %}
+            {% if f.state == 'UNREADABLE_ROWS' %}
+              <details class="small"><summary>Righe non leggibili</summary><ul>
+                {% for u in (f.plan or {}).get('unreadable', [])[:20] %}<li>row {{ u.row_number }} — {{ u.description or '(nessuna descrizione)' }}: {{ u.reason }}</li>{% endfor %}</ul></details>
+              <form method="post" action="{{ url_for('bank_work_file_action', file_id=f.id, action='leave-out') }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-secondary">Escludi queste righe</button></form>
+            {% endif %}
+            <form method="post" action="{{ url_for('bank_work_file_action', file_id=f.id, action='remove') }}" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-link">Rimuovi il file</button></form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" id="check">
+  <h2>2 · Controllo di completezza</h2>
+  {% if not c.has_data %}
+    <p class="work-blocked">Non ci sono ancora file di conti o carte. Carica quelli disponibili: Bank ti dirà cosa manca.</p>
+  {% else %}
+    <p>Dati da controllare dal <strong>{{ day(c.window_start) }}</strong>  fino all’ultimo giorno coperto dai file di ciascun conto o carta (ultimo giorno:
+      <strong>{{ day(c.window_end) }}</strong>). Non sono richiesti giorni successivi alla copertura dei file del conto o carta.</p>
+    {% if ready %}
+      <p class="work-ready">Dati pronti per la riconciliazione.</p>
+    {% else %}
+      <div class="work-blocked">
+        <strong>{{ waiting|length + c.gaps|length }} richieste da completare prima della riconciliazione automatica.</strong>
+        Carica i file richiesti o rispondi alle domande qui sotto. Il controllo si aggiorna dopo ogni risposta o caricamento.
+      </div>
+      {% if waiting %}<p class="small">{{ waiting|length }} file qui sopra richiedono una risposta.</p>{% endif %}
+      {% for g in c.gaps %}
+        <div class="work-request" id="gap-{{ loop.index }}" data-rr-key="gap-{{ g.key }}">
+          <strong>{{ g.request }}</strong>
+          <div class="small muted">{{ g.reason }}</div>
+          {% for a in g.answers %}
+          <form method="post" action="{{ url_for('bank_work_fact') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="source_id" value="{{ g.source_id }}">
+            <input type="hidden" name="fact" value="{{ a }}">
+            {% if a == 'IN_USE_SINCE' %}
+              <input type="hidden" name="start" value="{{ iso(g.after) }}">
+              <button type="submit" class="btn-secondary">In uso soltanto dal {{ day(g.after) }}</button>
+            {% else %}
+              <input type="hidden" name="start" value="{{ iso(g.start) }}"><input type="hidden" name="end" value="{{ iso(g.end) }}">
+              <button type="submit" class="btn-secondary">{{ answer_labels[a] }}</button>
+            {% endif %}
+          </form>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if c.uncertainties %}
+      <h3>Da verificare (non blocca l’avvio)</h3>
+      {% for u in c.uncertainties %}<div class="work-uncertain small">{{ u.text|bank_ui_it }}
+        {% if not u.tail %}
+        <form method="post" action="{{ url_for('bank_work_fact') }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="source_id" value="{{ u.source_id }}">
+          <input type="hidden" name="fact" value="NO_MOVEMENTS"><input type="hidden" name="start" value="{{ iso(u.start) }}"><input type="hidden" name="end" value="{{ iso(u.end) }}">
+          <button type="submit" class="btn-link">Non ci sono stati movimenti</button></form>{% endif %}</div>{% endfor %}
+    {% endif %}
+    {% for n in c.notes %}<p class="small muted">{{ n|bank_ui_it }}</p>{% endfor %}
+    <details>
+      <summary>Copertura per conto o carta</summary>
+      <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead><tr><th>Conto o carta</th><th>File e periodi</th><th>Verificato</th></tr></thead>
+        <tbody>
+        {% for s in c.sources %}
+          <tr><td data-label="Conto o carta">{{ s.source }}</td>
+            <td data-label="File e periodi">{% for fp in s.files %}{{ day(fp.start) }} – {{ day(fp.end) }}<span class="muted small"> ({{ 'dichiarato' if fp.basis == 'DECLARED' else ('confermato' if fp.basis == 'CONFIRMED' else 'movimenti') }})</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</td>
+            <td data-label="Verificato">{{ s.status|bank_ui_it }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </details>
+  {% endif %}
+</div>
+
+<div class="card" id="reconcile">
+  <h2>3 · Riconciliazione automatica</h2>
+  {% if not research_consent %}
+  <div class="work-uncertain">
+    <strong>La ricerca internet richiede la tua autorizzazione.</strong> Dopo le regole e il riconoscimento dei nomi WHO, Bank può chiedere a ChatGPT (OpenAI) di cercare sul web i movimenti ancora aperti. Invierebbe:
+    <ul class="small">{% for x in research_sent %}<li>{{ x|bank_ui_it }}</li>{% endfor %}</ul>
+    <p class="small">Non vengono inviati: {{ research_not_sent }}. Senza autorizzazione, la riconciliazione prosegue senza questa fase: i relativi movimenti restano da riconciliare a mano.</p>
+    <form method="post" action="{{ url_for('bank_work_research_authorize') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="small"><input type="checkbox" name="authorize" value="yes" required> Autorizzo l’invio di questi dati a ChatGPT per la ricerca internet</label>
+      <button type="submit" class="btn-secondary">Autorizza la ricerca internet</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if running %}
+    <p class="work-ready" id="run-progress" data-run-id="{{ run.id }}">Elaborazione in corso… {{ run.step or 'avvio' }}</p>
+    <p class="small muted">Puoi lasciare la pagina: l’elaborazione continua. La pagina si aggiorna al termine.</p>
+  {% else %}
+    {% if run and run.status in ('ERROR', 'INTERRUPTED') %}
+      <p class="work-blocked">L’ultima elaborazione non è terminata: {{ run.error }}</p>
+    {% elif run and run.status == 'DONE' %}
+      <p class="small muted">Ultima elaborazione terminata il {{ run.finished_dt|local_dt(tz) if run.finished_dt else '' }}.
+        {% if run.research %}Ricerca internet: {{ run.research.requests }} richieste a ChatGPT, {{ run.research.reused }} of
+          {{ run.research.distinct }} descrizioni distinte già esaminate, con risposte riutilizzate.{% endif %}
+        {% for w in run.warnings or [] %}<br>{{ w }}{% endfor %}</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('bank_work_reconcile') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-primary" {% if not ready or not guided %}disabled{% endif %}>
+        {{ 'Ripeti la riconciliazione automatica' if run else 'Avvia riconciliazione automatica' }}</button>
+      {% if not ready %}<span class="small muted">Si abilita quando il controllo di completezza non presenta richieste bloccanti.</span>
+      {% elif not guided %}<span class="small muted">Il motore di riconciliazione non è disponibile in questo ambiente.</span>{% endif %}
+    </form>
+    <p class="small muted">Regole → nomi e alias WHO → ricerca internet. L’elaborazione produce proposte: le confermi qui sotto prima che diventino decisioni.</p>
+  {% endif %}
+</div>
+
+{% if results %}
+<div class="card" id="results">
+  <h2>4 · Risultati e casi da completare</h2>
+  <p class="small muted">Elaborazione n.{{ results.run.id }} · {{ results.total }} movimenti inclusi. Ogni movimento appartiene a un solo stato e a una sola origine nei riepiloghi qui sotto.</p>
+  <h3>Stato finale</h3>
+  <table class="table-compact"><tbody>
+    {% for code in ['decided', 'matched', 'proposal', 'to_confirm', 'manual'] %}
+    <tr><td>{{ state_titles[code] }}</td><td><strong>{{ results.states.get(code, 0) }}</strong></td></tr>{% endfor %}
+    <tr><td><strong>Totale</strong> {{ '✓' if results.quadrature_final else '✗' }}</td><td><strong>{{ results.total }}</strong></td></tr>
+  </tbody></table>
+  <h3>Origine del riconoscimento WHO</h3>
+  <table class="table-compact"><tbody>
+    {% for code, label in who_origins %}<tr><td>{{ label|bank_ui_it }}</td><td><strong>{{ results.origins.get(code, 0) }}</strong></td></tr>{% endfor %}
+    <tr><td><strong>Totale</strong> {{ '✓' if results.quadrature_who else '✗' }}</td><td><strong>{{ results.total }}</strong></td></tr>
+  </tbody></table>
+  <p class="small muted">«Risolto automaticamente» indica una proposta: viene registrata in Bank solo alla tua conferma. «Applicato automaticamente» è già registrato (giroconti e pagamenti carta abbinati). Un WHO senza WHY o una ripartizione incompleta non sono conteggiati come riconciliati.</p>
+  {% if results.earlier_open %}<p class="small">Prima dell’intervallo controllato, {{ results.earlier_open }} movimenti sono ancora aperti. Non bloccano questo lavoro e non sono inclusi qui.</p>{% endif %}
+
+  {% if results.confirmable %}
+  <h3>Conferma le proposte automatiche</h3>
+  <p class="small">Le proposte non diventano decisioni finché non confermi. La conferma registra
+    {{ results.confirmable }}  decisioni (WHO, WHY e relativo WHAT, WHOM secondo configurazione), protette come ogni tua decisione. I movimenti già decisi nel frattempo non vengono modificati.</p>
+  <table class="table-compact"><thead><tr><th>WHY</th><th>Movimenti</th></tr></thead><tbody>
+    {% for why, n in results.confirm_preview %}<tr><td>{{ why }}</td><td>{{ n|bank_ui_it }}</td></tr>{% endfor %}</tbody></table>
+  <form method="post" action="{{ url_for('bank_work_confirm') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="scope" value="automatic"><input type="hidden" name="engine_run_id" value="{{ results.run.id }}">
+    <label class="small"><input type="checkbox" name="confirm" value="yes" required> Ho controllato le proposte</label>
+    <button type="submit" class="btn-primary">Conferma {{ results.confirmable }} proposte automatiche</button>
+  </form>
+  {% endif %}
+
+  <h3>Casi da completare</h3>
+  {% if not results.groups %}<p class="muted">Nessun caso aperto nei dati controllati.</p>{% endif %}
+  {% for g in results.groups[:40] %}
+    <div class="work-request" data-rr-key="case-{{ g.key }}">
+      <strong>{{ 'Da confermare' if g.state == 'to_confirm' else 'Da riconciliare' }} · {{ g.label|bank_ui_it }}</strong> — {{ g.who }}
+      <span class="badge">{{ g.count }}</span>
+      {% if g.detail %}<div class="small muted">{{ g.detail|bank_ui_it }}</div>{% endif %}
+      {% if g.proposal %}<div class="small">Proposta: {{ g.proposal.who or '—' }} → {{ g.proposal.why or '—' }}
+        {% if g.proposal.basis %}<span class="muted">({{ g.proposal.basis }})</span>{% endif %}
+        {% if g.proposal.sources %}· fonti: {% for s in g.proposal.sources[:3] %}<a href="{{ s.url }}" rel="noopener noreferrer" target="_blank">{{ s.title[:60] }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
+        {% if g.proposal.reasoning %}<details><summary>Motivazione</summary>{{ g.proposal.reasoning }}</details>{% endif %}</div>{% endif %}
+      <table class="table-compact table-stack small"><tbody>
+        {% for x in g.cases %}{% set r = x.r %}<tr><td data-label="Data">{{ r.date }}</td><td data-label="Conto o carta">{{ r.source }}</td>
+          <td data-label="Movimento" class="col-description">{{ r.description }}</td><td data-label="Importo">{{ money(r.amount_minor) }}</td>
+          <td data-label="Azione"><a href="{{ url_for('bank_movement_research', transaction_id=r.txn_id) }}">Documenti ed evidenze</a>
+            {% if g.amazon %} · <a href="{{ url_for('bank_split_movement_page', txn_id=r.txn_id) }}">Ripartizioni</a>{% endif %}</td></tr>{% endfor %}
+      </tbody></table>
+      {% if g.confirmable %}
+      <form method="post" action="{{ url_for('bank_work_confirm') }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="scope" value="group"><input type="hidden" name="group" value="{{ g.key }}">
+        <input type="hidden" name="engine_run_id" value="{{ results.run.id }}">
+        <label class="small"><input type="checkbox" name="confirm" value="yes" required> controllato</label>
+        <button type="submit" class="btn-secondary">Conferma {{ g.confirmable }} proposte di questo gruppo</button>
+      </form>{% endif %}
+      {% if guided %}<a class="btn-secondary" href="{{ url_for('bank_guided', sub='') }}?run={{ results.run.id }}&group={{ g.who|urlencode }}">Correggi o completa nella riconciliazione guidata</a>{% endif %}
+    </div>
+  {% endfor %}
+  {% if results.groups|length > 40 %}<p class="small muted">{{ results.groups|length - 40 }} altri gruppi nella riconciliazione guidata.</p>{% endif %}
+</div>
+
+<div class="card" id="qbo">
+  <h2>5 · QuickBooks Online</h2>
+  {% set p = qbo.plan %}
+  <p class="small">Movimenti inclusi, con una registrazione QBO ciascuno, separati per azienda (spesa, rimborso, deposito o un solo trasferimento per entrambe le gambe): <strong>{{ p.ready }}</strong> pronti · <strong>{{ p.blocked }}</strong> bloccati ·
+    <strong>{{ p.exported }}</strong> già inclusi in un file di esportazione{% if p.changed %} · <strong>{{ p.changed }}</strong> modificati dopo l’esportazione{% endif %}.</p>
+  {% if qbo.reasons %}<ul class="small">{% for label, n in qbo.reasons[:8] %}<li>{{ label|bank_ui_it }}: {{ n|bank_ui_it }}</li>{% endfor %}</ul>{% endif %}
+  <p><a class="btn-primary" href="{{ url_for('bank_work_qbo') }}">Conti QuickBooks ed esportazione per azienda</a>
+     <a class="btn-secondary" href="{{ url_for('bank_work_qbo_preview') }}">Scarica l’anteprima (JSON)</a></p>
+  <p class="small muted">Anteprima, file generato, importazione in QBO e invio tramite API sono stati distinti. L’anteprima non esporta nulla; generare o scaricare un file non prova che sia stato importato. L’invio diretto a QBO non è disponibile: manca il collegamento QuickBooks.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Altri strumenti Bank</h2>
+  <p class="small"><a href="{{ url_for('bank_home') }}">Importa e controlla (per mese)</a> ·
+    <a href="{{ url_for('bank_export') }}">Esportazione mensile per il contabile</a> ·
+    <a href="{{ url_for('bank_split_page') }}">Ripartizioni</a> ·
+    <a href="{{ url_for('bank_who_search_text_page') }}">Regole WHO</a> ·
+    <a href="{{ url_for('bank_why_signals_page') }}">Regole WHY</a> ·
+    <a href="{{ url_for('bank_configuration') }}">Configurazione</a></p>
+</div>
+
+{% if running %}
+<script>
+(function () {
+  var box = document.getElementById('run-progress');
+  function poll() {
+    fetch('{{ url_for('bank_work_status') }}', {credentials: 'same-origin'}).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.run || ['QUEUED', 'RUNNING'].indexOf(d.run.status) < 0) { location.hash = 'reconcile'; location.reload(); return; }
+        box.textContent = 'Elaborazione in corso… ' + (d.run.step || 'avvio');
+        setTimeout(poll, 4000);
+      }).catch(function () { setTimeout(poll, 8000); });
+  }
+  setTimeout(poll, 3000);
+})();
+</script>
+{% endif %}
+{% endblock %}

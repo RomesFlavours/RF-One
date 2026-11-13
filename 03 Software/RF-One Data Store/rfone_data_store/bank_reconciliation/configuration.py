@@ -283,6 +283,7 @@ def _set_who_reasons(session: Session, occurrence: "m.BankOccurrence", reason_id
     for reason_id in wanted:
         row = existing.get(reason_id)
         if row is not None and row.active:
+            row.source = "HUMAN"  # saving the selected WHYs explicitly approves them
             continue
         reason = session.get(m.BankTransactionReason, reason_id)
         if reason is None:
@@ -293,6 +294,7 @@ def _set_who_reasons(session: Session, occurrence: "m.BankOccurrence", reason_id
             raise ValueError(f"WHY {reason.name!r} is inactive and cannot be added to a WHO.")
         if row is not None:
             row.active = True
+            row.source = "HUMAN"
         else:
             why_catalog.associate(
                 session, occurrence_id=occurrence.id, transaction_reason_id=reason_id,
@@ -390,7 +392,7 @@ def save_who(
 # (their WHY and reconciliation stay), and its own links are deleted. AI
 # rules that name it are only counted: they are not changed.
 _WHO_OWN_LINKS = (
-    ("labels", "BankOccurrenceLabel"), ("aliases", "BankOccurrenceAlias"),
+    ("source_classifications", "BankWhoSourceClassification"), ("aliases", "BankOccurrenceAlias"),
     ("possible_whys", "BankOccurrenceReasonAssociation"), ("entities", "BankOccurrenceReportingEntity"),
     ("suppliers", "BankOccurrenceSupplier"), ("knowledge", "BankWhoKnowledge"), ("profiles", "BankWhoProfile"),
     ("evidence_authorizations", "BankEvidenceBypassAuthorization"),
@@ -799,27 +801,10 @@ def configuration_view(session: Session) -> dict:
         .where(m.BankOccurrenceReportingEntity.active.is_(True))
     ):
         entities_by_who.setdefault(occurrence_id, []).append(entity_id)
-    # Activity labels already given to each WHO (display only).
-    labels_by_who: dict[int, list[str]] = {}
-    label_ids_by_who: dict[int, list[int]] = {}
-    for occurrence_id, label_id, label_name in session.execute(
-        select(m.BankOccurrenceLabel.occurrence_id, m.BankWhoLabel.id, m.BankWhoLabel.name)
-        .join(m.BankWhoLabel, m.BankWhoLabel.id == m.BankOccurrenceLabel.label_id)
-        .order_by(m.BankWhoLabel.name)
-    ):
-        labels_by_who.setdefault(occurrence_id, []).append(label_name)
-        label_ids_by_who.setdefault(occurrence_id, []).append(label_id)
-    # The label catalog the WHO modal chooses from.
-    who_labels = [
-        {"id": l.id, "name": l.name, "definition": l.definition, "active": bool(l.active)}
-        for l in session.scalars(select(m.BankWhoLabel).order_by(m.BankWhoLabel.name))
-    ]
     whos = [
         {"id": o.id, "name": o.canonical_name, "whys": reasons_by_who.get(o.id, []),
          "default_why": o.default_transaction_reason_id,
          "entities": entities_by_who.get(o.id, []),
-         "labels": labels_by_who.get(o.id, []),
-         "label_ids": label_ids_by_who.get(o.id, []),
          "active": o.status == "ACTIVE"}
         for o in session.scalars(select(m.BankOccurrence).order_by(m.BankOccurrence.canonical_name))
     ]
@@ -832,8 +817,10 @@ def configuration_view(session: Session) -> dict:
         for e in session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.name))
     ]
 
+    from . import source_classification
+    classifications, sources = source_classification.view(session)
     return {
+        "classifications": classifications, "sources": sources,
         "whats": whats, "groups": groups, "whys": whys,
         "balance_sheet_destinations": balance_sheet_destinations, "whos": whos, "entities": entities,
-        "who_labels": who_labels,
     }

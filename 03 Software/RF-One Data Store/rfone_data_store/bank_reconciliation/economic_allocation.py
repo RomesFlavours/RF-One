@@ -343,6 +343,9 @@ class AllocationSpec:
     # explicit effective destination; equal to the WHY's own it is still
     # recorded as WHY-derived, different it is a TRANSACTION exception.
     accounting_classification_id: int | None = None
+    # BANK_SPLIT_ALLOCATION_001: the split line's description and the documents/items behind it (JSON text).
+    description: str | None = None
+    evidence_detail: str | None = None
 
 
 class AllocationBalanceError(ValueError):
@@ -516,6 +519,8 @@ def set_allocations(
             evidence_kind=spec.evidence_kind,
             evidence_reference=spec.evidence_reference,
             notes=spec.notes,
+            description=spec.description,
+            evidence_detail=spec.evidence_detail,
             accounting_destination_source=source,
         )
         session.add(allocation)

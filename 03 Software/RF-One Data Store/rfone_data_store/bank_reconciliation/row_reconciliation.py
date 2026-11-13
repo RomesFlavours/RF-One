@@ -106,7 +106,9 @@ def for_whom_values(
             entity = default_for_whom(session, instrument, on_date)
             default_cache[key] = entity.id if entity is not None else None
         row_allocations = allocations.get(t.id, [])
-        stored = row_allocations[0].reporting_entity_id if len(row_allocations) == 1 else None
+        from . import single_engine
+        stored = (row_allocations[0].reporting_entity_id if len(row_allocations) == 1
+                  and (not single_engine.enabled() or row_allocations[0].decision_source == 'HUMAN') else None)
         out[t.id] = {"for_whom": stored if stored is not None else default_cache[key],
                      "default_for_whom": default_cache[key], "split": len(row_allocations) > 1}
     return out
@@ -174,6 +176,10 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
     entities = list(session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.name)))
 
     for_whom_by_id = for_whom_values(session, transactions, instruments, allocations)
+    from . import review_who
+    proposals = review_who.proposals(session)
+    from . import engine_view
+    engine_values = engine_view.values(session, transactions)
     rows = []
     for t in transactions:
         instrument = instruments.get(t.payment_instrument_id)
@@ -198,9 +204,9 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
             "date_label": on_date.strftime("%b %d").replace(" 0", " ") if on_date else "",
             "description": t.description_original or "",
             "amount_minor": t.amount_minor,
-            "who_id": who.id if who else None,
-            "who": who.canonical_name if who else None,
-            "who_source": who_source,
+            "who_id": who.id if who else proposals.get(t.id, {}).get("who_id"),
+            "who": who.canonical_name if who else proposals.get(t.id, {}).get("who"),
+            "who_source": who_source or proposals.get(t.id, {}).get("who_source"),
             "own_account": own_account.get(t.id) if who is None else None,
             "why_id": why.id if why else None,
             "why": why.name if why else None,
@@ -213,6 +219,15 @@ def rows_view(session: Session, transactions: list["m.FinancialTransaction"]) ->
             "status": status,
             "memo": t.source_memo or "",
         })
+
+    for row in rows:
+        value = engine_values.get(row['id'])
+        if value:
+            row.update(who_id=value['who_id'], who=value['who_name'],
+                       who_source='person' if value.get('who_method') == 'HUMAN (Bank)' else 'auto',
+                       why_id=value['why_id'], why=value['why'], what_id=value['category_id'],
+                       what=_destination_label(classifications.get(value['category_id'])),
+                       for_whom=value.get('beneficiary_id') if not row['split'] else row['for_whom'])
 
     # The ONE catalog for the page's single modal and single editor.
     possible: dict[int, list[int]] = {}
@@ -408,7 +423,7 @@ def set_for_whom(
             "This transaction is split across several allocations; For Whom is set on each line where it was split."
         )
     current = allocations[0] if allocations else None
-    if current is not None and current.reporting_entity_id == entity.id:
+    if current is not None and current.reporting_entity_id == entity.id and current.decision_source == "HUMAN":
         return "unchanged"
     was_accepted = current is not None and current.status == economic_allocation.COMPLETE
     economic_allocation.set_allocations(
@@ -479,6 +494,13 @@ def confirm_row(
     """Compact-row Confirm: accept THIS transaction with its current WHO,
     WHY and destination and the chosen For Whom. Creates no Standard."""
     transaction = _transaction(session, transaction_id)
+    from . import engine_view
+    value = engine_view.values(session, [transaction]).get(transaction.id)
+    if value:
+        _accept(session, transaction, occurrence_id=value['who_id'], reason_id=value['why_id'],
+                destination_id=value['category_id'],
+                reporting_entity_id=reporting_entity_id or value.get('beneficiary_id'), account_id=account_id)
+        return
     current = recognition.get_current_explanation(session, financial_transaction_id=transaction.id)
     if current is None or current.occurrence_id is None:
         raise ValueError("Choose the WHO of this transaction before confirming it.")

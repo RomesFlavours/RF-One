@@ -44,6 +44,8 @@ def register(app,*,gate,SessionFactory,require_csrf,owner,endpoint):
             if request.method=='GET':
                 rows=db.scalars(select(m.BankFlowArtifact).where(m.BankFlowArtifact.kind=='RUN').order_by(m.BankFlowArtifact.id.desc()).limit(100))
                 return jsonify(ok=True,runs=[dict(id=r.id,**public(json.loads(r.payload))) for r in rows if r.account_id==owner(db) or r.account_id is None and json.loads(r.payload).get('scope')=='IMPORT'])
+            from rfone_data_store.bank_reconciliation import intake
+            intake.require_ready(db, what='A reconciliation run')   # BANK_UPLOAD_AND_RECONCILE_001: the one gate
             safety.lock_writes(db)
             for r in db.scalars(select(m.BankFlowArtifact).where(m.BankFlowArtifact.kind=='RUN',m.BankFlowArtifact.account_id==owner(db))):
                 if json.loads(r.payload).get('phase') in ('AUTO','PREVIEW','GUIDED'):raise ValueError('Continue or stop the current run first.')
