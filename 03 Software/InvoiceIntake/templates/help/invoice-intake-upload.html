@@ -1,0 +1,35 @@
+<section id="help-invoice-intake-upload" class="rf-help-section">
+<h2>How Invoice Intake works</h2>
+<p>Invoice Intake turns the invoices your suppliers send you into purchase records RF-One can use. You upload a photo or PDF of an invoice (or it arrives by e-mail); the app reads it, saves every invoice it finds as a purchase document, and decides whether it can be trusted automatically or needs a person to check it.</p>
+<h3>How it works</h3>
+<ul>
+  <li><strong>Reading.</strong> A PDF with usable digital text is read directly from its text. Photos, scans and PDFs whose text cannot be used are read by an external document-reading service (AWS Textract). Without access to that service photos and scans cannot be read: the file is kept, marked as failed, and can be tried again later. No invoice is ever created from a failed reading.</li>
+  <li><strong>One file, one or more invoices.</strong> If a file contains several invoices, each one is saved as its own document. When the boundary between invoices is not clear, the whole file stays one document and goes to review.</li>
+  <li><strong>Same file twice.</strong> Uploading exactly the same file again does not create new invoices: the documents already created for it are shown. An invoice already registered with the same supplier, number, date and total is not registered a second time.</li>
+  <li><strong>NORMALIZED or HUMAN.</strong> Every saved document gets one of two states. <em>NORMALIZED</em>: supplier, date, total and lines were read and the amounts add up to the cent. <em>HUMAN</em>: something is missing, does not add up, is unreadable or conflicting, and a person must check it in Human Review. Photos and scans almost always end up HUMAN.</li>
+  <li><strong>Corrections never overwrite.</strong> In Human Review a correction is stored next to what was read; the original reading is always kept.</li>
+</ul>
+<h3>Typical flow</h3>
+<ol>
+  <li>On this page choose the invoice file and press <strong>Carica e leggi</strong>.</li>
+  <li>Read the result page: the documents created and their state, or the reading error with a button to try again.</li>
+  <li>Identify yourself as a reviewer (name and role) to open the review pages.</li>
+  <li>In <strong>Purchased Human Review</strong> open each HUMAN document, compare it with the original, confirm or correct the fields and add any missing line.</li>
+  <li>Press <strong>Completa review</strong>: the document is checked again and becomes NORMALIZED when nothing blocking remains.</li>
+</ol>
+<h3>What this page shows</h3>
+<dl>
+  <dt>Immagine o PDF della fattura</dt><dd>The file to upload: JPG, JPEG, PNG, PDF, WEBP, BMP or TIFF. One file at a time; an invoice split over several files cannot be joined into one invoice here.</dd>
+  <dt>Carica e leggi</dt><dd>Keeps a copy of the original file and reads it straight away. The documents found are saved immediately; there is no confirmation step before saving and no undo on these pages. Any correction is made afterwards in Human Review.</dd>
+  <dt>Notes under the field and the file path</dt><dd>These two notes are out of date: photos are no longer read with Tesseract, and the Excel file shown is no longer updated. Documents are saved in the local RF-One database of this computer (this is a local prototype); original files are kept in the app's own folder.</dd>
+</dl>
+<h3>Links on this page</h3>
+<dl>
+  <dt>Vedi le fatture acquisite via email (mailbox)</dt><dd>Invoices received as e-mail attachments, with their status and any error. The e-mail collection itself is started separately, not from this app.</dd>
+  <dt>Purchased Human Review — coda documenti HUMAN</dt><dd>The list of documents waiting for a person. It opens only after you have identified yourself as a reviewer; otherwise access is refused.</dd>
+  <dt>Acquisizioni (stato lettura, errori, riprova)</dt><dd>One row per uploaded or received file, with its reading status and a button to retry a failed reading.</dd>
+  <dt>Tutti i documenti acquisiti</dt><dd>Every saved document, including those accepted automatically. It also requires reviewer identification.</dd>
+</dl>
+<h3>Limitations to know</h3>
+<p>Reviewer identification is not a real login: it records the name and role you declare (VIEWER, REVIEWER or VALIDATOR), for the audit trail and for what you may do on the review pages. The app is meant for one person at a time.</p>
+</section>

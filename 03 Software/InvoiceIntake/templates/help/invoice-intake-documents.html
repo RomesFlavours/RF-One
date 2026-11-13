@@ -1,0 +1,18 @@
+<section id="help-invoice-intake-documents" class="rf-help-section">
+<h2>Documenti acquisiti</h2>
+<p>Every saved purchase document, newest first, including those accepted automatically (NORMALIZED): the original and the data read always stay consultable. The values shown already include any correction made in Human Review.</p>
+<h3>Fields and columns</h3>
+<dl>
+  <dt>#</dt><dd>Document number. Click it to open the document in Human Review.</dd>
+  <dt>Fornitore</dt><dd>Supplier.</dd>
+  <dt>Numero</dt><dd>Invoice number.</dd>
+  <dt>Data</dt><dd>Invoice date.</dd>
+  <dt>Totale fattura</dt><dd>Invoice total.</dd>
+  <dt>Saldo</dt><dd>Balance still due, when the invoice shows one. It is never used as the invoice total.</dd>
+  <dt>Righe</dt><dd>Number of lines.</dd>
+  <dt>Lettura</dt><dd>How the document was read (for example PDF-Text or Textract-AnalyzeExpense).</dd>
+  <dt>Stato</dt><dd><strong>NORMALIZED</strong>: accepted automatically or after review. <strong>HUMAN</strong>: waiting for a person in Human Review.</dd>
+</dl>
+<h3>What you can do</h3>
+<p>This page only lists documents and changes nothing. Open a document to see the original and the data read{% if reviewer_role is defined and reviewer_role in ("REVIEWER", "VALIDATOR") %}, and to confirm or correct it{% endif %}.</p>
+</section>

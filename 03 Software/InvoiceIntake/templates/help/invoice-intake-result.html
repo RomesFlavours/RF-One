@@ -1,0 +1,23 @@
+<section id="help-invoice-intake-result" class="rf-help-section">
+<h2>Upload result</h2>
+<p>This page tells you what happened to the file you just uploaded (or to a reading you retried): which documents were saved and in which state, or why the reading failed.</p>
+<h3>What you may see</h3>
+<dl>
+  <dt>Salvato ✓</dt><dd>The file was read and every invoice found in it has been saved. If the file contained several invoices, each one is listed as a separate document.</dd>
+  <dt>File già acquisito</dt><dd>Exactly the same file had already been read: nothing new was created, and the documents created the first time are listed.</dd>
+  <dt>Lettura non riuscita — nessuna fattura creata</dt><dd>The file could not be read (for example the reading service could not be reached, the file is unreadable, or a page was not processed). The message explains why. No invoice was created; the original file is kept.</dd>
+</dl>
+<h3>Fields and columns</h3>
+<dl>
+  <dt>PurchaseDocumentId</dt><dd>The number of the saved document, as shown in Human Review and in the list of all documents.</dd>
+  <dt>Stato</dt><dd><strong>NORMALIZED</strong>: the document was read completely and its amounts add up, so it is accepted automatically. <strong>HUMAN</strong> (“richiede verifica umana”): a person must check it in Human Review.</dd>
+</dl>
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Riprova la lettura</dt><dd>Shown only when the reading failed. Reads the kept original again, on the same record; invoices already saved from this file are never saved twice. You come back to this page with the new outcome.</dd>
+  <dt>Apri in Human Review</dt><dd>Opens the document with the original and the data read. It requires reviewer identification; without it access is refused.</dd>
+  <dt>Carica un'altra fattura</dt><dd>Back to the upload page. Nothing is undone.</dd>
+</dl>
+<h3>Next steps</h3>
+<p>Check every HUMAN document in Purchased Human Review. A NORMALIZED document needs no action and stays consultable in the list of all documents. Saving cannot be undone from these pages.</p>
+</section>

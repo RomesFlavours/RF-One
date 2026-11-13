@@ -1,0 +1,30 @@
+<section id="help-invoice-intake-review-detail" class="rf-help-section">
+<h2>Document review</h2>
+<p>One purchase document: where it came from, what was read from it, what has been corrected and why it is still HUMAN (to be checked) or already NORMALIZED. {% if can_correct is defined and can_correct %}Here you compare it with the original, confirm or correct each value, add missing lines and complete the review.{% else %}With your role you can consult it; confirming and correcting requires the REVIEWER or VALIDATOR role.{% endif %}</p>
+<h3>Sections of the page</h3>
+<dl>
+  <dt>Allegato multi-fattura</dt><dd>Shown when the same file produced several documents: the pages of this invoice and links to the others. The state of the other documents is not shown in this table; open them to see it.</dd>
+  <dt>A. Source / Provenance</dt><dd>File name and pages, supplier name as written on the document, how it was read, the e-mail it came with (when received by e-mail) and the canonical supplier with its known alternative names. <strong>Apri documento sorgente</strong> opens the original file in a new tab.</dd>
+  <dt>B. Extracted header</dt><dd>Supplier, number, date and total: <em>Valore estratto</em> is what was read, <em>Valore effettivo</em> is the value in use after the latest review.</dd>
+  <dt>B2. Importi del documento e dati di lettura</dt><dd>Total, subtotal, tax, discount, shipping, amount paid and balance due, each with page, label read and confidence when available; other surcharges, conflicting readings and unreadable values. Older documents may have no reading data. The invoice total is corrected in section B.</dd>
+  <dt>C. Lines</dt><dd>Each line with its origin (read from the document, with page and text, or added by hand), its values in use, the share of fees and charges allocated to it (<em>Alloc. non-goods</em>), its resulting amount (<em>Effective amount</em>) and its state.</dd>
+  <dt>D. Validation reasons</dt><dd>What still prevents the document from being accepted.</dd>
+  <dt>Audit / history</dt><dd>Every review action: when, who, which field, the outcome, the previous value and the corrected one. Lines added by hand are listed separately.</dd>
+</dl>
+{% if can_correct is defined and can_correct %}
+<h3>Confirming and correcting a value</h3>
+<p>Each row of sections B, B2 and C has a <strong>Correggi</strong> column: choose an outcome, type the right value when needed, press <strong>Salva</strong>.</p>
+<dl>
+  <dt>CORRECT</dt><dd>The value read is right; any text typed is ignored.</dd>
+  <dt>INCORRECT</dt><dd>The value read is wrong; a corrected value is mandatory, otherwise an error is shown and nothing is saved.</dd>
+  <dt>UNREAD / AMBIGUOUS</dt><dd>The value could not be read, or is unclear. Without a corrected value, a supplier, date or total marked this way keeps the document HUMAN.</dd>
+  <dt>Salva</dt><dd>Saves the review of that one value at once, with your name and the time. The original reading is never overwritten; a later review of the same value replaces it in use, and all reviews stay in the history. The document state does not change until you complete the review.</dd>
+</dl>
+<h3>Aggiungi riga mancante</h3>
+<p>Use it when the document clearly shows a line that was not read. Choose the type (Prodotto, Supplemento, Sconto), write the description as on the document (required) and, if known, normalized item, quantity, unit, unit price and amount; press <strong>Aggiungi riga</strong>. The line is added alongside the lines read, recorded with your name, and shares in the allocation of fees like the others. Pressing it twice with the same data does not add a duplicate. There is no button to remove an added line.</p>
+<h3>Completa review &rarr; ricalcola NORMALIZED/HUMAN</h3>
+<p>Checks the document again with the values in use, applying the same rules as when it was saved: supplier, date and total present, lines present, line amounts consistent, totals that add up to the cent, no unreviewed conflicting or unreadable value. A result page then shows either <strong>NORMALIZED</strong> (all blocking points resolved) or that it stays <strong>HUMAN</strong>, with the reasons still open, and links back to the document or the queue. Each completed review is also counted in the supplier's format training. If you corrected the supplier name, the name originally read is kept as a known alternative name of that supplier.</p>
+{% endif %}
+<h3>Next steps</h3>
+<p>{% if can_correct is defined and can_correct %}Resolve the points in section D, then complete the review. Repeat until the document is NORMALIZED.{% else %}Ask a person with the REVIEWER or VALIDATOR role to review the document.{% endif %} Go back with <strong>&larr; coda</strong>.</p>
+</section>

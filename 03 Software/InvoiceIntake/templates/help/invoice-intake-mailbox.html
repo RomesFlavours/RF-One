@@ -1,0 +1,21 @@
+<section id="help-invoice-intake-mailbox" class="rf-help-section">
+<h2>Invoices received by e-mail</h2>
+<p>This page shows the most recent invoice attachments collected from the invoice mailbox (up to 200), with what happened to each one. It is a view only: the mailbox is collected by a separate process started by hand, and this page neither fetches new mail nor changes anything.</p>
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Mailbox</dt><dd>The mailbox being collected, or a notice that it is not configured on this computer. The number after it is how many attachments are listed.</dd>
+  <dt>Ricevuta</dt><dd>When the e-mail was received.</dd>
+  <dt>Mittente</dt><dd>Sender of the e-mail.</dd>
+  <dt>Allegato</dt><dd>Name of the attachment.</dd>
+  <dt>Fornitore</dt><dd>Supplier of the saved document, once the attachment has been saved.</dd>
+  <dt>Stato</dt><dd>PENDING: being processed. DELIVERED: passed to the same reading used for manual uploads and saved. DUPLICATE_TECHNICAL: the same file had already been delivered, nothing new created. FAILED: not delivered.</dd>
+  <dt>NORMALIZED/HUMAN</dt><dd>State of the resulting document: accepted automatically, or waiting for Human Review.</dd>
+  <dt>Errore/Retry</dt><dd>The failure reason and how many times it has been retried. Failed messages are tried again by the next mailbox collection run.</dd>
+</dl>
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Torna a Invoice Intake</dt><dd>Back to the upload page.</dd>
+</dl>
+<h3>Next steps</h3>
+<p>Documents in state HUMAN are checked in Purchased Human Review. A file whose reading failed also appears in Acquisizioni, where it can be retried.</p>
+</section>

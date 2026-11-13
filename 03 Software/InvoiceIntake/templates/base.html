@@ -1,3 +1,4 @@
+{% from "_how_works.html" import how_works_link, how_works_dialog with context %}
 <!doctype html>
 <html lang="it">
 <head>
@@ -68,7 +69,9 @@
 <div class="wrap">
   <h1>RF-One · Invoice Intake (prototipo)</h1>
   <p class="subtitle">Carica una fattura, controlla/correggi i dati letti, salva su Excel.</p>
+  {% if help_section is defined %}<div class="rf-help-row">{{ how_works_link(help_section, help_title if help_title is defined else None) }}</div>{% endif %}
   {% block content %}{% endblock %}
 </div>
+{% if help_section is defined %}{{ how_works_dialog(help_section, help_title if help_title is defined else None) }}{% endif %}
 </body>
 </html>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "invoice-intake-result" %}
 {% block content %}
 <div class="card">
   {% if outcome and outcome.status == 'FAILED' %}

@@ -1,0 +1,25 @@
+<section id="help-invoice-intake-review-queue" class="rf-help-section">
+<h2>Purchased Human Review — coda</h2>
+<p>The documents that could not be accepted automatically (state HUMAN) and are waiting for a person, newest first. Documents accepted automatically are not listed here; they are in the list of all documents.</p>
+<h3>What you can do</h3>
+<ul>
+  <li>See who you are working as and change it with <strong>cambia</strong> (it opens the reviewer identification page, where you declare name and role again).</li>
+  <li>Open a document with <strong>Apri</strong> to compare it with the original{% if reviewer_role is defined and reviewer_role in ("REVIEWER", "VALIDATOR") %} and confirm or correct it{% endif %}.</li>
+  <li>Go to <strong>Supplier + Format training</strong> to see how reliable each supplier's document format has proved, or to <strong>Mailbox</strong> for the invoices received by e-mail.</li>
+</ul>
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Revisore</dt><dd>The name and role you declared. VIEWER can only look; REVIEWER can also confirm and correct; VALIDATOR can also validate a supplier's format.</dd>
+  <dt>Creato</dt><dd>When the document was saved.</dd>
+  <dt>Supplier</dt><dd>Supplier, including any correction already made in review (“Unknown Supplier” when none was recognised).</dd>
+  <dt>Pendenti/Supplier</dt><dd>How many documents of the same supplier are waiting in this queue.</dd>
+  <dt>Numero, Data, Totale</dt><dd>Invoice number, date and total, with corrections already made.</dd>
+  <dt>Source</dt><dd>The original file, with the pages of this invoice when the file contained several; “(multi-invoice)” marks a document split from such a file.</dd>
+</dl>
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Apri</dt><dd>Opens the document review page. Opening it changes nothing.</dd>
+</dl>
+<h3>Next steps</h3>
+<p>A document leaves this queue only when a review is completed and nothing blocking remains. When the queue is empty, no document is waiting.</p>
+</section>

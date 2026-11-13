@@ -1,0 +1,22 @@
+<section id="help-invoice-intake-acquisitions" class="rf-help-section">
+<h2>Acquisizioni</h2>
+<p>One row for every file that reached Invoice Intake, uploaded by hand or received by e-mail, with the outcome of its reading. Use it to find files that could not be read and to try them again. Files with identical content share the same row.</p>
+<h3>Fields and columns</h3>
+<dl>
+  <dt>#</dt><dd>Number of the acquisition.</dd>
+  <dt>File</dt><dd>Original name of the file.</dd>
+  <dt>Canale</dt><dd>How the file arrived: MANUAL_UPLOAD (uploaded on the Invoice Intake page) or MAILBOX (e-mail attachment).</dd>
+  <dt>Stato</dt><dd><strong>RECEIVED</strong>: original kept, not read yet. <strong>FAILED</strong>: reading failed, no invoice created, original kept. <strong>ACQUIRED</strong>: every invoice found in the file has been saved as a document.</dd>
+  <dt>Tentativi</dt><dd>How many times the file has been read.</dd>
+  <dt>Lettura</dt><dd>How it was read: PDF-Text (from the PDF's digital text) or Textract-AnalyzeExpense (photos and scans, read by the external reading service).</dd>
+  <dt>Pagine</dt><dd>The pages read, followed by the total number of pages in the file.</dd>
+  <dt>Documenti</dt><dd>The documents created from this file. Each link opens the document in Human Review, which requires reviewer identification.</dd>
+  <dt>Errore</dt><dd>The last reading error, if any.</dd>
+</dl>
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Riprova</dt><dd>Shown only on FAILED rows. Reads the kept original again, on the same row, and shows the result page. Invoices already saved from this file are never saved twice; nothing else changes.</dd>
+</dl>
+<h3>Next steps</h3>
+<p>If a retry still fails because the reading service cannot be reached, try again later. Documents created from a file are checked in Purchased Human Review.</p>
+</section>
