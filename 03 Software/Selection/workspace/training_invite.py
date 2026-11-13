@@ -38,6 +38,9 @@ def request_invite(base_url: str | None, *, position_candidate_id: int, actor_ac
         with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
             data = json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as exc:
+        if exc.code in (404, 405):
+            # Training without automatic invitations (not released yet): Hired works as before.
+            return "off", ""
         try:
             data = json.loads(exc.read() or b"{}")
         except ValueError:
