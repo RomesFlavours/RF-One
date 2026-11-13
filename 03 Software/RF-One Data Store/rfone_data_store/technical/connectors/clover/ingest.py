@@ -516,7 +516,10 @@ def ingest_employees(
     location = session.get(m.Location, location_id)
     result, pending = import_snapshot(
         session, location_id=location_id, merchant_id=location.source_location_id,
-        records=bundle.employees, observed_at=retrieved_at, run_id=ingestion_run_id,
+        records=bundle.employees, observed_at=retrieved_at, run_id=ingestion_run_id, clock_records=bundle.shifts,
+        # A file bundle may be an old snapshot: keep its clock evidence, never
+        # end positions or change employment from it.
+        clock_decisions=False,
     )
     if pending:
         # Do not let historical-stub fallback manufacture another identity
@@ -648,6 +651,12 @@ def ingest_employee_stub_references(
             merchant_id=location.source_location_id, raw={"id": source_id}, available=False,
             observed_at=retrieved_at, run_id=ingestion_run_id)
         if person is None:
+            from ....employee_directory import has_clock_evidence
+            link = session.scalar(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id == location.source_location_id,
+                m.EmployeeCloverLink.external_employee_id == source_id))
+            if link is not None and not has_clock_evidence(link):
+                continue
             raise ValueError("Historical employee requires confirmation in RF-One before bulk ingestion.")
         employee_map[source_id] = person.id
     session.flush()

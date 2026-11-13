@@ -22,6 +22,7 @@ def database_summary(engine):
         out['directory_links']=c.scalar(text('select count(*) from employee_clover_links'))
         out['employees']=dict(c.execute(text('''select count(*) as total,count(*) filter(where source_available) as available,count(*) filter(where source_available=false) as unavailable,count(*) filter(where source_available=false and display_name is not null) as historical_named from employees where source_system_id=1''')).mappings().one())
         out['orphan_shifts']=c.scalar(text('select count(*) from shifts s left join employees e on e.id=s.employee_id where e.id is null'))
+        out['lifecycle']=dict(c.execute(text('''select count(*) filter(where dismissed_at is not null or active=false) as dismissed,count(*) filter(where directory_eligible=false) as technical,count(*) filter(where not exists(select 1 from employee_context_links l where l.employee_id=employees.id and l.rfone_account_id is not null)) as without_rf1_account from employees''')).mappings().one())
     assert out['orphan_shifts']==0
     return out
 

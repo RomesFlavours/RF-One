@@ -172,16 +172,19 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertEqual(self.order("O-NEW").employee_id, person.id)
 
     def test_held_shift_waits_in_mirror_then_is_created_on_confirmation(self):
-        directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id="WP",
-                                  records=[{"id": "E1", "name": "Known Server"}, {"id": "U1", "name": "New Hire"}])
-        run = m.IngestionRun(source_system_id=self.source.id, location_id=self.wp.id, status="RUNNING", started_at=NOW)
-        self.db.add(run)
-        self.db.flush()
         shifts = SimpleNamespace(ok=True, truncated_by_safety_guard=False, elements=[
             {"id": "S-KNOWN", "employee": {"id": "E1"}, "inTime": _ms(NOW - timedelta(hours=5))},
             {"id": "S-NEW", "employee": {"id": "U1"}, "inTime": _ms(NOW - timedelta(hours=4)),
              "outTime": _ms(NOW - timedelta(hours=1))},
         ])
+        # As in a real cycle, the roster refresh receives the same clocks first:
+        # the lifecycle registers only identities with clock evidence.
+        directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id="WP",
+                                  records=[{"id": "E1", "name": "Known Server"}, {"id": "U1", "name": "New Hire"}],
+                                  clock_records=shifts.elements, observed_at=NOW)
+        run = m.IngestionRun(source_system_id=self.source.id, location_id=self.wp.id, status="RUNNING", started_at=NOW)
+        self.db.add(run)
+        self.db.flush()
         fake = SimpleNamespace(merchant_id="WP", get=lambda path, params=None: SimpleNamespace(
             ok=True, status_code=200, error=None, data={"id": path.rsplit("/", 1)[-1], "name": "New Hire"}))
         held = []
