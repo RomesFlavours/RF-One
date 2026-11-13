@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% set page_name = "New work" if mode == "create" else "Edit" %}
+{% block page_title %}{{ page_name }} · Development Journal · RF-One{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one-dev-journal.css') }}?v=2">{% endblock %}
+{% block content %}
+{% if mode == "create" %}
+  {{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', url_for('dev_journal_list')), ('New work', None)]) }}
+  <h1>New work</h1>
+{% else %}
+  {{ breadcrumb([('RF-One', url_for('home')), ('Development Journal', url_for('dev_journal_list')), (work.title, url_for('dev_journal_work', work_id=work.id)), ('Edit', None)]) }}
+  <h1>Edit work</h1>
+{% endif %}
+
+<div class="card">
+  <form method="post" class="dj-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Title
+      <input type="text" name="title" maxlength="200" required value="{{ form.get('title', '') }}"
+             placeholder="e.g. Bank — answers to the wizard questions">
+    </label>
+    <div class="dj-form-grid">
+      <label>RF-One Domain concerned
+        <select name="domain_code" required>
+          <option value="">— choose —</option>
+          {% for code, label in domain_choices %}
+            <option value="{{ code }}" {{ "selected" if form.get('domain_code') == code }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Responsible
+        <select name="responsible_account_id" required>
+          <option value="">— choose —</option>
+          {% for account_id, label in responsible_options %}
+            <option value="{{ account_id }}" {{ "selected" if form.get('responsible_account_id') == account_id|string }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Phase
+        <select name="phase" required>
+          {% for code, label in phase_labels.items() %}
+            <option value="{{ code }}" {{ "selected" if form.get('phase') == code }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Status
+        <select name="status" required>
+          {% for code, label in status_labels.items() %}
+            <option value="{{ code }}" {{ "selected" if form.get('status') == code }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>Objective — the problem to solve and the expected result
+      <textarea name="objective" rows="5" required>{{ form.get('objective', '') }}</textarea>
+    </label>
+    <label>Next step
+      <textarea name="next_step" rows="2" placeholder="What has to be done now, and by whom">{{ form.get('next_step', '') }}</textarea>
+    </label>
+    <p class="muted">Responsible: only users with “Development Journal access”. Author, creation time and last update are recorded automatically; every phase or status change is kept in the history.</p>
+    <div class="btn-row">
+      <button type="submit">{{ "Create work" if mode == "create" else "Save" }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('dev_journal_list') if mode == 'create' else url_for('dev_journal_work', work_id=work.id) }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

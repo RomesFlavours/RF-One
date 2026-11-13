@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% from '_nav_macros.html' import breadcrumb %}
+{% block page_title %}Registry · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One',url_for('home')),('Registry',none)]) }}
+<h1>Registry</h1>
+{% include "_registry_help.html" %}
+<div class="profile-heading-description">
+<p>Assign people to one or more companies. Their role permissions add together within each company.</p>
+{% if profile_companies %}<form method="post" action="{{ url_for('switch_access_company') }}" class="profile-company-selector"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Company <select name="company_id">{% for company in profile_companies %}<option value="{{ company.id }}" {% if company.id==profile_company_id %}selected{% endif %}>{{ company.name }}</option>{% endfor %}</select></label><button>Switch</button></form>{% endif %}
+</div>
+<nav class="profile-tabs" aria-label="Role management">
+{% for code,label in [('people','People & assignments'),('roles','Roles'),('areas','Areas'),('companies','Companies')] %}
+<a href="{{ url_for('role_profiles_home',tab=code,person=person) }}" {% if tab==code %}aria-current="page"{% endif %}>{{ label }}</a>
+{% endfor %}</nav>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% macro hidden(action,return_to='catalog') %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="person" value="{{ person }}"><input type="hidden" name="return_to" value="{{ return_to }}">{% endmacro %}
+{% macro archive(kind,id,restore=false) %}<form method="post" class="inline-form">{{ hidden('restore' if restore else 'archive',kind~'-'~id) }}<input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="id" value="{{ id }}"><button class="link-button">{{ 'Restore' if restore else 'Archive' }}</button></form>{% endmacro %}
+{% macro role_table(rows,archived=false) %}<div class="table-scroll"><table>
+<thead><tr><th>Role</th><th>Areas</th><th>Permissions</th><th>Actions</th></tr></thead><tbody>
+{% for role in rows %}<tr id="role-{{ role.id }}" data-rr-key="role:{{ role.id }}" {% if not archived %}data-permission-row="{{ role.id }}"{% endif %}>
+<td><button type="button" class="link-button role-name" {% if not archived %}data-permissions="{{ role.id }}"{% else %}disabled{% endif %}>{{ role.name }}</button></td>
+<td>{% for id in pairs.get(role.id,[]) %}<span class="profile-chip">{{ area_by_id[id].name }}{% if area_by_id[id].active is sameas false %} · archived{% endif %}</span>{% else %}<span class="muted">Not assigned</span>{% endfor %}</td>
+<td>{{ grants.get(role.id,{})|length }} domains{% if not archived %} · <button class="link-button" type="button" data-permissions="{{ role.id }}">Manage permissions</button>{% endif %}</td>
+<td>{% if not archived %}<button class="link-button" type="button" data-edit-role="{{ role.id }}">Edit</button> · {% endif %}{{ archive('role',role.id,archived) }}</td>
+</tr>{% else %}<tr><td colspan="4">No roles.</td></tr>{% endfor %}</tbody></table></div>{% endmacro %}
+
+{% if tab=='roles' %}
+<div class="profile-toolbar"><h2>Active roles</h2><button type="button" data-new-role>Create role</button></div>
+{{ role_table(roles|rejectattr('active','sameas',false)|list) }}
+<details class="profile-archive"><summary>Archived roles ({{ roles|selectattr('active','sameas',false)|list|length }})</summary>{{ role_table(roles|selectattr('active','sameas',false)|list,true) }}</details>
+{% elif tab=='areas' %}
+<div class="profile-toolbar"><h2>Active areas</h2><button type="button" data-new-area>Create area</button></div>
+<table><thead><tr><th>Area</th><th>Actions</th></tr></thead><tbody>
+{% for area in areas if area.active is not sameas false %}<tr id="area-{{ area.id }}" data-rr-key="area:{{ area.id }}"><td>{{ area.name }}</td><td><button class="link-button" type="button" data-edit-area="{{ area.id }}">Edit</button> · {{ archive('area',area.id) }}</td></tr>{% else %}<tr><td colspan="2">No active areas.</td></tr>{% endfor %}</tbody></table>
+<details class="profile-archive"><summary>Archived areas</summary><table><tbody>{% for area in areas if area.active is sameas false %}<tr id="area-{{ area.id }}" data-rr-key="area:{{ area.id }}"><td>{{ area.name }}</td><td>{{ archive('area',area.id,true) }}</td></tr>{% else %}<tr><td>No archived areas.</td></tr>{% endfor %}</tbody></table></details>
+{% elif tab=='companies' %}
+<h2>Companies & group</h2><p>WP and MD refer to the existing companies. RFGroup is a group context; membership does not automatically include other companies.</p>
+<table><thead><tr><th>Company</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+{% for company in companies %}<tr id="company-{{ company.id }}" data-rr-key="company:{{ company.id }}"><td>{{ company.name }}</td><td>{{ 'Group' if company.kind=='GROUP' else 'Company' }}</td><td>{{ 'Active' if company.active else 'Archived' }}</td><td>{{ archive('company',company.id,not company.active) }}</td></tr>{% endfor %}</tbody></table>
+{% else %}
+{% include "_registry_clover.html" %}
+<div class="profile-toolbar"><h2>People & assignments</h2><button type="button" data-new-person>Add person</button></div>
+<details id="people-table" class="profile-people-table"><summary>People ({{ people_rows|length }})</summary>
+<div class="table-scroll"><table><thead><tr>
+<th>Name<label class="sr-only" for="filter-name">Filter Name</label><select id="filter-name" data-person-filter="name"><option value="">All names</option>{% for row in people_rows %}<option value="{{ row.key }}">{{ row.name }}</option>{% endfor %}</select></th>
+<th>Company<label class="sr-only" for="filter-company">Filter Company</label><select id="filter-company" data-person-filter="company"><option value="">All companies</option>{% for company in companies %}<option value="{{ company.id }}">{{ company.name }}</option>{% endfor %}</select></th>
+<th>Role<label class="sr-only" for="filter-role">Filter Role</label><select id="filter-role" data-person-filter="role"><option value="">All roles</option>{% for role in roles %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}</select></th><th>Actions</th></tr></thead><tbody>
+{% for row in people_rows %}<tr data-person-row="{{ row.key }}"><td>{{ row.name }}</td><td>{% for id in row.companies %}<span class="profile-chip">{{ company_by_id[id].name }}</span>{% else %}—{% endfor %}</td><td>{% for item in row.assignments %}<div>{{ role_by_id[item.role_id].name }} · {{ company_by_id[item.company_id].name }} · {{ area_by_id[item.area_id].name }}</div>{% else %}—{% endfor %}</td><td><button type="button" class="link-button" data-edit-person="{{ row.key }}">Edit</button></td></tr>{% endfor %}
+<tr id="people-empty" hidden><td colspan="4">No matching people.</td></tr></tbody></table></div></details>
+
+<details id="dismissed-people" class="profile-archive"><summary>Dismissis ({{ dismissed_rows|length }})</summary><table><thead><tr><th>Name</th><th>Dismissal date</th></tr></thead><tbody>{% for row in dismissed_rows %}<tr><td>{{ row.name }}</td><td>{{ row.date or 'Not recorded' }}</td></tr>{% else %}<tr><td colspan="2">No dismissed people.</td></tr>{% endfor %}</tbody></table></details>
+{% endif %}
+
+<details class="profile-archive"><summary>Recent changes</summary><ul>{% for event in events %}<li>{{ event.action|replace('_',' ')|title }}</li>{% else %}<li>No changes yet.</li>{% endfor %}</ul></details>
+
+{% macro profile_modal(id,title) %}<div class="org-modal-overlay profile-overlay" id="{{ id }}" hidden><div class="org-modal-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="{{ id }}-title"><div class="profile-toolbar"><h2 id="{{ id }}-title">{{ title }}</h2><button type="button" class="link-button" data-modal-close aria-label="Close">✕</button></div>{{ caller() }}</div></div>{% endmacro %}
+{% call profile_modal('person-dialog','Edit person') %}<form method="post" id="person-editor">{{ hidden('person_save','people-table') }}
+<label class="person-name-field">Name <input name="name" maxlength="255" placeholder="Full name" required></label>
+<div class="person-contact-fields"><label>Email <input type="email" name="email" maxlength="255" autocomplete="off"></label><label>Phone <input type="tel" name="phone" maxlength="64" autocomplete="off"></label></div>
+<fieldset><legend>Company · select one or more</legend><div class="profile-area-list">{% for company in companies %}<label><input type="checkbox" name="company_ids" value="{{ company.id }}" data-company-active="{{ 'true' if company.active else 'false' }}"> {{ company.name }}{% if not company.active %} · archived{% endif %}</label>{% endfor %}</div></fieldset>
+<fieldset><legend>Roles by company and area</legend><div id="person-role-rows"></div><p class="muted">Select companies above, then add their roles here.</p></fieldset>
+<input type="hidden" name="person_roles" value="[]">
+<div class="person-extra"><button type="submit" id="person-system-authorizations" form="person-access-form" hidden>Other system authorizations</button><button type="submit" id="person-reset-password" form="person-password-form" hidden>Reset password</button><p id="person-authorizations-help" class="muted">Save the person first to manage their system authorizations.</p></div>
+<section class="person-dismissal" id="person-dismissal"><div><h3>Dismiss person</h3><p>Keep their history and remove them from active selections.</p></div><label>Dismissal date <input type="date" name="dismissal_date" id="person-dismissal-date"></label><button type="submit" id="person-dismiss-button" disabled formnovalidate>Dismiss person</button></section>
+<div class="btn-row"><button>Save changes</button><button type="button" class="link-button" data-modal-close>Cancel</button></div></form>{% endcall %}
+{% call profile_modal('role-dialog','Role') %}<form method="post">{{ hidden('role_save') }}<input name="id" type="hidden" value="0"><label>Name <input name="name" maxlength="255" required></label><fieldset><legend>Areas</legend><div class="profile-area-list">{% for area in areas if area.active is not sameas false %}<label><input type="checkbox" name="area_ids" value="{{ area.id }}"> {{ area.name }}</label>{% endfor %}</div></fieldset><div class="btn-row"><button>Save role</button><button type="button" class="link-button" data-modal-close>Cancel</button></div></form>{% endcall %}
+{% call profile_modal('area-dialog','Area') %}<form method="post" autocomplete="off">{{ hidden('area_save') }}<input name="id" type="hidden" value="0"><label>Name <input name="area_name" maxlength="255" autocomplete="off" autocorrect="off" spellcheck="false" required></label><div class="btn-row"><button>Save area</button><button type="button" class="link-button" data-modal-close>Cancel</button></div></form>{% endcall %}
+{% call profile_modal('permission-dialog','Role permissions') %}
+<p>These permissions apply to everyone holding this role in their assigned company. Other roles add their permissions.</p>
+<form method="post">{{ hidden('permissions') }}<input name="id" type="hidden" value="0">
+{% for domain in domains %}<fieldset class="profile-domain" data-domain="{{ domain.code }}"><legend>{{ domain.display_name }}</legend><div class="profile-options">
+<label><input type="radio" name="access_{{ domain.code }}" value="none" checked> No access</label><label><input type="radio" name="access_{{ domain.code }}" value="all"> Whole domain</label>
+{% if domain.items %}<label><input type="radio" name="access_{{ domain.code }}" value="selected"> Selected functions</label>{% endif %}
+<label>Level <select name="role_{{ domain.code }}"><option value="">{{ 'No Training role' if domain.code=='TRAINING' else 'User' }}</option>{% if domain.code=='TRAINING' %}<option value="student">Student</option><option value="trainer">Trainer</option>{% endif %}<option value="admin">Domain administrator</option></select></label>
+</div>{% if domain.items %}<div class="profile-items">{% for item in domain.items %}<label><input type="checkbox" name="items_{{ domain.code }}" value="{{ item.code }}"> {{ item.label }}</label>{% endfor %}</div>{% endif %}</fieldset>{% endfor %}
+<div class="btn-row"><button>Save permissions</button><button class="link-button" type="button" data-modal-close>Cancel</button></div></form>{% endcall %}
+{% call profile_modal('membership-dialog','Add company') %}<form method="post">{{ hidden('membership') }}<label>Company <select name="company_id" required><option value="">Choose a company</option>{% for company in companies if company.active %}<option value="{{ company.id }}">{{ company.name }}</option>{% endfor %}</select></label><div class="btn-row"><button>Add company</button><button class="link-button" type="button" data-modal-close>Cancel</button></div></form>{% endcall %}
+{% call profile_modal('assignment-dialog','Assign role') %}<form method="post">{{ hidden('assignment') }}<label>Company membership <select name="membership_id" required>{% for member in members %}<option value="{{ member.id }}">{{ company_by_id[member.company_id].name }}</option>{% endfor %}</select></label><label>Role <select name="role_id" required><option value="">Choose a role</option>{% for role in roles if role.active is not sameas false %}<option value="{{ role.id }}">{{ role.name }}</option>{% endfor %}</select></label><label>Area <select name="area_id" required><option value="">Choose an area</option></select></label><div class="btn-row"><button>Assign role</button><button class="link-button" type="button" data-modal-close>Cancel</button></div></form>{% endcall %}
+
+<form id="person-password-form" method="post" target="_blank" rel="noopener">{{ hidden('person_password') }}</form>
+<form id="person-access-form" method="post" target="_blank" rel="noopener">{{ hidden('person_access') }}</form>
+<script id="profile-data" type="application/json">{{ {'people':people_rows,'companies':companies|map(attribute='id')|list,'roles':role_payload,'areas':area_payload,'reopen':dialog,'error':error,'returnPerson':person}|tojson }}</script>
+<link rel="stylesheet" href="{{ url_for('static',filename='css/role-profiles.css') }}?v=contacts1">
+<script defer src="{{ url_for('static',filename='js/rf-one-row-return.js') }}"></script>
+<script defer src="{{ url_for('static',filename='js/role-profiles.js') }}?v=level1"></script>
+{% endblock %}

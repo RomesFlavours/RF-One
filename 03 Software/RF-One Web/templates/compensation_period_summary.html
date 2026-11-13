@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Period Summary · Compensation · RF-One{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+{{ breadcrumb([('RF-One', url_for('home')), ('Compensation', url_for('compensation_home')), ('Period Summary', None)]) }}
+<h1>Period Summary</h1>
+<p class="muted">Hours, hours above {{ '%g' % overtime_threshold }} per Workweek, and finalized Tips + Gratuity per Employee, for comparison with manual figures. Read-only: nothing is calculated into pay, approved or sent.</p>
+
+<div class="card">
+  <form method="get" action="{{ url_for('compensation_period_summary') }}">
+    <div class="field-row">
+      <label for="location_id">Location</label>
+      <select id="location_id" name="location_id" required>
+        {% if locations|length != 1 %}<option value="">Select a Location&hellip;</option>{% endif %}
+        {% for loc in locations %}
+          <option value="{{ loc.id }}" {{ 'selected' if loc.id == location_id else '' }}>{{ loc.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="first_business_date">First Business Date</label>
+      <input type="date" id="first_business_date" name="first_business_date" value="{{ first or '' }}" required>
+    </div>
+    <div class="field-row">
+      <label for="last_business_date">Last Business Date (included)</label>
+      <input type="date" id="last_business_date" name="last_business_date" value="{{ last or '' }}" required>
+    </div>
+    <button type="submit">Show summary</button>
+  </form>
+</div>
+
+{% if summary %}
+  {% set tz = summary.timezone_name %}
+  {% if summary.blocked_reason %}
+    <div class="error">{{ summary.blocked_reason }}</div>
+  {% else %}
+
+  <div class="card">
+    <h2>Settings used</h2>
+    <table>
+      <tbody>
+        <tr><th>Location</th><td>{{ summary.location_name }}</td></tr>
+        <tr><th>Business Dates</th><td>{{ summary.first_business_date }} &ndash; {{ summary.last_business_date }} (included)</td></tr>
+        <tr><th>Timezone</th><td>{{ tz }}</td></tr>
+        <tr><th>Operating-day cutoff</th><td>{{ summary.operating_day_cutoff.strftime('%H:%M') }} &mdash; each Business Date runs from the cutoff to the next day's cutoff</td></tr>
+        <tr><th>Period window</th><td>{{ summary.period_start_utc|local_dt(tz) }} &rarr; {{ summary.period_end_utc|local_dt(tz) }}</td></tr>
+        <tr><th>Workweek</th><td>
+          {% if summary.workweek_start_weekday is not none %}
+            {{ weekday_names[summary.workweek_start_weekday] }} &rarr; {{ weekday_names[(summary.workweek_start_weekday + 6) % 7] }}, starting at the cutoff (Restaurant setting since {{ summary.workweek_valid_from.date() }})
+          {% else %}<span class="badge warn">not configured</span>{% endif %}
+        </td></tr>
+        <tr><th>Overtime hours</th><td>hours past {{ '%g' % summary.overtime_threshold_hours }} in each Workweek, in chronological order; weeks are never netted; earlier hours of a partial first week count towards the {{ '%g' % summary.overtime_threshold_hours }}</td></tr>
+        <tr><th>Location attribution</th><td>
+          {% if summary.home_location_fallback_shifts %}
+            <span class="badge warn">home Location</span>
+            {{ summary.home_location_fallback_shifts }} of {{ summary.shifts_counted }} Shifts in this period carry no Location of their own and are attributed to {{ summary.location_name }} because it is the Employee's home Location. The Shifts themselves are unchanged.
+          {% else %}
+            every Shift in this period carries its own Location
+          {% endif %}
+        </td></tr>
+        <tr><th>Tips + Gratuity source</th><td>
+          {% if summary.tips_status == TIPS_AVAILABLE %}
+            FINAL Tips run{{ 's' if summary.tip_runs_used|length > 1 }}
+            {% for ref in summary.tip_runs_used %}
+              <a href="{{ url_for('tips_validation_run', run_id=ref.run_id) }}">#{{ ref.run_id }}</a> ({{ ref.first_business_date }} &ndash; {{ ref.last_business_date }}){{ ',' if not loop.last }}
+            {% endfor %}
+            &mdash; amount due to each person after distribution
+          {% else %}
+            <span class="badge bad">not available</span> {{ summary.tips_unavailable_reason }}
+          {% endif %}
+        </td></tr>
+      </tbody>
+    </table>
+    <p class="muted">Times are {{ summary.location_name }} local time ({{ tz }}).</p>
+  </div>
+
+  {% if summary.overtime_unavailable_reason %}
+    <div class="error">Overtime hours not available: {{ summary.overtime_unavailable_reason }}</div>
+  {% endif %}
+  {% if not summary.hours_definitive %}
+    <div class="error">
+      <strong>Hours are not definitive.</strong>
+      <ul>
+        {% for warning in summary.hours_warnings %}<li>{{ warning }}</li>{% endfor %}
+        {% if summary.issues %}<li>{{ summary.issues|length }} Shift problem{{ 's' if summary.issues|length > 1 }} &mdash; see the marked rows and the list below.</li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    {% if summary.rows %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Worked hours</th>
+            <th>Overtime hours</th>
+            <th>Tips + Gratuity</th>
+            <th>Bonus</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in summary.rows %}
+          <tr>
+            <td>{{ row.display_name|first_name_initial }}{% if not row.hours_complete %} <span class="badge warn" title="{% for i in row.issues %}{{ i.detail }} {% endfor %}">check shifts</span>{% endif %}{% if row.home_location_fallback_shifts %} <span class="badge warn" title="{{ row.home_location_fallback_shifts }} Shift(s) without their own Location, attributed through the home Location">home Location &times;{{ row.home_location_fallback_shifts }}</span>{% endif %}</td>
+            <td>{{ row.worked_hours }}</td>
+            <td>{% if summary.overtime_available %}{{ row.overtime_hours }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
+            <td>{% if row.tips_payable is not none %}${{ row.tips_payable }}{% else %}<span class="muted">not available</span>{% endif %}</td>
+            <td><span class="muted">to be defined</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th>Total</th>
+            <th>{{ summary.total_worked_hours }}</th>
+            <th>{% if summary.overtime_available %}{{ summary.total_overtime_hours }}{% else %}n/a{% endif %}</th>
+            <th>{% if summary.total_tips_payable is not none %}${{ summary.total_tips_payable }}{% else %}not available{% endif %}</th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="muted">Worked hours already include overtime hours. Bonus is not defined yet: an empty value is not zero.</p>
+    {% else %}
+      <p class="empty">No Shift and no finalized Tips entitlement in this period.</p>
+    {% endif %}
+  </div>
+
+  {% if summary.issues %}
+  <div class="card">
+    <h2>Shift problems</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Employee</th><th>Shift start</th><th>Problem</th></tr></thead>
+        <tbody>
+          {% set names = {} %}
+          {% for row in summary.rows %}{% set _ = names.update({row.employee_id: row.display_name}) %}{% endfor %}
+          {% for issue in summary.issues %}
+            <tr><td>{{ names.get(issue.employee_id)|first_name_initial }}</td><td>{{ issue.started_at|local_dt(tz) if issue.started_at else '-' }}</td><td>{{ issue.detail }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}
+{% endif %}
+{% endblock %}

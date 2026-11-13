@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_restaurant_wines_macros.html" import wines_header, wine_type_dialog, wines_styles with context %}
+{% block page_title %}Wine Types · Wines · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-wines.js') }}?v=1"></script>
+{{ wines_styles() }}
+{{ wines_header('types', 'Wine Types') }}
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<div class="wines-toolbar">
+  <input type="search" id="type-search" placeholder="Search a type or an alternative name" aria-label="Search wine types">
+  <div class="wines-toolbar-right">
+    <button type="button" id="type-new">New wine type</button>
+  </div>
+</div>
+
+{% if types %}
+<div class="table-scroll">
+  <table class="table-compact" id="type-table">
+    <thead><tr><th>Standard name</th><th>Alternative names</th><th class="col-narrow">Wines</th><th class="col-narrow"></th></tr></thead>
+    <tbody>
+      {% for t in types %}
+      <tr data-search="{{ ([t.name] + t.aliases)|join(' ') }}">
+        <td><strong>{{ t.name }}</strong></td>
+        <td>{{ t.aliases|join(', ') if t.aliases else '' }}{% if not t.aliases %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ t.wine_count }}</td>
+        <td><button type="button" class="btn-secondary btn-inline" data-edit-type="{{ t.id }}">Edit</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="empty" id="type-no-match" hidden>No wine type matches this search.</p>
+{% else %}
+<p class="empty">No wine types yet. Add the first one with “New wine type”.</p>
+{% endif %}
+
+{{ wine_type_dialog() }}
+
+<script type="application/json" id="wine-types-data">{{ types|tojson }}</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var types = JSON.parse(document.getElementById("wine-types-data").textContent);
+  var dialog = RFOneWines.typeDialog({
+    overlay: document.getElementById("wine-type-modal"),
+    createUrl: "{{ url_for('restaurant_wine_type_create') }}",
+    updateUrl: function (id) { return "{{ url_for('restaurant_wine_types') }}/" + id; },
+    onSaved: function () { RFOneWines.busyStart(); window.location.reload(); },
+  });
+  document.getElementById("type-new").addEventListener("click", function () { dialog.open(this, null); });
+  document.querySelectorAll("[data-edit-type]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = Number(button.getAttribute("data-edit-type"));
+      dialog.open(button, types.filter(function (t) { return t.id === id; })[0]);
+    });
+  });
+  var search = document.getElementById("type-search");
+  search.addEventListener("input", function () {
+    var key = RFOneWines.nameKey(search.value);
+    var shown = 0;
+    document.querySelectorAll("#type-table tbody tr").forEach(function (row) {
+      var match = !key || RFOneWines.nameKey(row.getAttribute("data-search")).indexOf(key) !== -1;
+      row.hidden = !match;
+      if (match) { shown += 1; }
+    });
+    var none = document.getElementById("type-no-match");
+    if (none) { none.hidden = shown !== 0; }
+  });
+});
+</script>
+{% endblock %}
