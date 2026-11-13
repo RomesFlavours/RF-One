@@ -478,6 +478,12 @@ def assign_cardholder(
         )
         if same_holder and open_assignment.valid_from == valid_from:
             return open_assignment  # idempotent
+    if holder["holder_employee_id"] is not None:
+        # A new holder period needs a current employee. The idempotent re-save
+        # above and every past period are never refused because they left later.
+        from ..employee_directory import require_active_employee
+        require_active_employee(session, holder["holder_employee_id"])
+    if open_assignment is not None:
         if valid_from <= open_assignment.valid_from:
             raise ValueError(
                 f"The current holder of {card.display_name!r} is recorded from "
