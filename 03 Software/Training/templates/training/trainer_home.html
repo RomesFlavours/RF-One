@@ -46,5 +46,23 @@
     </tbody>
   </table>
   {% endif %}
+  {% if dismissed_students %}
+  <details>
+    <summary>Dismissed employees ({{ dismissed_students|length }}) — history only, no new assignments</summary>
+    <table>
+      <thead><tr><th>Name</th><th>Username</th><th>Needs</th><th></th></tr></thead>
+      <tbody>
+        {% for row in dismissed_students %}
+        <tr>
+          <td>{{ row.account.acting_identity.display_name|short_name }}</td>
+          <td>{{ row.account.username }}</td>
+          <td>{{ row.need_count }}</td>
+          <td><a href="{{ url_for('training.trainer_student_detail', account_id=row.account.id) }}">Open</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
 </div>
 {% endblock %}

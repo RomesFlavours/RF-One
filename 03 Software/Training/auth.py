@@ -26,6 +26,7 @@ from rfone_data_store.training import service as training_service
 
 SESSION_ACCOUNT_KEY = "training_account_id"
 SESSION_CSRF_KEY = "training_csrf_token"
+SESSION_EMPLOYEE_VERSION_KEY = "training_employee_session_version"
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +63,9 @@ def require_csrf() -> None:
 def log_in(account_id: int) -> None:
     flask_session.clear()
     flask_session[SESSION_ACCOUNT_KEY] = account_id
+    from rfone_data_store.employee_directory import employee_account_session_version
+    with SessionFactory() as db:
+        flask_session[SESSION_EMPLOYEE_VERSION_KEY] = employee_account_session_version(db, "TRAINING", account_id)
     flask_session.permanent = False
 
 
@@ -77,6 +81,11 @@ def load_current_account(db_session) -> "m.TrainingAccount | None":
     account_id = current_account_id()
     if account_id is None:
         return None
+    from rfone_data_store.employee_directory import context_employee_allows_access, employee_account_session_version
+    if not context_employee_allows_access(db_session, "TRAINING", account_id):
+        return None
+    if flask_session.get(SESSION_EMPLOYEE_VERSION_KEY) != employee_account_session_version(db_session, "TRAINING", account_id):
+        return None
     return training_service.get_account(db_session, account_id)
 
 
@@ -88,7 +97,10 @@ def load_current_account(db_session) -> "m.TrainingAccount | None":
 def require_login(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if current_account_id() is None:
+        with SessionFactory() as db:
+            valid = load_current_account(db) is not None
+        if not valid:
+            log_out()
             return redirect(url_for("training.login", next=request.path))
         return view(*args, **kwargs)
     return wrapped
