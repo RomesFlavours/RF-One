@@ -21,6 +21,16 @@ User Messaging SMS) from the registered number in
 `RFONE_SMS_ORIGINATION_IDENTITY`; without one the Text Message choice is shown
 as not available. Whenever a code cannot be delivered the candidate sees an
 explicit error and verification cannot be bypassed.
+
+Careers page on Aruba (SELECTION_ARUBA_IDENTITY_001). When
+`RFONE_SELECTION_CANDIDATE_IDENTITY_URL` (the page's HTTPS address) and
+`RFONE_SELECTION_IDENTITY_HANDOFF_SECRET` (shared with that page) are both
+set, the candidate identifies on that page instead: first name, last name,
+email and a 5-digit code emailed from the company mailbox, no password. The
+page then posts one signed, single-use token to `/careers/verified-identity`
+(`identity_handoff_service`), which signs the candidate in for THAT position
+only and opens it. Password registration is then switched off here; nothing
+is emailed by Selection.
 """
 
 from __future__ import annotations
@@ -29,6 +39,7 @@ import json
 import logging
 import os
 import secrets
+from urllib.parse import urlencode
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask import session as flask_session
@@ -36,6 +47,7 @@ from sqlalchemy import select
 
 from rfone_data_store import rfone_web_session as shared_session
 from rfone_data_store.selection import candidate_identity_service as identity
+from rfone_data_store.selection import identity_handoff_service as handoff
 from rfone_data_store.selection import requirements_service as req_svc
 from rfone_data_store.selection import workspace_models as ps
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
@@ -50,6 +62,9 @@ bp = Blueprint("careers", __name__)
 log = logging.getLogger("rfone.selection.careers")
 
 CANDIDATE_SESSION_KEY = "selection_candidate_account_id"
+# Set when the identity came from the careers page on Aruba: the only position this session may open.
+CANDIDATE_POSITION_KEY = "selection_candidate_position_id"
+HANDOFF_PATH = "/careers/verified-identity"
 CANDIDATE_ACTOR = "Candidate (public page)"
 
 
@@ -97,6 +112,21 @@ def deliver_code(*, to_address: str, full_name: str, code: str) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def identity_page_url() -> str | None:
+    """The careers page on Aruba, when it is the way candidates identify."""
+    url = (os.environ.get("RFONE_SELECTION_CANDIDATE_IDENTITY_URL") or "").strip()
+    secret = os.environ.get("RFONE_SELECTION_IDENTITY_HANDOFF_SECRET") or ""
+    return url if url.startswith("https://") and len(secret) >= handoff.MIN_SECRET_LENGTH else None
+
+
+def identity_link(position: ps.Position) -> str | None:
+    """Where a candidate verifies the email for `position` (only the position's public token in the URL)."""
+    base = identity_page_url()
+    if base is None:
+        return None
+    return f"{base}{'&' if '?' in base else '?'}{urlencode({'position': position.public_token})}"
+
+
 def _client_ip() -> str | None:
     forwarded = request.headers.get("X-Forwarded-For", "")
     return forwarded.split(",")[0].strip() if forwarded else request.remote_addr
@@ -109,7 +139,8 @@ def _csrf_ok() -> bool:
 
 @bp.before_request
 def _csrf():
-    if request.method == "POST" and not _csrf_ok():
+    # The careers page on Aruba posts here from another site: the signed single-use token is the proof.
+    if request.method == "POST" and request.path != HANDOFF_PATH and not _csrf_ok():
         if request.path.endswith(("/account/code", "/account/confirm", "/account/cancel")):
             return jsonify(ok=False, message="Your session expired. Please reload the page and try again."), 400
         flash("Your session expired. Please try again.")
@@ -128,16 +159,26 @@ def _globals():
     return {"csrf_token": lambda: shared_session.csrf_token(flask_session), "client": CLIENT_NAME}
 
 
-def _candidate(db) -> ps.CandidateAccount | None:
+def _candidate(db, position: ps.Position | None = None) -> ps.CandidateAccount | None:
+    """The signed-in candidate, for `position`: an identity verified on the
+    careers page on Aruba counts only for the position its token named."""
     account = identity.get_account(db, flask_session.get(CANDIDATE_SESSION_KEY))
     if not identity.is_verified(account):
         flask_session.pop(CANDIDATE_SESSION_KEY, None)
+        flask_session.pop(CANDIDATE_POSITION_KEY, None)
+        return None
+    scope = flask_session.get(CANDIDATE_POSITION_KEY)
+    if scope is not None and (position is None or position.id != scope):
         return None
     return account
 
 
-def _sign_in(account: ps.CandidateAccount) -> None:
+def _sign_in(account: ps.CandidateAccount, *, position: ps.Position | None = None) -> None:
     flask_session[CANDIDATE_SESSION_KEY] = account.id
+    if position is None:
+        flask_session.pop(CANDIDATE_POSITION_KEY, None)
+    else:
+        flask_session[CANDIDATE_POSITION_KEY] = position.id
 
 
 def _public_position(db, token) -> ps.Position:
@@ -183,11 +224,12 @@ def job_page(token):
     with _cfg.SessionFactory() as db:
         position = _public_position(db, token)
         open_ = position.status == ps.OPEN
-        candidate = _candidate(db)
+        candidate = _candidate(db, position)
         existing = _own_position_candidate(db, position, candidate) if candidate else None
         if request.method == "POST" and open_:
             if candidate is None:
-                flash("Please sign in or create your account to apply.")
+                flash("Please verify your email to apply." if identity_page_url()
+                      else "Please sign in or create your account to apply.")
                 return redirect(url_for(".job_page", token=token))
             if existing is not None:
                 return redirect(url_for(".candidate_interview", token=_application_for(db, position, existing).token))
@@ -215,7 +257,8 @@ def job_page(token):
         return render_template("careers/job_page.html", position=position, open_=open_, requirements=requirements,
                                role_label=ROLE_LABEL_EN.get(position.role_code, ROLE_LABEL[position.role_code]),
                                candidate=candidate, application=application,
-                               min_password=identity.MIN_PASSWORD_LENGTH, sms_available=sms_available())
+                               min_password=identity.MIN_PASSWORD_LENGTH, sms_available=sms_available(),
+                               identity_link=identity_link(position), status_labels=ps.CANDIDATE_STATUS_LABELS)
 
 
 def _application_for(db, position, pc) -> ps.CandidateApplication:
@@ -228,6 +271,8 @@ def account_code(token):
     """Registration step 1 (JSON, no page change): create or refresh the
     unverified identity and send a code by the channel the candidate chose
     (EMAIL or SMS)."""
+    if identity_page_url():
+        return jsonify(ok=False, message="Please verify your email on our careers page."), 409
     channel = (request.form.get("channel") or ps.CHANNEL_EMAIL).upper()
     if channel == ps.CHANNEL_SMS and not sms_available():
         return jsonify(ok=False, message="Text messages are not available yet. Please choose Email."), 503
@@ -310,7 +355,48 @@ def sign_in(token):
 @bp.route("/jobs/<token>/sign-out", methods=["POST"])
 def sign_out(token):
     flask_session.pop(CANDIDATE_SESSION_KEY, None)
+    flask_session.pop(CANDIDATE_POSITION_KEY, None)
     return redirect(url_for(".job_page", token=token))
+
+
+@bp.route(HANDOFF_PATH, methods=["POST"])
+def verified_identity():
+    """The careers page on Aruba hands over the verified identity: one
+    signed, single-use token in the form body. On success the candidate is
+    signed in for the token's position only and sent to it.
+
+    The first POST comes from Aruba, so it carries none of this site's
+    cookies: it only re-posts the token from this site (`step=continue`),
+    so that signing the candidate in never replaces the session the browser
+    already holds here (for example an RF-One login)."""
+    token = request.form.get("identity_token", "")
+    if request.form.get("step") != "continue":
+        return render_template("careers/identity_handoff.html", position=None, candidate=None,
+                               identity_token=token[:handoff.MAX_TOKEN_LENGTH])
+    with _cfg.SessionFactory() as db:
+        try:
+            verified = handoff.accept(db, token=token,
+                                      secret=os.environ.get("RFONE_SELECTION_IDENTITY_HANDOFF_SECRET"),
+                                      request_ip=_client_ip())
+        except handoff.HandoffRefused as exc:
+            db.rollback()
+            log.info("Selection identity handoff refused (%s)", type(exc).__name__)
+            status = 503 if isinstance(exc, handoff.HandoffNotConfigured) else 400
+            return render_template("careers/message.html", position=None, candidate=None,
+                                   title="Please verify your email again", text=str(exc),
+                                   link=identity_page_url()), status
+        position = verified.position
+        existing = _own_position_candidate(db, position, verified.account)
+        ps.log_event(db, position_id=position.id, position_candidate_id=existing.id if existing else None,
+                     kind="CANDIDATE_IDENTITY", actor_id=None, actor_name=CANDIDATE_ACTOR,
+                     detail="Candidate email verified on the careers page (Aruba)")
+        db.commit()
+        _sign_in(verified.account, position=position)
+        if existing is not None:
+            application = engine.candidate_application(db, existing.id)
+            if application is not None and application.status != ps.A_SUBMITTED:
+                return redirect(url_for(".candidate_interview", token=application.token), code=303)
+        return redirect(url_for(".job_page", token=position.public_token) + "#apply", code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -326,9 +412,10 @@ def candidate_interview(token):
             abort(404)
         pc = db.get(ps.PositionCandidate, application.position_candidate_id)
         position = db.get(ps.Position, pc.position_id)
-        candidate = _candidate(db)
+        candidate = _candidate(db, position)
         if candidate is None:
-            flash("Please sign in to continue your application.")
+            flash("Please verify your email to continue your application." if identity_page_url()
+                  else "Please sign in to continue your application.")
             return redirect(url_for(".job_page", token=position.public_token) + "#apply")
         if pc.candidate_account_id != candidate.id:
             abort(404)
@@ -357,9 +444,14 @@ def candidate_interview(token):
                 db.add(answer)
                 db.commit()
             if request.form.get("action") == "later":
+                if identity_link(position):
+                    text_ = "Your answers are saved. To continue, verify your email again on our careers page:"
+                    link = identity_link(position)
+                else:
+                    text_ = "Your answers are saved. To continue, sign in again on the position page:"
+                    link = url_for(".job_page", token=position.public_token, _external=True)
                 return render_template("careers/message.html", position=position, candidate=candidate, title="Saved",
-                                       text="Your answers are saved. To continue, sign in again on the position page:",
-                                       link=url_for(".job_page", token=position.public_token, _external=True))
+                                       text=text_, link=link)
             edit = request.form.get("edit", type=int)
             return redirect(url_for(".candidate_interview", token=token, q=edit) if edit is not None
                             else url_for(".candidate_interview", token=token))
@@ -367,7 +459,8 @@ def candidate_interview(token):
         if current is None or not (0 <= current < len(questions)):
             current = next((i for i in range(len(questions)) if i not in given), None)
         return render_template("careers/candidate_interview.html", position=position, application=application,
-                               questions=questions, given=given, current=current, candidate=candidate)
+                               questions=questions, given=given, current=current, candidate=candidate,
+                               status_labels=ps.CANDIDATE_STATUS_LABELS)
 
 
 # ---------------------------------------------------------------------------

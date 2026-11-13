@@ -17,6 +17,12 @@
       "Resource": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-web/flask-secret-key-aRFYYm"
     },
     {
+      "Sid": "ReadCandidateIdentityHandoffSecret",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-selection/candidate-identity-handoff-??????"
+    },
+    {
       "Sid": "SelectionResumeDocuments",
       "Effect": "Allow",
       "Action": [

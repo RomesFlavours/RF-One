@@ -24,6 +24,7 @@
   <h2 id="apply">Apply</h2>
   {% if application %}
     {# Already applied to this position with this identity: continue, never a second application. #}
+    <p class="small">Application status: <b>{{ status_labels.get(application.status, application.status) }}</b></p>
     <p>{% if application.status == 'SUBMITTED' %}You have already sent your application for this position. Thank you!
        {% else %}You have an application in progress for this position.{% endif %}</p>
     {% if application.status != 'SUBMITTED' %}<p><a class="btn" href="{{ url_for('careers.candidate_interview', token=application.token) }}">Continue my application</a></p>{% endif %}
@@ -40,6 +41,12 @@
           and the decision is made by a person, not by software.</span></label>
       <p><button class="btn">Continue to the short interview</button></p>
     </form>
+
+  {% elif identity_link %}
+    {# SELECTION_ARUBA_IDENTITY_001: candidates identify on the careers page (Aruba) by an emailed code, no password. #}
+    <p class="muted">To apply, confirm your email with a 5-digit code. If you already started an application,
+      confirming your email again lets you continue it.</p>
+    <p><a class="btn" href="{{ identity_link }}">Verify your email to apply</a></p>
 
   {% else %}
     <p class="muted">To apply, create your account and confirm your email, or sign in if you already have one.</p>

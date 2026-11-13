@@ -98,6 +98,8 @@ DECISION_TO_GROUP = {D_INTERVIEW: G_INTERVIEW, D_DEEPEN: G_DEEPEN}
 A_CV_RECEIVED = "CV_RECEIVED"
 A_SUBMITTED = "SUBMITTED"
 APPLICATION_STATUS_LABELS = {A_CV_RECEIVED: "Interview not completed", A_SUBMITTED: "Application complete"}
+# What the candidate sees (SELECTION_ARUBA_IDENTITY_001): the same two states, never new codes.
+CANDIDATE_STATUS_LABELS = {A_CV_RECEIVED: "In Progress", A_SUBMITTED: "Completed"}
 
 # Interviews
 K_PHONE = "PHONE"
@@ -125,14 +127,20 @@ class CandidateAccount(Base):
     public position page and verified by a code sent, at the candidate's
     choice, by email or by text message (at least one must be verified).
     Never an RF-One account. The password is stored only as a Werkzeug hash
-    and will also serve the candidate's future personal page."""
+    and will also serve the candidate's future personal page.
+
+    An identity verified on the careers page hosted on Aruba
+    (SELECTION_ARUBA_IDENTITY_001, `identity_handoff_service`) has no
+    password at all: the candidate proves the email again every time."""
 
     __tablename__ = "selection_candidate_accounts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)  # normalized, lower case
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)  # None: email-only identity
     status: Mapped[str] = mapped_column(String(32), nullable=False, default=CANDIDATE_PENDING)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)  # E.164, e.g. +14075550101
@@ -164,6 +172,25 @@ class CandidateEmailCode(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class CandidateIdentityHandoff(Base):
+    """One signed identity token issued by the careers page on Aruba after
+    the candidate confirmed the emailed code, recorded when Selection accepts
+    it so that the same token can never be used twice
+    (SELECTION_ARUBA_IDENTITY_001). Holds the token id, never the token."""
+
+    __tablename__ = "selection_candidate_identity_handoffs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # the token's `jti`
+    position_id: Mapped[int] = mapped_column(ForeignKey("selection_workspace_positions.id"), nullable=False)
+    candidate_account_id: Mapped[int] = mapped_column(
+        ForeignKey("selection_candidate_accounts.id"), nullable=False, index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    request_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class WorkspacePosition(Base):

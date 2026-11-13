@@ -1,0 +1,15 @@
+{% extends "careers/base.html" %}
+{% block title %}Opening your application{% endblock %}
+{% block content %}
+{# SELECTION_ARUBA_IDENTITY_001: the token arrived from the careers page on Aruba (another site), so the
+   browser sent none of this site's cookies. Posting it again from here keeps any session this browser
+   already has (for example an RF-One login) instead of replacing it. #}
+<h1>Email confirmed</h1>
+<p class="muted waiting">Opening your application…</p>
+<form id="identity-handoff" method="post" action="{{ url_for('careers.verified_identity') }}">
+  <input type="hidden" name="identity_token" value="{{ identity_token }}">
+  <input type="hidden" name="step" value="continue">
+  <p><button class="btn">Continue to your application</button></p>
+</form>
+<script>document.getElementById('identity-handoff').submit();</script>
+{% endblock %}

@@ -2,7 +2,8 @@
 {% block title %}Interview{% endblock %}
 {% block content %}
 <h1>{{ position.title }}</h1>
-<div class="muted">{{ position.location_label }} · Short interview, about 5 minutes</div>
+<div class="muted">{{ position.location_label }} · Short interview, about 5 minutes
+  · Status: <b>{{ status_labels.get(application.status, application.status) }}</b></div>
 {% set done = given|length %}
 <div class="progress"><span style="width:{{ (100 * done / (questions|length or 1))|round|int }}%"></span></div>
 

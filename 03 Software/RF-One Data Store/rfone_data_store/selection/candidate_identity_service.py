@@ -241,7 +241,7 @@ def authenticate(session: Session, *, email: str, password: str) -> ws.Candidate
     account = get_account_by_email(session, email)
     now = ws.utcnow()
     generic = "Email or password is not correct."
-    if account is None:
+    if account is None or not account.password_hash:  # email-only identity (careers page on Aruba): no password
         raise CandidateIdentityError(generic)
     if account.locked_until and account.locked_until > now:
         raise CandidateIdentityError("Too many wrong attempts. Please try again in 15 minutes.")

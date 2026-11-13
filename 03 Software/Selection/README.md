@@ -22,6 +22,15 @@ Applications, Evaluation, Interviews, Decisions** (`workspace/routes.py`, templa
   without a working sender the page shows an explicit error and nobody can apply. The verified candidate uploads the
   résumé and answers the English interview (`/my-application/<token>`, resumable after signing in again); the same
   identity applies to any number of positions.
+- **Candidates identified on the careers page on Aruba (SELECTION_ARUBA_IDENTITY_001, 2026-10-25):** with
+  `RFONE_SELECTION_CANDIDATE_IDENTITY_URL` and `RFONE_SELECTION_IDENTITY_HANDOFF_SECRET` both set, the position page
+  shows only **Verify your email to apply**, leading to a PHP page on the company's Aruba Hosting Windows
+  (IIS, PHP 8.2; `aruba-careers/`, `https://careers.romesflavours.com/index.php`): First Name, Last Name, Email, **Receive Code** (5-digit code from `rfone@romesflavours.com`
+  over Aruba's authenticated SMTP), then Welcome / Confirm / Cancel. The confirmed identity comes back as one
+  signed single-use token posted to `/careers/verified-identity` (`identity_handoff_service`): no password, access
+  only to the token's position, the same application resumed after a new verification. Password registration is
+  then switched off; without the two variables nothing changes. Selection sends no email in this mode, so it needs
+  no Internet egress. Test: `python test_aruba_identity_http.py` (needs PHP). Publication: `aruba-careers/ISTRUZIONI_PUBBLICAZIONE.md`.
 - **Data:** the workspace tables (`selection_workspace_*`, `rfone_data_store/selection/workspace_models.py`, migration
   `a7d520261021`, additive only) sit on top of the existing Selection entities (candidates, persons, applications,
   requirement sets and snapshots, Fit Assessments), which they reference and never copy.
