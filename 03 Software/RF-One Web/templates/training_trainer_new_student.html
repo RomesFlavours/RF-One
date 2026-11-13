@@ -1,39 +1,30 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
-{% block page_title %}Add Training student · RF-One{% endblock %}
+{% from '_nav_macros.html' import breadcrumb %}
+{% macro l(en,it) %}{{ it if registry_it else en }}{% endmacro %}
+{% block page_title %}{{ l('Training enrollment','Iscrizione Training') }} · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Training', '/training'), ('Students', url_for('training_trainer_students')), ('Add student', None)]) }}
-<h1>Add Training student</h1>
-<p class="muted">
-  Creates an RF-One account with access to Training only (student role) — the password set here is
-  the student's real, sole RF-One login password.
-</p>
-
-<div class="card">
-  <form method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field-row">
-      <label for="username">Username</label>
-      <input type="text" id="username" name="username" required autofocus>
-    </div>
-    <div class="field-row">
-      <label for="display_name">Display name</label>
-      <input type="text" id="display_name" name="display_name" required>
-    </div>
-    <div class="field-row">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" required>
-      <p class="muted">A verification code will be emailed here — the student confirms it from their own Profile page.</p>
-    </div>
-    <div class="field-row">
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" autocomplete="new-password" required>
-    </div>
-    <div class="field-row">
-      <label for="password_confirm">Confirm password</label>
-      <input type="password" id="password_confirm" name="password_confirm" autocomplete="new-password" required>
-    </div>
-    <button type="submit">Create student</button>
-  </form>
-</div>
+{{ breadcrumb([('RF-One',url_for('home')),('Training','/training'),(l('Students','Studenti'),url_for('training_trainer_students')),(l('Enrollment','Iscrizione'),None)]) }}
+{% with help_section='training_registry_enrollment',ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}
+<h1>{{ l('Enroll a person in Training','Iscrivi una persona a Training') }}</h1>
+<p>{{ l('Use an existing Registry person. Create a new person only when they are not already registered.','Scegli una persona dal Registry. Crea una nuova anagrafica solo se non è già presente.') }}</p>
+<form method="post" class="card" style="max-width:42rem">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label for="registry-person">{{ l('Registry person','Persona Registry') }}</label>
+<select id="registry-person" name="registry_person_id"><option value="">{{ l('New person','Nuova persona') }}</option>{% for p in registry_people %}<option value="{{ p.id }}" {% if request.form.get('registry_person_id')==p.id|string %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+<label for="display-name">{{ l('Full name','Nome e cognome') }}</label><input id="display-name" name="display_name" value="{{ request.form.get('display_name','') }}" maxlength="255" required>
+<label for="email">Email</label><input id="email" name="email" type="email" value="{{ request.form.get('email','') }}" maxlength="255" required>
+<div id="new-credentials"><p>{{ l('Credentials are required only for a new account.','Le credenziali servono solo per un nuovo account.') }}</p>
+<label for="username">{{ l('Username','Nome utente') }}</label><input id="username" name="username" value="{{ request.form.get('username','') }}" maxlength="64" autocomplete="off" required>
+<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="new-password" required>
+<label for="password-confirm">{{ l('Confirm password','Conferma password') }}</label><input id="password-confirm" name="password_confirm" type="password" autocomplete="new-password" required></div>
+<p>{{ l('Employees need no separate STUDENT qualification. Login status and Training permissions remain distinct.','I dipendenti non richiedono una qualifica STUDENT separata. Stato account e autorizzazioni Training restano distinti.') }}</p>
+<button type="submit">{{ l('Enroll in Training','Iscrivi a Training') }}</button> <a href="{{ url_for('role_profiles_home',tab='people') }}">Registry</a>
+</form>
+<script id="registry-enrollment-data" type="application/json">{{ registry_people|tojson }}</script>
+<script>
+(function(){var people=JSON.parse(document.getElementById('registry-enrollment-data').textContent),select=document.getElementById('registry-person');
+function sync(fill){var p=people.find(function(row){return String(row.id)===select.value;});if(fill&&p){document.getElementById('display-name').value=p.name;document.getElementById('email').value=p.email;document.getElementById('username').value=p.username;}
+var existing=!!(p&&p.has_account);document.getElementById('new-credentials').hidden=existing;document.querySelectorAll('#new-credentials input').forEach(function(el){el.required=!existing;el.disabled=existing;});}
+select.addEventListener('change',function(){sync(true);});sync(false);})();
+</script>
 {% endblock %}

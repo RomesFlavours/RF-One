@@ -37,7 +37,16 @@ def roster(db):
         .outerjoin(m.RFOneTrainingIdentityLink, m.RFOneTrainingIdentityLink.training_account_id==m.TrainingAccount.id)
         .outerjoin(m.RFOneAccount, m.RFOneAccount.id==m.RFOneTrainingIdentityLink.rfone_account_id)
         .where(m.TrainingAccount.role=='student').order_by(m.ActingIdentity.display_name)).all()
-    return [dict(id=a.id, name=i.display_name, username=a.username, email=r.email if r else '',
+    from .. import person_reconciliation as identities
+    graph=identities.IdentityGraph(db) if identities.ready(db) else None
+    def central(a):
+        if graph:
+            try:return graph.person_id('training',a.id),False
+            except ValueError:return None,True
+        return None,False
+    # Preserve domain-owned records; expose the same central person reference.
+    references={a.id:central(a) for a,i,p,r in rows}
+    return [dict(central_person_id=references[a.id][0],identity_conflict=references[a.id][1],central_person_name=(graph.rows['person'][references[a.id][0]].full_name if references[a.id][0] else None),id=a.id, name=i.display_name, username=a.username, email=r.email if r else '',
                  phone=p.phone if p else '', archived=bool(p and p.archived_at),
                  employee_id=p.employee_id if p else None, pending=bool(p and p.must_change_password),
                  account_id=r.id if r else None,active=(r is None or r.status=='ACTIVE')) for a,i,p,r in rows]

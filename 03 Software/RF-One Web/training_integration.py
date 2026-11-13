@@ -203,6 +203,8 @@ def enforce_training_sso(app_auth_module, session_factory) -> "object | None":
             flash(result.error, "error")
             return redirect(url_for("home"))
 
+        if request.endpoint == 'training.trainer_new_student':
+            return redirect(url_for('training_trainer_new_student'),code=303)
         from flask import g
         g.rfone_training_account = result.training_account
         flask_session[TRAINING_SESSION_ACCOUNT_KEY] = result.training_account.id
@@ -316,6 +318,11 @@ def link_existing_training_account(session, *, rfone_account_id: int, training_a
         training_account.role = training_role
 
     session.flush()
+    rfone_account=session.get(m.RFOneAccount,rfone_account_id)
+    training_account=session.get(m.TrainingAccount,training_account_id)
+    if rfone_account is None or training_account is None:raise ValueError('Account non trovato.')
+    from rfone_data_store import registry_identity as registry
+    registry.resolve_person(session,name=rfone_account.display_name,email=rfone_account.email,account=rfone_account,training=training_account)
     return link
 
 
@@ -345,6 +352,8 @@ def create_and_link_training_identity(
     link = m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account_id, training_account_id=training_account.id)
     session.add(link)
     session.flush()
+    from rfone_data_store import registry_identity as registry
+    registry.resolve_person(session,name=rfone_account.display_name,email=rfone_account.email,account=rfone_account,training=training_account)
     return link
 
 
@@ -387,42 +396,42 @@ def list_training_students(session) -> list["m.RFOneAccount"]:
 
 def create_student_via_rf_one(
     session, *, username: str, display_name: str, password: str, email: str,
+    registry_person_id: int | None = None, actor_id: int | None = None,
 ) -> tuple["m.RFOneAccount", "m.TrainingAccount"]:
-    """Atomically provisions an RF-One-loginable student: an `RFOneAccount`
-    (never admin, never any Domain but TRAINING), its `TRAINING`
-    `RFOneAccountDomainAccess` (role_code='student'), a linked
-    `TrainingAccount` (Training's own required password column filled with
-    a random, unused placeholder — the account only ever logs in via
-    RF-One), and the identity link. `password` here becomes the account's
-    real, sole (RF-One) password. `email` is required (task: "richiedi
-    l'email nei flussi di creazione, compreso quello degli studenti
-    Training") and recorded unverified — the caller is responsible for
-    sending the verification code (`app.py`'s
-    `training_trainer_new_student` route), never this module, which knows
-    nothing about email delivery."""
-    try:
-        rfone_account = account_service.create_account(
-            session, username=username, display_name=display_name, password=password,
-            status="ACTIVE", is_admin=False, email=email,
-        )
-    except account_service.UsernameTakenError as exc:
-        raise StudentCreationError(str(exc)) from exc
-
-    account_service.set_domain_access(
-        session, account_id=rfone_account.id, domain_code=TRAINING_DOMAIN_CODE, enabled=True, role_code="student",
-    )
-
-    try:
-        training_account = training_service.create_account(
-            session, display_name=display_name, username=username,
-            password=secrets.token_urlsafe(32), role="student",
-        )
-    except training_service.UsernameTakenError as exc:
-        raise StudentCreationError(
-            f"Username {username!r} is already taken in Training's own roster."
-        ) from exc
-
-    link = m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account.id, training_account_id=training_account.id)
-    session.add(link)
+    """One Registry person, reusable login and learning identity; no STUDENT tag."""
+    from rfone_data_store import registry_identity as registry, access_profiles as profiles
+    from sqlalchemy import select
+    email=account_service._validate_email_format(email)
+    person=registry.resolve_person(session,name=display_name,email=email,employee_id=registry_person_id,actor=actor_id)
+    account=profiles.profile_account(session,f'employee:{person.id}')
+    owner=session.scalar(select(m.RFOneAccount).where(m.RFOneAccount.username==username.strip().lower())) if username.strip() else None
+    if owner is not None and (account is None or owner.id!=account.id):
+        raise StudentCreationError('Nome utente già assegnato a un altro account Registry.')
+    if account is None:
+        account=account_service.create_account(session,username=username,display_name=person.display_name,
+            password=password,status='ACTIVE',is_admin=False,email=email)
+        registry.bind_context(session,person,'RFONE_ACCOUNT',account,actor_id)
+    elif account.status!='ACTIVE':
+        raise StudentCreationError('Account inattivo: abilitalo dalla scheda Registry prima di accedere a Training.')
+    elif account.email and account.email.casefold()!=email.casefold():
+        raise StudentCreationError('Usa l’email già registrata per l’account selezionato.')
+    access=next((g for g in account_service.list_domain_access_for_account(session,account.id) if g.domain_code==TRAINING_DOMAIN_CODE),None)
+    if access is not None and (not access.enabled or effective_training_role(access.role_code)!='student'):
+        raise StudentCreationError('Accesso Training preesistente da verificare in Registry. Nessun permesso modificato.')
+    link=get_link_for_rfone_account(session,account.id)
+    if link:
+        training=session.get(m.TrainingAccount,link.training_account_id)
+        if training is None or training.role!='student':raise StudentCreationError('Identità Training esistente da verificare.')
+    else:
+        if session.scalar(select(m.TrainingAccount.id).where(m.TrainingAccount.username==account.username)):
+            raise StudentCreationError('Identità Training già presente: usa il collegamento esplicito dal Registry.')
+        training=training_service.create_account(session,display_name=person.display_name,
+            username=account.username,password=secrets.token_urlsafe(32),role='student')
+        session.add(m.RFOneTrainingIdentityLink(rfone_account_id=account.id,training_account_id=training.id))
+        session.flush()
+    registry.bind_context(session,person,'RFONE_ACCOUNT',account,actor_id)
+    registry.bind_context(session,person,'TRAINING',training,actor_id)
+    if access is None:
+        account_service.set_domain_access(session,account_id=account.id,domain_code=TRAINING_DOMAIN_CODE,enabled=True,role_code='student')
     session.flush()
-    return rfone_account, training_account
+    return account,training
