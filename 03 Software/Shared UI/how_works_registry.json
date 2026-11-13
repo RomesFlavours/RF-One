@@ -157,7 +157,9 @@
         "configuration.html": "help/tips_rules.html#tips_rules",
         "distribution_rule_detail.html": "help/tips_rule_detail.html#tips_rule_detail",
         "calculate_tips.html": "help/tips_calculate.html#tips_calculate",
-        "host_audit.html": "help/tips_host_audit.html#tips_host_audit"
+        "host_audit.html": "help/tips_host_audit.html#tips_host_audit",
+        "historical_tip_payments.html": "help/tips_historical_payments.html#tips_historical_payments",
+        "home.html": "help/tips_imported.html#tips_imported"
       },
       "not_operational": {
         "base.html": "layout of Tips",
@@ -165,12 +167,10 @@
         "_rule_calculation_axes.html": "Rule form field fragment"
       },
       "help_missing": {
-        "home.html": "Tips",
         "order_drilldown.html": "Tips / Calculate Tips",
         "tips_run_history.html": "Tips / Saved Periods",
         "tips_run_report.html": "Tips / Saved Periods",
         "payment_control.html": "Tips / Payment Control",
-        "historical_tip_payments.html": "Tips / Payment Control",
         "restaurant_roles_home.html": "Tips / Configuration",
         "restaurant_role_form.html": "Tips / Configuration"
       }
