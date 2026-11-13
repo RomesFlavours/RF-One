@@ -95,6 +95,25 @@ def held_shifts(session: Session, *, location_ids: Iterable[int], external_ids: 
     return held
 
 
+def held_shift_counts(session: Session, *, location_id: int, external_ids: set[str]) -> dict[str, int]:
+    """Held Shifts (clock-ins/outs) per pending Clover ID at one Location."""
+    counts: dict[str, int] = {}
+    for raw in held_shifts(session, location_ids=[location_id], external_ids=external_ids).values():
+        external_id = _shift_employee_refs(raw)[0]
+        if external_id in external_ids and (raw.get("inTime") is not None or raw.get("outTime") is not None):
+            counts[external_id] = counts.get(external_id, 0) + 1
+    return counts
+
+
+def held_order_counts(session: Session, *, location_id: int, external_ids: set[str]) -> dict[str, int]:
+    """Orders acquired without a person per pending Clover ID at one Location."""
+    if not external_ids:
+        return {}
+    return dict(session.execute(select(m.Order.source_employee_id, func.count()).where(
+        m.Order.location_id == location_id, m.Order.employee_id.is_(None),
+        m.Order.source_employee_id.in_(list(external_ids))).group_by(m.Order.source_employee_id)).all())
+
+
 def _resolved_ids(session: Session, merchant_id: str) -> dict[str, int]:
     return {link.external_employee_id: link.employee_id for link in session.scalars(
         select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,

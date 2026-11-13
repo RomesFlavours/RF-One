@@ -153,7 +153,10 @@ class IdentityRecordHoldTest(unittest.TestCase):
 
     def test_confirmation_reattributes_idempotently_and_is_traced(self):
         self.cycle()
-        person = directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        # Orders only, no clock-in: not a new employee (EMPLOYEE_ACCOUNTS_001);
+        # the identity is confirmed as an existing RF-One person instead.
+        person = directory.attach_link(self.db, link_id=self.pending_link().id,
+                                       employee_id=directory.create_person(self.db, display_name="New Hire").id)
         self.db.commit()
         self.db.expire_all()
         self.assertEqual(self.order("O-NEW").employee_id, person.id)
@@ -208,7 +211,8 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertIn(str(NEW_DAY), blocked[0])
         self.assertIn(blocked[0], calculation_run_service.finalization_blockers(self.db, self.run_for(NEW_DAY)))
         self.assertEqual(calculation_run_service.identity_hold_blockers(self.db, self.run_for(KNOWN_DAY)), [])
-        directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        directory.attach_link(self.db, link_id=self.pending_link().id,
+                              employee_id=directory.create_person(self.db, display_name="New Hire").id)
         self.assertEqual(calculation_run_service.identity_hold_blockers(self.db, self.run_for(NEW_DAY)), [])
 
     def test_poller_attributes_confirmation_made_by_older_web_release(self):
