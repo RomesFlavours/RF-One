@@ -1,0 +1,45 @@
+<section id="help-tips-saved-periods" class="rf-help-section">
+<h2>Saved Periods</h2>
+<p>This page lists every period consolidated from Calculate Tips, newest first, final or not. A Saved Period keeps the figures exactly as they were when it was saved, together with the business dates, the operating-day settings and the rule versions used. Only a FINAL period can be used for payroll.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>See every saved period and whether it is final.</li>
+  <li>Open a period's report to read its figures.</li>
+  <li>Go to RF-One to review and finalize a period. This page itself never changes a period.</li>
+  <li>Open the historical paid tips imported from documents.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Validation Mode</dt>
+  <dd>MANUAL: a period becomes final only when a person validates it. AUTOMATIC: a period becomes final by itself as soon as it adds up. It is set in Configuration.</dd>
+  <dt>Run</dt>
+  <dd>The period's number; click it to open its report.</dd>
+  <dt>Business Dates</dt>
+  <dd>The business days the period covers. Older periods saved before business dates were recorded show their start and end time instead.</dd>
+  <dt>Total Tips + Gratuity / Total Employee Entitlements / Control</dt>
+  <dd>What was collected, what is owed to employees, and whether the two match exactly. A difference is shown in amber; such a period cannot become final.</dd>
+  <dt>State</dt>
+  <dd>FINAL, or the current state of a period still waiting for validation.</dd>
+  <dt>Approved by</dt>
+  <dd>The person who validated a final period, or <em>automatically, no validator</em> when it became final under AUTOMATIC mode.</dd>
+  <dt>Calculated</dt>
+  <dd>When the period was saved, in local time.</dd>
+</dl>
+
+<h3>Buttons and links</h3>
+<dl>
+  <dt>Historical paid tips from documents</dt>
+  <dd>Opens the tips recorded as already paid in imported payment documents.</dd>
+  {% if rfone_web_runs_url() %}
+  <dt>Validate saved periods</dt>
+  <dd>Opens the list of saved periods in RF-One, where you sign in and validate them.</dd>
+  {% endif %}
+  <dt>Review / Finalize in RF-One, Open in RF-One</dt>
+  <dd>Opens the same period in RF-One. There a person can validate it: validating records who approved the figures and makes the period final and unchangeable. If RF-One's address is not configured, the page says so instead of showing the link.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Once a period is final it can be used by payroll. To correct a period, calculate and consolidate it again in Calculate Tips: a new saved period is created and the old one stays as it was.</p>
+</section>

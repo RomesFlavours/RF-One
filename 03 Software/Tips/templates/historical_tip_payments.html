@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "tips-historical-paid" %}
 {% macro usd(cents) %}{{ "{:,.2f}".format(cents / 100) }}{% endmacro %}
 {% block page_title %}RF-One · Tips · Historical paid tips{% endblock %}
 {% block content %}

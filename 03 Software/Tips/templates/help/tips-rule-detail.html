@@ -1,0 +1,25 @@
+<section id="help-tips-rule-detail" class="rf-help-section">
+<h2>Rule (View / Edit / History)</h2>
+<p>This page shows one Tip Distribution Rule: its state, every version it has had, and a form to change it. A rule is never rewritten: each change adds a new version, so you can always see which version applied on a given date.</p>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>State / Restaurant / Versions</dt>
+  <dd>Whether the rule is ACTIVE (used in calculations) or INACTIVE, the restaurant it belongs to, and how many versions it has.</dd>
+  <dt>Version History</dt>
+  <dd>Every version, newest first: source role (who gives; <em>Service Owner (Order owner)</em> means the employee who owns the order), recipient role (who receives), calculation base, rate, effective from and to, who created it and when. The version marked <em>current</em> has no end date.</dd>
+  <dt>Edit Rule (creates a new version)</dt>
+  <dd>The form starts from the current version's values. Change Source Role, Recipient Role, Calculation Base or Rate (%), choose the <strong>Effective From (new version)</strong> date, and optionally Created by.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Deactivate / Activate</dt>
+  <dd>Switches the whole rule off or on immediately; you stay on this page. It can be switched back at any time.</dd>
+  <dt>Save New Version</dt>
+  <dd>Adds a new version from the chosen date. Existing versions are not modified: the version in force until then ends where the new one starts, and a version planned inside the new version's period is cancelled. A message says exactly which versions were affected. Versions cannot be deleted. If no role exists yet, the form is disabled: add roles first through Manage Roles.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>Recalculate the affected period in Calculate Tips to see the effect. Saved Periods already saved keep the figures they were saved with.</p>
+</section>

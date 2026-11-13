@@ -250,7 +250,9 @@ def main() -> int:
           'id="consolidate-btn"' not in night and "whole Business Days" in night)
 
     # ---- 5. Consolidate (unchanged) ----------------------------------------
-    consolidate_card = html[html.index('id="consolidate"'):]
+    # The card ends where the layout's contextual-help dialog begins.
+    help_at = html.find('id="rf-help-dialog"')
+    consolidate_card = html[html.index('id="consolidate"'):help_at if help_at >= 0 else len(html)]
     check("5. one Consolidate button, no date asked again",
           consolidate_card.count("<button") == 1 and 'type="date' not in consolidate_card
           and f'name="from_date" value="{DAY1}"' in consolidate_card)

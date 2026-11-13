@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "tips-rule-detail" %}
 {% set crumbs = [('Configuration', url_for('configuration_home')), ('Rule #' ~ rule.id, None)] %}
 {% block content %}
 

@@ -1,0 +1,41 @@
+<section id="help-tips-calculate" class="rf-help-section">
+<h2>Calculate Tips</h2>
+<p>This page calculates, for the period you choose, how much each employee is owed in tips and gratuity under the active Distribution Rules, and lets you save (consolidate) that result as a Saved Period.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>Calculate any period, as many times as you like: calculating saves nothing.</li>
+  <li>Check the totals and the entitlement of every employee.</li>
+  <li>Open the orders behind an employee's figure, or the audit of a Host's tips, to see why an amount is what it is.</li>
+  <li>Consolidate the result on screen, so it becomes the reference for that period.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>From / Through</dt>
+  <dd>Date and time in the restaurant's local time{% if tz_name %} ({{ tz_name }}){% endif %}. Through is excluded. The page opens on the latest business day, from the start of the operating day to the start of the next{% if cutoff %} ({{ cutoff }} to {{ cutoff }}){% endif %}.</dd>
+  <dt>CALCULATED / CONSOLIDATED</dt>
+  <dd><em>CALCULATED</em> means the result is only on screen and not saved yet. <em>CONSOLIDATED</em> means this exact result is already saved for this period.</dd>
+  {% if audit_mode is defined and audit_mode %}
+  <dt>Audit mode · check Hosts</dt>
+  <dd>The restaurant is set to review each Host before relying on the result. The link opens Explain / Audit Host Tips for the same period. The numbers are the same in either mode.</dd>
+  {% endif %}
+  <dt>Totals</dt>
+  <dd><strong>Voluntary Tips</strong> and <strong>Gratuity</strong> as Clover reports them, their sum <strong>Total Tips + Gratuity</strong>, and how that money is split between <strong>Service Owners</strong> (the employee who owns the order) and <strong>Other Recipients</strong> (for example Hosts). If the entitlements do not add up to Tips + Gratuity, a red anomaly message shows the difference and the result cannot be consolidated. Below the tiles: the number of orders, the rule versions applied, and how many orders had no eligible Host (their Service Owner keeps 100%).</dd>
+  <dt>Employee Entitlements</dt>
+  <dd>One row per employee: <strong>Role</strong> in this result (Service Owner, Host, or both), Voluntary Tips, Gratuity and Gross Tips earned on their own orders, <strong>Distributed / Received</strong> (what they gave to others, minus, and received from others, plus) and the final <strong>Entitlement</strong> to be paid.</dd>
+  <dt>Status</dt>
+  <dd><em>ready</em>, or <em>check</em> with the reason shown in red. <strong>audit</strong> (for employees who received a share) opens Explain / Audit Host Tips for that employee. <strong>orders</strong> lists the employee's orders; each order number opens the explanation of that order.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Calculate</dt>
+  <dd>Calculates the chosen period with the data and rules in RF-One right now. Nothing is saved; repeat it freely.</dd>
+  <dt>Consolidate</dt>
+  <dd>Saves the result shown, for the business dates shown, as a Saved Period. Nothing is asked again. It is available only when the result has no anomaly and the period is made of whole business days (From and Through at the start of the operating day); otherwise the page says why. If the Clover data changed after you calculated, nothing is saved and you are asked to check the new result first. The same period with the same result is saved only once. When the restaurant's Tips Validation Mode (in Configuration) is AUTOMATIC, the saved period becomes final at once, with nobody named as approver; otherwise it waits for a person to validate it. A Saved Period cannot be deleted from Tips; a different result for the same dates is saved as a new period.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>After consolidating, open the period in <strong>Saved Periods</strong> to review and finalize it in RF-One.</p>
+</section>

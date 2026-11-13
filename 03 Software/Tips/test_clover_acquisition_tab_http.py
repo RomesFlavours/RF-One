@@ -238,8 +238,8 @@ def main() -> int:
           '<a href="/tips/configuration">Configuration</a>' in roles
           and '<a href="/tips/roles">Roles</a>' in roles and '<span aria-current="page">New Role</span>' in roles)
     templates_dir = os.path.join(BASE_DIR, "templates")
-    leftovers = [f for f in os.listdir(templates_dir)
-                 if re.search(r"&larr; (Back to|All saved|Home)", open(os.path.join(templates_dir, f), encoding="utf-8").read())]
+    leftovers = [f for f in os.listdir(templates_dir) if os.path.isfile(os.path.join(templates_dir, f))
+                 and re.search(r"&larr; (Back to|All saved|Home)", open(os.path.join(templates_dir, f), encoding="utf-8").read())]
     check("6. no Tips template keeps a generic back link", not leftovers, str(leftovers))
 
     print(f"Tips Clover Acquisition tab HTTP tests: {'SUCCESS' if not failed else 'FAILURE'} "

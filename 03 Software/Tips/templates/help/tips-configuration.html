@@ -1,0 +1,31 @@
+<section id="help-tips-configuration" class="rf-help-section">
+<h2>Configuration</h2>
+<p>All Tips settings in one page: first the <strong>Distribution Rules</strong> (who shares tips with whom, and how much), then the <strong>General Configuration</strong> (review and validation modes, calculation and payment schedules). Changes here affect the calculations made from then on; Saved Periods already saved keep their own figures.</p>
+
+<h3>Distribution Rules</h3>
+<dl>
+  <dt>Describe the Tip Distribution Rule</dt>
+  <dd>Write the rule in plain language in <strong>Your instruction</strong> (who gives, who receives, what share, from when) and press <strong>Interpret</strong>. RF-One asks a question only if something needs clarifying (answer it and press <strong>Answer</strong>), or tells you plainly when the rule is something it cannot configure yet, keeping what you asked for so you can restate it. Nothing is saved at this stage.</dd>
+  <dt>I understood · Confirm / Cancel / Change</dt>
+  <dd>RF-One shows what it understood, with any warnings; <strong>View structured rule</strong> shows the exact fields (source role, recipient role, rate, calculation base, effective dates). <strong>Confirm</strong> saves the rule (Created by is optional). <strong>Cancel</strong> discards the proposal and nothing is created. <strong>Or describe what to change</strong> + <strong>Change</strong> asks RF-One to revise the proposal. If interpretation is unavailable, a message says so and you can use the Advanced form.</dd>
+  <dt>Existing Rules</dt>
+  <dd>Each rule with its source and recipient role, calculation base, rate, effective dates, state (ACTIVE or INACTIVE) and number of versions. <strong>View / Edit / History</strong> opens the rule. <strong>Deactivate</strong> / <strong>Activate</strong> switches the rule off or on at once; it can be switched back at any time. Only active rules are used in calculations.</dd>
+  <dt>Advanced / Inspect Rule</dt>
+  <dd>A direct form to create a rule field by field: Source Role, Recipient Role, Calculation Base, Rate (%), Effective From and, optionally, Created by. <strong>Create Rule</strong> saves it. A restaurant may have several rules, and one source role may share with more than one recipient role. <strong>Manage Roles</strong> opens the list of roles the rules can use; if no role exists yet, add one first.</dd>
+</dl>
+
+<h3>General Configuration</h3>
+<dl>
+  <dt>Review Mode</dt>
+  <dd>AUDIT: after a calculation you are prompted to check each Host in Explain / Audit Host Tips before relying on the result. AUTOMATIC: no such prompt. It never changes the figures. <strong>Set Review Mode</strong> saves the choice.</dd>
+  <dt>Tips Validation Mode</dt>
+  <dd>MANUAL (the default): a person signed in to RF-One must validate each Saved Period before it becomes final. AUTOMATIC: a period becomes final by itself as soon as it adds up, with nobody named as approver. This decides who is accountable for the money, so choose it with care. <strong>Set Validation Mode</strong> saves it and records who made the change.</dd>
+  <dt>Calculation Schedule</dt>
+  <dd>When tips are calculated: MANUAL, or AUTOMATIC every N days at an execution time from an anchor date. <strong>Update Calculation Schedule</strong> saves a new schedule (Set by is optional). <strong>Run Calculation Now</strong> calculates the latest business date at once and saves its tip entitlements, which are what Payment Control pays; it runs only when the Clover data for that date is ready, and is disabled when that date is already calculated. The note next to the button shows the date and its state.</dd>
+  <dt>Payment Schedule</dt>
+  <dd>When tips are paid: MANUAL, or AUTOMATIC every N days at an execution time from an anchor date. With AUTOMATIC you also choose the approval: WITH_APPROVAL (a person still approves and pays each cycle) or WITHOUT_APPROVAL (RF-One approves and pays by itself once ready, only if the restaurant has explicitly granted that authority). <strong>Payment connector</strong> chooses which connector executes the payments (Mercury is currently the only one) and <strong>Mercury source account id</strong> the account that funds them. Without a connector, Approve &amp; Pay refuses with a clear message. <strong>Update Payment Schedule</strong> saves it.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>After changing rules, recalculate the period in <strong>Calculate Tips</strong> to see their effect. Payment cycles are started and approved in <strong>Payment Control</strong>.</p>
+</section>

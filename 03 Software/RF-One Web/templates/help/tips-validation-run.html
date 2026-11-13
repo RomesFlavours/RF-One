@@ -1,0 +1,30 @@
+<section id="help-tips-validation-run" class="rf-help-section">
+<h2>Calculation Run</h2>
+<p>The saved report of one Tips period, read back exactly as it was calculated (this page never recalculates), and the place where a person validates the period so that it becomes FINAL and payable.</p>
+
+<h3>What the page shows</h3>
+<dl>
+  <dt>Header</dt>
+  <dd>The Restaurant, the Business Dates, when the operating day starts and in which timezone, the Rule Versions applied, and when the run was calculated.</dd>
+  <dt>The control</dt>
+  <dd><em>Voluntary Tips</em>, <em>Gratuity</em>, their <em>Total Tips + Gratuity</em>, the <em>Total Employee Entitlements</em> and the <em>Control Difference</em> between them. "balanced" means the difference is zero; "does not balance" means money is unaccounted for. The difference is reported, never adjusted.</dd>
+  <dt>What each employee is owed</dt>
+  <dd>Per employee: the <em>Result</em> type, the <em>Gross</em> amount and the <em>Final Entitlement</em>. If the rows do not add up to the total recorded for the run, a warning tells you not to validate or pay the run until it is explained.</dd>
+  <dt>Validation and finalization</dt>
+  <dd>For a FINAL run: when it was finalized and by whom, or that it was finalized automatically under the Restaurant's validation mode. For a run not yet final: every reason that prevents validation, or the validation button.</dd>
+</dl>
+
+{% if run.is_final %}
+<h3>This period is FINAL</h3>
+<p>It can no longer be modified or validated again, and it is the Tips figure Payroll may use for these Business Dates. There is nothing to do on this page except read it.</p>
+{% elif not finalization_blockers %}
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Validate this period as …</dt>
+  <dd>Records you, the signed-in person, as the validator and makes the period FINAL. A FINAL period can no longer be modified and is the Tips figure Payroll may use for those dates. This cannot be undone. There is no name to type: the validator is always who is signed in.</dd>
+</dl>
+{% else %}
+<h3>Why validation is not possible</h3>
+<p>The red messages list every reason at once, for example: the calculation did not complete, the period does not balance, another run is already FINAL for the same Business Dates, or an employee identity still has to be confirmed. Resolve the cause (in the Tips app, or by confirming the identity in the employee directory) and come back: the period can be validated only when no reason is left.</p>
+{% endif %}
+</section>

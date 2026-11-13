@@ -1,0 +1,37 @@
+<section id="help-tips-payment-control" class="rf-help-section">
+<h2>Tips Payment Control — Mercury Sandbox pilot</h2>
+<p>This pilot page groups the tips still unpaid into a payment cycle and, once approved, sends one payment per employee through the payment connector configured for the restaurant. It works only with the Mercury test (sandbox) environment: no real money moves. No bank or account details are shown here.</p>
+
+<h3>What you can do</h3>
+<ul>
+  <li>See at a glance whether payment is ready, and why not.</li>
+  <li>Open a payment cycle with everything still unpaid.</li>
+  <li>Approve and pay the open cycle, acting as a person authorized to do so.</li>
+  <li>Link an employee to their Mercury sandbox recipient, and retry a single payment that needs attention.</li>
+</ul>
+
+<h3>Fields and columns</h3>
+<dl>
+  <dt>Summary tiles</dt>
+  <dd>The restaurant; the open <strong>Payment Cycle</strong> with its status and dates (or <em>none open</em>); <strong>Payees / Total due</strong>; the latest business date and whether it was already calculated; the connector's available balance; and whether Clover data is reconciled (READY / NOT READY with the reason).</dd>
+  <dt>READY FOR PAYMENT / NOT READY</dt>
+  <dd>The single signal saying whether Approve &amp; Pay can go ahead, with the reason. A red message appears when a critical attention item for Tips must be resolved first.</dd>
+  <dt>Payment Instructions</dt>
+  <dd>One row per employee in the cycle: amount, whether a Mercury recipient is linked, status, the provider's status, priority and reason of a failure, the related attention item, and <strong>Detail</strong>, which expands the business dates included with gross tips, amounts transferred out and in, and the final payable.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>Start Payment Cycle Now</dt>
+  <dd>Opens a new payment cycle that gathers every unpaid tip entitlement since the previous cycle. Nothing is paid yet: review the instructions below first. The button is disabled when there is nothing ready to gather.</dd>
+  <dt>Acting as… / Approve &amp; Pay</dt>
+  <dd>Shown while a cycle is open. Choose who is approving (only people authorized to approve and pay for this restaurant are listed), then press Approve &amp; Pay. Authorization and readiness are checked again before anything is sent; if payment is not ready, nothing happens and a message explains why. When it goes ahead, the payments are submitted to the connector and the page reports how many were submitted and how many need attention. A submitted payment cannot be withdrawn from this page.</dd>
+  <dt>Link</dt>
+  <dd>Shown for an employee without a linked recipient. Type the name of an existing Mercury sandbox recipient exactly as it is in Mercury: RF-One links the employee to it (it never creates a recipient). A previous link is deactivated, not deleted.</dd>
+  <dt>Retry this instruction only</dt>
+  <dd>Shown for a payment marked NEEDS_ATTENTION. It sends again only that payment, without duplicating it; the other payments are not touched. A payment without a linked recipient must be linked first.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>The payment schedule and the connector used are set in <strong>Configuration</strong> (Payment Schedule). If the page says the payment connector is not available, a connector must be configured there first.</p>
+</section>

@@ -1,0 +1,144 @@
+{#- RF-One contextual help — the ONE "How … works" component of every RF-One app
+    (UI_HOW_WORKS_001, `03 Software/Shared UI/How Works Standard.md`).
+
+    Canonical copy: `03 Software/Shared UI/help/_how_works.html`. Every app keeps a
+    byte-identical copy as `templates/_how_works.html` (the per-application
+    convention already used for `rf-one.css`); `test_check_how_works.py` fails
+    when a copy differs. Change the canonical file, then copy it.
+
+    A page declares, at the top level of its template:
+        {% set help_section = "<section>" %}   -> templates/help/<section>.html
+        {% set help_title = "Bank" %}          -> "How Bank works" (Home pages only;
+                                                  every other page: "How this page works")
+    and its layout renders `how_works_link()` where the link belongs and
+    `how_works_dialog()` once, at the end of <body>. Import with context, so the
+    help can follow the same permission conditions as the page it explains:
+        {% from "_how_works.html" import how_works_link, how_works_dialog with context %}
+
+    The help is rendered inside the page itself: whoever can open the page can
+    read its help, and nobody else. Opening or closing it never submits,
+    reloads or clears anything on the page; focus returns to the link. -#}
+
+{% macro how_works_label(title=None) -%}
+How {{ title or "this page" }} works
+{%- endmacro %}
+
+{% macro how_works_link(section, title=None) -%}
+<button type="button" class="rf-help-link" data-how-works="{{ section }}"
+        aria-haspopup="dialog" aria-controls="rf-help-dialog">{{ how_works_label(title) }}</button>
+{%- endmacro %}
+
+{% macro how_works_dialog(section, title=None) -%}
+<dialog id="rf-help-dialog" class="rf-help-dialog" aria-labelledby="rf-help-heading" data-help-section="{{ section }}">
+  <div class="rf-help-bar">
+    <p class="rf-help-kicker" id="rf-help-heading">{{ how_works_label(title) }}</p>
+    <button type="button" class="rf-help-close" data-rf-help-close aria-label="Close help" title="Close">&times;</button>
+  </div>
+  <div class="rf-help-body">
+    {% include "help/" ~ section ~ ".html" %}
+  </div>
+  <div class="rf-help-foot">
+    <button type="button" class="rf-help-done" data-rf-help-close>Close</button>
+  </div>
+</dialog>
+<style>
+  .rf-help-link {
+    background: none; border: 0; padding: .15rem 0; margin: 0 0 0 auto; cursor: pointer;
+    font: inherit; font-size: .9rem; line-height: 1.4; color: var(--olive-700, #55642f);
+    text-decoration: underline; text-underline-offset: 2px; white-space: nowrap;
+  }
+  .rf-help-link:hover { color: var(--olive-900, #2f3a1f); background: none; }
+  .rf-help-link:focus-visible, .rf-help-close:focus-visible, .rf-help-done:focus-visible {
+    outline: 2px solid var(--olive-700, #55642f); outline-offset: 2px;
+  }
+  .rf-help-row { display: flex; justify-content: flex-end; margin: 0 0 .6rem; }
+  .rf-help-dialog {
+    width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
+    padding: 0; border: 1px solid var(--olive-300, #c7d1a8); border-radius: 10px;
+    background: #fff; color: var(--ink, #24271c); box-shadow: 0 12px 40px rgba(36, 39, 28, .28);
+    font-family: inherit; overflow: hidden; display: none; flex-direction: column;
+  }
+  .rf-help-dialog[open] { display: flex; }
+  .rf-help-dialog::backdrop { background: rgba(36, 39, 28, .45); }
+  .rf-help-bar {
+    display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem .6rem 1.25rem;
+    border-bottom: 1px solid var(--olive-150, #e8edd8); background: var(--olive-050, #f6f8ef); flex: none;
+  }
+  .rf-help-kicker { margin: 0; font-weight: 600; font-size: 1rem; flex: 1; }
+  .rf-help-close {
+    flex: none; width: 2.25rem; height: 2.25rem; border: 0; border-radius: 6px; background: none;
+    color: var(--muted, #6e735e); font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .rf-help-close:hover { background: var(--olive-150, #e8edd8); color: var(--ink, #24271c); }
+  .rf-help-body { padding: 1rem 1.25rem 1.1rem; overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; }
+  .rf-help-body h2 { font-size: 1.15rem; margin: 0 0 .5rem; }
+  .rf-help-body h3 { font-size: .98rem; margin: 1.1rem 0 .35rem; }
+  .rf-help-body p, .rf-help-body li, .rf-help-body dd { line-height: 1.55; font-size: .92rem; }
+  .rf-help-body ul, .rf-help-body ol { padding-left: 1.25rem; margin: .3rem 0 .6rem; }
+  .rf-help-body li + li { margin-top: .25rem; }
+  .rf-help-body dl { margin: .3rem 0 .6rem; }
+  .rf-help-body dt { font-weight: 600; font-size: .92rem; margin-top: .45rem; }
+  .rf-help-body dd { margin: .1rem 0 0 0; }
+  .rf-help-foot {
+    display: flex; justify-content: flex-end; padding: .6rem 1.25rem .8rem;
+    border-top: 1px solid var(--olive-150, #e8edd8); flex: none;
+  }
+  .rf-help-done {
+    border: 1px solid var(--olive-600, #64753a); background: var(--olive-600, #64753a); color: #fff;
+    border-radius: 6px; padding: .45rem 1.1rem; font: inherit; font-size: .9rem; cursor: pointer;
+  }
+  body.rf-help-open { overflow: hidden; }
+  @media (max-width: 640px) {
+    .rf-help-dialog { width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: none; margin: 0; border-radius: 0; border: 0; }
+    .rf-help-body { padding: .9rem 1rem 1rem; }
+    .rf-help-bar { padding-left: 1rem; }
+    .rf-help-foot { padding: .6rem 1rem calc(.8rem + env(safe-area-inset-bottom, 0px)); }
+  }
+  @media print { .rf-help-link, .rf-help-dialog { display: none !important; } }
+</style>
+<script>
+(function () {
+  "use strict";
+  var dialog = document.getElementById("rf-help-dialog");
+  if (!dialog || dialog.getAttribute("data-ready")) { return; }
+  dialog.setAttribute("data-ready", "1");
+  var trigger = null;
+  var body = dialog.querySelector(".rf-help-body");
+
+  function open(from) {
+    if (dialog.open) { return; }
+    trigger = from || document.activeElement;
+    if (typeof dialog.showModal === "function") { dialog.showModal(); } else { dialog.setAttribute("open", ""); }
+    document.body.classList.add("rf-help-open");
+    if (body) { body.scrollTop = 0; }
+    var close = dialog.querySelector(".rf-help-close");
+    if (close) { close.focus(); }
+  }
+
+  function finish() {
+    document.body.classList.remove("rf-help-open");
+    if (trigger && typeof trigger.focus === "function" && document.contains(trigger)) { trigger.focus(); }
+    trigger = null;
+  }
+
+  function close() {
+    if (typeof dialog.close === "function" && dialog.open) { dialog.close(); return; }
+    if (dialog.hasAttribute("open")) { dialog.removeAttribute("open"); finish(); }
+  }
+
+  dialog.addEventListener("close", finish);
+  // Escape closes the help only: stopping it here keeps a page's own Escape handler
+  // (for example a dialog underneath) from reacting to the same key.
+  dialog.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+  });
+  dialog.addEventListener("click", function (event) {
+    if (event.target === dialog || event.target.closest("[data-rf-help-close]")) { event.preventDefault(); close(); }
+  });
+  document.addEventListener("click", function (event) {
+    var link = event.target.closest && event.target.closest(".rf-help-link[data-how-works]");
+    if (link) { event.preventDefault(); open(link); }
+  });
+})();
+</script>
+{%- endmacro %}

@@ -1,4 +1,5 @@
 {% from "_nav_macros.html" import breadcrumb %}
+{% from "_how_works.html" import how_works_link, how_works_dialog with context %}
 {% set tab_labels = {'historical-backfill': ('Clover Acquisition', 'home'), 'configuration': ('Configuration', 'configuration_home'),
                      'calculate-tips': ('Calculate Tips', 'calculate_tips_home'), 'host-audit': ('Explain / Audit Host Tips', 'host_audit_home'),
                      'tips-runs': ('Saved Periods', 'tips_run_history'),
@@ -67,8 +68,10 @@
     <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">Saved Periods</a>
     <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">Payment Control (Mercury Sandbox pilot)</a>
     <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">Configuration</a>
+    {% if help_section is defined %}{{ how_works_link(help_section, help_title if help_title is defined else None) }}{% endif %}
   </div>
   {% block content %}{% endblock %}
 </div>
+{% if help_section is defined %}{{ how_works_dialog(help_section, help_title if help_title is defined else None) }}{% endif %}
 </body>
 </html>

@@ -1,0 +1,25 @@
+<section id="help-tips-role-form" class="rf-help-section">
+<h2>{{ "New Role" if mode is defined and mode == "create" else "Edit Role" }}</h2>
+<p>{% if mode is defined and mode == "create" %}This form adds a role to the restaurant, so that Distribution Rules can use it as the role that gives or receives tips.{% else %}This form changes a role already used, or usable, by the Distribution Rules. The change applies wherever the role appears.{% endif %} It does not assign the role to any employee.</p>
+
+<h3>Fields</h3>
+<dl>
+  <dt>Name</dt>
+  <dd>Required. The name shown in the Distribution Rules, for example <em>Server</em> or <em>Host</em>.</dd>
+  <dt>Code</dt>
+  <dd>Optional short code.</dd>
+  <dt>Description</dt>
+  <dd>Optional description.</dd>
+  <dt>Active</dt>
+  <dd>Ticked: the role is active. Untick it to mark the role inactive without deleting it.</dd>
+</dl>
+
+<h3>Buttons and what happens</h3>
+<dl>
+  <dt>{{ "Create Role" if mode is defined and mode == "create" else "Save changes" }}</dt>
+  <dd>{% if mode is defined and mode == "create" %}Saves the new role{% else %}Saves the changes{% endif %} and returns to the list of roles. If something is not accepted (for example a missing name), the form stays open with the reason and nothing is saved. Roles cannot be deleted from Tips.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>To leave without saving, use the path at the top (Roles or Configuration).</p>
+</section>

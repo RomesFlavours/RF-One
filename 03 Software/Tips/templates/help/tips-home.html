@@ -1,0 +1,50 @@
+<section id="help-tips-home" class="rf-help-section">
+<h2>How Tips works</h2>
+<p>Tips works out what each employee is owed in tips and gratuity for a period, from the orders and payments RF-One received from Clover, and keeps the result as a saved period that can be reviewed, finalized and paid.</p>
+
+<h3>How it works</h3>
+<ul>
+  <li>The figures always come from Clover data already held in RF-One. Tips reads them; it never changes them.</li>
+  <li>The <strong>Distribution Rules</strong> in <strong>Configuration</strong> say who shares tips with whom (for example: a share of the Server's tips goes to the Host present when the payment is made). Each employee's entitlement is calculated from those rules.</li>
+  <li>Calculating a period only shows a result on screen. Nothing is saved until you <strong>Consolidate</strong> it; it then becomes a Saved Period.</li>
+  <li>A Saved Period is reviewed and made final in RF-One (outside this Tips menu). Only a final period can be used for payroll.</li>
+</ul>
+
+<h3>Typical flow</h3>
+<ol>
+  <li><strong>Clover Acquisition</strong> (this tab): check when Clover data was last updated and, if needed, look at the orders, payments and shifts already imported for the days you want to calculate.</li>
+  <li><strong>Configuration</strong>: make sure the Roles and the Distribution Rules are correct before calculating. This is normally set once and changed only when the tip policy changes.</li>
+  <li><strong>Calculate Tips</strong>: choose the period, press <strong>Calculate</strong>, check the totals and each employee's entitlement. Open an order or a Host's audit if a figure needs explaining.</li>
+  <li>When the result is right and covers whole business days, press <strong>Consolidate</strong> to save it.</li>
+  <li><strong>Saved Periods</strong>: open the saved period and use the link to review and finalize it in RF-One.</li>
+  <li><strong>Payment Control (Mercury Sandbox pilot)</strong>: a pilot page, connected only to the Mercury test environment, for grouping unpaid entitlements into a payment cycle and approving it.</li>
+</ol>
+
+<h3>What this tab shows</h3>
+<dl>
+  <dt>Clover Acquisition</dt>
+  <dd><strong>Last update</strong> is the time of the last completed Clover update, in the restaurant's local time. While an update is running you see <em>Sync in progress</em> and who asked for it; the page refreshes by itself when it ends.</dd>
+  {% if clover is defined and clover.sync_now_url and clover.may_sync %}
+  <dt>Sync Now</dt>
+  <dd>Starts a new Clover update now, bringing into RF-One what changed in Clover since the last update. The update runs in RF-One and you come back to this tab with a message. The button is disabled while an update is already running, or when no first update exists yet.</dd>
+  {% elif clover is defined and clover.signed_in and clover.sync_now_url %}
+  <dt>Sync Now</dt>
+  <dd>Not available to your account: starting a Clover update requires the Clover Acquisition access on your RF-One account. You can still read the data below.</dd>
+  {% endif %}
+  {% if clover is defined and clover.full_page_url %}
+  <dt>Open Clover Acquisition</dt>
+  <dd>Opens the full Clover Acquisition page of RF-One, with the history of the updates.</dd>
+  {% endif %}
+  <dt>Imported Clover data</dt>
+  <dd>Choose <strong>From date</strong> and <strong>Through date</strong> (local calendar days) and press <strong>Show imported data</strong>. From date starts on the latest business date already on file. This is read-only: it shows what RF-One already holds and imports nothing.</dd>
+  <dt>Orders and Transactions</dt>
+  <dd>Summary tiles to compare with Clover's own Orders and Transactions reports: number of orders (all, completed, incomplete and the value still unpaid), payments total (tips excluded), number of payments (failed attempts are not counted), Voluntary Tips, Gratuity, their total, and Taxes and Fees.</dd>
+  <dt>Orders detail and Transactions detail</dt>
+  <dd>One row per order and per payment in the period, with the employee, amounts and times. A <em>split</em> badge marks an order paid with more than one payment. Gratuity belongs to the order and is shown once, on its first successful payment; failed payments are greyed out and count in no total.</dd>
+  <dt>Imported Shifts</dt>
+  <dd>Clock-in and clock-out times received from Clover for the period, for reference.</dd>
+</dl>
+
+<h3>Next steps</h3>
+<p>If the data for your period is complete, go to <strong>Calculate Tips</strong>. If recent orders are missing, update the Clover data first.</p>
+</section>
