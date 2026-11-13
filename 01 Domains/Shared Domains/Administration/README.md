@@ -12,7 +12,7 @@
 
 Administration does not decide operational value, does not evaluate personnel performance, does not set tax policy, and does not own the business facts it processes. It receives or resolves the inputs required to administratively process an obligation, records what actually happened when an external processor executed it, and exposes the resulting facts for cost analysis and reconciliation.
 
-Administration is transversal in the same sense already established for Personnel Management and Taxation (see `01 Domains/Domain Architecture.md`): it applies wherever an administrative execution obligation exists, consuming content from whichever Domain owns the underlying fact, without duplicating that Domain's knowledge.
+Administration is transversal in the same sense already established for the other Shared Domains such as Management and Taxation (see `01 Domains/Domain Architecture.md`): it applies wherever an administrative execution obligation exists, consuming content from whichever Domain owns the underlying fact, without duplicating that Domain's knowledge.
 
 ---
 
@@ -21,7 +21,8 @@ Administration is transversal in the same sense already established for Personne
 ```text
 Administration
 ├── Personnel Cost      (transversal concept — spans Payroll and future cost sources)
-├── Payroll
+├── Compensation        (determines and approves what is owed — relocated here 2026-10-25)
+├── Payroll             (processing by the Payroll Provider and acquisition of its results)
 └── Invoice Intake      (document acquisition/OCR/normalization only — never the canonical cost model)
 ```
 
@@ -32,6 +33,7 @@ Payroll is the first module. Other administrative execution capabilities (e.g. a
 | Document | Answers | Status |
 |---|---|---|
 | [Personnel Cost.md](Personnel%20Cost.md) | What is the causally attributable, canonical economic cost of an Employee, and of Personnel overall? | Documented — TASK_LABOR_COST_001 |
+| [Compensation/](Compensation/README.md) | How much compensation has an Employee economically earned for a Pay Period, why, which Legal Entity owes it, and what Approved Pay Data must be sent to the Payroll Provider? Includes [Compensation Terms](Compensation/Compensation%20Terms.md). | Draft — V1 functional specification, operational V1 implemented; relocated from the former Personnel Management Domain on 2026-10-25 (Product Owner decision), content unchanged |
 | [Payroll/](Payroll/README.md) | How is Employee compensation administratively processed, and what did it actually cost? | Documented — TASK_PAYROLL_001; repositioned under `Personnel Cost.md` by TASK_LABOR_COST_001 |
 | [Invoice Intake/](Invoice%20Intake/README.md) | How are supplier documents acquired, OCR'd/parsed, normalized, and routed to the Business Domain that owns their cost model? | Structure created — see note below; canonical cost model remains Restaurant/Purchasing |
 
@@ -39,17 +41,32 @@ Payroll is the first module. Other administrative execution capabilities (e.g. a
 
 ---
 
-## Administration ≠ Restaurant, ≠ Personnel Management, ≠ Taxation, ≠ Accounting
+## Compensation ≠ Payroll
+
+Compensation and Payroll are distinct sibling modules and must not be duplicated or merged (Product Owner decision, 2026-10-25):
+
+```text
+Compensation  → determines, validates and approves what is owed (Approved Pay Data)
+              → Payroll Handoff Connector
+Payroll       → the external Payroll Provider processes payroll; RF-One acquires
+                and records the provider's results
+```
+
+Compensation never records what a provider actually paid; Payroll never composes or approves an economic amount. See [Compensation/README.md](Compensation/README.md), "Relationship to `Administration/Payroll`", and [Compensation/PAYROLL_HANDOFF_CONNECTOR.md](Compensation/PAYROLL_HANDOFF_CONNECTOR.md).
+
+---
+
+## Administration ≠ Restaurant, ≠ Management, ≠ Taxation, ≠ Accounting
 
 ```text
 Administration ≠ Restaurant
-Administration ≠ Personnel Management
+Administration ≠ Management
 Administration ≠ Taxation
 Administration ≠ Accounting
 ```
 
 - **Administration ≠ Restaurant.** Restaurant supplies the operational facts (worked time, Tips, sales) an administrative process consumes; Administration does not own Restaurant semantics and does not run only for restaurants.
-- **Administration ≠ Personnel Management.** Personnel Management decides who occupies a role, whether they meet its standard, and what should be done about them (`01 Domains/Shared Domains/Personnel Management/README.md`). Administration does not make any of those judgments — it only administratively executes the compensation consequence of an employment relationship that Personnel Management/the business already established.
+- **Administration ≠ Management.** Management / Organization designs the work and records who occupies a role, compares the current person with alternatives and leaves the decision about them to authorized people (`01 Domains/Shared Domains/Management/Organization/README.md`; it absorbed the former Personnel Management Workforce and Personnel Decisions responsibilities). Administration does not make any of those judgments — it determines and approves the compensation owed (Compensation) and administratively executes it (Payroll) for an employment relationship the business already established.
 - **Administration ≠ Taxation.** Taxation reasons about tax obligations, positions and treatments across every Domain (`01 Domains/Shared Domains/Taxation/README.md`). Administration (Payroll) consumes jurisdiction/tax-relevant outcomes where applicable but does not itself define tax law, tax rates, or tax treatment — it administratively carries out what has already been determined or delegates the undetermined part.
 - **Administration ≠ Accounting.** Accounting records, classifies and reports financial transactions in a ledger. Administration produces the economic facts (e.g. actual payroll cost) that Accounting, where it exists, would post — it does not maintain a ledger or produce financial statements itself.
 
@@ -64,10 +81,11 @@ Administration is built on the RF-One Core Conceptual Architecture and reuses it
 ## Related documents
 
 - [Personnel Cost.md](Personnel%20Cost.md) — the transversal Employee/Personnel cost concept
+- [Compensation/README.md](Compensation/README.md) — the Compensation module
 - [Payroll/README.md](Payroll/README.md) — the Payroll module
 - [../Restaurant/Purchasing/README.md](../../Business%20Domain/Restaurant/Purchasing/README.md), [../Restaurant/Purchasing/BusinessRules.md](../../Business%20Domain/Restaurant/Purchasing/BusinessRules.md) — canonical Purchase Document/Purchase Line ingestion and cost model this Domain consumes downstream
 - [../Domain Architecture.md](../../Domain%20Architecture.md) — cross-Domain conclusions for other transversal Domains
 - [../README.md](../../README.md) — `01 Domains/` purpose and authority
-- [../Personnel Management/README.md](../Personnel%20Management/README.md), [../Taxation/README.md](../Taxation/README.md) — sibling transversal Domains
+- [../Management/README.md](../Management/README.md), [../Taxation/README.md](../Taxation/README.md) — sibling transversal Domains
 - `07 Tasks/TASK_PAYROLL_001_Formalize_Administration_Payroll_Data_Model_ADP_Result_Import_and_Labor_Cost.md` — task that created this Domain
 - `07 Tasks/Reports/TASK_PURCHASING_001_REPORT.md` — task that removed the duplicate `Invoice Intake.md` model from this Domain
