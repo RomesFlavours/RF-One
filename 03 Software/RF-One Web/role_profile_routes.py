@@ -55,6 +55,31 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
         browser_session['rfone_company_context']=identity
         return redirect(url_for('home'))
 
+    def add_registry_status(db, people_rows):
+        """Status from the one Registry: Employee, or Trainee (the STUDENT qualification Selection
+        or Training gives). Trainees not yet activated have no account, so they are listed too."""
+        from sqlalchemy import inspect as _inspect
+        from rfone_data_store import people_registry as people, student_registry as students
+        if not _inspect(db.connection()).has_table('person_qualifications'):
+            for row in people_rows: row['status']='Employee' if row['key'].startswith('employee:') else ''
+            return
+        trainees=set(db.scalars(select(students.PersonQualification.person_id).where(students.PersonQualification.code=='STUDENT')))
+        employees=set(db.scalars(select(people.PersonEmployeeLink.person_id)))
+        if _inspect(db.connection()).has_table('person_company_statuses'):
+            employees|=set(db.scalars(select(people.PersonCompanyStatus.person_id).where(people.PersonCompanyStatus.code=='EMPLOYEE')))
+        person_by_account={l.account_id:l.person_id for l in db.scalars(select(people.PersonAccountLink))}
+        listed=set()
+        for row in people_rows:
+            kind,identity=row['key'].split(':');identity=int(identity)
+            if kind=='employee':
+                row['status']='Employee';continue
+            person=person_by_account.get(identity)
+            listed.add(person)
+            row['status']='Employee' if person in employees else 'Trainee' if person in trainees else ''
+        for person in db.scalars(select(m.CandidatePerson).where(m.CandidatePerson.id.in_(trainees-employees-listed-set(person_by_account.values()))).order_by(m.CandidatePerson.full_name)):
+            people_rows.append({'key':f'person:{person.id}','account_label':'Not activated yet','email':person.primary_email,'phone':person.primary_phone,
+                'access_url':None,'name':person.full_name or 'Name to complete','companies':[],'assignments':[],'status':'Trainee','readonly':True})
+
     def target_choices(db, account_people, accounts):
         choices={f'employee:{p.id}':p.display_name or 'Name to complete' for p in directory.employee_options(db)}
         for account in sorted((a for a in accounts if a.status == 'ACTIVE'), key=lambda a:a.display_name):
@@ -202,6 +227,8 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             account_label=f'{linked_account.username} · {linked_account.status}' if linked_account else 'No unique RF1 account linked'
             people_rows.append({'key':key,'account_label':account_label,'email':target.email if kind=='employee' else target.contact_email,'phone':target.phone if kind=='employee' else target.contact_phone,'access_url':access_url,'name':target.display_name or 'Name to complete','companies':sorted({v.company_id for v in current}),
                 'assignments':[{'company_id':company_map[a.membership_id],'role_id':a.role_id,'area_id':a.area_id} for a in current_roles]})
+        if load_people:
+            add_registry_status(db, people_rows)
         dismissed_rows=[]
         dismissal_dates={}
         clover_people = directory.employee_options(db, include_inactive=True) if load_people else []
