@@ -13724,6 +13724,12 @@ class BankTransactionAllocation(Base):
     evidence_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     evidence_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # BANK_SPLIT_ALLOCATION_001 (QuickBooks Online "Split"): the line's own description (the QBO line
+    # description) and the documents/items it stands for, as JSON — e.g. the original Amazon report rows
+    # (report, file, CSV line, order, ASIN, title) grouped into this line. NULL on rows written before.
+    # Deferred: an ordinary read of allocations never selects them, so it also works before the migration.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    evidence_detail: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -14846,65 +14852,16 @@ WHO_ID_STATUSES = (WHO_ID_IDENTIFIED, WHO_ID_PENDING, WHO_ID_UNRESOLVED, WHO_ID_
                    WHO_ID_INSUFFICIENT, WHO_ID_OWN_ACCOUNT, WHO_ID_AI_ERROR)
 
 
-class BankWhoLabel(Base):
-    """One activity label of the shared catalog ("Restaurant", "Bank"): an
-    English name and a short definition. Names are unique by `name_key`
-    (case, spacing and a plural "s" aside), so a synonym is not added twice."""
-
-    __tablename__ = "bank_who_labels"
-    __table_args__ = (
-        UniqueConstraint("name_key", name="uq_bank_who_label_name_key"),
-        CheckConstraint("source IN ('SEED', 'AI', 'HUMAN')", name="ck_bank_who_label_source"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), nullable=False)
-    name_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    definition: Mapped[str] = mapped_column(String(255), nullable=False)
-    source: Mapped[str] = mapped_column(String(8), nullable=False)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class BankOccurrenceLabel(Base):
-    """A label given to a WHO, with who gave it and on what evidence."""
-
-    __tablename__ = "bank_occurrence_labels"
-    __table_args__ = (
-        UniqueConstraint("occurrence_id", "label_id", name="uq_bank_occurrence_label"),
-        CheckConstraint("source IN ('AI', 'HUMAN')", name="ck_bank_occurrence_label_source"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, index=True)
-    label_id: Mapped[int] = mapped_column(ForeignKey("bank_who_labels.id"), nullable=False, index=True)
-    source: Mapped[str] = mapped_column(String(8), nullable=False)
-    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
-    sources_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
-    run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_identify_runs.id"), nullable=True)
-    decided_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
 class BankWhoProfile(Base):
-    """Provenance of a WHO the engine created or confirmed, and the state of
-    its activity label — identity and label have independent outcomes: a
-    certain WHO may still wait for its label (`label_status` PENDING)."""
+    """Historical identity provenance only; the activity-label subsystem has been removed."""
 
     __tablename__ = "bank_who_profiles"
-    __table_args__ = (
-        CheckConstraint("label_status IN ('NONE', 'ACCEPTED', 'PENDING', 'HUMAN')", name="ck_bank_who_profile_label_status"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, unique=True)
     identity_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
     identity_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     identity_sources_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
-    activity: Mapped[str | None] = mapped_column(Text, nullable=True)
-    label_status: Mapped[str] = mapped_column(String(8), nullable=False, default="NONE", server_default="NONE")
-    label_question: Mapped[str | None] = mapped_column(Text, nullable=True)
-    label_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_by_run_id: Mapped[int | None] = mapped_column(ForeignKey("bank_who_identify_runs.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -14996,3 +14953,136 @@ class BankWhoIdentifyRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BankWhoSourceClassification(Base):
+    """One classification per WHO and financial Source; WHOM and WHAT are derived, never duplicated."""
+    __tablename__ = "bank_who_source_classifications"
+    __table_args__ = (UniqueConstraint("occurrence_id", "payment_instrument_id", name="uq_bank_who_source_classification"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), nullable=False, index=True)
+    payment_instrument_id: Mapped[int] = mapped_column(ForeignKey("payment_instruments.id"), nullable=False, index=True)
+    transaction_reason_id: Mapped[int | None] = mapped_column(ForeignKey("bank_transaction_reasons.id"), nullable=True)
+    updated_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankQboAccountMap(Base):
+    """BANK_SPLIT_ALLOCATION_001: a person's correspondence between an RF-One object and a QuickBooks Online
+    account. `CATEGORY` maps a canonical WHAT (`bank_accounting_classifications.id`) to the QBO expense
+    account of a split line; `PAYMENT_ACCOUNT` maps a Source (`payment_instruments.id`) to the QBO bank or
+    credit-card account the Purchase is paid from. Nothing is seeded: an unmapped line blocks the export."""
+    __tablename__ = "bank_qbo_account_maps"
+    __table_args__ = (UniqueConstraint("reporting_entity_id", "kind", "local_id", name="uq_bank_qbo_account_map_entity"),
+                      CheckConstraint("kind IN ('CATEGORY', 'PAYMENT_ACCOUNT')", name="ck_bank_qbo_account_map_kind"),
+                      CheckConstraint("status IN ('VERIFIED', 'PROPOSED', 'GLOBAL_LEGACY')", name="ck_bank_qbo_account_map_status"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    local_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # c8f420261103: the QBO Id only when it comes from QBO (API); a correspondence verified by name against the
+    # imported Account List has none until a QBO connection exists. Never invented.
+    qbo_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    qbo_account_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qbo_account_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verified_by: Mapped[str | None] = mapped_column(String(24), nullable=True)   # ACCOUNT_LIST_FILE / QBO_API
+    # d3a520261103: per company. VERIFIED against that company's chart (`qbo_account_row_id`); PROPOSED = copied
+    # from another company, used for nothing until verified; GLOBAL_LEGACY = made before, for no company (never
+    # attributed to one, only offered as a proposal).
+    reporting_entity_id: Mapped[int | None] = mapped_column(ForeignKey("reporting_entities.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'GLOBAL_LEGACY'"))
+    qbo_account_row_id: Mapped[int | None] = mapped_column(ForeignKey("bank_qbo_accounts.id"), nullable=True)
+    proposed_from: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class BankQboAccount(Base):
+    """BANK_UPLOAD_AND_RECONCILE_001: the QuickBooks Online chart of accounts, as imported from QBO's Account List
+    export (names and types, no Ids) or read through the QBO API (with Ids). Correspondences are verified
+    against it."""
+    __tablename__ = "bank_qbo_accounts"
+    __table_args__ = (UniqueConstraint("reporting_entity_id", "name", name="uq_bank_qbo_account_entity_name"),
+                      CheckConstraint("source IN ('ACCOUNT_LIST_FILE', 'QBO_API')", name="ck_bank_qbo_account_source"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # d3a520261103: the company whose QBO chart this is (each company has its own).
+    reporting_entity_id: Mapped[int | None] = mapped_column(ForeignKey("reporting_entities.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    detail_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    qbo_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source: Mapped[str] = mapped_column(String(24), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
+    imported_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankQboExport(Base):
+    """BANK_SPLIT_ALLOCATION_001: duplicate protection for the QuickBooks Online export. One row per bank
+    movement ever handed to QBO, with the idempotency key sent as the QBO `requestid` and the hash of the
+    exact Purchase payload. A movement with a row is never exported again; a changed split of an exported
+    movement is reported, never re-sent. The local preview writes no row."""
+    __tablename__ = "bank_qbo_exports"
+    __table_args__ = (UniqueConstraint("financial_transaction_id", name="uq_bank_qbo_export_transaction"),
+                      UniqueConstraint("request_id", name="uq_bank_qbo_export_request"),
+                      CheckConstraint("status IN ('PREPARED', 'FILE_EXPORTED', 'SENT')", name="ck_bank_qbo_export_status"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    financial_transaction_id: Mapped[int] = mapped_column(ForeignKey("financial_transactions.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    qbo_purchase_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # c8f420261103: the QBO transaction kind, the other leg of a transfer, the file it went out in.
+    qbo_entity: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    counterpart_transaction_id: Mapped[int | None] = mapped_column(ForeignKey("financial_transactions.id"), nullable=True)
+    export_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # d3a520261103: the company the movement was exported for and the file (batch) it is in.
+    reporting_entity_id: Mapped[int | None] = mapped_column(ForeignKey("reporting_entities.id"), nullable=True)
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey("bank_qbo_export_batches.id"), nullable=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankQboExportBatch(Base):
+    """BANK_UPLOAD_AND_RECONCILE_001 (d3a520261103): one generated QBO import file of ONE company. Its content is
+    kept, so downloading it again gives the same file and creates nothing. States kept apart: GENERATED (downloads
+    counted, which proves nothing about QBO), IMPORT_CONFIRMED (a person states it was imported in QBO), WITHDRAWN
+    (a person states it was NOT imported; its movements become exportable again)."""
+    __tablename__ = "bank_qbo_export_batches"
+    __table_args__ = (UniqueConstraint("file_name", name="uq_bank_qbo_export_batch_file"),
+                      CheckConstraint("status IN ('GENERATED', 'IMPORT_CONFIRMED', 'WITHDRAWN')", name="ck_bank_qbo_export_batch_status"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reporting_entity_id: Mapped[int] = mapped_column(ForeignKey("reporting_entities.id"), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_format: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    movements_json: Mapped[str] = mapped_column(Text, nullable=False)
+    journal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    download_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    first_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    import_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    import_confirmed_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    import_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    withdrawn_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    withdraw_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BankWhoWhyMode(Base):
+    """BANK_WHO_WHY_MODE_001: how a WHO's WHY is determined. No row = UNIQUE (the WHO + Source
+    classification decides). MULTIPLE = the WHY depends on the single movement and needs a WHO WHY rule;
+    a WHY registered on the WHO + Source pair never decides it. Set only by a person."""
+    __tablename__ = "bank_who_why_modes"
+    __table_args__ = (CheckConstraint("why_mode IN ('UNIQUE', 'MULTIPLE')", name="ck_bank_who_why_mode"),)
+    occurrence_id: Mapped[int] = mapped_column(ForeignKey("bank_occurrences.id"), primary_key=True)
+    why_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

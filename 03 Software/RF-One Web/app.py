@@ -127,6 +127,14 @@ def inject_local_environment():
     }}
 
 
+@app.context_processor
+def inject_ui_language():
+    """`ui_language`: the language of the human interface (UI_DEVELOPMENT_LANGUAGE_001,
+    `03 Software/Shared UI/Development Language Policy.md`) — "it" only when the local
+    launcher sets RFONE_UI_LANGUAGE=it; English is the shared/production default."""
+    return {"ui_language": "it" if os.environ.get("RFONE_UI_LANGUAGE", "en").strip().lower() == "it" else "en"}
+
+
 # UI_NAVIGATION_AND_LOCAL_TIME_001 — RF-One UI Rules
 # (`03 Software/Shared UI/UI Rules.md`): times in the Location's local time,
 # employees as "Surname I.", one shared formatter for every RF-One app.
@@ -440,7 +448,9 @@ def domain_entry(domain_code: str) -> str | None:
 # `may_use_item(code, item)`; `domain_entry(code)`. All read the one item
 # list in `domain_registry`.
 app.jinja_env.globals.update(
-    domain_nav=lambda code: [(i.code, i.label, url_for(i.endpoint)) for i in _allowed_items(code)],
+    domain_nav=lambda code: [(i.code, i.label, url_for(i.endpoint)) for i in _allowed_items(code) if i.in_menu],
+    # Every allowed item, menu or not: the breadcrumb of a page reached by its address.
+    domain_pages=lambda code: [(i.code, i.label, url_for(i.endpoint)) for i in _allowed_items(code)],
     may_use_item=lambda code, item: any(i.code == item for i in _allowed_items(code)),
     domain_entry=domain_entry,
 )

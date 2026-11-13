@@ -128,7 +128,7 @@ def main() -> int:
         check("Domains ordered alphabetically (Selection released: no Work in progress left)",
               names == expected, f"{names}")
         check("Bank is not presented as a Domain",
-              DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank"' not in domains_part)
+              DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank/work"' not in domains_part)
         check("no side-by-side domain grid remains on Home", 'class="domain-grid"' not in body)
         tips_block = domains_part.split(DOMAINS_BY_CODE["TIPS"].display_name, 1)[1].split('class="domain-card ', 1)[0]
         check("Home no longer lists 'Tips — validate saved periods' (it lives in Tips > Saved Periods)",
@@ -149,7 +149,7 @@ def main() -> int:
         admin_part = body.split('<div class="domain-name">Administration</div>', 1)[1].split('<div class="domain-name">Settings</div>', 1)[0]
         settings_part = body.split('<div class="domain-name">Settings</div>', 1)[1]
         check("Administration contains exactly Bank",
-              HREF_RE.findall(admin_part) == ["/bank"] and "<strong>Bank</strong>" in admin_part)
+              HREF_RE.findall(admin_part) == ["/bank/work"] and "<strong>Bank</strong>" in admin_part)
         rows = re.findall(r"<strong>([^<]+)</strong>", settings_part)
         check("Settings rows are Accounts, Legal Entities, Profile, Workweek (alphabetical)",
               rows == ["Accounts", "Legal Entities", "Profile", "Workweek"], f"{rows}")
@@ -179,7 +179,7 @@ def main() -> int:
         plain_body = content_of(plain_client.get("/").data.decode("utf-8"))
         plain_settings = plain_body.split('<div class="domain-name">Settings</div>', 1)[1]
         check("without BANK access there is no Administration block",
-              "Administration" not in plain_body and 'href="/bank"' not in plain_body)
+              "Administration" not in plain_body and 'href="/bank/work"' not in plain_body)
         check("a non-admin's Settings contain only Profile",
               re.findall(r"<strong>([^<]+)</strong>", plain_settings) == ["Profile"])
 
@@ -191,10 +191,10 @@ def main() -> int:
               "No operational Domains are currently assigned to this account." in bank_body
               and "No RF-One Domains" not in bank_body)
         check("a BANK-only account still has Bank under Administration",
-              '<div class="domain-name">Administration</div>' in bank_body and 'href="/bank"' in bank_body)
+              '<div class="domain-name">Administration</div>' in bank_body and 'href="/bank/work"' in bank_body)
         bank_hrefs = HREF_RE.findall(bank_body)
         check("BANK-only Home: Profile under Settings, no duplicate links",
-              bank_hrefs == ["/bank", "/profile"], f"{bank_hrefs}")
+              bank_hrefs == ["/bank/work", "/profile"], f"{bank_hrefs}")
 
         # --- Log out ------------------------------------------------------------
         csrf = extract_csrf(plain_client.get("/").data)

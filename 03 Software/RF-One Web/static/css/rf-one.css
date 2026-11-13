@@ -430,6 +430,36 @@ tbody tr:hover { background: var(--olive-050); }
 @media (max-width: 640px) {
   .module-tabs--equal { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+/* How Works (UI_HOW_WORKS_001): the last cell of the tabs, set apart from the sections. */
+.module-tab.how-works-link { color: var(--olive-700); font-weight: 600; text-decoration: underline; }
+
+/* Bank guide: How Works opens one section, clear of the top edge and marked as the one requested. */
+.bank-guide { max-width: 900px; }
+.bank-guide p, .bank-guide li { line-height: 1.6; }
+.bank-guide section { scroll-margin-top: 1rem; }
+.bank-guide section:target { border-color: var(--olive-700); box-shadow: 0 0 0 2px var(--olive-300); }
+.bank-guide-nav { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin: .5rem 0 1rem; }
+
+/* Upload and Reconcile (BANK_UPLOAD_AND_RECONCILE_001) */
+.work-steps { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 1rem; padding: 0; list-style: none; }
+.work-steps li { padding: .3rem .7rem; border-radius: 999px; border: 1px solid var(--olive-150); font-size: .8rem; color: var(--muted); }
+.work-steps li.is-done { background: #e7f3ea; color: var(--ok); border-color: #bcdcc6; }
+.work-steps li.is-current { background: var(--olive-050); color: var(--olive-900); border-color: var(--olive-300); font-weight: 700; }
+.work-ready { padding: .7rem 1rem; border-radius: 8px; border: 1px solid #bcdcc6; background: #e7f3ea; color: var(--ok); font-weight: 700; }
+.work-blocked { padding: .7rem 1rem; border-radius: 8px; border: 1px solid #ecd6a5; background: #fdf3e2; color: #8a5a10; }
+.work-request { border-left: 3px solid #e2a8a0; padding: .5rem .8rem; margin: .5rem 0; background: #fffafa; }
+.work-request form { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .3rem .6rem 0 0; }
+.work-uncertain { border-left: 3px solid #ecd6a5; padding: .35rem .8rem; margin: .35rem 0; }
+.work-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; margin: .6rem 0; }
+.work-counts div { border: 1px solid var(--olive-150); border-radius: 8px; padding: .6rem .8rem; }
+.work-counts strong { display: block; font-size: 1.4rem; color: var(--olive-900); }
+.work-months { display: flex; gap: 2px; flex-wrap: wrap; }
+.work-months span { font-size: .65rem; padding: .1rem .3rem; border-radius: 4px; border: 1px solid var(--olive-150); }
+.work-months .COVERED { background: #e7f3ea; } .work-months .RESOLVED { background: #eef3fb; }
+.work-months .MISSING, .work-months .CONFIRM { background: #fbeaea; border-color: #e2a8a0; }
+.work-months .NOT_EXPECTED { color: var(--muted); }
+.inline-form { display: inline-flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin: .25rem .4rem 0 0; }
+.btn-link { background: none; border: none; padding: 0; color: var(--olive-700); text-decoration: underline; cursor: pointer; font-size: .8rem; }
 
 /* --- Dense operational tables -------------------------------------- */
 

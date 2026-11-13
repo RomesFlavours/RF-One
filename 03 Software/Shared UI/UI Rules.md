@@ -114,3 +114,17 @@ Rule 5 is defined for every module. Lists outside Bank (Tips, Training, Compensa
 **Needs a Product Owner decision before it can be aligned:**
 
 - Validity starts (`valid_from`) of Organization positions and Bank cardholders are printed as stored, with a `+00:00` offset. Whether each is a calendar date or an instant decides how it should be shown. Converting midnight UTC to local time would show "20:00 the day before".
+
+## Local development and publication language
+
+Apply `Development Language Policy.md` (UI_DEVELOPMENT_LANGUAGE_001): PO local UI in Italian; shared Git/AWS release in English, preserving the Italian local environment. This includes every secondary page and How Works.
+
+
+## Contextual help for pages and modals
+
+UI_HOW_WORKS_MODAL_001 (Product Owner, 2026-11-03): every page has How Works / Come funziona; every modal has a visible `?` linking to its exact guide section without losing state. Apply the normative `How Works Standard.md` §1.1 and the development/publication language policy.
+
+
+## Outcome-first and single-flow design
+
+UI_OUTCOME_SINGLE_FLOW_001 (Product Owner, 2026-11-04) is mandatory for every UI/function task. Apply [Outcome and Single-Flow Design Standard](Outcome%20and%20Single-Flow%20Design%20Standard.md): one primary workflow per goal, system-owned complexity, necessary contextual human decisions, preserved state, and final review against all applicable written rules. Do not expose competing technical routes to the same result.
