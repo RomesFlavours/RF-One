@@ -1,0 +1,121 @@
+{% extends "workspace/base.html" %}
+{% set section_label = {'applications': 'Applications', 'interviews': 'Interviews', 'decisions': 'Decisions'}[section] %}
+{% block title %}{{ section_label|ui }} · {{ ROLE_LABEL.get(position.role_code) }} · {{ position.location_label }}{% endblock %}
+{% set crumbs = [(section_label, None)] %}
+
+{% macro card(c, select=True, quick=True) %}
+<div class="cand">
+  <div class="row" style="justify-content:space-between">
+    <label class="row" style="margin:0;color:var(--ink);font-size:.95rem">
+      {% if select %}<input type="checkbox" name="pc_id" value="{{ c.pc.id }}">{% endif %}
+      <a class="name" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+    </label>
+    {% if c.proposal %}<span class="badge {{ 'info' if c.proposal.source == 'AI' else '' }}" title="Proposal source">{{ 'AI' if c.proposal.source == 'AI' else 'Rules' }}</span>{% endif %}
+  </div>
+  <div class="small muted">{{ c.latest_role or 'Latest experience not extracted' }}{% if c.direct_months is not none %} · direct experience {{ c.direct_months }} months{% endif %}</div>
+  {% if c.application and c.application.status != 'SUBMITTED' %}<div class="small"><span class="badge warn">Interview incomplete</span></div>{% endif %}
+  {% if c.proposal %}<div class="why">{{ c.proposal.payload.reasons[0] }}</div>{% endif %}
+  {% with result=c.pdl_result %}{% include 'workspace/_pdl_rule_result.html' %}{% endwith %}
+  {% if c.decision %}<div class="small"><span class="badge ok">{{ DECISION_LABELS[c.decision.decision]|ui }}</span>
+     <span class="muted">{{ c.decision.actor_name }}, {{ c.decision.created_at|local(position.timezone) }}</span></div>{% endif %}
+  {% if c.next_appointment %}<div class="small">📅 {{ KIND_LABELS[c.next_appointment.kind]|ui }} {{ c.next_appointment.starts_at|local(position.timezone, '%a %d/%m %H:%M') }}</div>{% endif %}
+  {% if c.duplicates %}<div class="small" style="color:var(--warn)">⚠ {{ c.duplicates|join(' ') }}</div>{% endif %}
+  {% if can_edit and quick and not c.decision %}
+  <div class="acts">
+    <button class="btn btn-small" name="quick" value="{{ c.pc.id }}:INTERVIEW" formaction="{{ url_for('positions.record_decision', position_id=position.id) }}" formmethod="post">To interview</button>
+    <button class="btn btn-secondary btn-small" name="quick" value="{{ c.pc.id }}:DEEPEN" formaction="{{ url_for('positions.record_decision', position_id=position.id) }}" formmethod="post">Needs clarification</button>
+  </div>{% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="row" style="justify-content:space-between">
+  <div>
+    <h1>{{ section_label|ui }}</h1>
+    {% if tab not in ('candidature', 'valutazione') %}<div class="muted small">{{ ROLE_LABEL[position.role_code] }} · {{ position.location_label }} · {{ position.headcount }} person(s) required · Manager {{ manager }}</div>{% endif %}
+  </div>
+
+</div>
+{% if unapproved and tab not in ('candidature', 'valutazione') %}<div class="banner warn">There are changes not yet confirmed. The application page and evaluation use the confirmed version.
+  <a href="{{ url_for('positions.job_edit', position_id=position.id) }}">Review and confirm</a></div>{% endif %}
+
+{% if false %}
+{# =============================== 2 APPLICATIONS (Roles without a CV Selection SP profile) ================ #}
+{% elif tab in ('candidature', 'valutazione') %}
+<div class="card">
+  <table>
+    <tr><th>Candidate</th><th>Latest experience</th><th>Channel</th><th>Status</th><th>Received</th></tr>
+    {% for c in cards %}<tr>
+      <td><a href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+        {% if c.duplicates %}<div class="small" style="color:var(--warn)">⚠ possible duplicate</div>{% endif %}
+        {% if c.pc.import_note %}<div class="small muted">{{ c.pc.import_note }}</div>{% endif %}</td>
+      <td class="small">{{ c.latest_role or '—' }}</td><td class="small">{{ c.channel }}</td>
+      <td class="small">{% if c.application %}{{ APPLICATION_STATUS_LABELS[c.application.status]|ui }}{% else %}Résumé uploaded{% endif %}
+      {% with result=c.pdl_result %}{% include 'workspace/_pdl_rule_result.html' %}{% endwith %}</td>
+      <td class="small">{{ c.pc.added_at|local(position.timezone) }}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">No applications.</td></tr>{% endfor %}
+  </table>
+  <div class="small muted" style="margin-top:.5rem">{% for ch in channels if not ch.active %}{{ ch.label }}: {{ ch.note }}{% endfor %}</div>
+</div>
+
+{# =============================== 4 COLLOQUI =============================== #}
+{% elif tab == 'colloqui' %}
+<p class="small"><a href="{{ url_for('positions.interviews', position_id=position.id) }}">Interview sheet</a> · <b>Calendar</b></p>
+<div class="grid g2">
+<div class="card">
+  <h3>Calendar</h3>
+  {% for day, items in days.items() %}
+    <div style="margin:.6rem 0 .2rem;font-weight:600">{{ day }}</div>
+    {% for a in items %}<div class="row small" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:.3rem 0;{{ 'opacity:.5;text-decoration:line-through' if a.status == 'CANCELLED' }}">
+      <span><b>{{ a.starts_at|local(position.timezone, '%H:%M') }}</b> · {{ a.duration_min }} min · {{ KIND_LABELS[a.kind]|ui }} ·
+        <a href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=a.position_candidate_id) }}">{{ names[a.position_candidate_id] }}</a>
+        {% if a.place %}<span class="muted">· {{ a.place }}</span>{% endif %}
+        {% if a.booked_by == 'CANDIDATE' %}<span class="badge info">chosen by the candidate</span>{% endif %}</span>
+      {% if can_edit and a.status == 'CONFIRMED' and a.starts_at > now %}
+      <form method="post" action="{{ url_for('positions.interview_cancel', position_id=position.id, appointment_id=a.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-danger btn-small">Cancel</button></form>{% endif %}
+    </div>{% endfor %}
+  {% else %}<p class="small muted">No scheduled interviews.</p>{% endfor %}
+  {% if offers %}<h3>Proposed times awaiting a response</h3>
+    {% for o in offers %}<div class="small">{{ names[o.position_candidate_id] }} · {{ KIND_LABELS[o.kind]|ui }} ·
+      {% for s in o.slots %}{{ s|local(position.timezone, '%a %d/%m %H:%M') }}{{ ', ' if not loop.last }}{% endfor %}</div>{% endfor %}{% endif %}
+</div>
+<div class="card">
+  <h3>To schedule</h3>
+  <p class="small muted">Candidates marked “To interview” without a scheduled interview.</p>
+  {% for c in decided['INTERVIEW'] if not c.next_appointment %}
+    <div class="row small" style="justify-content:space-between;padding:.3rem 0"><span>{{ c.name }}</span>
+      <a class="btn btn-secondary btn-small" href="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=c.pc.id) }}#colloquio">Schedule</a></div>
+  {% else %}<p class="small muted">None.</p>{% endfor %}
+</div>
+</div>
+
+{# =============================== 5 DECISIONI =============================== #}
+{% else %}
+<div class="grid g3">
+  {% for code in ['HIRED','ON_HOLD','NOT_SELECTED'] %}
+  <div class="col"><h3>{{ DECISION_LABELS[code]|ui }} <span class="badge">{{ decided[code]|length }}{{ ' / ' ~ position.headcount if code == 'HIRED' }}</span></h3>
+    {% for c in decided[code] %}{{ card(c, select=False, quick=False) }}{% else %}<p class="small muted">None.</p>{% endfor %}</div>
+  {% endfor %}
+</div>
+<p class="small muted">Record the outcome in each candidate’s dossier (Evaluation). There is no automatic connection to Management, Training or Organization.</p>
+{% if can_edit %}
+<div class="card row" style="justify-content:space-between">
+  <div class="small">{% if position.status == 'CLOSED' %}Job closed on {{ position.closed_at|local(position.timezone) }}.
+    {% elif hired >= position.headcount %}All openings have been filled. You can close the Job.{% else %}Jobs are closed manually.{% endif %}</div>
+  <form method="post" action="{{ url_for('positions.position_status', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if position.status == 'CLOSED' %}<button class="btn btn-secondary" name="action" value="reopen">Reopen</button>
+    {% else %}<button class="btn btn-danger" name="action" value="close" onclick="return confirm('Close this Job? The application page will stop accepting applications.')">Close Job</button>{% endif %}
+  </form>
+</div>{% endif %}
+<div class="card">
+  <h3>History</h3>
+  <table><tr><th>When</th><th>Who</th><th>What</th></tr>
+  {% for e in events %}<tr><td class="small" style="white-space:nowrap">{{ e.created_at|local(position.timezone) }}</td>
+    <td class="small">{{ e.actor_name }}</td><td class="small">{{ e.detail }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">No events.</td></tr>{% endfor %}</table>
+  <p class="small muted">Times use the location’s time zone ({{ position.timezone }}).</p>
+</div>
+{% endif %}
+{% endblock %}

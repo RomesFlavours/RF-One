@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open roles · {{ client }}</title>
+{# Shown inside the website's Careers page, so it follows the website's look:
+   serif titles, light sans text, teal buttons, no background of its own. #}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --teal: #34baab; --teal-dark: #2a9a8d; --ink: #2b2b2b; --text: #555; --line: #e4e4e4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; }
+  body { font-family: Lato, "Helvetica Neue", Arial, sans-serif; font-weight: 300; color: var(--text);
+         font-size: 15px; line-height: 1.6; padding: 8px 16px 16px; }
+  .jobs { max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
+  .job { background: #fff; border: 1px solid var(--line); padding: 20px 22px;
+         display: flex; gap: 20px; align-items: center; justify-content: space-between; }
+  .job h2 { font-family: "Libre Baskerville", Georgia, serif; font-style: italic; font-weight: 700;
+            color: var(--ink); font-size: 21px; line-height: 1.25; margin: 0 0 2px; }
+  .where { font-weight: 400; letter-spacing: .06em; text-transform: uppercase; font-size: 12px; color: var(--teal-dark); }
+  .job p { margin: 8px 0 0; font-size: 14px; }
+  .apply { flex: none; display: inline-block; background: var(--teal); color: #fff; text-decoration: none;
+           font-weight: 400; font-size: 14px; padding: 10px 26px; transition: background .15s; }
+  .apply:hover, .apply:focus-visible { background: var(--teal-dark); }
+  .apply:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .none { max-width: 760px; margin: 0 auto; text-align: center; background: #fff; border: 1px solid var(--line);
+          padding: 28px 22px; }
+  @media (max-width: 560px) {
+    .job { flex-direction: column; align-items: stretch; }
+    .apply { text-align: center; }
+  }
+</style>
+</head>
+<body>
+{% if jobs %}
+<div class="jobs">
+  {% for job in jobs %}
+  <article class="job">
+    <div>
+      <h2>{{ job.title }}</h2>
+      <div class="where">{{ job.location }}</div>
+      {% if job.excerpt %}<p>{{ job.excerpt }}</p>{% endif %}
+    </div>
+    {# A new tab: applying needs the candidate's own sign-in, which browsers
+       (Safari above all) block inside another site's page. #}
+    <a class="apply" href="{{ job.url }}" target="_blank" rel="noopener">Apply</a>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="none">We have no open roles right now. Please check back soon.</div>
+{% endif %}
+</body>
+</html>

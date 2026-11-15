@@ -1,0 +1,50 @@
+<section class="card" id="candidate-actions-configuration"><h2>Azioni di Candidature</h2>
+<p>Ogni azione della combo richiama una procedura.</p>
+{% if actor.is_owner %}<button type="button" data-new-automation="action">Nuova azione</button>{% endif %}
+<table><thead><tr><th>Azione</th><th>Procedura</th><th>Versione</th><th>Stato</th><th></th></tr></thead><tbody>
+{% for item in automation_actions %}<tr id="automation-{{ item.code }}"><td>{{ item.name }}</td><td>{% for proc in automation_procedures if proc.code==item.procedure_code %}{{ proc.name }}{% endfor %}</td><td>{{ item.version }}</td><td>{{ 'Attiva' if item.active else 'Disattivata' }}</td><td>{% if actor.is_owner %}<button type="button" data-edit-automation="{{ item|tojson|forceescape }}">Modifica</button>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Nessuna azione configurata.</td></tr>{% endfor %}
+</tbody></table></section>
+<section class="card" id="automatic-procedures-configuration"><h2>Procedure automatiche</h2>
+<p>Descrivi con l’AI i passaggi che RF1 deve eseguire; controlla la proposta e salvala. Il salvataggio non esegue la procedura.</p>
+{% if actor.is_owner %}<button type="button" data-new-automation="procedure">Nuova procedura</button>{% endif %}
+<table><thead><tr><th>Procedura</th><th>Descrizione</th><th>Versione</th><th>Stato</th><th></th></tr></thead><tbody>
+{% for item in automation_procedures %}<tr id="automation-{{ item.code }}"><td>{{ item.name }}</td><td>{{ item.description }}</td><td>{{ item.version }}</td><td>{{ 'Attiva' if item.active else 'Disattivata' }}</td><td>{% if actor.is_owner %}<button type="button" data-edit-automation="{{ item|tojson|forceescape }}">Modifica</button>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Nessuna procedura configurata.</td></tr>{% endfor %}
+</tbody></table></section>
+{% if actor.is_owner %}
+<dialog id="automation-editor" class="automation-dialog" aria-labelledby="automation-title">
+<header class="automation-header"><h2 id="automation-title"></h2><button type="button" data-close-automation aria-label="Chiudi configurazione automazione">×</button></header>
+<div class="automation-help"><a href="#automation-guide" id="automation-help">Come funziona questa pagina</a></div>
+<div id="automation-error" class="error" role="alert" hidden></div>
+<form id="automation-form">
+<label for="automation-name">Nome</label><input id="automation-name" required maxlength="150">
+<label for="automation-description">Descrizione / istruzioni</label><textarea id="automation-description" maxlength="6000"></textarea>
+<label><input type="checkbox" id="automation-active" checked> Attiva</label>
+<div id="automation-procedure-choice"><label for="automation-procedure">Procedura associata</label><select id="automation-procedure"><option value="">Seleziona una procedura</option>{% for proc in automation_procedures %}<option value="{{ proc.code }}">{{ proc.name }}{{ ' (disattivata)' if not proc.active else '' }}</option>{% endfor %}</select></div>
+<div id="automation-ai"><h3>Definisci la procedura con l’AI</h3><div id="automation-chat" role="log" aria-live="polite"></div>
+<label for="automation-message">Spiega cosa deve fare RF1</label><textarea id="automation-message" maxlength="6000" placeholder="Es. Prepara e invia al candidato un’email in inglese per chiarire i dati mancanti nelle regole della PDL."></textarea>
+<button type="button" id="automation-propose">Invia all’AI</button><h3>Passaggi proposti</h3><ol id="automation-steps"></ol></div>
+<p><button type="submit" id="automation-save">Salva</button></p>
+</form></dialog>
+<style>.automation-dialog{width:min(1000px,94vw);max-height:90vh;border:1px solid var(--line);border-radius:12px;padding:0 1.3rem 1.3rem}.automation-dialog::backdrop{background:#0006}.automation-header{display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:white;border-bottom:1px solid var(--line);z-index:1}.automation-help{display:flex;justify-content:flex-end;margin:.6rem 0 1rem}.automation-dialog [hidden]{display:none!important}#automation-chat{max-height:220px;overflow:auto;white-space:pre-wrap}#automation-chat p{padding:.6rem;background:var(--paper,#f7f7f4)}.automation-dialog input:not([type=checkbox]),.automation-dialog textarea,.automation-dialog select{width:100%}</style>
+<script>
+(()=>{
+ const dialog=document.getElementById('automation-editor'), form=document.getElementById('automation-form'), error=document.getElementById('automation-error');
+ const name=document.getElementById('automation-name'), description=document.getElementById('automation-description'),active=document.getElementById('automation-active'),choice=document.getElementById('automation-procedure');
+ const chat=document.getElementById('automation-chat'),message=document.getElementById('automation-message'),list=document.getElementById('automation-steps'),save=document.getElementById('automation-save'),ask=document.getElementById('automation-propose');
+ let item={},steps=null,messages=[],origin=null,busy=false;
+ const labels={INTERVIEW:'Segna da colloquiare',DEEPEN:'Segna da chiarire',ON_HOLD:'Metti in attesa'};
+ function stepText(s){return s.op==='set_status'?labels[s.status]:s.op==='note'?'Aggiungi nota: '+s.text:(s.op==='email_missing_data'?'Invia email sui dati mancanti: ':'Invia email: ')+s.subject;}
+ function preview(){list.replaceChildren();(steps||[]).forEach(s=>{const li=document.createElement('li');li.textContent=stepText(s);if(s.body){const p=document.createElement('p');p.style.whiteSpace='pre-wrap';p.textContent=s.body;li.append(p);}list.append(li);});save.disabled=busy || (item.kind==='procedure'&&!steps);}
+ function open(value,button){item=value;origin=button;steps=value.steps||null;messages=[];chat.replaceChildren();message.value='';error.hidden=true;name.value=value.name||'';description.value=value.description||'';active.checked=value.active!==false;choice.value=value.procedure_code||'';document.getElementById('automation-ai').hidden=value.kind!=='procedure';document.getElementById('automation-procedure-choice').hidden=value.kind!=='action';document.getElementById('automation-title').textContent=(value.code?'Modifica ':'Nuova ')+(value.kind==='procedure'?'procedura':'azione');preview();dialog.showModal();name.focus();}
+ function setBusy(v){busy=v;ask.disabled=v;save.disabled=v||(item.kind==='procedure'&&!steps);ask.textContent=v?'ChatGPT sta lavorando…':'Invia all’AI';}
+ async function post(url,data){const f=new FormData();f.set('csrf_token',{{ csrf_token()|tojson }});f.set('payload',JSON.stringify(data));const r=await fetch(url,{method:'POST',body:f});if(r.redirected)throw Error('Sessione scaduta. Ricarica la pagina.');const b=await r.json();if(!r.ok)throw Error(b.error||'Operazione non riuscita.');return b;}
+ function line(role,text){const p=document.createElement('p');p.textContent=(role==='user'?'Tu: ':'AI: ')+text;chat.append(p);chat.scrollTop=chat.scrollHeight;}
+ document.querySelectorAll('[data-new-automation]').forEach(b=>b.onclick=()=>open({kind:b.dataset.newAutomation},b));
+ document.querySelectorAll('[data-edit-automation]').forEach(b=>b.onclick=()=>open(JSON.parse(b.dataset.editAutomation),b));
+ dialog.querySelector('[data-close-automation]').onclick=()=>{if(!busy)dialog.close();};dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();});dialog.addEventListener('close',()=>origin&&origin.focus({preventScroll:true}));
+ document.getElementById('automation-help').onclick=e=>{e.preventDefault();document.getElementById('selection-page-help').showModal();document.getElementById('automation-guide').scrollIntoView();};
+ ask.onclick=async()=>{const text=message.value.trim()||description.value.trim();if(!text||busy)return;messages.push({role:'user',content:text});line('user',text);message.value='';const previous=steps;steps=null;preview();setBusy(true);error.hidden=true;try{const r=await post({{ url_for('positions.automation_propose')|tojson }},{messages,existing:previous});messages.push({role:'assistant',content:r.reply});line('assistant',r.reply);steps=r.steps;preview();}catch(e){error.textContent=e.message;error.hidden=false;message.value=text;messages.pop();}finally{setBusy(false);}};
+ form.onsubmit=async e=>{e.preventDefault();if(busy)return;setBusy(true);error.hidden=true;try{await post({{ url_for('positions.automation_save')|tojson }},{kind:item.kind,code:item.code||null,version:item.version,name:name.value,description:description.value,active:active.checked,procedure_code:choice.value,steps});location.reload();}catch(e){error.textContent=e.message;error.hidden=false;setBusy(false);}};
+})();
+</script>
+{% endif %}

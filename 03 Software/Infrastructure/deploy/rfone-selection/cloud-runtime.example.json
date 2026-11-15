@@ -1,0 +1,13 @@
+{
+  "note": "Merge into the existing service configuration; preserve shared database, authentication, mail and storage settings. No AWS changes performed.",
+  "environment": {
+    "RFONE_SELECTION_RULE_AI_PROVIDER": "openai",
+    "RFONE_SELECTION_OPENAI_MODEL": "gpt-5-mini",
+    "RFONE_SELECTION_OPENAI_TIMEOUT": "90",
+    "RFONE_SELECTION_ENGINE": "conversation",
+    "RFONE_SELECTION_REQUIRE_RFONE_LOGIN": "1"
+  },
+  "secrets": {
+    "RFONE_SELECTION_OPENAI_API_KEY": "<Secrets Manager reference for the application API credential; never a desktop session>"
+  }
+}

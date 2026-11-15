@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Requirement Sets</div>
+      <div class="value">{{ requirement_sets|length }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Templates available</div>
+      <div class="value">{{ templates|length }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    A Requirement Set defines what this restaurant is looking for for one hiring need — it does not evaluate any
+    candidate. Start from a template to move faster, or build one from scratch.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Requirement Sets</h2>
+  {% if requirement_sets %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Target Role</th>
+        <th>Location</th>
+        <th>Requirements</th>
+        <th>Version</th>
+        <th>Status</th>
+        <th>Source Template</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rs in requirement_sets %}
+      <tr class="clickable" onclick="window.location='{{ url_for('requirement_set_detail', requirement_set_id=rs.id) }}'">
+        <td><a href="{{ url_for('requirement_set_detail', requirement_set_id=rs.id) }}">{{ rs.name }}</a></td>
+        <td>{{ rs.target_role or '-' }}</td>
+        <td>{{ rs.location_label or '-' }}</td>
+        <td>{{ rs.requirements|selectattr('is_active')|list|length }} active / {{ rs.requirements|length }} total</td>
+        <td>v{{ rs.version }}</td>
+        <td><span class="badge status-{{ 'completed' if rs.is_active else 'failed' }}">{{ 'ACTIVE' if rs.is_active else 'INACTIVE' }}</span></td>
+        <td class="muted">{{ rs.source_template.name if rs.source_template else '(custom)' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No Requirement Sets yet — create one from scratch or from a template below.</p>
+  {% endif %}
+</div>
+
+<div class="section-grid">
+  <div class="card">
+    <h2>Create from a template</h2>
+    {% if templates %}
+      {% for t in templates %}
+      <div class="requirement-card">
+        <div class="req-title">{{ t.name }} <span class="badge">{{ t.intended_role or 'any role' }}</span></div>
+        {% if t.description %}<p class="muted" style="font-size:.82rem;">{{ t.description }}</p>{% endif %}
+        <p class="muted" style="font-size:.78rem;">{{ t.items|length }} requirement(s) included</p>
+        <form method="post" action="{{ url_for('requirements_new_from_template') }}" class="req-form">
+          <input type="hidden" name="template_id" value="{{ t.id }}">
+          <label>Name for this restaurant's Requirement Set</label>
+          <input type="text" name="name" placeholder="e.g. Server - Mount Dora" required>
+          <label>Target role (optional override)</label>
+          <input type="text" name="target_role" value="{{ t.intended_role or '' }}">
+          <label>Location (optional)</label>
+          <input type="text" name="location_label" placeholder="e.g. Mount Dora">
+          <button type="submit" class="btn secondary" style="margin-top:.6rem;">Use this template</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No templates available.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Create from scratch</h2>
+    <form method="post" action="{{ url_for('requirements_new_custom') }}" class="req-form">
+      <label>Name</label>
+      <input type="text" name="name" placeholder="e.g. Bartender - High Volume" required>
+      <label>Target role</label>
+      <input type="text" name="target_role" placeholder="e.g. BARTENDER">
+      <label>Location (optional)</label>
+      <input type="text" name="location_label" placeholder="e.g. Location A">
+      <label>Description (optional)</label>
+      <textarea name="description" placeholder="What is this hiring need for?"></textarea>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Create empty Requirement Set</button>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

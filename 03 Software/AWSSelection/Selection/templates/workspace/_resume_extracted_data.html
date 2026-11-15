@@ -1,0 +1,33 @@
+{% macro fact(label, value) %}<dt>{{ label }}</dt><dd>{{ value or 'Non presente / non estratto' }}</dd>{% endmacro %}
+<p class="small muted">{% if profile.parsing_mode == 'RULE_BASED' %}Dati salvati dal lettore senza AI.{% elif profile.parsing_mode == 'REAL_AI' %}Dati salvati dall’estrazione AI del documento.{% else %}Dati estratti salvati per questo documento.{% endif %} Questa vista non esegue valutazioni.</p>
+<h3>Identità e contatti</h3><dl class="resume-facts">
+{{ fact('Nome',profile.full_name) }}{{ fact('E-mail',profile.email) }}{{ fact('Telefono',profile.phone) }}{{ fact('Località',profile.location) }}
+{{ fact('LinkedIn',profile.linkedin_url) }}{{ fact('Altro profilo o sito',profile.other_profile_url) }}{{ fact('Disponibilità dichiarata',profile.declared_availability) }}
+</dl>
+<h3>Profilo professionale</h3><p class="resume-data-text">{{ profile.summary or 'Non presente / non estratto' }}</p>
+<h3>Esperienze lavorative</h3>
+{% for work in profile.work_history %}<article class="card"><dl class="resume-facts">
+{{ fact('Mansione originale',work.original_job_title) }}{{ fact('Azienda',work.employer) }}{{ fact('Sede',work.location) }}
+{{ fact('Data di inizio',work.start_date_text or (work.start_date.strftime('%Y-%m-%d') if work.start_date else none)) }}
+{{ fact('Data di fine',work.end_date_text or ('In corso' if work.is_current else (work.end_date.strftime('%Y-%m-%d') if work.end_date else none))) }}
+{{ fact('Responsabilità',work.responsibilities) }}{{ fact('Risultati dichiarati',work.achievements) }}{{ fact('Motivo di uscita dichiarato',work.reason_for_leaving) }}
+{{ fact('Testo di riferimento',work.evidence_snippet) }}
+</dl>{% if work.structure_confidence == 'LOW' %}<p class="warn">Lettura incerta: verifica il CV originale. {{ work.structure_note or '' }}</p>{% endif %}</article>
+{% else %}<p>Non presenti / non estratte.</p>{% endfor %}
+<h3>Formazione</h3>
+{% for edu in profile.education %}<article class="card"><dl class="resume-facts">
+{{ fact('Istituto',edu.institution) }}{{ fact('Programma',edu.program) }}{{ fact('Titolo',edu.qualification) }}{{ fact('Ambito',edu.field) }}
+{{ fact('Data di inizio',edu.start_date_text) }}{{ fact('Data di fine',edu.end_date_text) }}{{ fact('Completamento dichiarato',edu.completion_status) }}
+</dl></article>{% else %}<p>Non presente / non estratta.</p>{% endfor %}
+<h3>Competenze dichiarate</h3><ul>{% for skill in profile.skills %}<li>{{ skill }}</li>{% else %}<li>Non presenti / non estratte.</li>{% endfor %}</ul>
+<h3>Certificazioni</h3><ul>{% for cert in profile.certifications %}<li>{{ cert.name or 'Nome non estratto' }}{% if cert.issuer %} · {{ cert.issuer }}{% endif %}{% if cert.date_text %} · {{ cert.date_text }}{% endif %}</li>{% else %}<li>Non presenti / non estratte.</li>{% endfor %}</ul>
+<h3>Lingue</h3><ul>{% for language in profile.languages_detail %}<li>{{ language.language }}{% if language.proficiency %} · {{ language.proficiency }}{% endif %}</li>{% else %}<li>{{ profile.languages or 'Non presenti / non estratte.' }}</li>{% endfor %}</ul>
+<h3>Altre sezioni</h3><p class="resume-data-text">{{ profile.other_sections_text or 'Non presenti / non estratte.' }}</p>
+
+{% if include_original %}<section style="margin-top:2rem;border-top:1px solid var(--line);padding-top:1rem"><h2>CV originale caricato</h2>
+{% if original_available %}
+<p><a href="{{ original_url }}" target="_blank" rel="noopener">Apri il CV originale</a></p>
+{% if original_inline %}<iframe title="CV originale caricato" src="{{ original_url }}" style="width:100%;height:75vh;border:1px solid var(--line)"></iframe>
+{% else %}<p>Questo formato richiede l’apertura con l’applicazione associata. Usa il collegamento al file originale.</p>{% endif %}
+{% else %}<p>Il file originale non è disponibile nell’archivio locale. I dati estratti restano consultabili.</p>{% endif %}
+</section>{% endif %}

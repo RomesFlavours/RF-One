@@ -1,0 +1,114 @@
+{% extends 'workspace/base.html' %}
+{% block title %}{{ 'Criteri predefiniti della PDL' if default_mode else 'Criteri della ricerca' }}{% endblock %}
+{% set crumbs = [('Configurazioni', url_for('positions.configuration')), (default_role.name, none), ('Criteri predefiniti', none)] if default_mode else [('Criteri di selezione', none)] %}
+{% block head %}<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>{% endblock %}
+{% block content %}
+<h1>{{ 'Criteri predefiniti della PDL · ' ~ default_role.name if default_mode else 'Criteri di selezione della ricerca' }}</h1>
+{% if not position and not default_mode %}<p>Seleziona una PDL in Selezione per gestire i relativi criteri.</p>
+{% else %}
+{% if default_mode %}<p>Questi sono i criteri predefiniti della PDL. Ogni nuova posizione ne riceve una copia indipendente. Modificarli qui non cambia le ricerche già aperte.</p>
+{% else %}<p>Questa ricerca usa una copia indipendente dei criteri della PDL. Le modifiche valgono soltanto per questa ricerca: non cambiano i default o le altre posizioni aperte.</p>
+<p class="small"><a href="{{ url_for('positions.default_selection_criteria', role_code=position.role_code) }}">Consulta i criteri predefiniti della PDL in Configurazioni</a></p>{% endif %}
+<p class="small">Il motore Old usa livelli da 0 a 4 e coefficienti per la priorità di revisione, non per una probabilità di successo.</p>
+{% if can_manage_criteria %}<p><button type="button" id="new-criterion">Nuovo criterio</button></p>{% endif %}
+{% if position %}
+<details class="card" id="research-context" {% if context_draft %}open{% endif %}>
+ <summary><strong>Contesto del ruolo e della ricerca per l’AI</strong></summary>
+ <p>Il motore usa la descrizione e i requisiti approvati già presenti. Completa soltanto ciò che manca per questa ricerca. Un campo vuoto non autorizza l’AI a inventare una necessità.</p>
+ <form method="post">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_context">
+ <input type="hidden" name="context_version" value="{{ context_draft.get('context_version', [''])[0] if context_draft else context_version }}">
+ {% if context_draft and error %}<p role="alert" class="error">{{ error }}</p>{% endif %}
+ {% for key,label in context_fields %}<label>{{ label }}<textarea name="context_{{ key }}" maxlength="12000" {% if not can_manage_criteria %}readonly{% endif %}>{{ context_draft.get('context_' ~ key, [''])[0] if context_draft else research_context[key] }}</textarea></label>{% endfor %}
+ {% if position.description %}<p class="small">Descrizione già presente: {{ position.description }}</p>{% endif %}
+ {% if can_manage_criteria %}<button type="submit">Salva contesto della ricerca</button>{% endif %}
+ </form>
+</details>
+{% endif %}
+{% for group_code,group_label in criterion_groups %}
+<section aria-labelledby="criteria-group-{{ group_code }}">
+<h2 id="criteria-group-{{ group_code }}">{{ group_label }}</h2>
+<p>{{ 'Percorso professionale, evoluzione e coerenza delle evidenze documentate. Non misura tratti personali presunti.' if group_code == 'PERSON' else 'Esperienze e competenze rispetto alle mansioni e alle necessità specifiche della ricerca, disponibilità e motivazione esplicita.' }}</p>
+{% set grouped = criteria|selectattr('criterion_group', 'equalto', group_code)|list %}
+{% if group_code == 'ROLE_RESEARCH' %}{% set grouped = grouped + (criteria|selectattr('criterion_group', 'none')|list) %}{% endif %}
+{% for c in grouped %}
+<article class="card" id="criterion-{{ c.id }}" data-rr-key="criterion:{{ c.id }}">
+ <h2>{{ c.name|ui }}</h2>
+ <p class="small">{{ 'Attivo' if c.is_active else 'Disattivato' }} · {{ 'Fattore favorevole' if c.direction == 'POSITIVE' else 'Fattore contrario' }} · Coefficiente {{ c.coefficient }} · Versione {{ c.version }}
+ {% if c.is_hard_disqualifier %} · <strong>Requisito bloccante dal livello {{ c.hard_disqualifier_trigger_level }}</strong>{% endif %}</p>
+ {% if c.description %}<p>{{ c.description|ui }}</p>{% endif %}
+ <ul>{% for n in range(5) %}<li><strong>{{ n }}:</strong> {{ c.level_descriptions.get(n|string, 'Non definito')|ui }}</li>{% endfor %}</ul>
+ {% if can_manage_criteria %}<div class="row"><button type="button" data-edit-criterion="{{ c.id }}" data-open="criterion-editor">Modifica</button>
+ <form method="post" style="margin:0"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="criterion_id" value="{{ c.id }}"><input type="hidden" name="version" value="{{ c.version }}"><input type="hidden" name="action" value="toggle"><button type="submit" class="btn secondary">{{ 'Disattiva' if c.is_active else 'Riattiva' }}</button></form></div>{% endif %}
+</article>
+{% else %}<p>{{ 'Nessun criterio predefinito per questa PDL.' if default_mode else 'Nessun criterio nella copia di questa ricerca. Puoi aggiungerlo qui; i default non cambiano.' }}</p>{% endfor %}
+</section>
+{% endfor %}
+{% if can_manage_criteria %}
+<dialog id="criterion-editor" aria-labelledby="criterion-editor-title" style="width:min(760px,94vw);max-height:88vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:1.3rem;box-sizing:border-box">
+ <div style="position:sticky;top:-1.3rem;background:white;z-index:1;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:.6rem 0"><h2 id="criterion-editor-title" style="margin:0">Nuovo criterio</h2><button type="button" id="close-criterion" aria-label="Chiudi">×</button></div>
+ <div style="text-align:right;margin:.5rem 0"><a href="#criterion-editor-guide" id="criterion-help">Come funziona questa finestra</a></div>
+ <p class="small" id="criterion-scope">{% if default_mode %}Default della PDL: <strong>{{ default_role.name }}</strong>. Le ricerche già aperte non cambiano.{% else %}Solo questa ricerca: <strong>{{ position.title }}</strong> · {{ position.location_label }}. Il default della PDL e le altre ricerche non cambiano.{% endif %}</p>
+ <form method="post" id="criterion-form">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="criterion_id"><input type="hidden" name="version">
+ {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+ <label>Gruppo<select name="criterion_group">{% for code,label in criterion_groups %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+ <label>Nome<input name="name" required maxlength="255"></label>
+ <label>Descrizione<textarea name="description"></textarea></label>
+ <label>Categoria<input name="category"></label>
+ <label>Sede o contesto (facoltativo)<input name="location_label"></label>
+ <label>Coefficiente<input type="number" name="coefficient" min="0" max="1000" step="any" required value="1"></label>
+ <label>Direzione<select name="direction"><option value="POSITIVE">Fattore favorevole</option><option value="NEGATIVE">Fattore contrario</option></select></label>
+ <h3>Significato dei livelli</h3><p class="small">Descrivi che cosa significa ogni livello per questo criterio.</p>
+ {% for n in range(5) %}<label>Livello {{ n }}<input name="level_description_{{ n }}" required></label>{% endfor %}
+ <label><input type="checkbox" name="is_hard_disqualifier" style="width:auto"> Requisito bloccante</label>
+ <label>Livello dal quale scatta il blocco<select name="hard_disqualifier_trigger_level"><option value="">Nessuno</option>{% for n in range(5) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}</select></label>
+ <h3>Evidenze</h3><p>Fonti ammesse</p>
+ {% for code,label in sources %}<label style="display:block"><input type="checkbox" name="evidence_sources_allowed" value="{{ code }}" style="width:auto"> {{ label }}</label>{% endfor %}
+ <label>Istruzioni di valutazione<textarea name="evaluation_guidance"></textarea></label>
+ <label>Evidenze favorevoli<textarea name="evidence_positive"></textarea></label>
+ <label>Evidenze contrarie<textarea name="evidence_contrary"></textarea></label>
+ <label>Evidenze insufficienti<textarea name="evidence_insufficient"></textarea></label>
+ <h3>Valutazione da un segnale esistente</h3>
+ <label>Segnale<select name="auto_evaluation_signal_definition_id"><option value="">Nessuno: valuta le evidenze del CV</option>{% for signal in signal_definitions %}<option value="{{ signal.id }}">{{ signal.name|ui }}</option>{% endfor %}</select></label>
+ {% for code,label in signal_statuses %}<label>{{ label }} → livello<select name="auto_level_{{ code }}"><option value="">Non associare</option>{% for n in range(5) %}<option value="{{ n }}">{{ n }}</option>{% endfor %}</select></label>{% endfor %}
+ <h3>Informazioni da chiarire</h3>
+ <label><input type="checkbox" name="required_for_phone_review" style="width:auto"> Necessario prima della revisione telefonica</label>
+ <label>Domanda per recuperare l’evidenza mancante<textarea name="missing_evidence_question_text"></textarea></label>
+ <p>Risposte e livelli corrispondenti</p><div id="criterion-answer-map"></div>
+ <button type="button" id="add-criterion-answer" class="btn secondary">Aggiungi risposta</button>
+ <div style="position:sticky;bottom:-1.3rem;background:white;padding:.8rem 0;text-align:right"><button type="button" id="cancel-criterion" class="btn secondary">Annulla</button> <button type="submit">Salva criterio</button></div>
+ </form>
+</dialog>
+<script>
+(() => {
+ const data={{ criteria_data|tojson }}, draft={{ draft|tojson }}, editor=document.getElementById('criterion-editor'), form=document.getElementById('criterion-form');
+ let origin=null;
+ function answerRow(text='',level=''){
+  const row=document.createElement('div');row.style.cssText='display:flex;gap:.5rem;margin:.5rem 0;flex-wrap:wrap';
+  const input=document.createElement('input');input.name='answer_text';input.value=text;input.placeholder='Risposta';input.setAttribute('aria-label','Risposta');input.style.flex='1';
+  const select=document.createElement('select');select.name='answer_level';select.setAttribute('aria-label','Livello della risposta');select.style.width='auto';
+  ['','0','1','2','3','4'].forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=value===''?'Livello…':value;select.append(option)});select.value=String(level);
+  const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','Rimuovi risposta');remove.onclick=()=>row.remove();row.append(input,select,remove);document.getElementById('criterion-answer-map').append(row);
+ }
+ function open(value={},button=null){origin=button;form.reset();form.elements.criterion_id.value=value.id||'';form.elements.version.value=value.version||'';form.elements.criterion_group.value=value.criterion_group||'ROLE_RESEARCH';
+  document.getElementById('criterion-editor-title').textContent=value.id?'Modifica criterio':'Nuovo criterio';
+  Object.entries(value).forEach(([key,v])=>{const field=form.elements.namedItem(key);if(field&&field.tagName){if(field.type==='checkbox')field.checked=!!v;else field.value=v??''}});
+  for(let n=0;n<5;n++)form.elements['level_description_'+n].value=(value.level_descriptions||{})[String(n)]||'';
+  form.querySelectorAll('[name=evidence_sources_allowed]').forEach(e=>{e.checked=(value.evidence_sources_allowed||['RESUME_FACT','RESUME_DERIVED_INFORMATION']).includes(e.value)});
+  Object.entries(value.auto_evaluation_level_map||{}).forEach(([k,v])=>{const field=form.elements['auto_level_'+k];if(field)field.value=String(v)});
+  document.getElementById('criterion-answer-map').replaceChildren();Object.entries(value.missing_evidence_answer_level_map||{}).forEach(([k,v])=>answerRow(k,v));
+  editor.showModal();editor.scrollTop=0;
+ }
+ function close(){editor.close();if(origin)origin.focus()}
+ document.getElementById('new-criterion').onclick=e=>open({},e.currentTarget);
+ document.querySelectorAll('[data-edit-criterion]').forEach(b=>b.onclick=()=>open(data[b.dataset.editCriterion],b));
+ document.getElementById('close-criterion').onclick=close;document.getElementById('cancel-criterion').onclick=close;
+ document.getElementById('add-criterion-answer').onclick=()=>answerRow();
+ document.getElementById('criterion-help').onclick=e=>{e.preventDefault();document.getElementById('selection-page-help').showModal();document.getElementById('criterion-editor-guide').scrollIntoView()};
+ if(draft && !{{ (context_draft is not none)|tojson }}){const flat=Object.fromEntries(Object.entries(draft).map(([k,v])=>[k,v[0]]));open({id:flat.criterion_id,target_role:'draft'});Object.entries(flat).forEach(([k,v])=>{const field=form.elements.namedItem(k);if(field&&field.tagName){if(field.type==='checkbox')field.checked=v==='on';else field.value=v}});form.querySelectorAll('[name=evidence_sources_allowed]').forEach(e=>e.checked=(draft.evidence_sources_allowed||[]).includes(e.value));(draft.answer_text||[]).forEach((v,i)=>answerRow(v,(draft.answer_level||[])[i]||''));}
+})();
+</script>
+{% endif %}{% endif %}
+{% endblock %}

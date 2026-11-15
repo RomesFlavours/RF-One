@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    First-screening questions shown on the public Web Application Form — a DIFFERENT concept from Phone Interview
+    or In-Person Interview questions. Scope by Session and/or Role (leave blank for "any"); link to a Screening
+    Criterion only where genuinely appropriate.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Configured Questions</h2>
+  {% if questions %}
+    {% for q in questions %}
+    <div class="signal-card {{ '' if q.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ q.question_text }}
+        <span class="badge">{{ q.response_type }}</span>
+        {% if q.is_required %}<span class="badge">Required</span>{% endif %}
+        {% if q.related_criterion %}<span class="badge">&rarr; {{ q.related_criterion.name }}</span>{% endif %}
+        {% if not q.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+      </div>
+      <p class="muted" style="font-size:.76rem;">
+        {% if q.session_id %}Session #{{ q.session_id }}{% else %}Any Session{% endif %}
+        &middot; {{ q.target_role or 'Any Role' }}
+      </p>
+      <form method="post" action="{{ url_for('application_question_toggle_active', question_id=q.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if q.is_active else 'Reactivate' }}
+        </button>
+      </form>
+
+      {% set cs = compliance_status[q.id] %}
+      <details class="edit-toggle">
+        <summary>
+          Compliance Review
+          {% if cs.status == 'NOT_YET_REVIEWED' %}<span class="badge">NOT YET REVIEWED</span>
+          {% elif cs.blocks_activation %}<span class="badge status-failed">HIGH CONCERN — blocks activation</span>
+          {% elif cs.warnings %}<span class="badge">{{ cs.warnings|length }} warning(s)</span>
+          {% else %}<span class="badge status-completed">No concerns found</span>{% endif %}
+        </summary>
+        <p class="muted" style="font-size:.74rem;">{{ compliance_disclaimer }}</p>
+        {% for w in cs.warnings %}
+        <div class="context-note" style="font-size:.8rem; margin-top:.4rem;">
+          <strong>{{ w.severity|replace('_',' ') }}</strong> ({{ w.category|replace('_',' ')|title }}): {{ w.explanation }}
+          {% if w.suggested_rewrite %}<br><em>Suggested rewrite:</em> {{ w.suggested_rewrite }}{% endif %}
+        </div>
+        {% endfor %}
+        {% if cs.review %}
+        <form method="post" action="{{ url_for('compliance_disposition_create', review_id=cs.review.id) }}" class="req-form" style="margin-top:.5rem;">
+          <input type="hidden" name="next" value="{{ url_for('application_questions_home') }}">
+          <label>Your decision</label>
+          <select name="action">
+            {% for a in disposition_actions %}<option value="{{ a }}">{{ a|replace('_',' ')|title }}</option>{% endfor %}
+          </select>
+          <label>Final text (only used for Accept Rewrite / Edit Manually)</label>
+          <textarea name="final_text"></textarea>
+          <label>Reason</label>
+          <input type="text" name="reason">
+          <label>Your name</label>
+          <input type="text" name="performed_by">
+          <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">Record Decision</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('compliance_review_create') }}" class="inline-form" style="margin-top:.5rem;">
+          <input type="hidden" name="object_type" value="{{ compliance_object_type }}">
+          <input type="hidden" name="object_id" value="{{ q.id }}">
+          <input type="hidden" name="next" value="{{ url_for('application_questions_home') }}">
+          <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Run Compliance Review</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Application Questions configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add an Application Question</h2>
+  <form method="post" action="{{ url_for('application_question_create') }}" class="req-form">
+    <label>Question text</label>
+    <textarea name="question_text" required placeholder="e.g. Are you available to work weekends?"></textarea>
+    <label>Session (leave blank for any)</label>
+    <select name="session_id">
+      <option value="">(any Session)</option>
+      {% for s in sessions %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+    </select>
+    <label>Role (leave blank for any)</label>
+    <input type="text" name="target_role" placeholder="e.g. SERVER">
+    <label>Response type</label>
+    <select name="response_type">
+      {% for t in response_types %}<option value="{{ t }}">{{ t|replace('_',' ')|title }}</option>{% endfor %}
+    </select>
+    <label class="checkbox-row"><input type="checkbox" name="is_required"> Required</label>
+    <label>Related Screening Criterion (optional)</label>
+    <select name="related_criterion_id">
+      <option value="">(none)</option>
+      {% for c in criteria %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Add Question</button>
+  </form>
+</div>
+
+{% endblock %}
