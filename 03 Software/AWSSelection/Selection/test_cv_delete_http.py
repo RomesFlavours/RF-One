@@ -183,6 +183,10 @@ try:
                                                  password="synthetic-password-1", is_admin=admin)
                 account_svc.set_domain_access(db, account_id=acc.id, domain_code=domain, enabled=True, role_code=None)
                 ids[username] = (acc.id, acc.session_version)
+            # New Job offers only the active Roles defined in Configurations (approved since this test was written).
+            from workspace.role_catalog import JobRole
+            for code, name in (("SERVER", "Server"), ("LINE_COOK", "Line Cook")):
+                db.add(JobRole(code=code, name=name, name_key=name.lower(), active=True, version=1))
             db.commit()
 
         def client(username):

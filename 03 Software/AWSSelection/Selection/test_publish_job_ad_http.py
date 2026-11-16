@@ -86,6 +86,10 @@ try:
                                              password="synthetic-password-1", is_admin=True)
             account_svc.set_domain_access(s, account_id=acc.id, domain_code="SELECTION", enabled=True, role_code=None)
             ids = (acc.id, acc.session_version)
+            # New Jobs are opened only from an active Role defined in Configurations (approved flow).
+            from workspace.role_catalog import JobRole
+            for _code, _name in [("SERVER","Server"),("FOOD_RUNNER","Food Runner"),("HOST","Host"),("FOH_SUPERVISOR","FOH Supervisor")]:
+                s.add(JobRole(code=_code, name=_name, name_key=_name.casefold(), active=True, version=1))
             s.commit()
         owner = app.test_client()
         with owner.session_transaction() as sess:

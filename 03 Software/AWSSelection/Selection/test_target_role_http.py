@@ -146,7 +146,7 @@ def main() -> int:
                   "Declared coordination responsibilities" in page_tl
                   and "Coordinating the team or the service" in page_tl
                   and "Dining room (FOH)" in page_tl and "6 (declared)" in page_tl
-                  and "&ldquo;Coordinated a team of 6 servers per shift&rdquo;" in page_tl
+                  and "“Coordinated a team of 6 servers per shift”" in page_tl   # quoted as written (character, not entity)
                   and "which decisions were yours to take" in page_tl)
             check("5. the same person's Server application is analysed for Server",
                   "Target role experience (Server)" in page_sv)

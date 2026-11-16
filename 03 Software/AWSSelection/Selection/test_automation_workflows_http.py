@@ -88,7 +88,8 @@ try:
   run=db.get(ActionRun,runid);assert run.action_snapshot['name']=='Synthetic action' and run.procedure_snapshot['version']==1
   assert db.scalar(select(func.count()).select_from(ws.Decision))==1
  history=client.get(f'/selection/posizioni/{pid}/candidati/{pcid}/azioni/storico').json
- assert history['runs'][0]['status']=='Eseguita' and len(history['runs'][0]['attempts'])==2
+ from local_i18n import ui as _ui;from workspace import automations as _automations   # label of the active locale (Completed / Eseguita)
+ assert history['runs'][0]['status']==_ui(_automations.STATUSES['SUCCEEDED']) and len(history['runs'][0]['attempts'])==2
  assert client.get(f'/selection/configurazioni/automazioni/{proc}/storico').status_code==404
  with app.SessionFactory() as db:
   assert len(db.get(AutomationItem,proc).revisions)==1

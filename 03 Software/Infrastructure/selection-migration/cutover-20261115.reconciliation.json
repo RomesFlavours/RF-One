@@ -1,0 +1,26 @@
+{
+  "_comment": "Reviewed spec of the 2026-11-15 Selection cutover plan refresh (sel-076dca6d6fc6), formerly hard-coded in cutover_import.py. Ids and SHA-256 only; no personal data. Input of reconcile_plan.py.",
+  "batch_suffix": "-cutover-20261115",
+  "reason": "Retain latest AWS application and both distinct CV versions, sharing existing person identity",
+  "expected_baseline_changes": [
+    {"table": "raw_resumes", "delta": 1},
+    {"table": "candidates", "delta": 1},
+    {"table": "selection_workspace_position_candidates", "delta": 1}
+  ],
+  "identity_reconciliations": [
+    {
+      "type": "SAME_PERSON_DISTINCT_CV_AND_PDL",
+      "local_candidate_id": 180,
+      "existing_candidate_id": 173,
+      "local_person_id": 159,
+      "existing_person_id": 152,
+      "existing_application_id": 156,
+      "local_position_id": 7,
+      "existing_position_id": 3,
+      "local_original_sha256": "a8cef49cb5ddaf0294bb4a088acf74631eca512be8354db18ad3634c5fe4b589",
+      "existing_original_sha256": "4c9515e276b6e2f0d5d2cde5365a3b06ae1d51bf3ef8b5ab12f6f08a89acf19d",
+      "anchor_existing": [["candidates", 173], ["raw_resumes", 174], ["candidate_persons", 152], ["applications", 156], ["selection_workspace_position_candidates", 156]],
+      "reason": "Same name and email, different original CV and different job application. Preserve both CV records and application histories; reuse the existing person identity."
+    }
+  ]
+}

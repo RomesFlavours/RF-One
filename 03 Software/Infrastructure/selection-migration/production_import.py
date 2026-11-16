@@ -66,12 +66,12 @@ def connect_target(dsn,mode,command,approval,plan,allow_production=False,writes_
             raise PlanError('Local mode only permits a new selection_production_test_* database on loopback.')
     elif mode=='production':
         if (url.host,url.database)!=('rfone-dev.coj0wskcg634.us-east-1.rds.amazonaws.com','rfone'):raise PlanError('Unexpected production target.')
-        if command!='check':
+        if command not in ('check','verify'):
             if not allow_production or not writes_paused:raise PlanError('Production writes require explicit release authorization and a Selection-only write window.')
             if not approval or approval.get('approved') is not True or approval.get('plan_sha256')!=plan['plan_sha256'] or (approval.get('target_host'),approval.get('target_database'))!=(url.host,url.database):
                 raise PlanError('Approval must match this plan and production target.')
     else:raise PlanError('Unknown execution mode.')
-    connection={'options':'-c default_transaction_read_only='+('on' if command=='check' else 'off')+' -c lock_timeout=5000 -c statement_timeout=120000','connect_timeout':15}
+    connection={'options':'-c default_transaction_read_only='+('on' if command in ('check','verify') else 'off')+' -c lock_timeout=5000 -c statement_timeout=120000','connect_timeout':15}
     if mode=='local':connection['hostaddr']='127.0.0.1'
     else:connection['sslmode']='require'
     return create_engine(url,hide_parameters=True,connect_args=connection)
@@ -132,7 +132,31 @@ def validate_objects(plan,mode,local_receipt=None):
         if size!=obj['bytes'] or actual!=obj['sha256']:raise PlanError('Original object checksum mismatch.')
 
 
+def reconciliation_scope(plan):
+    """Validate the explicit identity reconciliation of a cutover plan (fix A4, formerly cutover_import.py).
+
+    A plan may reuse an existing target identity only through `reused_ids`, and every reused id must be
+    justified by one `identity_reconciliation` entry: the same person with a distinct CV and a distinct Job.
+    Returns the local candidate ids whose identity overlap is therefore expected."""
+    reconciliations=plan.get('identity_reconciliation',[]);reused=plan.get('reused_ids',{})
+    if set(reused)-{'candidate_persons'}:raise PlanError('Only candidate person identities may be reused.')
+    justified={}
+    for item in reconciliations:
+        if item.get('type')!='SAME_PERSON_DISTINCT_CV_AND_PDL':raise PlanError('Unsupported identity reconciliation.')
+        if item['local_position_id']==item['existing_position_id']:raise PlanError('Reconciled identities must belong to distinct Jobs.')
+        if item['local_original_sha256']==item['existing_original_sha256']:raise PlanError('Reconciled identities must keep distinct original CVs.')
+        if reused.get('candidate_persons',{}).get(str(item['local_person_id']))!=item['existing_person_id']:raise PlanError('Reconciled person is not reused as declared.')
+        if any(row['id']==item['local_person_id'] for row in plan['inserts'].get('candidate_persons',[])):raise PlanError('A reused person must not also be inserted.')
+        justified[str(item['local_person_id'])]=item['existing_person_id']
+    if reused.get('candidate_persons',{})!=justified:raise PlanError('Every reused identity needs an explicit reconciliation.')
+    return {item['local_candidate_id'] for item in reconciliations}
+
+
 def check(c,plan,metadata):
+    exempt=reconciliation_scope(plan)
+    if exempt:
+        # Every existing linked entity stays fingerprint-anchored; only the reconciled local identity is exempted.
+        plan=copy.deepcopy(plan);plan['inserts']['candidates']=[r for r in plan['inserts']['candidates'] if r['id'] not in exempt]
     for anchor in plan['anchors']:
         table=metadata.tables[anchor['table']];pk=list(table.primary_key.columns)[0]
         row=c.execute(select(table).where(pk==anchor['id'])).mappings().one_or_none()
@@ -189,6 +213,40 @@ def rebase_row(table,row,maps):
     return row
 
 
+def _fingerprints(c,metadata,names,exclude_ids,reviewed):
+    """Count and digest of every row of `names` except `exclude_ids`; reviewed position columns are left out."""
+    result={}
+    for name in sorted(names):
+        table=metadata.tables[name];pk=list(table.primary_key.columns)[0].name;expr='to_jsonb(t)';params={'ids':sorted(str(v) for v in exclude_ids.get(name,()))}
+        if reviewed.get(name):
+            expr='CASE WHEN t."id"::text = ANY(CAST(:upd AS text[])) THEN to_jsonb(t)-CAST(:cols AS text[]) ELSE to_jsonb(t) END'
+            params.update(upd=sorted(str(v) for v in reviewed[name]['ids']),cols=sorted(reviewed[name]['columns']))
+        row=c.execute(text('SELECT count(*) AS n,md5(coalesce(string_agg(md5(('+expr+')::text),\'\' ORDER BY md5(('+expr+')::text)),\'\')) AS f FROM "'+name+'" t WHERE NOT (t."'+pk+'"::text = ANY(CAST(:ids AS text[])))'),params).mappings().one()
+        result[name]={'rows':row['n'],'fingerprint':row['f']}
+    return result
+
+
+def _rows_written_by(c,metadata,xid):
+    """Rows whose current version was written by transaction `xid`, per table (fix A5)."""
+    return {name:n for name in sorted(metadata.tables) if (n:=c.scalar(text('SELECT count(*) FROM "'+name+'" WHERE xmin = CAST(:x AS xid)'),{'x':xid}))}
+
+
+def _verify_before_commit(c,metadata,plan,before,reviewed,inserted,updates):
+    """Fix A5: every integrity check runs inside the import transaction, before COMMIT. A failure raises and
+    rolls the whole import back; nothing is reported as passed after the fact."""
+    inserted_ids={}
+    for entry in inserted:inserted_ids.setdefault(entry['table'],set()).add(entry['id'])
+    after=_fingerprints(c,metadata,plan['inserts'],inserted_ids,reviewed)
+    changed=[name for name in before if before[name]!=after[name]]
+    if changed:raise PlanError('Existing Selection rows changed during the import: '+', '.join(changed))
+    xid=c.scalar(text('SELECT xmin::text FROM '+LEDGER+' WHERE batch_id=:id'),{'id':plan['batch_id']})
+    written=_rows_written_by(c,metadata,xid);written.pop(LEDGER,None)
+    expected={name:len(rows) for name,rows in plan['inserts'].items() if rows}
+    for entry in updates:expected[entry['table']]=expected.get(entry['table'],0)+1
+    if written!=expected:raise PlanError('Import wrote rows outside the reviewed plan: '+json.dumps({'expected':expected,'written':written},sort_keys=True))
+    return {'checked_before_commit':True,'transaction_xid':xid,'preexisting_selection_tables_unchanged':len(before),'rows_written_by_table':written,'non_selection_rows_written':0}
+
+
 def apply(engine,plan,mode,local_receipt=None):
     validate_objects(plan,mode,local_receipt)
     metadata=MetaData();metadata.reflect(engine)
@@ -205,7 +263,10 @@ def apply(engine,plan,mode,local_receipt=None):
             table=metadata.tables[anchor['table']];pk=list(table.primary_key.columns)[0]
             c.execute(select(pk).where(pk==anchor['id']).with_for_update()).first()
         check(c,plan,metadata)
-        maps={};inserted=[];updates=[]
+        reviewed={'selection_workspace_positions':{'ids':[e['id'] for e in plan['updates']['selection_workspace_positions']],
+            'columns':sorted({k for e in plan['updates']['selection_workspace_positions'] for k in e['values']})}}
+        preexisting=_fingerprints(c,metadata,plan['inserts'],{},reviewed)   # same transaction, Selection tables locked
+        maps=copy.deepcopy(plan.get('reused_ids',{}));inserted=[];updates=[]   # reconciled identities validated by check()
         for name,rows in plan['inserts'].items():
             table=metadata.tables[name];pk=list(table.primary_key.columns)[0]
             for original in rows:
@@ -222,7 +283,31 @@ def apply(engine,plan,mode,local_receipt=None):
         payload={'inserted':inserted,'updates':updates,'id_maps':maps,'object_receipts':plan['objects'],
             'preexisting_role_codes':sorted({a['before']['role_code'] for a in plan['anchors'] if a['table']=='selection_workspace_positions'})}
         c.execute(text('INSERT INTO '+LEDGER+' (batch_id,plan_hash,status,payload) VALUES (:id,:hash,\'APPLIED\',CAST(:payload AS jsonb))'),{'id':plan['batch_id'],'hash':plan['plan_sha256'],'payload':json.dumps(payload,ensure_ascii=False)})
-        return {'status':'APPLIED','new_rows':len(inserted),'updated_positions':len(updates),'id_maps':maps}
+        integrity=_verify_before_commit(c,metadata,plan,preexisting,reviewed,inserted,updates)
+        c.execute(text('UPDATE '+LEDGER+' SET payload=payload||CAST(:i AS jsonb) WHERE batch_id=:id'),{'id':plan['batch_id'],'i':json.dumps({'integrity':integrity})})
+        return {'status':'APPLIED','new_rows':len(inserted),'updated_positions':len(updates),'id_maps':maps,'integrity':integrity}
+
+
+def verify(engine,plan):
+    """After COMMIT (fix A5): compare the committed batch with the current state and keep concurrent writes apart.
+    Writes are attributed by transaction id: rows written by the import transaction versus rows changed later
+    by other transactions (other modules keep working; such changes are reported, never hidden)."""
+    metadata=MetaData();metadata.reflect(engine)
+    with engine.connect() as c:
+        batch=c.execute(text('SELECT plan_hash,status,payload,xmin::text AS xid FROM '+LEDGER+' WHERE batch_id=:id'),{'id':plan['batch_id']}).mappings().one_or_none()
+        if batch is None or batch['plan_hash']!=plan['plan_sha256'] or batch['status']!='APPLIED':raise PlanError('No applied batch matches this plan.')
+        payload=batch['payload'];integrity=payload.get('integrity') or {}
+        if not integrity.get('checked_before_commit'):raise PlanError('Batch was applied without the pre-commit integrity check.')
+        xid=integrity['transaction_xid'];written=_rows_written_by(c,metadata,xid);written.pop(LEDGER,None)
+        outside=sorted(set(written)-set(plan['inserts']))
+        if outside:raise PlanError('Rows of the import transaction found outside Selection: '+', '.join(outside))
+        later=[]
+        for entry in payload['inserted']:
+            table=metadata.tables[entry['table']];row=c.execute(select(table).where(table.c[entry['pk']]==entry['id'])).mappings().one_or_none()
+            if row is None or digest(dict(row))!=digest(entry['after']):later.append({'table':entry['table'],'id':entry['id'],'state':'deleted' if row is None else 'changed'})
+        return {'status':'passed','transaction_xid':xid,'non_selection_rows_written_by_import':0,
+            'imported_rows_still_from_import':sum(written.values()),'imported_rows_changed_later_by_other_transactions':later,
+            'pre_commit_integrity':integrity}
 
 
 def rollback(engine,plan):
@@ -265,7 +350,7 @@ def rollback(engine,plan):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=('check','schema','apply','rollback'));p.add_argument('--plan',type=Path,required=True)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=('check','schema','apply','rollback','verify'));p.add_argument('--plan',type=Path,required=True)
     p.add_argument('--mode',choices=('local','production'),default='local');p.add_argument('--approval-file',type=Path);p.add_argument('--local-object-receipt',type=Path)
     p.add_argument('--allow-production-write',action='store_true');p.add_argument('--selection-writes-paused',action='store_true');args=p.parse_args()
     plan=load_plan(args.plan);approval=json.loads(args.approval_file.read_text()) if args.approval_file else None
@@ -276,6 +361,7 @@ def main():
         if args.command=='schema':prepare_schema(engine);result={'status':'SCHEMA_PREPARED'}
         elif args.command=='apply':result=apply(engine,plan,args.mode,json.loads(args.local_object_receipt.read_text()) if args.local_object_receipt else None)
         elif args.command=='rollback':result=rollback(engine,plan)
+        elif args.command=='verify':result=verify(engine,plan)
         else:
             validate_objects(plan,args.mode,json.loads(args.local_object_receipt.read_text()) if args.local_object_receipt else None)
             metadata=MetaData();metadata.reflect(engine)

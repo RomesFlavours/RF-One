@@ -152,8 +152,10 @@ def main() -> int:
             import re
             menu = re.search(r'<div class="nav-tabs">(.*?)</div>', html, re.S)
             links = re.findall(r'href="([^"]+)"', menu.group(1)) if menu else []
-            check("6. Selection Old shows its original menu (21 entries, Acting Identity hidden in login mode)",
-                  len(links) == 21 and all(l.startswith("/selection/") for l in links), str(links))
+            # The released menu adds a first link to the shared Configurations page; the 21 original entries stay.
+            check("6. Selection Old shows its original menu (21 entries + Configurations, Acting Identity hidden in login mode)",
+                  len(links) == 22 and links[0] == "/selection/configurazioni" and len(set(links[1:])) == 21
+                  and all(l.startswith("/selection/") for l in links) and "/selection/identity/switch" not in links, str(links))
             statuses = {l: allowed_client.get(l).status_code for l in links}
             check("6. every Selection Old menu entry opens (200) for a SELECTION account",
                   all(code == 200 for code in statuses.values()), str(statuses))

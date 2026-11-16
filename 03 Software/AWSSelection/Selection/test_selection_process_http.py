@@ -8,6 +8,11 @@ Confirm & Publish → Process → the five tabs keep the current Job → Upload 
 Restore → Evaluation from the ranking and by search → the candidate's history → no Configuration tab →
 Interviews and Decisions unchanged → Selection Old unchanged → the Role standard is never modified.
 
+Updated 2026-11-15 (A7) to the navigation and flow approved after 1 Nov: the first tab is "Job Position",
+Evaluation is no longer a tab (the candidate dossier is opened from Applications), Configurations is a tab,
+CV upload only stores the CVs and the analysis starts with an explicit Analyze, and Applications is the
+candidate list of the Job (the old SP ranking address redirects there).
+
     python test_selection_process_http.py
 """
 
@@ -107,6 +112,9 @@ try:
             acc = account_svc.create_account(db, username="owner", display_name="Synthetic Owner",
                                              password="synthetic-password-1", is_admin=True)
             account_svc.set_domain_access(db, account_id=acc.id, domain_code="SELECTION", enabled=True, role_code=None)
+            # A new Job needs an active Role defined in Configurations (approved after this test was written).
+            from workspace.role_catalog import JobRole
+            db.add(JobRole(code="SERVER", name="Server", name_key="server", active=True, version=1))
             db.commit()
             owner_id = (acc.id, acc.session_version)
         owner = app.test_client()
@@ -118,10 +126,11 @@ try:
 
         # 1. Selection opens on the Jobs list, five tabs at the same level, no Configuration
         home = text(owner.get("/selection/"))
-        tabs = re.findall(r'>(Selection|Applications|Evaluation|Interviews|Decisions)<', nav(home))
-        check("1. Selection opens on the Jobs list with the five tabs (later ones off until a Job is chosen)",
-              "<h1>Jobs</h1>" in home and tabs == ["Selection", "Applications", "Evaluation", "Interviews", "Decisions"]
-              and nav(home).count('class="tab-off"') == 4 and "+ New Job" in home, tabs)
+        tabs = re.findall(r'>(Job Position|Applications|Interviews|Decisions|Requirements &amp; Priorities|Configurations)<', nav(home))
+        check("1. Selection opens on the Job Position list with its tabs (Job tabs off until a Job is chosen)",
+              "<h1>Job Position</h1>" in home and tabs == ["Job Position", "Applications", "Interviews", "Decisions",
+                                                           "Requirements &amp; Priorities", "Configurations"]
+              and nav(home).count('class="tab-off"') == 3 and "New Job" in home, tabs)
         t = re.search(r'name="csrf_token" value="([^"]+)"', text(owner.get("/selection/posizioni/nuova"))).group(1)
 
         # 2. New Job: Server
@@ -142,7 +151,7 @@ try:
         names = [d["name"] for d in SERVER_STANDARD["dimensions"]]
         check("3. Server standard loaded: 8 requirements and the rules (short stays, gaps, environments, red flags)",
               all(n in form for n in names) and all(f'name="rule_{k}"' in form for k in STANDARD_RULES)
-              and "Professional environments" in form and 'class="active">Selection<' in nav(form)
+              and "Professional environments" in form and 'class="active">Job Position<' in nav(form)
               and "Save Draft" in form and "Confirm &amp; Publish" in form)
 
         # 4-5. Customize and Save Draft
@@ -177,8 +186,8 @@ try:
         # 6. Reopen the Draft
         dash = text(owner.get("/selection/"))
         form = text(owner.get(f"/selection/posizioni/{pid}/job"))
-        check("6. Draft reopens from Complete & Publish with nothing lost",
-              f"/selection/posizioni/{pid}/job" in dash and "Complete &amp; Publish" in dash
+        check("6. Draft reopens from Edit with nothing lost",
+              f'href="/selection/posizioni/{pid}/job"' in dash and ">Edit<" in dash
               and 'name="sp_active_recency" value="1"  aria-label' in form.replace("checked", "")
               and 'name="sp_active_recency" value="1" checked' not in form
               and 'name="sp_weight_guest_selling" value="20"' in form and "Wine knowledge" in form
@@ -201,60 +210,61 @@ try:
 
         # 8. Process
         dash = text(owner.get("/selection/"))
-        check("8. Active Job shows Process, which opens Applications for that Job",
-              f'href="/selection/posizioni/{pid}/sp">Process</a>' in dash)
-        apps = text(owner.get(f"/selection/posizioni/{pid}/sp"))
+        old_ranking = owner.get(f"/selection/posizioni/{pid}/sp")
+        apps = text(owner.get(f"/selection/posizioni/{pid}?tab=candidature"))
+        check("8. Active Job opens Applications for that Job (the old ranking address redirects there)",
+              f'href="/selection/posizioni/{pid}?tab=candidature"' in dash and "Select and set the Job Position" in dash
+              and old_ranking.status_code == 302 and old_ranking.headers["Location"].endswith(f"/posizioni/{pid}?tab=candidature")
+              and 'class="active">Applications<' in nav(apps))
 
         # 9. Five tabs keep the current Job
-        urls = re.findall(r'<a href="([^"]+)" class="[^"]*">(?:Applications|Evaluation|Interviews|Decisions)<', nav(apps))
+        urls = re.findall(r'<a href="([^"]+)" class="[^"]*">(?:Applications|Interviews|Decisions)<', nav(apps))
         pages = [text(owner.get(u)) for u in urls]
         back_home = text(owner.get("/selection/"))
-        check("9. The five tabs keep the current Job (Role, location, status always visible)",
-              len(urls) == 4 and all(f"/posizioni/{pid}" in u for u in urls)
-              and all('class="job-bar"' in p and "<b>Server</b>" in p and "Mount Dora" in p and ">Active<" in p
+        check("9. The Job tabs keep the current Job (Role and location always visible)",
+              len(urls) == 3 and all(f"/posizioni/{pid}" in u for u in urls)
+              and all('class="job-bar"' in p and "<b>Server</b>" in p and "Mount Dora" in p
                       for p in pages + [apps, back_home])
-              and 'class="active">Applications<' in nav(apps) and 'class="active">Interviews<' in nav(pages[2])
-              and 'class="active">Decisions<' in nav(pages[3]) and 'class="active">Evaluation<' in nav(pages[1]), urls)
+              and 'class="active">Applications<' in nav(pages[0]) and 'class="active">Interviews<' in nav(pages[1])
+              and 'class="active">Decisions<' in nav(pages[2]), urls)
 
         # 10. Upload CVs and SP ranking
         files = [(BytesIO(cv(i).encode()), f"cv{i}.txt") for i in range(5)]
         r = owner.post(f"/selection/posizioni/{pid}/sp/upload", data={"csrf_token": t, "cv": files},
                        content_type="multipart/form-data", follow_redirects=True)
+        waiting = owner.get(f"/selection/posizioni/{pid}/sp/status").get_json()
+        owner.post(f"/selection/posizioni/{pid}/sp/analyze", data={"csrf_token": t})
         status = wait_analysis(owner, pid, 5)
-        page = text(owner.get(f"/selection/posizioni/{pid}/sp"))
-        ranked_ids = re.findall(rf'<b><a href="/selection/posizioni/{pid}/candidati/(\d+)">', page)
-        check("10. Upload CVs in Applications: 5 imported and analyzed, ranked with reasons",
-              'type="file"' in page and "Upload 1: 5 CV(s) received · 5 new imported" in text(r)
-              and status.get("DONE") == 5 and len(ranked_ids) == 5 and page.count('class="why"') >= 1, status)
+        page = text(owner.get(f"/selection/posizioni/{pid}?tab=candidature"))
+        ranked_ids = re.findall(r'<tr id="candidate-(\d+)"', page)
+        check("10. Upload CVs in Applications: 5 stored without analysis, Analyze reads them, all 5 listed",
+              waiting == {"WAITING": 5} and status.get("DONE") == 5 and len(ranked_ids) == 5, (waiting, status))
 
         # 11. Reject and restore
         target = ranked_ids[0]
         r = owner.post(f"/selection/posizioni/{pid}/decisioni", data={
             "csrf_token": t, "pc_id": target, "decision": "NOT_SELECTED", "reason": "OTHER",
             "note": "Synthetic rejection", "back": f"/selection/posizioni/{pid}/sp#ranking"})
-        page = text(owner.get(f"/selection/posizioni/{pid}/sp"))
-        ranked_after = re.findall(rf'<tr>\s*<td><div class="rank">', page)
-        rejected_block = page.split("<h2 style=\"margin-top:18px\">Rejected", 1)
         with selection_app.SessionFactory() as db:
             kept = db.query(ws.Proposal).filter(ws.Proposal.position_candidate_id == int(target),
                                                 ws.Proposal.source == "SP", ws.Proposal.is_current.is_(True)).count()
             decision = engine.current_decision(db, int(target))
             rejected = (decision.decision, decision.actor_name, decision.note, decision.reason_code)
-        rejected_ok = (len(ranked_after) == 4 and len(rejected_block) == 2 and f"candidati/{target}" in rejected_block[1]
-                       and "Synthetic rejection" in rejected_block[1] and kept == 1
-                       and rejected == ("NOT_SELECTED", "Synthetic Owner", "Synthetic rejection", "OTHER"))
+        rejected_ok = kept == 1 and rejected == ("NOT_SELECTED", "Synthetic Owner", "Synthetic rejection", "OTHER")
         owner.post(f"/selection/posizioni/{pid}/decisioni", data={
             "csrf_token": t, "pc_id": target, "decision": "UNDECIDED", "note": "Rejection withdrawn: back in the ranking",
             "back": f"/selection/posizioni/{pid}/sp#ranking"})
-        page = text(owner.get(f"/selection/posizioni/{pid}/sp"))
-        check("11. Reject: out of the ranking, listed with date, user and reason, CV and analysis kept; Restore brings it back",
-              rejected_ok and len(re.findall(r'<tr>\s*<td><div class="rank">', page)) == 5
-              and "margin-top:18px\">Rejected" not in page, (len(ranked_after), rejected, kept))
+        page = text(owner.get(f"/selection/posizioni/{pid}?tab=candidature"))
+        with selection_app.SessionFactory() as db:
+            restored = engine.current_decision(db, int(target))
+        check("11. Reject: recorded with user and reason, CV and analysis kept; Restore withdraws it",
+              rejected_ok and len(re.findall(r'<tr id="candidate-(\d+)"', page)) == 5
+              and (restored is None or restored.decision == "UNDECIDED"), (rejected, kept))
 
         # 12. Evaluation from the ranking
         dossier = text(owner.get(f"/selection/posizioni/{pid}/candidati/{target}"))
-        check("12. A name in the ranking opens Evaluation with that candidate and the SP analysis",
-              'class="active">Evaluation<' in nav(dossier) and "CV Selection SP analysis" in dossier
+        check("12. A name in Applications opens the candidate dossier with the SP analysis",
+              f'/selection/posizioni/{pid}/candidati/{target}' in page and "CV Selection SP analysis" in dossier
               and "Approved requirements" in dossier and "Red flags" in dossier and "To verify" in dossier
               and "Work history" in dossier and "Original résumé" in dossier and 'class="job-bar"' in dossier)
 
@@ -275,9 +285,8 @@ try:
         # 15. No Configuration tab
         all_pages = [home, form, apps, dossier, found] + pages
         legacy = owner.get(f"/selection/posizioni/{pid}?tab=configuration")
-        check("15. No Configuration tab anywhere; its old address opens the Job form",
-              all("Configuration" not in nav(p) for p in all_pages)
-              and all("Configuration</a>" not in p for p in all_pages)
+        check("15. Configurations is its own tab on every page; the old Job configuration address opens the Job form",
+              all('href="/selection/configurazioni"' in nav(p) for p in all_pages if nav(p))
               and legacy.status_code == 302 and legacy.headers["Location"].endswith(f"/posizioni/{pid}/job"))
 
         # 16. Interviews and Decisions unchanged
@@ -299,38 +308,23 @@ try:
             line_cook = iv.standard(db, "LINE_COOK")
             db.commit()
         page = text(owner.get(f"/selection/posizioni/{pid}/interviews?pc={target}"))
-        check("I1. Interviews: opens directly on a candidate of the current Job, with Evaluation link and status",
+        check("I1. Interviews: opens directly on a candidate of the current Job, with dossier link and status",
               'class="active">Interviews<' in nav(page) and f'<option value="{target}" selected' in page
-              and f"/candidati/{target}" in page and ">Not started<" in page and "Configure Interview" in page
+              and f"/candidati/{target}" in page and ">Not started<" in page
               and "Desired weekly hours" in page and "Unhappy guest" in page)
-        q_ids = re.findall(r'name="q_active_([\w-]+)"', page)
-        sc_ids = re.findall(r'name="sc_active_([\w-]+)"', page)
-        cl_ids = re.findall(r'name="cl_active_([\w-]+)"', page)
-        cfg = {"csrf_token": t, "new_questions": "Synthetic question for this candidate only?"}
-        for i, q in enumerate(q_ids):
-            if i != 0:
-                cfg[f"q_active_{q}"] = "1"
-        cfg[f"q_text_{q_ids[1]}"] = "Edited synthetic question?"
-        for s_ in sc_ids:
-            if s_ != "m-allergies":
-                cfg[f"sc_active_{s_}"] = "1"
-        for c in cl_ids:
-            cfg[f"cl_active_{c}"] = "1"
-        owner.post(f"/selection/posizioni/{pid}/interviews/{target}/config", data=cfg)
-        page = text(owner.get(f"/selection/posizioni/{pid}/interviews?pc={target}"))
-        sheet = page.split('id="iv-config"')[0]
+        cl_ids = re.findall(r'name="cl_([\w-]+)_status"', page)
+        # The per-candidate "Configure Interview" was replaced by observation templates per Role and location
+        # in Configurations (test_observation_templates.py): the sheet shows the Role standard's questions.
+        legacy_config = owner.post(f"/selection/posizioni/{pid}/interviews/{target}/config", data={"csrf_token": t})
         with selection_app.SessionFactory() as db:
             std_after = iv.standard(db, "SERVER")
-            other = iv.configuration(db, db.get(ws.Position, pid), db.get(ws.PositionCandidate, int(ranked_ids[2])),
-                                     iv.load(db, int(ranked_ids[2])))
             db.commit()
-        check("I2. Configure Interview: saved for this candidate (question off, edited, added; scenario off)",
-              ">Configured<" in page and "Edited synthetic question?" in sheet
-              and "Synthetic question for this candidate only?" in sheet and f'name="q_{q_ids[0]}_answer"' not in sheet
-              and 'name="sc_m-allergies_answer"' not in sheet and 'name="sc_m-unhappy_guest_answer"' in sheet)
-        check("I3. The Role standard is unchanged and another candidate starts from it whole",
-              std_after == std_before and all(q["active"] for q in other["questions"])
-              and other["questions"][1]["text"] != "Edited synthetic question?"
+        check("I2. The interview sheet comes from the Role standard; no per-candidate configuration endpoint remains",
+              legacy_config.status_code in (404, 405) and 'name="sc_m-allergies_answer"' in page
+              and 'name="sc_m-unhappy_guest_answer"' in page and len(cl_ids) >= 1 and "Configure Interview" not in page,
+              legacy_config.status_code)
+        check("I3. The Role standard is unchanged by interviews",
+              std_after == std_before
               and [s_["title"] for s_ in line_cook["scenarios"]] == ["Priorities during a rush", "Food safety",
                                                                     "Wrong preparation"])
         clar = cl_ids[0]
@@ -360,8 +354,8 @@ try:
               and "Partially Clarified" in summ.split("Concerns Documented")[0].split("Needs Clarification")[1])
         dossier_now = text(owner.get(f"/selection/posizioni/{pid}/candidati/{target}"))
         hist = dossier_now.split('id="storico"', 1)[1].split("</table>", 1)[0]
-        check("I8. Evaluation history: interview configured, saved and completed (mode, interviewer, summary)",
-              "Interview configured" in hist and "Interview completed (Mixed, Synthetic Owner)" in hist
+        check("I8. Dossier history: interview completed (mode, interviewer, summary)",
+              "Interview completed (Mixed, Synthetic Owner)" in hist
               and "1 concern(s) documented" in hist and "Interview sheet" in dossier_now)
         with selection_app.SessionFactory() as db:
             rows_iv = db.query(ws.Proposal).filter(ws.Proposal.source == "INTERVIEW").count()

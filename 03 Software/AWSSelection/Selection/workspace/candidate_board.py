@@ -23,8 +23,10 @@ def signature(active):
 
 def locked_position(db, actor, position_id):
     position = db.scalar(select(ps.Position).where(ps.Position.id == position_id).with_for_update())
-    if position is None or not actor.can_view(position):
+    if position is None:
         abort(404)
+    if not actor.can_view(position):   # an existing Job outside the person's scope (fix A1)
+        abort(403)
     if not actor.can_edit(position):
         abort(403)
     return position

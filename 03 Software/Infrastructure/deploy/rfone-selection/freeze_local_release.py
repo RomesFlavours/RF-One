@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import tarfile
@@ -30,8 +31,17 @@ def main():
     for directory, extensions in [('Selection/workspace', {'.py'}), ('Selection/templates', {'.html'}),
                                   ('Selection/static', {'.css', '.js', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.woff', '.woff2'}),
                                   ('Selection/locales', {'.json'}), ('RF-One Data Store/rfone_data_store', {'.py', '.csv'}),
-                                  ('RF-One Data Store/migrations', {'.py', '.mako'})]:
+                                  ('RF-One Data Store/migrations', {'.py', '.mako'}),
+                                  # Frozen catalogue inputs read by historical revisions (fix A3): no personal data.
+                                  ('RF-One Data Store/migrations/migration_data', {'.csv', '.md'})]:
         copy_tree(root / app_root / directory, source / app_root / directory, extensions)
+    migration_data = source / app_root / 'RF-One Data Store/migrations/migration_data'
+    referenced = set()
+    for revision in (source / app_root / 'RF-One Data Store/migrations/versions').glob('*.py'):
+        referenced.update(re.findall(r'migration_data["\'/,\s]+["\']?([\w.-]+\.csv)', revision.read_text(encoding='utf-8')))
+    missing = sorted(name for name in referenced if not (migration_data / name).is_file())
+    if missing:
+        raise SystemExit('Migration inputs missing from the release: ' + repr(missing))
     for directory, names in [('Selection', ['app.py', 'local_i18n.py', 'requirements.txt']),
                              ('RF-One Data Store', ['requirements.txt', 'alembic.ini', 'MIGRATIONS.md'])]:
         for name in names:
@@ -40,12 +50,12 @@ def main():
     for test in (root / app_root / 'Selection').glob('test_*.py'):
         shutil.copyfile(test, source / app_root / 'Selection' / test.name)
     deploy = Path('03 Software/Infrastructure/deploy/rfone-selection')
-    for name in ['Dockerfile', 'server_entrypoint.py', 'cloud-runtime.example.json', 'LOCAL_RELEASE.md', 'freeze_local_release.py', 'verify_linux_release.py', 'mock_s3_local.py', 'verify_image_archive.py', 'instance-policy-openai.example.json']:
+    for name in ['Dockerfile', 'server_entrypoint.py', 'cloud-runtime.example.json', 'LOCAL_RELEASE.md', 'freeze_local_release.py', 'verify_linux_release.py', 'mock_s3_local.py', 'verify_image_archive.py', 'instance-policy-openai.example.json', 'verify_http_release.py', 'test_session_safety.py']:
         target = source / deploy / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(root / deploy / name, target)
     shutil.copyfile(args.dependency_lock, source / deploy / 'requirements-linux.lock')
-    copy_tree(root / '03 Software/Infrastructure/selection-migration', source / '03 Software/Infrastructure/selection-migration', {'.py', '.md'})
+    copy_tree(root / '03 Software/Infrastructure/selection-migration', source / '03 Software/Infrastructure/selection-migration', {'.py', '.md', '.json'})
     for name in ['check_how_works.py', 'how_works_registry.json', 'How Works Standard.md', 'Development Language Policy.md']:
         relative = Path('03 Software/Shared UI') / name
         (source / relative).parent.mkdir(parents=True, exist_ok=True)

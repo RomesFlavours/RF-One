@@ -58,6 +58,9 @@ try:
                                              password="synthetic-password-1", is_admin=True)
             account_svc.set_domain_access(s, account_id=acc.id, domain_code="SELECTION", enabled=True, role_code=None)
             owner_ids = (acc.id, acc.session_version)
+            # New Jobs are opened only from an active Role defined in Configurations (approved flow).
+            from workspace.role_catalog import JobRole
+            s.add(JobRole(code="SERVER", name="Server", name_key="server", active=True, version=1))
             s.commit()
         owner = app.test_client()
         with owner.session_transaction() as sess:

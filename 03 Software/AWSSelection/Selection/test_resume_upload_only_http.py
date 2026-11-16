@@ -8,6 +8,7 @@ os.environ['RFONE_SELECTION_UPLOAD_DIR']=TMP+'/uploads'
 os.environ['RFONE_SELECTION_REQUIRE_RFONE_LOGIN']='1'
 os.environ['RFONE_WEB_BASE_URL']='http://localhost:5097'
 os.environ['RFONE_FLASK_SECRET_KEY']='synthetic-upload-only'
+os.environ['RFONE_UI_LANGUAGE']='it'   # assertions use the local Italian UI labels (A7, 2026-11-15)
 for key in ('RFONE_SELECTION_DOCUMENT_BUCKET','RFONE_PUBLIC_BASE_URL','RFONE_SELECTION_AI','RFONE_SELECTION_AI_CV'):
     os.environ.pop(key,None)
 import app
@@ -99,7 +100,7 @@ try:
         assert candidate.work_history and candidate.skills and candidate.language_records and candidate.certifications
         assert db.get(m.RawResume,candidate.raw_resume_id).raw_text==CV.strip()
     dashboard=client.get('/selection/').get_data(as_text=True)
-    assert dashboard.count('>Carica Resume</a>')==2 and dashboard.count('>Modifica</a>')==2 and dashboard.count('>Select and set the Job Position</a>')==2
+    assert dashboard.count('>Carica Resume</a>')==2 and dashboard.count('>Modifica</a>')==2 and dashboard.count('>Seleziona e valorizza la PDL</a>')==2
     assert client.get(f'/selection/posizioni/{positions[0]}/sp/upload').status_code==200
     client.get(f'/selection/posizioni/{positions[0]}/job?modal=1')
     with client.session_transaction() as sess:

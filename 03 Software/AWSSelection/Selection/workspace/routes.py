@@ -249,8 +249,10 @@ def _restaurant_id(db) -> int:
 
 def _position(db, actor: Actor, position_id: int, *, edit: bool = False) -> ps.Position:
     position = db.get(ps.Position, position_id)
-    if position is None or not actor.can_view(position):
+    if position is None:
         abort(404)
+    if not actor.can_view(position):   # an existing Job outside the person's scope (fix A1)
+        abort(403)
     if edit and not actor.can_edit(position):
         abort(403)
     position_settings.bind(position)

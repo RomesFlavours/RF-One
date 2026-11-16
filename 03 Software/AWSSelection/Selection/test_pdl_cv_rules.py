@@ -98,6 +98,8 @@ with Factory() as db:
 print('PASS: persisted CV facts, active rules, PDL isolation, UnFit-last and priority ordering, no writes/human changes, disable restores original order')
 
 # Real HTTP signed proposal/save/toggle with the same in-memory database only.
+# Updated 2026-11-15 (A7): the approved proposal flow saves natural-language rules (need, title, instruction);
+# their CV evaluation is the AI read covered by test_conversational_rules_http.py.
 from flask import Flask, request
 from workspace import routes, sp_queue
 from rfone_data_store import rfone_web_session as shared
@@ -112,7 +114,8 @@ install(http)
 client=http.test_client()
 with client.session_transaction() as session:session[shared.SESSION_CSRF_KEY]='test-csrf'
 original_generate=rules.rule_ai.generate
-rules.rule_ai.generate=lambda prompt:{'reply':'Regola di prova sul titolo minimo','rule':{'title':'HTTP diploma','condition':failure,'weight':1}}
+NL_RULE={'title':'HTTP diploma','need':'Titolo di studio minimo','instruction':'UnFit se il CV non riporta almeno il diploma High School.','section':'requirements'}
+rules.rule_ai.generate=lambda prompt:{'reply':'Regola di prova sul titolo minimo','rule':dict(NL_RULE)}
 def post(url,data,**kwargs):
  import json
  return client.post(url,data={'csrf_token':'test-csrf','payload':json.dumps(data)},**kwargs)
@@ -124,12 +127,15 @@ saved_id=response.json['id']
 assert post('/requisiti-priorita/salva',{'token':token}).json['id']==saved_id
 assert post('/requisiti-priorita/salva',{'token':token},headers={'X-Test-Actor':'manager'}).status_code==403
 assert post('/requisiti-priorita/salva',{'token':token+'tampered'}).status_code==400
+from workspace import conversational_rules as conversation
 with Factory() as db:
- row=db.get(PDLRule,saved_id);assert row.role_code=='A' and row.condition==failure
- result=application.apply(db,NS(role_code='A'),[{'pc':NS(candidate_id=c.id),'name':c.full_name} for c in db.scalars(select(m.Candidate).order_by(m.Candidate.id))])
- assert result[-1]['name']=='Below' and result[-1]['pdl_result']['unfit']
+ row=db.get(PDLRule,saved_id)
+ assert row.role_code=='A' and row.section=='requirements' and row.title==NL_RULE['title']
+ assert row.condition['op']=='natural_language' and row.condition['need']==NL_RULE['need'] and row.condition['instruction']==NL_RULE['instruction']
+ assert saved_id in [r.id for r in conversation.active(db,'A')]   # effective for its PDL only
+ assert saved_id not in [r.id for r in conversation.active(db,'B')]
 assert client.post('/requisiti-priorita/'+str(saved_id)+'/attivazione',data={'csrf_token':'test-csrf'}).status_code==302
-with Factory() as db:assert db.get(PDLRule,saved_id).is_active is False
+with Factory() as db:assert db.get(PDLRule,saved_id).is_active is False and saved_id not in [r.id for r in conversation.active(db,'A')]
 rules.rule_ai.generate=original_generate
 engine.dispose()
-print('PASS: real HTTP proposal validation, signed save, idempotency, owner-only writes, tamper rejection, persisted evaluation and disable')
+print('PASS: real HTTP proposal validation, signed save, idempotency, owner-only writes, tamper rejection, natural-language rule persisted for its PDL only, disable')

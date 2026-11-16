@@ -104,6 +104,10 @@ try:
                                                  password="synthetic-password-1", is_admin=admin)
                 account_svc.set_domain_access(s, account_id=acc.id, domain_code=domain, enabled=True, role_code=role)
                 accounts[username] = (acc.id, acc.session_version)
+            # New Jobs are opened only from an active Role defined in Configurations (approved flow).
+            from workspace.role_catalog import JobRole
+            for _code, _name in [("SERVER","Server"),("FOOD_RUNNER","Food Runner"),("HOST","Host"),("FOH_SUPERVISOR","FOH Supervisor")]:
+                s.add(JobRole(code=_code, name=_name, name_key=_name.casefold(), active=True, version=1))
             s.commit()
 
         def internal(username: str | None):
@@ -124,7 +128,7 @@ try:
         home = owner.get("/selection/")
         html = text(home)
         check("1. an enabled account opens Selection on the Jobs list",
-              home.status_code == 200 and '<html lang="en">' in html and "<h1>Jobs</h1>" in html)
+              home.status_code == 200 and '<html lang="en">' in html and "<h1>Job Position</h1>" in html)
         check("2. RF-One look: shell header, stylesheet, clickable path RF-One > Selection, loading indicator",
               'class="site-header"' in html and "css/rf-one.css" in html and "js/rf-one-busy.js" in html
               and 'href="https://rfone.example.test/">RF-One</a>' in html and '<span aria-current="page">Selection</span>' in html)
@@ -140,12 +144,16 @@ try:
             "description": "We need a server."}, follow_redirects=True)
         # A Role without a CV Selection SP profile: Applications keeps the existing engines' proposal board.
         pid = int(re.search(r"/selection/posizioni/(\d+)/job", r.request.path).group(1))
-        check('position management: a new Job is a Draft in the Jobs list, with Complete & Publish',
-            re.search(rf'href="/selection/posizioni/{pid}/job" data-job-modal="[^"]*">Complete &amp; Publish</a>', text(owner.get('/selection/'))))
+        def job_row(client):   # the Job's row in the Job Position list (A7: current list layout)
+            listing = text(client.get('/selection/'))
+            return re.sub(r'<[^>]+>', ' ', listing.split(f'id="upload-{pid}"')[0].rsplit('<tr', 1)[-1]), listing
+        row, listing = job_row(owner)
+        check('position management: a new Job is a Draft in the Job Position list, with Edit to complete it',
+            ' Draft ' in row and re.search(rf'href="/selection/posizioni/{pid}/job" data-job-modal="[^"]*">Edit</a>', listing))
         config = text(owner.get(f'/selection/posizioni/{pid}?tab=configuration', follow_redirects=True))
-        check('standard RF-One page: logo, breadcrumb, navigation; no Configuration tab',
+        check('standard RF-One page: logo, breadcrumb, navigation with the Configurations tab',
             'shared-brand/logos/rf-one.png' in html and 'aria-label="Selection"' in html and
-            'configuration-link' not in html and 'Configuration' not in html and 'AI for this Job' in config)
+            '>Configurations</a>' in html and 'configuration-link' not in html and 'AI for this Job' in config)
         check('position management: the Job settings (AI features) live in the Job form',
             'AI for this Job' not in html and 'name="feat_cv_evaluation"' in config)
         owner.post(f"/selection/posizioni/{pid}/requisiti/aggiungi", data={
@@ -156,11 +164,13 @@ try:
             "questions": "Are you available to work weekends?\nWhen could you start?"})
         r = owner.post(f"/selection/posizioni/{pid}/approva", data={"csrf_token": t}, follow_redirects=True)
         page = text(r)
-        check("3. Job created and published: the application page is open",
-              "Job active" in page and "/selection/jobs/" in page)
-        check("3. the five steps are tabs at the same level",
-              re.findall(r'>(Selection|Applications|Evaluation|Interviews|Decisions)</a>', page.split('aria-label="Selection"', 1)[1])
-              == ["Selection", "Applications", "Evaluation", "Interviews", "Decisions"] and 'nav-tabs' in page)
+        with selection_app.SessionFactory() as s:
+            published_token = s.get(ws.Position, pid).public_token
+        check("3. Job created and published: the application page is open (link in Configurations)",
+              "Job active" in page and f"/selection/jobs/{published_token}" in text(owner.get('/selection/configurazioni')))
+        check("3. the Selection steps are tabs at the same level",
+              re.findall(r'>(Job Position|Applications|Interviews|Decisions|Requirements &amp; Priorities|Configurations)</a>', page.split('aria-label="Selection"', 1)[1])[:6]
+              == ["Job Position", "Applications", "Interviews", "Decisions", "Requirements &amp; Priorities", "Configurations"] and 'nav-tabs' in page)
         with selection_app.SessionFactory() as s:
             public_token = s.get(ws.Position, pid).public_token
         job_url = f"/selection/jobs/{public_token}"
@@ -171,19 +181,19 @@ try:
             'No results' in text(owner.get('/selection/?q=missing-synthetic-title')))
         r = owner.post(f'/selection/posizioni/{pid}/stato', data={'csrf_token': t, 'action': 'close',
             'back': '/selection/?stato=OPEN'})
-        check('position management: close returns to the list, where the Job shows View history',
-            r.location == '/selection/?stato=OPEN' and
-            f'href="/selection/posizioni/{pid}?tab=decisioni">View history</a>' in text(owner.get('/selection/')))
+        check('position management: close returns to the list, where the Job shows Closed',
+            r.location == '/selection/?stato=OPEN' and ' Closed ' in job_row(owner)[0])
         owner.post(f'/selection/posizioni/{pid}/stato', data={'csrf_token': t, 'action': 'reopen', 'back': '/selection/'})
-        check('position management: reopen restores the existing approved application page',
-            f'href="/selection/posizioni/{pid}?tab=candidature">Process</a>' in text(owner.get('/selection/')))
+        row, listing = job_row(owner)
+        check('position management: reopen restores the existing approved Job (Active, selectable)',
+            ' Active ' in row and f'href="/selection/posizioni/{pid}?tab=candidature">Select and set the Job Position</a>' in listing)
         check('position management: unknown state action is refused',
             owner.post(f'/selection/posizioni/{pid}/stato', data={'csrf_token': t, 'action': 'unknown'}).status_code == 400)
 
         # --- Roles, enforced server-side --------------------------------------
         mgr2 = internal("mgr2")
         check("roles: a manager does not see a position assigned to someone else",
-              mgr2.get(f"/selection/posizioni/{pid}").status_code == 404
+              mgr2.get(f"/selection/posizioni/{pid}").status_code == 403   # fix A1: existing Job outside scope
               and f"/selection/posizioni/{pid}" not in text(mgr2.get("/selection/")))
         sup = internal("sup")
         with sup.session_transaction() as sess:  # a supervisor's pages carry no form: give the session a token
@@ -343,12 +353,14 @@ try:
 
         # --- 7. The manager sees the application ------------------------------
         page = text(mgr.get(f"/selection/posizioni/{pid}?tab=candidature"))
-        check("7. the manager sees the application in Candidature", "Jordan Example" in page and "Application complete" in page)
+        # A7: Applications is the PDL-rules board (the former engine proposal board is retired).
+        row = re.search(r'<tr id="candidate-(\d+)"(.*?)</tr>', page, re.S)
+        check("7. the manager sees the application in Candidature", row is not None and "Jordan Example" in row.group(2))
         mt = token(page)
+        pc_id = int(row.group(1))
         page = text(mgr.get(f"/selection/posizioni/{pid}?tab=valutazione"))
-        pc_id = int(re.search(r'name="pc_id" value="(\d+)"', page).group(1))
-        check("8. evaluation proposes the candidate for interview",
-              "Jordan Example" in page.split("Needs clarification <span")[0])
+        check("8. the Evaluation address opens the same Applications board with the candidate",
+              re.search(rf'<tr id="candidate-{pc_id}"', page) is not None and "Jordan Example" in page)
         cpage = text(mgr.get(f"/selection/posizioni/{pid}/candidati/{pc_id}"))
         check("7. the candidate page shows the verified identity and the answers",
               "verified identity" in cpage and "I can start next Monday." in cpage
@@ -358,7 +370,8 @@ try:
               ("Candidate interview", "Communications", "Original résumé", "verified identity", "Application complete"))
               and "Valutazione" not in cpage and "Configurazione" not in cpage)
         check("English process tabs", all(f">{label}</a>" in page for label in
-              ("Selection", "Applications", "Evaluation", "Interviews", "Decisions")) and "Position" not in page.split("<h1>", 1)[1][:40])
+              ("Job Position", "Applications", "Interviews", "Decisions", "Requirements &amp; Priorities", "Configurations"))
+              and "Posizion" not in page.split("<h1>", 1)[1][:40])
 
         # --- 8. Decision -------------------------------------------------------
         r = mgr.post(f"/selection/posizioni/{pid}/decisioni", data={"csrf_token": mt, "pc_id": str(pc_id), "decision": "HIRED"},
@@ -367,9 +380,9 @@ try:
         check("8. decision recorded with history", "1 / 1" in page and "Jordan Example: Send to Training" in page)
 
         config_url = f'/selection/posizioni/{pid}/configuration'
-        check('configuration: legacy global page redirects to position list',
+        check('configuration: legacy global page redirects to Configurations',
               owner.get('/selection/configurazione').status_code == 302
-              and owner.get('/selection/configurazione').location == '/selection/')
+              and owner.get('/selection/configurazione').location == '/selection/configurazioni')
         check('configuration: global profile updates are retired',
               owner.post('/selection/profilo-aziendale', data={'csrf_token': t, 'text': 'must not change'}).status_code == 410)
         config_supervisor = internal('sup')
@@ -513,7 +526,7 @@ try:
               first_config['profile'] in first_page and second_config['profile'] not in first_page
               and second_config['profile'] in second_page and first_config['profile'] not in second_page)
         check('configuration: another manager cannot change the position settings',
-              mgr2.post(f'/selection/posizioni/{pid}/configuration', data={'csrf_token': token(text(mgr2.get('/selection/'))), 'profile': 'not allowed'}).status_code == 404)
+              mgr2.post(f'/selection/posizioni/{pid}/configuration', data={'csrf_token': token(text(mgr2.get('/selection/'))), 'profile': 'not allowed'}).status_code == 403)   # fix A1
         check('configuration: public candidates cannot change settings',
               cand.post(f'/selection/posizioni/{pid}/configuration', data={'csrf_token': token(text(cand.get(job_url))), 'profile': 'not allowed'}).status_code in (302, 400))
 

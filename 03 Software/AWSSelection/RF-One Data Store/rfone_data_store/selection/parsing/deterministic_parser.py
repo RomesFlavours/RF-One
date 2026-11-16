@@ -98,15 +98,40 @@ def _find_sections(lines: list[str]) -> list[tuple[str, int, int]]:
 # ---------------------------------------------------------------------------
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE_RE = re.compile(r"(\+?\d[\d\-.\s()]{7,}\d)")
+# A phone number is recognised only in an explicit shape (fix A2, 2026-11-15).
+# The former generic pattern had to start with a digit, so it dropped the
+# opening "(" of "(407) 555-0101", glued a preceding ZIP code to the number and
+# read year ranges such as "2019 - 2021" as phones.
+# - North American: optional +1, area code bare or in parentheses, 3 + 4 digits.
+# - International: a leading "+", then 8-15 digits overall.
+# A match never starts or ends inside a longer run of digits, so a ZIP code or
+# a year next to the number is never absorbed.
+_PHONE_SEP = r"(?:[ \t]?[.\-]?[ \t]?)"   # never across lines
+_PHONE_NANP_RE = re.compile(
+    rf"(?<![\d+])(?:\+?1{_PHONE_SEP})?(?:\(\d{{3}}\)|\d{{3}}){_PHONE_SEP}\d{{3}}{_PHONE_SEP}\d{{4}}(?!\d)"
+)
+_PHONE_INTL_RE = re.compile(r"(?<![\w+])\+\d{1,3}(?:[ \t.\-]?\(?\d{1,4}\)?){2,6}(?!\d)")
 _LINKEDIN_RE = re.compile(r"(https?://)?(www\.)?linkedin\.com/\S+", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 _LOCATION_RE = re.compile(r"\b[A-Z][A-Za-z.'\- ]{1,30},\s*[A-Z]{2}\b")
 
 
+def find_phone(text: str) -> str | None:
+    """The first phone number written in `text`, exactly as written, or None."""
+    best = None
+    for pattern in (_PHONE_NANP_RE, _PHONE_INTL_RE):
+        for match in pattern.finditer(text or ""):
+            if pattern is _PHONE_INTL_RE and not 8 <= len(re.sub(r"\D", "", match.group(0))) <= 15:
+                continue
+            if best is None or match.start() < best.start():
+                best = match
+            break
+    return best.group(0).strip() if best else None
+
+
 def _extract_contact(full_text: str, lines: list[str]) -> dict:
     email_match = _EMAIL_RE.search(full_text)
-    phone_match = _PHONE_RE.search(full_text)
+    phone = find_phone(full_text)
     linkedin_match = _LINKEDIN_RE.search(full_text)
 
     other_url = None
@@ -122,7 +147,7 @@ def _extract_contact(full_text: str, lines: list[str]) -> dict:
             continue
         words = candidate.split()
         if (
-            "@" not in candidate and not _PHONE_RE.search(candidate)
+            "@" not in candidate and find_phone(candidate) is None
             and 1 <= len(words) <= 5 and not _normalize_header(candidate) in _HEADER_LOOKUP
             and not any(ch.isdigit() for ch in candidate)
         ):
@@ -138,7 +163,7 @@ def _extract_contact(full_text: str, lines: list[str]) -> dict:
 
     return {
         "email": email_match.group(0) if email_match else None,
-        "phone": phone_match.group(0).strip() if phone_match else None,
+        "phone": phone,
         "linkedin_url": linkedin_match.group(0) if linkedin_match else None,
         "other_profile_url": other_url,
         "full_name": full_name,

@@ -222,8 +222,10 @@ def _resume_rows(db, position):
 def sp_upload(db, actor, position_id):
     # Uploading or editing a row must not silently select that PDL.
     position = db.get(ps.Position, position_id)
-    if position is None or not actor.can_view(position):
+    if position is None:
         abort(404)
+    if not actor.can_view(position):   # an existing Job outside the person's scope (fix A1)
+        abort(403)
     if not actor.can_edit(position):
         abort(403)
     modal = request.values.get("modal") == "1"
@@ -264,8 +266,10 @@ def sp_upload(db, actor, position_id):
 def resume_extracted_data(db, actor, position_id, pc_id):
     # Read persisted facts only. Never select a Job, rerun extraction or evaluate.
     position = db.get(ps.Position, position_id)
-    if position is None or not actor.can_view(position):
+    if position is None:
         abort(404)
+    if not actor.can_view(position):   # an existing Job outside the person's scope (fix A1)
+        abort(403)
     pc = _pc(db, position, pc_id)
     candidate = persistence.get_candidate(db, pc.candidate_id)
     if candidate is None:

@@ -185,7 +185,7 @@ def main() -> int:
                   "and outcome",
                   all(t in page for t in ("Direct experience", "Propedeutic experience", "Stability", "Work history",
                                           "Declared coordination responsibilities", "Missing or uncertain information",
-                                          "Questions to explore", "Stage &middot; outcome")))
+                                          "Questions to explore", "Stage · outcome")))   # rendered as the character, not the entity
             check("3. unknown stays 'to be clarified' and absence stays 'not documented' in the comparison",
                   "to be clarified" in page and "Not documented in the CV." in page)
             check("3. no score, ranking or recommendation is introduced",
@@ -225,7 +225,7 @@ def main() -> int:
             check("5. every column links to its application, its candidate page and the original CV",
                   all(f'href="/applications/{ids[n]}"' in page for n in ("alex", "alex2", "bea", "cal"))
                   and page.count("Open Original CV") == 4 and page.count("Candidate page") == 4)
-            check("5. declared evidence is quoted as written", "&ldquo;Coordinated a team of 6 servers per shift&rdquo;" in page)
+            check("5. declared evidence is quoted as written", "“Coordinated a team of 6 servers per shift”" in page)   # quoted as written
             cv_link = re.search(r'href="(/candidate/\d+/original-cv)"', page).group(1)
             check("5. the original CV opens", client.get(cv_link).status_code == 200)
             check("5. two columns for the same person are marked", "Same person as column 1" in page)
