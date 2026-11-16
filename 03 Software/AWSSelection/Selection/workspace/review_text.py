@@ -11,12 +11,14 @@ def available():
     return bool(os.environ.get('RFONE_SMS_ORIGINATION_IDENTITY', '').strip())
 
 
-def settings():
+def settings(local=True):
     sender = os.environ.get('RFONE_SMS_ORIGINATION_IDENTITY', '').strip()
     if not sender:
         raise ValueError('Il mittente SMS AWS non è configurato. Configura il mittente registrato prima di inviare Text.')
+    # On AWS the service role sends; a named AWS profile exists only on the operator's computer.
+    profile = (os.environ.get('RFONE_SMS_AWS_PROFILE') or os.environ.get('AWS_PROFILE') or 'rfone-dev-login') if local else None
     return {'origination_identity': sender, 'region_name': os.environ.get('AWS_REGION') or 'us-east-1',
-        'profile_name': os.environ.get('RFONE_SMS_AWS_PROFILE') or os.environ.get('AWS_PROFILE') or 'rfone-dev-login'}
+        'profile_name': profile}
 
 
 def recipient(phone):
@@ -29,8 +31,13 @@ def recipient(phone):
     return number
 
 
-def body(questions):
-    text = 'RF-One · Domande sulla candidatura\n\n' + '\n\n'.join(f'{n}. {q}' for n, q in enumerate(questions, 1))
+def body(questions, english=False):
+    listed = '\n\n'.join(f'{n}. {q}' for n, q in enumerate(questions, 1))
+    if english:
+        text = ("Rome's Flavours: questions about your application\n\n" + listed +
+                '\n\nPlease answer by email to rfone@romesflavours.com. Reply STOP to opt out.')
+    else:
+        text = 'RF-One · Domande sulla candidatura\n\n' + listed
     if len(text) > 1600:
         raise ValueError('Le domande superano i 1600 caratteri consentiti per Text. Riduci il testo oppure scegli Email.')
     return text

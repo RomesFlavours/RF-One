@@ -122,10 +122,32 @@ def view(db, position, pc, actor):
         'version': inc.digest({'anchor': anchor, 'saved': saved})}
 
 
+def local_operator():
+    return bool(current_app.config.get('RFONE_LOCAL_OPERATOR')) and request.remote_addr in ('127.0.0.1', '::1')
+
+
+def candidate_email(questions):
+    """What the candidate receives: in English from Rome's Flavours on AWS, as before locally."""
+    listed = '\n\n'.join(f'{n}. {q}' for n, q in enumerate(questions, 1))
+    if local_operator():
+        return ('Chiarimenti sulla candidatura',
+                'Buongiorno,\n\nper completare la valutazione della tua candidatura, ti chiediamo:\n\n' + listed + '\n\nGrazie.')
+    return ("Rome's Flavours: questions about your application",
+            "Hello,\n\nTo finish reviewing your application, we'd like to ask you:\n\n" + listed +
+            "\n\nJust reply to this email with your answers.\n\nThank you,\nRome's Flavours")
+
+
 def smtp_settings():
+    """Local: the operator's own SMTP set-up. On AWS: the company mailbox in the RFONE_SMTP_* settings."""
     from rfone_data_store.technical import smtp_email
-    if not current_app.config.get('RFONE_LOCAL_OPERATOR') or request.remote_addr not in ('127.0.0.1', '::1'):
-        raise ValueError('L’invio diretto è disponibile soltanto nell’ambiente locale.')
+    if not local_operator():
+        try:
+            settings = smtp_email.settings_from_environment()
+        except Exception:
+            settings = None
+        if settings is None:
+            raise ValueError('Email is not set up for Selection yet. Ask the RF-One administrator.')
+        return settings
     from smtp_local_config import apply_to_environment
     try:
         apply_to_environment()
@@ -235,11 +257,11 @@ def candidate_review(db, actor, position_id, pc_id):
             if channel == 'EMAIL':
                 settings = smtp_settings()
             else:
-                if not current_app.config.get('RFONE_LOCAL_OPERATOR') or request.remote_addr not in ('127.0.0.1', '::1'):
-                    raise ValueError('Questo invio Text è disponibile soltanto nell’ambiente locale.')
+                if not local_operator() and not review_text.available():
+                    raise ValueError('Text messages are not switched on yet. Send the questions by Email.')
                 text_recipient = review_text.recipient(current_view['phone'])
-                text_body = review_text.body(questions)
-                settings = review_text.settings()
+                text_body = review_text.body(questions, english=not local_operator())
+                settings = review_text.settings(local=local_operator())
         raw_context = position.organization_context_json
         context = position_settings.context(position)
         previous = context.setdefault('candidate_reviews', {}).get(str(pc.id), {})
@@ -257,11 +279,10 @@ def candidate_review(db, actor, position_id, pc_id):
             if not current_view['email']:
                 raise ValueError('Il candidato non ha un indirizzo email valido.')
             source = 'review:' + str(pc.id) + ':' + inc.digest({'anchor': anchor, 'channel': channel, 'recipient': current_view['email'], 'questions': questions})
-            body = 'Buongiorno,\n\nper completare la valutazione della tua candidatura, ti chiediamo:\n\n' + \
-                '\n\n'.join(f'{n}. {q}' for n, q in enumerate(questions, 1)) + '\n\nGrazie.'
+            subject, body = candidate_email(questions)
             if len(body) > 16000:
                 raise ValueError('Le domande selezionate superano il limite di 16000 caratteri. Riduci il testo prima dell’invio.')
-            row = mail_delivery.enqueue(db, pc=pc, source_key=source, subject='Chiarimenti sulla candidatura', body=body)
+            row = mail_delivery.enqueue(db, pc=pc, source_key=source, subject=subject, body=body)
             saved['outbox_id'] = row.id
         elif action == 'send' and channel == 'TEXT':
             text_key = inc.digest({'anchor': anchor, 'channel': 'TEXT', 'recipient': text_recipient, 'body': text_body})
