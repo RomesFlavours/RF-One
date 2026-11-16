@@ -981,6 +981,10 @@ def _approval_problems(db, position, requirements) -> list[str]:
     problems = ["Cannot publish yet; missing: " + "; ".join(missing) + "."] if missing else []
     if "[" in position.job_ad_en and "]" in position.job_ad_en:
         problems.append("The job ad still contains placeholders in square brackets. Complete or remove them.")
+    from . import job_ad
+    ad_problem = job_ad.problem(position.job_ad_en) if position.job_ad_en.strip() else None
+    if ad_problem:
+        problems.append(ad_problem)
     return problems
 
 
@@ -1002,8 +1006,10 @@ def _publish_job_ad(db, actor, position, edit_again, finished):
     if position.approved_snapshot_id is None:
         flash("Publish the Job first with Confirm & Publish.")
         return edit_again
-    if not position.job_ad_en:
-        flash("Write the job ad first.")
+    from . import job_ad
+    ad_problem = job_ad.problem(position.job_ad_en)
+    if ad_problem:
+        flash(ad_problem)
         return edit_again
     if position.job_ad_en == (position.approved_job_ad_en or ""):
         flash("This job ad is already published.")
