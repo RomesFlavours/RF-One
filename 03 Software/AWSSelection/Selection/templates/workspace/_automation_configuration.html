@@ -2,13 +2,13 @@
 <p>Ogni azione della combo richiama una procedura.</p>
 {% if actor.is_owner %}<button type="button" data-new-automation="action">Nuova azione</button>{% endif %}
 <table><thead><tr><th>Azione</th><th>Procedura</th><th>Versione</th><th>Stato</th><th></th></tr></thead><tbody>
-{% for item in automation_actions %}<tr id="automation-{{ item.code }}"><td>{{ item.name }}</td><td>{% for proc in automation_procedures if proc.code==item.procedure_code %}{{ proc.name }}{% endfor %}</td><td>{{ item.version }}</td><td>{{ 'Attiva' if item.active else 'Disattivata' }}</td><td>{% if actor.is_owner %}<button type="button" data-edit-automation="{{ item|tojson|forceescape }}">Modifica</button>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Nessuna azione configurata.</td></tr>{% endfor %}
+{% for item in automation_actions %}<tr id="automation-{{ item.code }}"><td>{{ item.name if selection_local_italian else item.name|ui }}</td><td>{% for proc in automation_procedures if proc.code==item.procedure_code %}{{ proc.name if selection_local_italian else proc.name|ui }}{% endfor %}</td><td>{{ item.version }}</td><td>{{ 'Attiva' if item.active else 'Disattivata' }}</td><td>{% if actor.is_owner %}<button type="button" data-edit-automation="{{ item|tojson|forceescape }}">Modifica</button>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Nessuna azione configurata.</td></tr>{% endfor %}
 </tbody></table></section>
 <section class="card" id="automatic-procedures-configuration"><h2>Procedure automatiche</h2>
 <p>Descrivi con l’AI i passaggi che RF1 deve eseguire; controlla la proposta e salvala. Il salvataggio non esegue la procedura.</p>
 {% if actor.is_owner %}<button type="button" data-new-automation="procedure">Nuova procedura</button>{% endif %}
 <table><thead><tr><th>Procedura</th><th>Descrizione</th><th>Versione</th><th>Stato</th><th></th></tr></thead><tbody>
-{% for item in automation_procedures %}<tr id="automation-{{ item.code }}"><td>{{ item.name }}</td><td>{{ item.description }}</td><td>{{ item.version }}</td><td>{{ 'Attiva' if item.active else 'Disattivata' }}</td><td>{% if actor.is_owner %}<button type="button" data-edit-automation="{{ item|tojson|forceescape }}">Modifica</button>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Nessuna procedura configurata.</td></tr>{% endfor %}
+{% for item in automation_procedures %}<tr id="automation-{{ item.code }}"><td>{{ item.name if selection_local_italian else item.name|ui }}</td><td>{{ item.description if selection_local_italian else item.description|ui }}</td><td>{{ item.version }}</td><td>{{ 'Attiva' if item.active else 'Disattivata' }}</td><td>{% if actor.is_owner %}<button type="button" data-edit-automation="{{ item|tojson|forceescape }}">Modifica</button>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Nessuna procedura configurata.</td></tr>{% endfor %}
 </tbody></table></section>
 {% if actor.is_owner %}
 <dialog id="automation-editor" class="automation-dialog" aria-labelledby="automation-title">
@@ -19,7 +19,7 @@
 <label for="automation-name">Nome</label><input id="automation-name" required maxlength="150">
 <label for="automation-description">Descrizione / istruzioni</label><textarea id="automation-description" maxlength="6000"></textarea>
 <label><input type="checkbox" id="automation-active" checked> Attiva</label>
-<div id="automation-procedure-choice"><label for="automation-procedure">Procedura associata</label><select id="automation-procedure"><option value="">Seleziona una procedura</option>{% for proc in automation_procedures %}<option value="{{ proc.code }}">{{ proc.name }}{{ ' (disattivata)' if not proc.active else '' }}</option>{% endfor %}</select></div>
+<div id="automation-procedure-choice"><label for="automation-procedure">Procedura associata</label><select id="automation-procedure"><option value="">Seleziona una procedura</option>{% for proc in automation_procedures %}<option value="{{ proc.code }}">{{ proc.name if selection_local_italian else proc.name|ui }}{{ ' (disattivata)' if not proc.active else '' }}</option>{% endfor %}</select></div>
 <div id="automation-ai"><h3>Definisci la procedura con l’AI</h3><div id="automation-chat" role="log" aria-live="polite"></div>
 <label for="automation-message">Spiega cosa deve fare RF1</label><textarea id="automation-message" maxlength="6000" placeholder="Es. Prepara e invia al candidato un’email in inglese per chiarire i dati mancanti nelle regole della PDL."></textarea>
 <button type="button" id="automation-propose">Invia all’AI</button><h3>Passaggi proposti</h3><ol id="automation-steps"></ol></div>

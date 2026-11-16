@@ -17,8 +17,8 @@
 
 </td>
 <td><a class="btn btn-small" href="{{ url_for('positions.candidate_original',position_id=position.id,pc_id=row.pc.id) }}" target="_blank" rel="noopener" data-original-pdf data-name="{{ row.name }}">Resumee</a></td>
-<td>{% if can_edit %}<select name="action" form="action-{{ row.pc.id }}" aria-label="Azione per {{ row.name }}" data-candidate-action data-pc="{{ row.pc.id }}" data-states="{{ row.action_states|tojson|forceescape }}" data-completed="{{ row.completed.keys()|list|tojson|forceescape }}">
-<option value="">Seleziona un’azione</option>{% for code,label in actions.items() %}<option value="{{ code }}" {% if row.selected == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+<td>{% if can_edit %}<select name="action" form="action-{{ row.pc.id }}" aria-label="{{ 'Azione per' }} {{ row.name }}" data-candidate-action data-pc="{{ row.pc.id }}" data-states="{{ row.action_states|tojson|forceescape }}" data-completed="{{ row.completed.keys()|list|tojson|forceescape }}">
+<option value="">Seleziona un’azione</option>{% for code,label in actions.items() %}<option value="{{ code }}" {% if row.selected == code %}selected{% endif %}>{{ label if selection_local_italian else label|ui }}</option>{% endfor %}
 </select>{% else %}<span class="muted">Sola lettura</span>{% endif %}</td>
 <td>{% if can_edit %}<form id="action-{{ row.pc.id }}" method="post" action="{{ url_for('positions.execute_candidate_action',position_id=position.id,pc_id=row.pc.id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

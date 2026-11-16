@@ -32,6 +32,7 @@ from .routes import _cfg, _pc, _position, _restaurant_id, access_required, bp, e
 from .sp import profiles as spp
 from .sp import ranking as sp_ranking
 from .sp import rules as sp_rules
+from local_i18n import ui
 
 SOURCE = sp_queue.RESULT
 # The CV list's last change (CVs just uploaded or the CV just deleted), handed once to the page, which keeps
@@ -211,7 +212,7 @@ def _resume_rows(db, position):
     for pc in pcs:
         candidate = persistence.get_candidate(db, pc.candidate_id)
         raw = db.get(m.RawResume, candidate.raw_resume_id) if candidate and candidate.raw_resume_id else None
-        rows.append({"pc":pc, "name":(candidate.full_name if candidate else None) or pc.declared_name or "Nome non estratto",
+        rows.append({"pc":pc, "name":(candidate.full_name if candidate else None) or pc.declared_name or ui("Nome non estratto"),
             "filename":raw.original_filename if raw else (candidate.source_file if candidate else ""),
             "original_available": bool(raw and _cfg.documents.exists(raw.storage_path))})
     return rows

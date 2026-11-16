@@ -47,8 +47,10 @@ def candidate_action_history(db,actor,position_id,pc_id):
     service.reconcile(db,[pc.id]);db.commit()
     runs=list(db.scalars(select(ActionRun).where(ActionRun.position_candidate_id==pc.id).order_by(ActionRun.id.desc())))
     if request.args.get('status_only')=='1':
-        return jsonify(runs=[{'action_code':r.action_code,'code':r.status,'status':ui(service.STATUSES[r.status]),'error':r.error} for r in runs])
-    return jsonify(runs=[{'id':r.id,'action':r.action_snapshot,'procedure':r.procedure_snapshot,'status':ui(service.STATUSES[r.status]),
-        'attempts':r.attempts,'steps':r.steps,'error':r.error,
+        return jsonify(runs=[{'action_code':r.action_code,'code':r.status,'status':ui(service.STATUSES[r.status]),'error':ui(r.error)} for r in runs])
+    from local_i18n import italian
+    named=lambda snapshot:dict(snapshot,name=ui(snapshot.get('name'))) if isinstance(snapshot,dict) and not italian() else snapshot   # English display only
+    return jsonify(runs=[{'id':r.id,'action':named(r.action_snapshot),'procedure':named(r.procedure_snapshot),'status':ui(service.STATUSES[r.status]),
+        'attempts':r.attempts,'steps':r.steps,'error':ui(r.error),
         'emails':[{'subject':mail.subject,'body':mail.body,'recipient':mail.recipient,'status':mail.status} for step in r.steps if step.get('outbox_id') for mail in [db.get(EmailOutbox,step['outbox_id'])] if mail],
         'completed_at':r.completed_at.isoformat() if r.completed_at else None} for r in runs])

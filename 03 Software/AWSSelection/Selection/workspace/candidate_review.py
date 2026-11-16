@@ -8,6 +8,7 @@ from rfone_data_store import models as m
 from rfone_data_store.selection import workspace_models as ps
 from . import conversational_rules as conversation, incremental_rules as inc, position_settings, mail_delivery, review_text
 from .routes import bp, access_required, _position, _pc, _cfg
+from local_i18n import ui
 
 PRIORITIES = {'HIGH': 'Alta', 'MEDIUM': 'Media', 'LOW': 'Bassa'}
 MODES = ('OPEN', 'ANSWER', 'IGNORE', 'ASK')
@@ -15,32 +16,32 @@ MODES = ('OPEN', 'ANSWER', 'IGNORE', 'ASK')
 
 def conclusions(result):
     if not result or not result.get('active'):
-        return 'Analisi non disponibile: applica prima le regole ai candidati.'
+        return ui('Analisi non disponibile: applica prima le regole ai candidati.')
     sentences = []
     priority = result.get('qualitative_priority')
     if priority:
-        sentences.append('Priorità ' + priority.lower() + (' impostata dal selezionatore.' if result.get('manual_priority')
-            else ' rispetto alle preferenze della ricerca.'))
+        sentences.append(ui('Priorità ' + priority.lower() + (' impostata dal selezionatore.' if result.get('manual_priority')
+            else ' rispetto alle preferenze della ricerca.')))
     favorable = [d['title'] for d in result.get('details', []) if d.get('ai_outcome') == 'ALTA']
     less_favorable = [d['title'] for d in result.get('details', []) if d.get('ai_outcome') == 'BASSA']
     if favorable:
-        sentences.append('Aspetti favorevoli: ' + '; '.join(favorable) + '.')
+        sentences.append(ui('Aspetti favorevoli: ') + '; '.join(favorable) + '.')
     if less_favorable:
-        sentences.append('Aspetti meno favorevoli: ' + '; '.join(less_favorable) + '.')
+        sentences.append(ui('Aspetti meno favorevoli: ') + '; '.join(less_favorable) + '.')
     blocked = [d['title'] for d in result.get('details', []) if d.get('ai_outcome') == 'NON_IN_LINEA']
     if blocked:
-        sentences.append('Non in linea con i requisiti: ' + '; '.join(blocked) + '.')
+        sentences.append(ui('Non in linea con i requisiti: ') + '; '.join(blocked) + '.')
     elif any(d.get('section') == 'requirements' and d.get('ai_outcome') == 'IN_LINEA' for d in result.get('details', [])):
-        sentences.append('I requisiti valutabili risultano in linea.')
+        sentences.append(ui('I requisiti valutabili risultano in linea.'))
     pending = [d['title'] for d in result.get('details', []) if d.get('outcome') is None
         and d.get('review_resolution') not in ('ANSWER', 'IGNORE')]
     if pending:
-        sentences.append('Prima di completare la valutazione occorre chiarire: ' + '; '.join(pending) + '.')
+        sentences.append(ui('Prima di completare la valutazione occorre chiarire: ') + '; '.join(pending) + '.')
     elif result.get('reviewed'):
-        sentences.append('I punti da chiarire sono stati gestiti dal selezionatore.')
+        sentences.append(ui('I punti da chiarire sono stati gestiti dal selezionatore.'))
     if result.get('accepted'):
-        sentences.append('Analisi accettata dal selezionatore.')
-    return ' '.join(sentences) or 'Nessuna conclusione supportata dalle regole valutate.'
+        sentences.append(ui('Analisi accettata dal selezionatore.'))
+    return ' '.join(sentences) or ui('Nessuna conclusione supportata dalle regole valutate.')
 
 
 def current(db, position, pc):

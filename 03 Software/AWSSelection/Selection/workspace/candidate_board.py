@@ -34,24 +34,24 @@ def locked_position(db, actor, position_id):
 
 def summary(result):
     if result is None:
-        return "Criteri di selezione non ancora applicati a questo CV." if old_screening.enabled() else "Filtri e regole non ancora applicati a questo CV."
+        return ui("Criteri di selezione non ancora applicati a questo CV." if old_screening.enabled() else "Filtri e regole non ancora applicati a questo CV.")
     if result.get('natural_language'):
         from .candidate_review import conclusions
         return conclusions(result)
     if result.get('old_engine'):
         return result['reason']
     if not result['active']:
-        return "Nessuna regola attiva per questa PDL; ordine precedente mantenuto."
+        return ui("Nessuna regola attiva per questa PDL; ordine precedente mantenuto.")
     details = result['details']
     matched = [d['title'] for d in details if d['outcome'] is True and
                d['section'] == ('requirements' if result['unfit'] else 'priorities')]
     if result['unfit']:
         return "UnFit: " + "; ".join(matched)
     if matched:
-        return f"Priorità +{result['priority']}: " + "; ".join(matched)
+        return f"{ui('Priorità')} +{result['priority']}: " + "; ".join(matched)
     if result['unknown']:
-        return "Priorità non incrementata; informazioni da chiarire nelle regole."
-    return "Nessuna condizione UnFit verificata; nessuna preferenza di priorità corrispondente."
+        return ui("Priorità non incrementata; informazioni da chiarire nelle regole.")
+    return ui("Nessuna condizione UnFit verificata; nessuna preferenza di priorità corrispondente.")
 
 
 def board_rows(db, position):
@@ -83,10 +83,10 @@ def board_rows(db, position):
         latest = db.scalar(select(ps.Decision).where(ps.Decision.position_candidate_id==pc.id).order_by(ps.Decision.id.desc()))
         selected=runs[-1].action_code if runs else ''
         if request.args.get('candidate')==str(pc.id):selected=request.args.get('action',selected)
-        rows.append({'pc':pc,'name':(candidate.full_name if candidate else None) or pc.declared_name or 'Nome non estratto',
+        rows.append({'pc':pc,'name':(candidate.full_name if candidate else None) or pc.declared_name or ui('Nome non estratto'),
             'email':(candidate.email if candidate else None) or pc.declared_email,
             'phone':(candidate.phone if candidate else None) or pc.declared_phone,
-            'result':result,'reason':evaluation_error or ('Lettura AI in corso…' if pending else 'CV o regole aggiornati: premi Applica Filtri e Regole.' if row_stale else summary(result)),'stale':row_stale,
+            'result':result,'reason':ui(evaluation_error) if evaluation_error else (ui('Lettura AI in corso…') if pending else ui('CV o regole aggiornati: premi Applica Filtri e Regole.') if row_stale else summary(result)),'stale':row_stale,
             'unknown':[d['title'] for d in result['details'] if d['outcome'] is None] if result else [],
             'completed':done,'selected':selected,'action_states':states,
             'decision':ps.DECISION_LABELS.get(latest.decision) if latest else None,

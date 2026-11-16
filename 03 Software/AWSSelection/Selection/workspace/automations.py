@@ -85,7 +85,8 @@ Restituisci l'intera sequenza aggiornata, mai patch."""
     return {'reply':result['reply'],'steps':validate_steps(result['steps']) if result.get('steps') is not None else None}
 
 def describe(steps):
-    return [DECISIONS[s['status']] if s['op']=='set_status' else 'Aggiungi nota: '+s['text'] if s['op']=='note' else ('Email sui dati mancanti: ' if s['op']=='email_missing_data' else 'Invia email: ')+s['subject'] for s in steps]
+    from local_i18n import ui   # display text only; stored steps unchanged
+    return [ui(DECISIONS[s['status']]) if s['op']=='set_status' else ui('Aggiungi nota: ')+s['text'] if s['op']=='note' else ui('Email sui dati mancanti: ' if s['op']=='email_missing_data' else 'Invia email: ')+s['subject'] for s in steps]
 
 def initialize(engine):
     if engine.dialect.name!='sqlite' and (engine.url.host,engine.url.port,engine.url.database)!=('127.0.0.1',55436,'rfone_aws_copy'):raise RuntimeError('Solo database locale canonico.')
