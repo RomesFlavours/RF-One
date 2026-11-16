@@ -34,7 +34,7 @@ from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import models as m, student_registry as registry
 from rfone_data_store import rfone_web_session as shared
-from rfone_data_store.training import enrollment as enroll, service
+from rfone_data_store.training import enrollment as enroll, service, courses
 from rfone_data_store.technical import account_email
 import training_integration as integration
 from training_account_routes import public_base
@@ -72,16 +72,35 @@ def read_code(secret, code):
     return data
 
 
-def ensure_visual_menu(db, student_training_id):
-    """Assign Visual Menu to a student who doesn't have it yet. Returns True if assigned now."""
-    pill = db.scalar(select(m.TrainingPill).where(m.TrainingPill.slug == 'visual-menu'))
-    if pill is None:
-        return False
-    have = db.scalar(select(m.TrainingAssignment.id)
+def server_course_pill(db):
+    """The Server Course in Training's catalog: the course whose lesson opens this course."""
+    host = urllib.parse.urlsplit(COURSE_URL).hostname or ''
+    for pill in db.scalars(select(m.TrainingPill).order_by(m.TrainingPill.id)):
+        if pill.slug == 'visual-menu':
+            continue
+        revision = courses.active_revision(db, pill.id)
+        lessons = json.loads(revision.content_json).get('lessons', []) if revision else []
+        for lesson in lessons:
+            url = str(lesson.get('url') or '')
+            if url.startswith('/training/courses/server') or (host and urllib.parse.urlsplit(url).hostname == host):
+                return pill
+    return None
+
+
+def _assigned(db, student_training_id, pill_id):
+    return db.scalar(select(m.TrainingAssignment)
         .join(m.TrainingNeed, m.TrainingNeed.id == m.TrainingAssignment.need_id)
-        .where(m.TrainingNeed.student_account_id == student_training_id, m.TrainingAssignment.pill_id == pill.id)
+        .where(m.TrainingNeed.student_account_id == student_training_id, m.TrainingAssignment.pill_id == pill_id)
         .limit(1))
-    if have:
+
+
+def ensure_visual_menu(db, student_training_id):
+    """Assign Visual Menu and the Server Course (from Training's catalog) to a student who
+    doesn't have them yet, so both are tracked as Training courses. Returns True if anything was assigned."""
+    pills = [p for p in (db.scalar(select(m.TrainingPill).where(m.TrainingPill.slug == 'visual-menu')),
+                         server_course_pill(db)) if p is not None]
+    missing = [p for p in pills if not _assigned(db, student_training_id, p.id)]
+    if not missing:
         return False
     trainer = default_trainer(db)
     if trainer is None:
@@ -92,11 +111,32 @@ def ensure_visual_menu(db, student_training_id):
     if need is None:
         need = service.create_need(db, student_account_id=student_training_id, text=NEED_TEXT, origin=None,
                                    created_by_account_id=by)
-    try:
-        service.assign_pill(db, need_id=need.id, pill_id=pill.id, assigned_by_account_id=by)
-    except ValueError:
-        return False
-    return True
+    done = False
+    for pill in missing:
+        try:
+            service.assign_pill(db, need_id=need.id, pill_id=pill.id, assigned_by_account_id=by)
+            done = True
+        except ValueError:
+            pass
+    return done
+
+
+def mark_opened(db, student_training_id):
+    """Opening the course from Training counts as opening its Training assignment."""
+    pill = server_course_pill(db)
+    a = _assigned(db, student_training_id, pill.id) if pill else None
+    if a is not None and a.first_opened_at is None:
+        from datetime import datetime, timezone
+        a.first_opened_at = datetime.now(timezone.utc)
+        return True
+    return False
+
+
+def own_progress(secret, account):
+    """This person's own Server Course progress, or None if unknown."""
+    from training_hire_confirm import course_status
+    status = course_status(secret, account, [account.id])
+    return (status or {}).get(account.id) if status is not None else None
 
 
 def _course_invite_email(code):
@@ -115,6 +155,25 @@ def install(app, *, SessionFactory, auth):
     def secret():
         return app.secret_key
 
+    @app.context_processor
+    def _server_course_progress():
+        def server_course_progress():
+            """For the student home card: units done, read from the course when the page is shown."""
+            try:
+                with SessionFactory() as db:
+                    account = auth.load_current_account(db)
+                    if account is None:
+                        return None
+                    result = integration.check_training_authorization(db, account)
+                    if result.training_account is None or result.training_account.role != 'student':
+                        return None
+                    if ensure_visual_menu(db, result.training_account.id):
+                        db.commit()
+                    return own_progress(secret(), account) or {}
+            except Exception:
+                return None
+        return dict(server_course_progress=server_course_progress)
+
     @app.get('/training/courses/server')
     def tw_server_course():
         with SessionFactory() as db:
@@ -125,7 +184,9 @@ def install(app, *, SessionFactory, auth):
             if result.training_account is None:
                 return redirect(url_for('tw_login'))
             if result.training_account.role == 'student':
-                if ensure_visual_menu(db, result.training_account.id):
+                changed = ensure_visual_menu(db, result.training_account.id)
+                changed = mark_opened(db, result.training_account.id) or changed
+                if changed:
                     db.commit()
             code = make_code(secret(), dict(a=account.id, e=(account.email or '').lower(),
                                             n=shared.account_display_name(account), t=int(time.time())))

@@ -61,6 +61,11 @@ with F() as db:
     student = account(db, 'hailey', 'hailey@example.invalid', 'student')
     outsider = account(db, 'noaccess', 'none@example.invalid')
     db.add(m.TrainingPill(slug='visual-menu', title='Visual Menu', learning_objectives='Dishes'))
+    sc_pill = m.TrainingPill(slug='server-course', title='The Server Course', learning_objectives='Service')
+    db.add(sc_pill); db.flush()
+    db.add(m.TrainingCourse(pill_id=sc_pill.id, active_version=2))
+    db.add(m.TrainingCourseRevision(pill_id=sc_pill.id, version=2, content_json=json.dumps({'title': 'The Server Course',
+        'lessons': [{'title': 'Open', 'kind': 'link', 'url': 'https://course.example.invalid/t/abc'}]})))
     people.create_identity(db, full_name='Known Person', email='known@example.invalid', normalized_name='known person')
     db.commit()
     ids = dict(trainer=trainer.id, student=student.id, outsider=outsider.id)
@@ -82,8 +87,11 @@ with F() as db:
     assert n
 signed_in(ids['student']).get('/training/courses/server')
 with F() as db:
-    assert len(db.scalars(select(m.TrainingAssignment)).all()) == 1
-checks.append('Visual Menu assigned to the student the first time, once only')
+    rows = db.scalars(select(m.TrainingAssignment)).all()
+    assert sorted(r.pill.slug for r in rows) == ['server-course', 'visual-menu'], [r.pill.slug for r in rows]
+    sc_row = next(r for r in rows if r.pill.slug == 'server-course')
+    assert sc_row.first_opened_at is not None
+checks.append('Visual Menu and the Server Course (from the catalog) assigned the first time, once only; opening counts as opened')
 
 # 2. The course checks the code.
 c = app.test_client()
@@ -139,9 +147,19 @@ with patch.object(sc.urllib.request, 'urlopen', fake_course), \
     checks.append('Email already belonging to someone in RF-One: no automatic merge, the manager invites')
     # The one-minute repeat limit is enroll.issue's own (PostgreSQL-tested by Pino; SQLite dates are naive).
 
-# 4. Student home shows the card.
-home = signed_in(ids['student']).get('/training')
+# 4. Student home shows the card, with the student's own progress read from the course.
+def course_progress(req, timeout=None):
+    assert req.full_url == 'https://course.example.invalid/api/rfone-status'
+    data = sc.read_code(app.secret_key, json.loads(req.data)['code'])
+    assert data['q'] == [ids['student']]
+    return _Resp(json.dumps({'trainees': {str(ids['student']): {'units_complete': 4, 'units_total': 15,
+        'checks_done': 0, 'checks_total': 10, 'complete': False, 'signed': False}}}).encode())
+import training_hire_confirm as hc
+with patch.object(hc.urllib.request, 'urlopen', course_progress):
+    home = signed_in(ids['student']).get('/training')
 body = home.get_data(as_text=True)
+assert '4 of 15 units done' in body, body[:3000]
+checks.append('Student home shows their own Server Course progress')
 assert home.status_code == 200 and 'Open the Server Course' in body and '/training/courses/server' in body, home.status_code
 checks.append('Student home shows the Server Course card')
 
