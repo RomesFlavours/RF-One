@@ -133,7 +133,7 @@
   <h2>Job ad and standard questions</h2>
   <label>English job ad (published on the application page and the website's Careers list)</label>
   {% if not draft %}<p class="small muted" style="margin:.1rem 0 .3rem">To change only this text on the website, use <b>Publish job ad</b>: candidates are not evaluated again.</p>{% endif %}
-  <textarea name="job_ad_en" style="min-height:10rem">{{ position.job_ad_en }}</textarea>
+  <textarea name="job_ad_en" style="min-height:10rem" placeholder="{{ role_default_ad or '' }}">{{ position.job_ad_en }}</textarea>{% if role_default_ad %}<p class="small muted">Left empty, the job ad is the Role's standard ad shown in gray.</p>{% endif %}
   <label>Standard interview questions (one per line, in English, up to 6)</label>
   <textarea name="questions" style="min-height:7rem">{{ position.questions|join('\n') }}</textarea>
   <details><summary class="small">Other standard questions already available in Selection</summary>

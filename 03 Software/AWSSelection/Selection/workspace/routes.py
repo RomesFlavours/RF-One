@@ -57,6 +57,7 @@ from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks, training_invite, pdl_rule_application
 from .channels import CHANNEL_LABELS, CHANNELS
 from .role_descriptions import ROLE_DESCRIPTIONS, default_description, is_default_or_empty
+from . import job_ad
 
 bp = Blueprint("positions", __name__)
 
@@ -546,6 +547,7 @@ def position_new(db, actor):
             created_by_account_id=actor.id, requirement_set_id=requirement_set.id,
             headcount=max(1, request.form.get("headcount", type=int) or 1),
             questions_json=json.dumps(list(DEFAULT_QUESTIONS)),
+            job_ad_en=job_ad.role_default(role_code),
             organization_context_json=json.dumps({k: company[k] for k in ("facts", "missing", "source")}))
         db.add(position)
         db.flush()
@@ -603,7 +605,7 @@ def _job_form_context(db, actor, position) -> dict:
         or position.job_ad_en != (position.approved_job_ad_en or "")
         or position.questions_json != (position.approved_questions_json or "[]")
         or bool(sp and sp.get("editing")))
-    return dict(
+    return dict(role_default_ad=job_ad.role_default(position.role_code),
         actor=actor, position=position, section="selection", sp_role=sp_role, sp=sp, modal=_modal(),
         sp_rules=sp_rules.catalogue(position.role_code) if sp_role else [],
         rules_on=sp_rules.effective(position.role_code, (sp or {}).get("rules_draft") or (sp or {}).get("rules")),
@@ -725,7 +727,7 @@ def job_save(db, actor, position_id):
     if actor.is_owner and form.get("manager_account_id", type=int):
         position.manager_account_id = form.get("manager_account_id", type=int)
     position.headcount = max(1, form.get("headcount", type=int) or 1)
-    position.job_ad_en = (form.get("job_ad_en") or "").strip()
+    position.job_ad_en = job_ad.or_default(form.get("job_ad_en"), position.role_code)
     questions = [q.strip() for q in (form.get("questions") or "").splitlines() if q.strip()]
     position.questions_json = json.dumps(questions[:MAX_STANDARD_QUESTIONS])
     if len(questions) > MAX_STANDARD_QUESTIONS:
@@ -893,7 +895,7 @@ def position_draft_use(db, actor, position_id, draft_id):
 def position_details(db, actor, position_id):
     position = _position(db, actor, position_id, edit=True)
     position.headcount = max(1, request.form.get("headcount", type=int) or 1)
-    position.job_ad_en = (request.form.get("job_ad_en") or "").strip()
+    position.job_ad_en = job_ad.or_default(request.form.get("job_ad_en"), position.role_code)
     questions = [q.strip() for q in (request.form.get("questions") or "").splitlines() if q.strip()]
     position.questions_json = json.dumps(questions[:MAX_STANDARD_QUESTIONS])
     if len(questions) > MAX_STANDARD_QUESTIONS:

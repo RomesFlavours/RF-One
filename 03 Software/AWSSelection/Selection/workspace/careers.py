@@ -198,8 +198,8 @@ OPENINGS_FRAME_ANCESTORS = ("'self' https://www.romesflavours.com https://romesf
 
 
 @bp.app_template_filter("public_ad")
-def _public_ad_filter(text):
-    return job_ad.public(text)
+def _public_ad_filter(position):
+    return job_ad.for_public(position)
 
 
 def _ad_excerpt(text: str, limit: int = 600) -> str:
@@ -233,7 +233,7 @@ def _open_jobs(*, absolute: bool) -> list[dict]:
                                .order_by(ps.Position.location_label, ps.Position.title, ps.Position.id)).all()
         return [{"title": p.title, "location": p.location_label,
                  "role": ROLE_LABEL_EN.get(p.role_code, p.role_code),
-                 "excerpt": _ad_excerpt(job_ad.public(p.approved_job_ad_en)),
+                 "excerpt": _ad_excerpt(job_ad.for_public(p)),
                  "url": (external_url(".job_page", token=p.public_token) if absolute
                          else url_for(".job_page", token=p.public_token))} for p in positions]
 
