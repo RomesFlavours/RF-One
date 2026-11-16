@@ -43,7 +43,7 @@ from rfone_data_store.selection import workspace_models as ps
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 from rfone_data_store.technical import smtp_email, sms_text
 
-from . import ai_adapter, engine, position_settings, sp_queue
+from . import ai_adapter, engine, job_ad, position_settings, sp_queue
 from .routes import (
     CLIENT_NAME, ROLE_LABEL, ROLE_LABEL_EN, _book, _cfg, _conflicts, _raw_resume, _restaurant_id, _local, external_url,
 )
@@ -197,6 +197,11 @@ OPENINGS_FRAME_ANCESTORS = ("'self' https://www.romesflavours.com https://romesf
                             "https://*.editorx.io")
 
 
+@bp.app_template_filter("public_ad")
+def _public_ad_filter(position):
+    return job_ad.for_public(position)
+
+
 def _ad_excerpt(text: str, limit: int = 600) -> str:
     """The job ad for the Careers list. A normal ad (the Role defaults are 300 to 400 characters) shows in
     full; only a much longer one is shortened, to whole sentences up to `limit` characters, so a card
@@ -228,7 +233,7 @@ def _open_jobs(*, absolute: bool) -> list[dict]:
                                .order_by(ps.Position.location_label, ps.Position.title, ps.Position.id)).all()
         return [{"title": p.title, "location": p.location_label,
                  "role": ROLE_LABEL_EN.get(p.role_code, p.role_code),
-                 "excerpt": _ad_excerpt(p.approved_job_ad_en or p.description),
+                 "excerpt": _ad_excerpt(job_ad.for_public(p)),
                  "url": (external_url(".job_page", token=p.public_token) if absolute
                          else url_for(".job_page", token=p.public_token))} for p in positions]
 

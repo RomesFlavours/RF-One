@@ -3,7 +3,7 @@
 {% if open_ %}
 <script type="application/ld+json">
 {{ {"@context": "https://schema.org/", "@type": "JobPosting", "title": position.title,
-    "description": position.approved_job_ad_en or position.title,
+    "description": (position|public_ad) or position.title,
     "datePosted": position.approved_at.strftime('%Y-%m-%d') if position.approved_at else None,
     "hiringOrganization": {"@type": "Organization", "name": client},
     "jobLocation": {"@type": "Place", "address": {"@type": "PostalAddress", "addressLocality": position.location_label}},
@@ -17,7 +17,7 @@
 {% if not open_ %}
   <p>This position is not accepting applications at the moment.</p>
 {% else %}
-  <div class="ad">{{ position.approved_job_ad_en }}</div>
+  {% if position|public_ad %}<div class="ad">{{ position|public_ad }}</div>{% endif %}
   {% if requirements %}<h2>What we are looking for</h2>
   <ul>{% for r in requirements if r.criticality != 'DISQUALIFIER' %}<li>{{ r.name }}{% if r.criticality == 'MUST_HAVE' %} <b>(required)</b>{% endif %}</li>{% endfor %}</ul>{% endif %}
 

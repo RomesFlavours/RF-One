@@ -178,6 +178,27 @@ with tempfile.TemporaryDirectory(prefix='selection_review_') as tmp:
         with patch.object(review_text.sms_text,'send_text',side_effect=TimeoutError):
             assert post(payload(value,'send')).json['delivery']=='UNKNOWN'
         assert post(payload(load(),'send')).json['delivery']=='UNKNOWN' and sms.call_count==1
+    # On AWS (no local operator): email through the company mailbox settings, in English from
+    # Rome's Flavours; Text only once a number is configured, sent by the service role (no profile).
+    app.config.pop('RFONE_LOCAL_OPERATOR', None)
+    with patch.object(smtp_email,'settings_from_environment',return_value=NS(username='rfone@example.test')),patch.object(smtp_email,'send_email') as email:
+        value=load();value['channel']='EMAIL';value['custom_questions']=['AWS EMAIL QUESTION?']
+        r=post(payload(value,'send'));assert r.json['delivery']=='SENT',r.json
+        kw=email.call_args.kwargs
+        assert kw['subject']=="Rome's Flavours: questions about your application",kw['subject']
+        assert 'AWS EMAIL QUESTION?' in kw['text_body'] and 'reply to this email' in kw['text_body'] and 'Buongiorno' not in kw['text_body']
+    with patch.object(smtp_email,'settings_from_environment',return_value=None):
+        value=load();value['channel']='EMAIL';value['custom_questions']=['NO MAILBOX?']
+        assert post(payload(value,'send')).status_code==422
+    with patch.dict(os.environ,{'RFONE_SMS_ORIGINATION_IDENTITY':''}):
+        value=load();value['channel']='TEXT';value['custom_questions']=['NO NUMBER YET?']
+        r=post(payload(value,'send'));assert r.status_code==422 and 'not switched on' in r.json['error'],r.json
+    with patch.dict(os.environ,{'RFONE_SMS_ORIGINATION_IDENTITY':'+18339469552'}),patch.object(review_text.sms_text,'send_text',return_value='m') as sms:
+        value=load();value['channel']='TEXT';value['custom_questions']=['AWS TEXT?']
+        assert post(payload(value,'send')).json['delivery']=='SENT'
+        a=sms.call_args.kwargs
+        assert a['profile_name'] is None and a['body'].startswith("Rome's Flavours") and 'STOP' in a['body'] and 'AWS TEXT?' in a['body']
+    print('PASS: on AWS, questions go by email in English from Rome\'s Flavours; Text only once a number is set, sent by the service role.')
     assert post(payload(load()),headers={'X-Read-Only':'1'}).status_code==403
     assert client.get(url,headers={'X-Read-Only':'1'}).json['can_edit'] is False
     assert client.get(f'/posizioni/{other_id}/candidati/{pcid}/revisione-ai').status_code==404
