@@ -140,6 +140,9 @@ def actor_for(db, account: m.RFOneAccount | None) -> Actor | None:
     row = next((r for r in account_svc.list_domain_access_for_account(db, account.id)
                 if r.domain_code == SELECTION_DOMAIN and r.enabled), None)
     role = ROLE_OWNER if account.is_admin else ((row.role_code or "").strip().upper() if row else "")
+    # The Registry's "Domain administrator" role (code `admin`) manages the whole Domain: Owner here.
+    if role == "ADMIN":
+        role = ROLE_OWNER
     return Actor(account, role if role in ROLE_LABELS else ROLE_MANAGER)
 
 
