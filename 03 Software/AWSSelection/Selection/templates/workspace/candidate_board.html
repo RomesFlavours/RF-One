@@ -25,7 +25,11 @@
 <button type="submit" class="candidate-action-button btn-small" {% if row.selected in row.completed %}hidden{% endif %} {% if not row.selected %}disabled{% endif %}>Esegui azione selezionata</button>
 <div class="candidate-action-status small" aria-live="polite"></div>
 <span class="action-executed" {% if row.selected not in row.completed %}hidden{% endif %}>Eseguita</span>
-</form>{% endif %}<p><a href="{{ url_for('positions.candidate_action_history',position_id=position.id,pc_id=row.pc.id) }}" data-action-history>Storico azioni</a></p></td>
+</form>{% endif %}<p><a href="{{ url_for('positions.candidate_action_history',position_id=position.id,pc_id=row.pc.id) }}" data-action-history>Storico azioni</a></p>
+{% if can_edit and row.deletable %}<form method="post" action="{{ url_for('positions.sp_delete_cv',position_id=position.id,pc_id=row.pc.id) }}" data-cv-delete>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<button type="submit" class="btn-small light" data-msg="{{ 'Eliminare il CV di' }} “{{ row.name }}”? {{ 'Viene rimosso da questa posizione insieme al file e non può essere recuperato.' }}" onclick="return confirm(this.dataset.msg)">Elimina</button>
+</form>{% endif %}</td>
 </tr>{% else %}<tr><td colspan="5">Nessun CV caricato per questa posizione.</td></tr>{% endfor %}
 </tbody></table></div>
 {% include 'workspace/_candidate_review.html' %}

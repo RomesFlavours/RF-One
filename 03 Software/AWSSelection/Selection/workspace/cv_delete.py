@@ -31,7 +31,7 @@ from sqlalchemy import func, inspect, select
 from rfone_data_store import models as m
 from rfone_data_store.selection import workspace_models as ps
 
-from . import sp_queue
+from . import position_settings, sp_queue
 
 log = logging.getLogger(__name__)
 
@@ -116,6 +116,10 @@ def blockers(db, pcs: list[ps.PositionCandidate]) -> dict[int, list[str]]:
             out[pc_id].append("the AI analysis has already started")
         if any(src not in (sp_queue.JOB, sp_queue.RESULT) for src, _, _ in rows):
             out[pc_id].append("evaluation data is recorded")
+    for pc in pcs:   # the Applications page's AI reading (natural-language rules) or the local Old engine
+        reason = _reading_blocker(db, pc)
+        if reason:
+            out[pc.id].append(reason)
     refs = _references(db, PC_TABLE, ids, _existing_tables(db), skip={ps.Proposal.__tablename__})
     for pc_id, tables in refs.items():
         for name in dict.fromkeys(_TABLE_REASONS.get(t, f"later data is recorded ({t})") for t in tables):
@@ -126,6 +130,21 @@ def blockers(db, pcs: list[ps.PositionCandidate]) -> dict[int, list[str]]:
         if count:
             out[pc_id].append("its history already has later events")
     return out
+
+
+def _reading_blocker(db, pc) -> str | None:
+    """A CV already read, or being read, by the Applications page's AI reading or by Selection Old's screening
+    is analyzed: it can no longer be deleted (a CV whose reading only failed is not analyzed)."""
+    position = db.get(ps.Position, pc.position_id)
+    context = position_settings.context(position) if position is not None else {}
+    run, key = context.get("pdl_filter_run") or {}, str(pc.id)
+    if key in (run.get("results") or {}) or key in (run.get("completed_candidates") or []):
+        return "it has already been analyzed"
+    if run.get("state") == "RUNNING" and pc.id in (run.get("candidates") or []) and key not in (run.get("errors") or {}):
+        return "the AI analysis is in progress"
+    if key in ((context.get("old_screening_run") or {}).get("runs") or {}):
+        return "it has already been analyzed"
+    return None
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,17 @@ from .routes import bp,access_required
 
 ALL='__all__'
 
+# Selection Old (local-only engine, RFONE_SELECTION_ENGINE=old) uses its own Criteri di selezione: the
+# natural-language Requirements & Priorities are parked there. Current Selection is unchanged.
+_PAGES={'positions.requirements_priorities','positions.pdl_rules_propose','positions.pdl_rules_save','positions.pdl_rule_toggle'}
+
+@bp.before_request
+def _parked_in_old_mode():
+    from .old_screening import enabled
+    if request.endpoint in _PAGES and enabled():
+        if request.method=='GET':return redirect(url_for('positions.dashboard'))
+        abort(404)
+
 def signer():return URLSafeTimedSerializer(current_app.secret_key,salt='selection-pdl-rules-v2')
 
 def role_for(db,code):

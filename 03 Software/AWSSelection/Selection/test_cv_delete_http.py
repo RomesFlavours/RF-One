@@ -1,13 +1,16 @@
 #!/usr/bin/env python
-"""Applications tab, CV list — successive uploads, NEW of the page session, Delete before the evaluation.
+"""Applications (Candidature) page — Delete of a CV not yet analyzed.
 ALL DATA IS SYNTHETIC. Throwaway SQLite database and document folder (deleted at the end), FAKE AI (no
-network), no email. The session NEW marks are checked in headless Microsoft Edge on the rendered page.
+network), no email.
 
-Covered: successive uploads keep earlier CVs and the duplicate checks; NEW column; Delete at the right end,
-with the file name in the confirmation; deletion of records and file; shared document, shared application and
-shared identity kept; blocked when queued, analyzed or with later data (with the reason); permissions, CSRF,
-another Job's CV; Delete and Analyze at the same moment (functions and HTTP) leave no orphan record, no
-missing file and no analysis of a deleted CV.
+Covered: successive uploads keep earlier CVs; Delete shown in Candidature only for CVs not yet analyzed, with
+the candidate's name in the confirmation; deletion of records and file; shared document, shared application
+and shared identity kept; blocked (no button, and refused by the server with the reason) when read by the
+Applications AI reading, while that reading runs, when screened by the local Selection Old, when queued or
+analyzed by the SP queue, or with later data; back on the row when refused; permissions, CSRF, another Job's
+CV; Delete and Analyze at the same moment (functions and HTTP) leave no orphan record, no missing file and no
+analysis of a deleted CV.  (The NEW marks of the former SP CV list are not part of the Candidature page and
+are no longer checked here.)
 
     python test_cv_delete_http.py
 """
@@ -129,8 +132,21 @@ def exists(model, row_id) -> bool:
 
 
 def rows(page: str) -> list[str]:
-    table = re.search(r'<table[^>]*id="cv-list".*?</table>', page, re.S)
-    return re.findall(r"<tr data-pc=.*?</tr>", table.group(0), re.S) if table else []
+    """The Candidature rows of the page."""
+    table = re.search(r'<table class="candidate-board">.*?</table>', page, re.S)
+    return re.findall(r'<tr id="candidate-\d+".*?</tr>', table.group(0), re.S) if table else []
+
+
+def row_of(page: str, pc_id: int) -> str:
+    return next((r for r in rows(page) if r.startswith(f'<tr id="candidate-{pc_id}"')), "")
+
+
+def board(client, pid) -> str:
+    return text(client.get(f"/selection/posizioni/{pid}?tab=candidature"))
+
+
+CONFIRM = re.compile(r'data-msg="Delete the CV of “[^”]+”\? It is removed from this Job together with its file and '
+                     r'cannot be recovered\." onclick="return confirm\(this\.dataset\.msg\)">Delete</button>')
 
 
 def edge_new_cells(page: str, preset: list[int] | None, pid: int) -> list[str] | None:
@@ -205,46 +221,25 @@ try:
 
         job1 = new_job(owner, t, ids["owner"][0], "Server delete test")   # requirements not confirmed: no analysis
 
-        # 1. Successive uploads, duplicates, NEW of the page session
-        page = text(upload(owner, t, job1, [("cv0.txt", cv(0)), ("cv1.txt", cv(1)), ("cv2.txt", cv(2))]))
-        r1 = rows(page)
-        check("upload 1: 3 CVs listed, each with NEW in its own first column",
-              len(r1) == 3 and all(re.search(r'^<tr data-pc="\d+"><td class="cv-new"[^>]*><span class="badge gB">NEW',
-                                             r) for r in r1), r1[:1])
-        check("row layout: NEW | file name | upload / status | Delete at the right end",
-              all(re.search(r'<td class="cv-new".*?</td>\s*<td>cv\d\.txt</td>.*upload #1.*Waiting for Analyze'
-                            r'.*<td style="text-align:right">.*>Delete</button></form></td></tr>$', r, re.S)
-                  for r in r1))
-        page_first = page
-        r = upload(owner, t, job1, [("cv3.txt", cv(3)), ("cv4.txt", cv(4)), ("cv0-again.txt", cv(0))])
-        body = text(r)
-        r2 = rows(body)
+        # 1. Successive uploads; Delete in Candidature for CVs not yet analyzed
+        upload(owner, t, job1, [("cv0.txt", cv(0)), ("cv1.txt", cv(1)), ("cv2.txt", cv(2))])
+        page_first = board(owner, job1)
+        r1 = rows(page_first)
+        check("upload 1: 3 CVs listed in Candidature, each with Delete (not yet analyzed)",
+              len(r1) == 3 and all("data-cv-delete" in r for r in r1), len(r1))
+        upload(owner, t, job1, [("cv3.txt", cv(3)), ("cv4.txt", cv(4)), ("cv0-again.txt", cv(0))])
         check("upload 2 keeps the earlier CVs: 2 new imported, the identical CV ignored as exact duplicate, 5 listed",
-              "Upload 2: 3 CV(s) received · 2 new imported · 1 exact duplicate(s) ignored" in body and len(r2) == 5,
-              re.findall(r"Upload 2:[^<]+", body))
-        server_new = [re.findall(r"<td>([^<]+)</td>", x)[0] for x in r2 if 'badge gB">NEW' in x]
-        empty_new = [x for x in r2 if re.search(r'<td class="cv-new"[^>]*></td>', x)]
-        check("server render: NEW on the 2 CVs just added; the cell of earlier CVs empty, so names stay aligned",
-              sorted(server_new) == ["cv3.txt", "cv4.txt"] and len(empty_new) == 3, server_new)
-        first_ids = sorted(pcs_of(job1)[n] for n in ("cv0.txt", "cv1.txt", "cv2.txt"))
-        marked = edge_new_cells(body, first_ids, job1)
-        check("Edge, same page session: NEW on all 5 CVs added across the two uploads",
-              marked is not None and sorted(marked) == ["cv0.txt", "cv1.txt", "cv2.txt", "cv3.txt", "cv4.txt"], marked)
-        marked = edge_new_cells(body, None, job1)
-        check("Edge, a new tab (new page session): NEW only where the page itself just added CVs",
-              marked is not None and sorted(marked) == ["cv3.txt", "cv4.txt"], marked)
-        marked = edge_new_cells(text(owner.get(f"/selection/posizioni/{job1}/sp")), first_ids, job1)
-        check("Edge, reload in the same session: the earlier NEW marks stay",
-              marked is not None and sorted(marked) == ["cv0.txt", "cv1.txt", "cv2.txt"], marked)
+              len(pcs_of(job1)) == 5 and len(rows(board(owner, job1))) == 5, sorted(pcs_of(job1)))
 
         # 2. Delete before the evaluation: record and file removed coherently
         names = pcs_of(job1)
-        check("Delete asks a confirmation naming the CV",
-              'data-msg="Delete the CV “cv1.txt”? It is removed from this Job and cannot be recovered."' in page_first
-              and "return confirm(this.dataset.msg)" in page_first)
+        check("Delete asks a confirmation naming the candidate", len(CONFIRM.findall(page_first)) == 3)
         g = graph(names["cv1.txt"])
-        r = delete(owner, t, job1, names["cv1.txt"])
-        body = text(r)
+        r = owner.post(f"/selection/posizioni/{job1}/sp/cv/{names['cv1.txt']}/delete", data={"csrf_token": t})
+        check("after Delete the person is back on the Candidature page",
+              r.status_code == 302 and r.headers["Location"].endswith(f"/selection/posizioni/{job1}?tab=candidature"),
+              r.headers.get("Location"))
+        body = board(owner, job1)
         with selection_app.SessionFactory() as db:
             sp = sp_routes.state(db.get(ws.Position, job1))
             in_uploads = any(names["cv1.txt"] in u["imported"] for u in sp["uploads"])
@@ -252,7 +247,8 @@ try:
             pc_events = db.scalar(select(func.count()).select_from(ws.Event).where(
                 ws.Event.position_candidate_id == names["cv1.txt"]))
         check("deleted: the message names the CV, the row is gone, the other 4 stay",
-              "CV “cv1.txt” deleted." in body and len(rows(body)) == 4 and "cv1.txt</td>" not in body)
+              "CV “cv1.txt” deleted." in body and len(rows(body)) == 4
+              and f'id="candidate-{names["cv1.txt"]}"' not in body)
         check("deleted: Job link, application, résumé snapshot, document record and the identity it created removed",
               not any(exists(mdl, g[k]) for mdl, k in ((ws.PositionCandidate, "pc"), (m.Application, "application"),
                                                        (m.Candidate, "candidate"), (m.RawResume, "raw"),
@@ -260,11 +256,9 @@ try:
         check("deleted: the stored file removed", not os.path.exists(g["path"]), g["path"])
         check("deleted: no reference left in the upload history; its own event removed; the deletion is logged",
               not in_uploads and pc_events == 0 and "CV_DELETED" in events)
-        check("deleted: the page is told to drop it from the session NEW marks",
-              f'data-removed="[{names["cv1.txt"]}]"' in body)
-        r = upload(owner, t, job1, [("cv1.txt", cv(1))])
+        upload(owner, t, job1, [("cv1.txt", cv(1))])
         check("after deletion the same CV can be uploaded again (imported as new, not a duplicate)",
-              "1 new imported · 0 exact duplicate(s)" in text(r), re.findall(r"Upload 3:[^<]+", text(r)))
+              pcs_of(job1).get("cv1.txt") not in (None, names["cv1.txt"]))
 
         # 3. Security: CSRF, permissions, another Job's CV
         target = pcs_of(job1)["cv2.txt"]
@@ -321,12 +315,61 @@ try:
             ws.log_event(db, position_id=job1, position_candidate_id=names["cv0.txt"], kind="NOTE",
                          detail="Synthetic note", actor_id=ids["owner"][0], actor_name="Synthetic Owner")
             db.commit()
-        page = text(owner.get(f"/selection/posizioni/{job1}/sp"))
+        page = board(owner, job1)
+        raw = owner.post(f"/selection/posizioni/{job1}/sp/cv/{names['cv4.txt']}/delete", data={"csrf_token": t})
         r = delete(owner, t, job1, names["cv4.txt"])
-        check("later data: a decision blocks the deletion, with the reason",
+        check("later data: a decision blocks the deletion, with the reason; no Delete on that row",
               exists(ws.PositionCandidate, names["cv4.txt"])
               and "CV “cv4.txt” not deleted: a decision is recorded." in text(r)
-              and 'data-msg="“cv4.txt” cannot be deleted: a decision is recorded."' in page)
+              and row_of(page, names["cv4.txt"]) and "data-cv-delete" not in row_of(page, names["cv4.txt"]))
+        check("refused: back on the same row (anchor)",
+              raw.headers.get("Location", "").endswith(f"?tab=candidature#candidate-{names['cv4.txt']}"),
+              raw.headers.get("Location"))
+
+        # Applications AI reading (Apply Filters and Rules) and the local Selection Old screening
+        from workspace import position_settings
+        upload(owner, t, job1, [("read.txt", cv(90)), ("reading.txt", cv(91)), ("failed.txt", cv(92)),
+                                ("old.txt", cv(93))])
+        names = pcs_of(job1)
+        with selection_app.SessionFactory() as db:
+            pos = db.get(ws.Position, job1)
+            ctx = position_settings.context(pos)
+            ctx["pdl_filter_run"] = {"mode": "natural_language", "state": "RUNNING", "role_code": pos.role_code,
+                                     "candidates": [names[n] for n in ("read.txt", "reading.txt", "failed.txt")],
+                                     "results": {str(names["read.txt"]): {
+                                         "natural_language": True, "active": True, "status": "In linea", "unfit": False,
+                                         "unknown": [], "priority": 0, "qualitative_priority": None, "details": []}},
+                                     "errors": {str(names["failed.txt"]): "synthetic provider error"}}
+            ctx["old_screening_run"] = {"role_code": pos.role_code, "runs": {str(names["old.txt"]): 1}}
+            pos.organization_context_json = json.dumps(ctx)
+            blocked = cv_delete.blockers(db, [db.get(ws.PositionCandidate, names[n]) for n in
+                                              ("read.txt", "reading.txt", "failed.txt", "old.txt")])
+            db.commit()
+        check("AI reading: a CV already read is analyzed, one being read is in progress, a failed reading is not, "
+              "a CV screened by Selection Old is analyzed",
+              blocked[names["read.txt"]] == ["it has already been analyzed"]
+              and blocked[names["reading.txt"]] == ["the AI analysis is in progress"]
+              and blocked[names["failed.txt"]] == [] and blocked[names["old.txt"]] == ["it has already been analyzed"],
+              blocked)
+        with selection_app.SessionFactory() as db:   # the board's own rows (rendering polls the live run)
+            from workspace import candidate_board
+            with app.test_request_context():
+                deletable = {r["pc"].id: r["deletable"] for r in candidate_board.board_rows(db, db.get(ws.Position, job1))}
+            db.rollback()
+        check("Candidature offers Delete only for the CV whose reading failed",
+              not deletable[names["read.txt"]] and not deletable[names["reading.txt"]]
+              and deletable[names["failed.txt"]] and not deletable[names["old.txt"]], deletable)
+        outs = {n: text(delete(owner, t, job1, names[n])) for n in ("read.txt", "old.txt")}
+        check("server refuses the deletion of an analyzed CV even without the button, with the reason",
+              exists(ws.PositionCandidate, names["read.txt"]) and exists(ws.PositionCandidate, names["old.txt"])
+              and "CV “read.txt” not deleted: it has already been analyzed." in outs["read.txt"]
+              and "CV “old.txt” not deleted: it has already been analyzed." in outs["old.txt"])
+        with selection_app.SessionFactory() as db:
+            pos = db.get(ws.Position, job1)
+            ctx = position_settings.context(pos)
+            ctx.pop("pdl_filter_run"); ctx.pop("old_screening_run")
+            pos.organization_context_json = json.dumps(ctx)
+            db.commit()
         delete(owner, t, job1, names["cv0.txt"])
         check("later data: later history events block the deletion", exists(ws.PositionCandidate, names["cv0.txt"]))
 
@@ -338,8 +381,9 @@ try:
               exists(ws.PositionCandidate, names["cv5.txt"]) and "it is queued for the AI analysis" in text(r))
         upload(owner, t, job1, [("cv7.txt", cv(7))])
         r = delete(owner, t, job1, pcs_of(job1)["cv7.txt"])
-        check("a CV uploaded once requirements are confirmed is queued at once, so it is blocked too",
-              "it is queued for the AI analysis" in text(r))
+        # The release upload only stores and extracts (it never queues): a CV uploaded later is not analyzed yet.
+        check("a CV uploaded after the requirements are confirmed is not queued by the upload, so it can be deleted",
+              "CV “cv7.txt” deleted." in text(r))
         sp_queue.kick = real_kick
         sp_queue.kick(force=True)
         for _ in range(300):
@@ -443,7 +487,7 @@ try:
             gv = graph(victim)
             name = re.search(r"Synth\d+ Sample\d+", cv(60 + n * 3 + (n % 3))).group(0)
             c_delete, barrier = client("owner"), threading.Barrier(2)
-            dt = re.search(r'name="csrf_token" value="([^"]+)"', text(c_delete.get(f"/selection/posizioni/{pid}/sp"))).group(1)
+            dt = re.search(r'name="csrf_token" value="([^"]+)"', board(c_delete, pid)).group(1)
             res = {}
 
             def http_delete():

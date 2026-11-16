@@ -4290,5 +4290,9 @@
   "Generale modificata": "General rule overridden",
   "In attesa invio": "Awaiting delivery",
   "Errore: riprova": "Failed: retry",
-  "Esito invio da verificare": "Delivery outcome needs verification"
+  "Esito invio da verificare": "Delivery outcome needs verification",
+  "Elimina, nell’ultima colonna, compare soltanto per un CV caricato a mano e non ancora analizzato: non ancora letto dall’AI con Applica Filtri e Regole (né, in Selection Old locale, dallo screening) e senza decisioni, colloqui, messaggi o storia successiva. Dopo la conferma con il nome del candidato, il CV viene rimosso dalla posizione insieme al file; documenti, candidature o persone usati altrove vengono conservati. Il server ricontrolla permesso e condizioni: se nel frattempo il CV è stato analizzato non viene eliminato e la pagina ne indica il motivo.": "Delete, in the last column, appears only for a CV uploaded by hand and not yet analyzed: not yet read by the AI with Apply Filters and Rules (nor, in the local Selection Old, by its screening) and without decisions, interviews, messages or later history. After you confirm with the candidate's name, the CV is removed from the Job together with its file; documents, applications or persons used elsewhere are kept. The server checks permission and conditions again: if the CV was analyzed in the meantime it is not deleted and the page tells you why.",
+  "In Selection Old locale la scheda Requisiti & Priorità non è disponibile: i criteri della PDL si gestiscono in questa scheda. Selection attuale non cambia.": "In the local Selection Old the Requirements & Priorities tab is not available: the PDL criteria are managed in this tab. Current Selection does not change.",
+  "Eliminare il CV di": "Delete the CV of",
+  "Viene rimosso da questa posizione insieme al file e non può essere recuperato.": "It is removed from this Job together with its file and cannot be recovered."
 }

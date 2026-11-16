@@ -43,7 +43,7 @@
       {% if code == 'selection' or job %}<a href="{{ tab_url(code, job) }}" class="{{ 'active' if active_section == code }}">{{ label|ui }}</a>
       {% else %}<span class="tab-off" title="Choose a Job in Selection first (Process)">{{ label|ui }}</span>{% endif %}
     {% endfor %}
-    <a href="{{ url_for('positions.requirements_priorities') }}" class="{{ 'active' if active_section == 'requirements-priorities' }}">Requisiti &amp; Priorità</a>
+    {% if not old_screening_enabled %}<a href="{{ url_for('positions.requirements_priorities') }}" class="{{ 'active' if active_section == 'requirements-priorities' }}">Requisiti &amp; Priorità</a>{% endif %}
     <a href="{{ url_for('positions.configuration') }}" class="{{ 'active' if active_section == 'configuration' }}">Configurazioni</a>
   </nav>
   {% include '_selection_page_help.html' %}

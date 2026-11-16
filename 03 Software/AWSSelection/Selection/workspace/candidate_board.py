@@ -62,8 +62,11 @@ def board_rows(db, position):
     stale = valid and saved.get('signature') != signature(active_rules(db, position))
     completed = context.get('candidate_actions', {})
     rows = []
-    for pc in db.scalars(select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == position.id)
-                         .order_by(ps.PositionCandidate.added_at,ps.PositionCandidate.id)):
+    pcs = list(db.scalars(select(ps.PositionCandidate).where(ps.PositionCandidate.position_id == position.id)
+                          .order_by(ps.PositionCandidate.added_at,ps.PositionCandidate.id)))
+    from .cv_delete import blockers
+    delete_blocked = blockers(db, pcs)   # Delete only for CVs not yet analyzed; the server checks again
+    for pc in pcs:
         candidate = persistence.get_candidate(db, pc.candidate_id)
         result = results.get(str(pc.id))
         pending=valid and saved.get('state')=='RUNNING' and str(pc.id) not in results and str(pc.id) not in saved.get('errors',{})
@@ -86,7 +89,8 @@ def board_rows(db, position):
             'result':result,'reason':evaluation_error or ('Lettura AI in corso…' if pending else 'CV o regole aggiornati: premi Applica Filtri e Regole.' if row_stale else summary(result)),'stale':row_stale,
             'unknown':[d['title'] for d in result['details'] if d['outcome'] is None] if result else [],
             'completed':done,'selected':selected,'action_states':states,
-            'decision':ps.DECISION_LABELS.get(latest.decision) if latest else None})
+            'decision':ps.DECISION_LABELS.get(latest.decision) if latest else None,
+            'deletable':not delete_blocked[pc.id]})
     return sorted(rows,key=lambda row:(bool(row['result'] and row['result']['unfit']),bool(row['result'] and row['result']['unknown']),
         -(row['result']['priority'] if row['result'] else 0)))
 

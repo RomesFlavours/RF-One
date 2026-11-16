@@ -287,8 +287,9 @@ def resume_extracted_data(db, actor, position_id, pc_id):
 @bp.route("/posizioni/<int:position_id>/sp/cv/<int:pc_id>/delete", methods=["POST"])
 @access_required
 def sp_delete_cv(db, actor, position_id, pc_id):
-    """Delete one CV of the list, only before its evaluation starts (rules and concurrency: `cv_delete`)."""
-    position = _sp_position(db, actor, position_id, edit=True)
+    """Delete one CV from the Applications page, only before it is analyzed (rules and concurrency: `cv_delete`).
+    Server-side checks: the Job exists (404), is in the person's scope (403) and editable by them (403)."""
+    position = _position(db, actor, position_id, edit=True)
     result = cv_delete.delete_cv(db, documents=_cfg.documents, position_id=position.id, pc_id=pc_id,
                                  actor_id=actor.id, actor_name=actor.name, load_state=state, save_state=save_state)
     if result["status"] == "DELETED":
@@ -300,7 +301,8 @@ def sp_delete_cv(db, actor, position_id, pc_id):
     else:
         flash("This CV is no longer in the list.")
         flask_session[CV_LIST_KEY] = {"position": position.id, "removed": [pc_id]}
-    return redirect(url_for(".sp_page", position_id=position.id) + "#cvs")
+    anchor = None if result["status"] != "BLOCKED" else f"candidate-{pc_id}"   # back on the row (UI Rules 5)
+    return redirect(url_for(".position_detail", position_id=position.id, tab="candidature", _anchor=anchor))
 
 
 # ---------------------------------------------------------------------------
