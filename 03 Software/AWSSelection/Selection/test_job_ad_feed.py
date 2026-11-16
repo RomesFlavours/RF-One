@@ -81,3 +81,15 @@ src = (HERE / 'workspace' / 'routes.py').read_text(encoding='utf-8')
 assert 'job_ad.problem(position.job_ad_en)' in src
 checks.append('Publishing an ad and confirming a Job both refuse a placeholder ad')
 print(json.dumps({'passed': len(checks), 'checks': checks}, indent=1))
+
+# The New Job form gets a standard description for Roles with generated codes too.
+from unittest.mock import patch as _patch
+with _patch.object(routes, 'job_role_choices', return_value=[('ROLE_abc', 'Line Cook'), ('ROLE_def', 'Prep Cok'), ('ROLE_zzz', 'Pastry Chef'), ('SERVER', 'Server')]):
+    texts = routes._role_texts(None)
+assert texts['ROLE_abc'].startswith('We are looking for a Line Cook') and texts['ROLE_def'].startswith('We are looking for a Prep Cook')
+assert 'ROLE_zzz' not in texts and texts['SERVER'].startswith('We are looking for a Server')
+src = (HERE / 'workspace' / 'routes.py').read_text(encoding='utf-8')
+assert 'position.description = job_ad.role_default(position.role_code, position.title)' in src
+form = (HERE / 'templates' / 'workspace' / 'job_form.html').read_text(encoding='utf-8')
+assert 'id="job-description"' in form and "'job-description'" in form
+print('PASS: the description fills in for every Role (generated codes too); left empty it keeps the standard text; gray + Tab like the ad.')

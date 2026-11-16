@@ -525,7 +525,7 @@ def position_new(db, actor):
         role_code = request.form.get("role_code", "")
         title = request.form.get("title", "").strip() or ROLE_LABEL.get(role_code, "")
         location = request.form.get("location", "").strip()
-        description = request.form.get("description", "").strip() or default_description(role_code)
+        description = request.form.get("description", "").strip() or default_description(role_code) or job_ad.role_default(role_code, title)
         timezone = request.form.get("timezone", "").strip() or DEFAULT_TIMEZONE
         manager_id = request.form.get("manager_account_id", type=int) if actor.is_owner else actor.id
         try:
@@ -537,7 +537,7 @@ def position_new(db, actor):
             flash("Enter the Role, location, a valid time zone and the manager.")
             return render_template("workspace/position_new.html", actor=actor, roles=job_role_choices(db), managers=managers,
                                    form=request.form, company=company, default_tz=DEFAULT_TIMEZONE,
-                                   full_roles=FULL_ANALYSIS_ROLES, standards=_role_standards(), role_descriptions={code: default_description(code) for code in ROLE_DESCRIPTIONS},
+                                   full_roles=FULL_ANALYSIS_ROLES, standards=_role_standards(), role_descriptions=_role_texts(db),
                                    modal=_modal())
         restaurant_id = _restaurant_id(db)
         requirement_set = req_svc.create_requirement_set(
@@ -570,7 +570,7 @@ def position_new(db, actor):
         flask_session[CURRENT_JOB_KEY] = position.id
         return redirect(url_for(".job_edit", position_id=position.id, **({"modal": "1"} if _modal() else {})))
     return render_template("workspace/position_new.html", actor=actor, roles=job_role_choices(db), managers=managers, form={},
-                           company=company, default_tz=DEFAULT_TIMEZONE, full_roles=FULL_ANALYSIS_ROLES, standards=_role_standards(), role_descriptions={code: default_description(code) for code in ROLE_DESCRIPTIONS},
+                           company=company, default_tz=DEFAULT_TIMEZONE, full_roles=FULL_ANALYSIS_ROLES, standards=_role_standards(), role_descriptions=_role_texts(db),
                                    modal=_modal())
 
 
@@ -590,6 +590,15 @@ def sp_routes():
 # ---------------------------------------------------------------------------
 # Job form (Selection tab): Role, location, requirements, rules, ad, questions
 # ---------------------------------------------------------------------------
+
+def _role_texts(db):
+    """Standard description for every Role in the list, including Roles created in RF-One with a
+    generated code (found by their name), for the New Job form."""
+    texts = {code: default_description(code) for code in ROLE_DESCRIPTIONS}
+    for code, name in job_role_choices(db):
+        texts.setdefault(code, job_ad.role_default(code, name))
+    return {code: text for code, text in texts.items() if text}
+
 
 def _job_form_context(db, actor, position) -> dict:
     sp_mod = sp_routes()
@@ -726,6 +735,9 @@ def job_save(db, actor, position_id):
     position.description = (form.get("description") or "").strip()
     if role_changed and is_default_or_empty(position.description):
         position.description = default_description(position.role_code)
+    if not position.description:
+        # Left empty (the standard text shows in gray): the Job keeps its Role's standard description.
+        position.description = job_ad.role_default(position.role_code, position.title)
     if actor.is_owner and form.get("manager_account_id", type=int):
         position.manager_account_id = form.get("manager_account_id", type=int)
     position.headcount = max(1, form.get("headcount", type=int) or 1)

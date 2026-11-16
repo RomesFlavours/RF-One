@@ -53,7 +53,7 @@
     <div><label>Location time zone</label><input type="text" name="timezone" value="{{ position.timezone }}"></div>
   </div>
   <label>Job description</label>
-  <textarea name="description" style="min-height:6rem">{{ position.description }}</textarea>
+  <textarea name="description" id="job-description" style="min-height:6rem" placeholder="{{ role_default_ad or '' }}">{{ '' if role_default_ad and position.description == role_default_ad else position.description }}</textarea>{% if role_default_ad %}<p class="small muted">The text in gray is the standard description for this Role and is kept as it is. Type to write your own, or press Tab to fill it in and add to it.</p>{% endif %}
 </div>
 
 <div class="card" id="requirements">
@@ -134,7 +134,7 @@
   <label>English job ad (published on the application page and the website's Careers list)</label>
   {% if not draft %}<p class="small muted" style="margin:.1rem 0 .3rem">To change only this text on the website, use <b>Publish job ad</b>: candidates are not evaluated again.</p>{% endif %}
   <textarea name="job_ad_en" id="job-ad-en" style="min-height:10rem" placeholder="{{ role_default_ad or '' }}">{{ '' if role_default_ad and position.job_ad_en == role_default_ad else position.job_ad_en }}</textarea>{% if role_default_ad %}<p class="small muted">The ad in gray is the standard ad for this Role and is published as it is. Type to write your own, or press Tab to fill it in and add to it.</p>
-<script>(function(){var t=document.getElementById('job-ad-en');if(!t)return;t.addEventListener('keydown',function(e){if(e.key==='Tab'&&!e.shiftKey&&!t.value&&t.placeholder){e.preventDefault();t.value=t.placeholder;t.selectionStart=t.selectionEnd=t.value.length;}});})();</script>{% endif %}
+<script>['job-ad-en','job-description'].forEach(function(id){var t=document.getElementById(id);if(!t)return;t.addEventListener('keydown',function(e){if(e.key==='Tab'&&!e.shiftKey&&!t.value&&t.placeholder){e.preventDefault();t.value=t.placeholder;t.selectionStart=t.selectionEnd=t.value.length;}});});</script>{% endif %}
   <label>Standard interview questions (one per line, in English, up to 6)</label>
   <textarea name="questions" style="min-height:7rem">{{ position.questions|join('\n') }}</textarea>
   <details><summary class="small">Other standard questions already available in Selection</summary>
