@@ -1,5 +1,11 @@
 # RF-One Email Service 1.0
 
+Nota per il rilascio AWS: questa analisi descrive la baseline locale iniziale.
+La ricognizione AWS successiva ha confermato il NAT e recuperato i componenti
+Aruba/Selection già operativi. Il rilascio additivo, la revisione di produzione
+`e9a120261117` e la procedura effettiva sono documentati in
+`../Infrastructure/deploy/rfone-email/README.md` e nel relativo report di rilascio.
+
 Stato: implementazione locale additiva, 17 novembre 2026. Nessun invio reale,
 accesso AWS, deploy o cambiamento ai database di produzione effettuato.
 I Domain esistenti non sono ancora migrati.

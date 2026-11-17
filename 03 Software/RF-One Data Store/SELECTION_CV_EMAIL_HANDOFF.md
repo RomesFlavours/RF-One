@@ -1,5 +1,12 @@
 # Handoff to Shelbi — RF-One Email Service and Selection CV Upload Auto-Responder
 
+AWS release note: the missing-component findings below describe the original
+development checkout. Subsequent AWS inspection confirmed an existing NAT,
+Aruba SMTP configuration and the operational Selection outbox. The additive
+AWS release is maintained on `codex/rfone-email-service-aws`; see
+`03 Software/Infrastructure/deploy/rfone-email/README.md` and its release report
+for deployment evidence. The CV upload integration remains a separate step.
+
 The centralized RF-One Email Service has been implemented and tested locally. It provides the foundation for sending an automatic acknowledgment after a candidate uploads a CV.
 
 **The email service is implemented locally. The CV upload auto-responder has not yet been connected to the upload workflow.**

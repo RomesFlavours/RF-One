@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import zipfile
 
 import boto3
@@ -113,7 +114,7 @@ phases:
             if state.get(mode + '_task'):
                 task = ecs.describe_tasks(cluster='rfone-jobs', tasks=[state[mode + '_task']])['tasks'][0]
                 print('TASK', mode, task['lastStatus'], task.get('stoppedReason', ''))
-                if task['lastStatus'] == 'STOPPED':
+                if task['containers'][0].get('lastStatus') == 'STOPPED':
                     state[mode + '_exit'] = task['containers'][0].get('exitCode', -1)
                     print('EXIT', mode, state[mode + '_exit'])
                 stream = f"release/email/{task['taskArn'].split('/')[-1]}"
@@ -168,7 +169,14 @@ phases:
             state['worker_definition'] = definition
             print('EMAIL_WORKER_CREATED', definition)
         else:
-            r = ecs.run_task(cluster='rfone-jobs',taskDefinition=definition,launchType='FARGATE',networkConfiguration=NETWORK)
+            for attempt in range(3):
+                try:
+                    r = ecs.run_task(cluster='rfone-jobs',taskDefinition=definition,launchType='FARGATE',networkConfiguration=NETWORK)
+                    break
+                except ecs.exceptions.ClientException as exc:
+                    if 'unable to assume the role' not in str(exc) or attempt == 2:
+                        raise
+                    time.sleep(10)  # newly created IAM task role propagation
             assert not r['failures'], r['failures']
             state[args.action + '_task'] = r['tasks'][0]['taskArn']
             state.pop(args.action + '_exit', None)

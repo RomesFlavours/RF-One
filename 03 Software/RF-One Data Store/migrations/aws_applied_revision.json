@@ -1,14 +1,18 @@
 {
   "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
   "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
-  "revision": "t9a120261110",
-  "previous_revision": "f3b120261110",
-  "verified_utc": "2026-11-10T16:37:09.310005+00:00",
-  "applied_by": "Training release 88c4d0a8198f55fbeba3cda3d17003bdfb066b9a",
+  "revision": "e9a120261117",
+  "previous_revision": "t9e120261113",
+  "verified_utc": "2026-11-17T20:56:32.257913+00:00",
+  "applied_by": "RF-One Email Service 7291a4ac84199680e0aa837666ff28bc307f0511",
   "evidence": {
-    "source_s3_key": "training/releases/88c4d0a8198f55fbeba3cda3d17003bdfb066b9a/source.zip",
-    "source_sha256": "dfd0a7cf9b29b922206a5a0ebdc66ebda38479ef2577419a2e8193005d9bbe31",
-    "snapshot": "rfone-dev-pre-training-f3-24f64624fd38",
-    "protected_data_unchanged": true
+    "source_commit": "7291a4ac84199680e0aa837666ff28bc307f0511",
+    "source_key": "email/releases/7291a4ac84199680e0aa837666ff28bc307f0511/source.zip",
+    "image_digest": "sha256:9f2b21fac22caacf152db8e5110b4d8f1e605e469900e241fad3c81b2f496e82",
+    "snapshot": "rfone-dev-pre-email-20261117t204618z",
+    "preflight_task": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/64112479e4c84d9db06e9f65185541da",
+    "migration_task": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/4f2bbd73cfea439ebfbbd7640c77c174",
+    "protected_row_counts_unchanged": true,
+    "no_test_email_sent": true
   }
 }
