@@ -4,7 +4,7 @@
 
 Connect Selection's successful CV upload/application submission event to the centralized RF-One Email Service so the candidate receives one acknowledgment of receipt.
 
-**The central service is deployed on AWS. The CV upload auto-responder integration is still to be implemented.** The deployed worker is enabled: a committed production queue request is eligible for real sending. Develop and test against isolated databases with fake delivery until activation is explicitly authorized.
+**The central service and redesigned Email Control panel are deployed on AWS. This release does not implement the Selection CV upload auto-responder adapter.** The deployed worker is enabled: a committed production queue request is eligible for real sending. Develop and test against isolated databases with fake delivery until activation is explicitly authorized.
 
 ## Repository, branch and commits
 
@@ -12,8 +12,11 @@ Connect Selection's successful CV upload/application submission event to the cen
 | --- | --- |
 | Repository | `https://github.com/RomesFlavours/RF-One.git` |
 | AWS release branch | `codex/rfone-email-service-aws` |
-| Verified code and deployment-evidence checkpoint | `e73ce8e87bc6e39f9a4f5cb89778a1e12617d60a` |
-| Source commit used to build the running email image | `7291a4ac84199680e0aa837666ff28bc307f0511` |
+| Latest verified implementation and release-evidence checkpoint | `37f115478889674e417ab467f92c5e2ec7053a28` |
+| Redesigned Email Control image source commit | `577705cb03db83b24409aa05d9ecd53a880ff38c` |
+| Initial email-service deployment checkpoint | `e73ce8e87bc6e39f9a4f5cb89778a1e12617d60a` |
+| SMTP worker image source commit — unchanged by the UI release | `7291a4ac84199680e0aa837666ff28bc307f0511` |
+| Running Web image after the UI release | `rfone-web:email-ui-577705cb03db` |
 | Production schema revision applied by this release | `e9a120261117` |
 | Development-only revision — do not apply to production | `c7e5a3b9d201` |
 
@@ -21,16 +24,16 @@ Fetch the release branch and inspect the shared API:
 
 ```bash
 git fetch origin codex/rfone-email-service-aws
-git show e73ce8e87bc6e39f9a4f5cb89778a1e12617d60a:"03 Software/RF-One Data Store/rfone_data_store/email_service.py"
+git show 37f115478889674e417ab467f92c5e2ec7053a28:"03 Software/RF-One Data Store/rfone_data_store/email_service.py"
 ```
 
-The release branch contains later documentation updates as well. The checkpoint above pins the deployed implementation and its recorded AWS evidence; the image source commit identifies the exact build input.
+The branch also contains documentation-only updates. The checkpoint above pins the latest verified implementation and deployment evidence. Web UI and SMTP worker image source commits are listed separately because the UI refresh did not rebuild or redeploy the worker. Use the branch HEAD for the latest version of this handoff.
 
 Work from Selection's current development/release branch. Do not replace Selection with the older RF-One Web baseline or merge the whole email release branch blindly. Reconcile only the shared module and canonical migration files that Selection needs, preserving its current upload, candidate identity and bridge behavior.
 
 ## What was deployed and verified
 
-Deployment completed on 17 November 2026; RF-One Web's update completed at 15:58:42 America/New_York.
+The initial service deployment completed on 17 November 2026 at 15:58:42 America/New_York. The redesigned Email Control panel was subsequently deployed at 16:37:25 America/New_York that day.
 
 - Email API and administrative Email Control page in `rfone-web`.
 - Four persistent tables: `email_requests`, `email_attempts`, `email_audit`, `email_worker_state`.
@@ -41,11 +44,47 @@ Deployment completed on 17 November 2026; RF-One Web's update completed at 15:58
 
 Release verification observed an empty central queue and an IDLE worker with a current heartbeat. PostgreSQL tests in a temporary schema covered concurrent deduplication, two workers, Domain isolation, retry and uncertain outcomes. Aruba TLS authentication and NOOP succeeded through NAT. **No MAIL, RCPT or DATA commands were issued by the connection check; no test email was sent.**
 
-Twenty dedicated local tests passed on the AWS release source baseline. MyRF login, Training and Selection retained their observed public status/redirect behavior after deployment.
+The initial service release passed 20 dedicated tests. The UI release passed the expanded suite of **23 tests**, both locally and inside the built Linux image. Browser checks covered the desktop register, attention filtering, message details, preserved list context and mobile layout. MyRF login, Training and Selection retained their observed public status/redirect behavior after both deployments.
 
 Email Control: <https://rfone.romesflavours.com/administration/email>. An active RF-One administrator session is required. Unauthenticated checks returned 401 for the new administrative and API routes.
 
 These are recorded deployment observations, not a claim of continuously monitored health. Recheck the worker and queue before activation.
+
+## Redesigned Email Control panel
+
+Open [Email Control](https://rfone.romesflavours.com/administration/email) from RF-One → Administration → Email Control, using an active RF-One administrator session.
+
+The panel is now an operational view rather than a list of internal queue states:
+
+- **Compact summary:** total messages, in progress, accepted by Aruba and needs attention. Summary tiles link to the corresponding message lists.
+- **Readable register:** subject, recipient, Domain, status and requested time, with 25 messages per page.
+- **Search and filters:** recipient or subject, Domain, status and date range. Date filters use inclusive local civil days in the displayed Location timezone.
+- **Attention queue:** one click shows failed requests and uncertain outcomes, each with a **Review** action.
+- **Message details:** content, current outcome, permitted next action and chronological activity. The **Technical details** disclosure contains the request UUID, originating event and SMTP error codes.
+- **Context preservation:** returning from a detail page retains the list's search/filter context and links back to the message row.
+- **RF-One styling:** olive palette, shared typography and breadcrumbs, responsive desktop/mobile layout and keyboard focus indicators.
+
+Available administrative actions remain constrained by the central service:
+
+| Message state | Panel action |
+| --- | --- |
+| Waiting or retry scheduled | **Cancel this email** |
+| Failed | Review the issue, then **Authorize another attempt** if appropriate |
+| Outcome uncertain | Reconcile with Aruba; no resend button is offered |
+| Sending, accepted or cancelled | Inspect details; no resend/cancel action is offered for that state |
+
+**Accepted by Aruba is SMTP acceptance, not confirmed recipient delivery.** The redesign does not change queue semantics, authorization or retry policy. Its local-day date controls are UI behavior; do not infer a change to the HTTP API's date-filter contract.
+
+For Shelbi's authorized end-to-end verification after connecting the CV adapter:
+
+1. Filter the register to Selection's confirmed Domain code and search for the approved canary recipient or receipt subject.
+2. Open the request and check its subject, recipient and content.
+3. Expand **Technical details** to match the queue request UUID and originating event to the saved submission.
+4. Inspect activity and sending attempts. Allow automatic temporary-error retries instead of creating a second request.
+5. Review **Needs attention** if the outcome is failed or uncertain; do not bypass uncertainty with a new deduplication key.
+6. Record SMTP acceptance separately from any independently confirmed receipt by the candidate/test recipient.
+
+The UI release changed no production schema and did not redeploy or reconfigure the SMTP worker. No production test requests were enqueued. Authenticated rendering was verified with isolated test sessions; the production HTTP check verified that the panel remains protected with 401 without authentication.
 
 ## Find the correct upload integration point
 
@@ -189,13 +228,21 @@ Central-service rollback is a separate operation documented in the AWS release r
 | `03 Software/RF-One Data Store/rfone_data_store/technical/aruba_smtp.py` | Aruba transport and secret loading. |
 | `03 Software/RF-One Data Store/migrations/versions/e9a120261117_shared_email_service_aws.py` | Canonical email migration already applied on AWS. |
 | `03 Software/RF-One Data Store/migrations/aws_applied_revision.json` | Recorded shared schema revision and evidence. |
-| `03 Software/RF-One Web/email_routes.py` | HTTP API and administrative routes. |
+| `03 Software/RF-One Web/email_routes.py` | HTTP API, administrative queries, readable statuses and safe list return context. |
+| `03 Software/RF-One Web/templates/_email_layout.html` | Shared Email Control layout and display macros. |
+| `03 Software/RF-One Web/templates/email_control.html` | Redesigned summary, filters and message register. |
+| `03 Software/RF-One Web/templates/email_detail.html` | Message content, activity, permitted actions and technical disclosure. |
+| `03 Software/RF-One Web/static/css/email-control.css` | Scoped RF-One visual styling and responsive layouts. |
 | `03 Software/RF-One Web/tests/test_email_service.py` | Dedicated email regression suite. |
 | `03 Software/Infrastructure/deploy/rfone-email/README.md` | Release tooling and rollback procedure. |
-| `03 Software/Infrastructure/deploy/rfone-email/RELEASE_REPORT.md` | Actual AWS deployment evidence. |
+| `03 Software/Infrastructure/deploy/rfone-email/RELEASE_REPORT.md` | Initial central-service AWS deployment evidence. |
+| `03 Software/Infrastructure/deploy/rfone-email/UI_RELEASE_REPORT.md` | Redesigned panel deployment evidence, validation and UI-only rollback. |
+| `03 Software/Infrastructure/deploy/rfone-email/deploy_ui.py` | UI-only release tooling; not required to implement the Selection adapter. |
 
 [GitHub release branch](https://github.com/RomesFlavours/RF-One/tree/codex/rfone-email-service-aws)
 
-[Verified deployment checkpoint](https://github.com/RomesFlavours/RF-One/commit/e73ce8e87bc6e39f9a4f5cb89778a1e12617d60a)
+[Latest verified implementation and deployment checkpoint](https://github.com/RomesFlavours/RF-One/commit/37f115478889674e417ab467f92c5e2ec7053a28)
 
 [AWS deployment report](https://github.com/RomesFlavours/RF-One/blob/codex/rfone-email-service-aws/03%20Software/Infrastructure/deploy/rfone-email/RELEASE_REPORT.md)
+
+[Email Control UI release report](https://github.com/RomesFlavours/RF-One/blob/codex/rfone-email-service-aws/03%20Software/Infrastructure/deploy/rfone-email/UI_RELEASE_REPORT.md)
