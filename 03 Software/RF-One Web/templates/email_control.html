@@ -1,31 +1,40 @@
-{% extends 'base.html' %}
-{% block page_title %}RF-One · Email Control{% endblock %}
+{% extends '_email_layout.html' %}
+{% from '_nav_macros.html' import breadcrumb %}
+{% block page_title %}Email Control · RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('home') }}">RF-One</a> → Administration → Email Control</p>
-<h1>Email Control</h1>
-<p>Shared Services → Email · Aruba SMTP</p>
-<p>Accepted means accepted by SMTP. Delivery to the recipient is not confirmed.</p>
-<div class="home-stack">
-{% for status in ['QUEUED','RETRY','SENDING','ACCEPTED','FAILED','UNCERTAIN','CANCELLED'] %}
-<div class="domain-card"><strong>{{ status }}</strong>: {{ counts.get(status, 0) }}</div>
-{% endfor %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Email Control', None)]) }}
+<div class="email-heading">
+  <div><p class="email-eyebrow">Administration</p><h1>Email Control</h1><p class="email-lead">Track outgoing messages and resolve sending issues.</p></div>
+  <a class="email-button email-button--quiet" href="{{ request.full_path.rstrip('?') }}" aria-label="Refresh email activity">{{ icon('refresh') }} Refresh</a>
 </div>
-<p>Worker: {{ 'Operational' if live else 'No recent heartbeat' }} · {{ worker.mode if worker else 'Not initialized' }}
-{% if worker and worker.heartbeat %} · {{ worker.heartbeat|local_dt(tz) }}{% endif %}</p>
-<form method="get">
-{% for key, label in [('domain','Domain'),('recipient','Recipient'),('status','Status'),('start','From (UTC)'),('end','Until, exclusive (UTC)')] %}
-<label>{{ label }} <input name="{{ key }}" value="{{ request.args.get(key,'') }}" {% if key in ['start','end'] %}type="date"{% endif %}></label>
-{% endfor %}
-<button type="submit">Search</button>
-</form>
-<div style="overflow-x:auto"><table>
-<thead><tr><th>Created</th><th>Domain</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Attempts</th><th>Details</th></tr></thead>
-<tbody>{% for row in rows %}<tr>
-<td>{{ row.created_at|local_dt(tz) }}</td><td>{{ row.domain }}</td><td>{{ row.recipient }}</td>
-<td>{{ row.subject }}</td><td>{{ row.status }}</td><td>{{ row.attempts }}</td>
-<td><a href="{{ url_for('email_detail', domain=row.domain, request_id=row.id) }}">Open</a></td>
-</tr>{% else %}<tr><td colspan="7">No emails found.</td></tr>{% endfor %}</tbody>
-</table></div>
-{% if offset %}<a href="{{ url_for('email_control', domain=request.args.get('domain',''), recipient=request.args.get('recipient',''), status=request.args.get('status',''), start=request.args.get('start',''), end=request.args.get('end',''), offset=[0,offset-100]|max) }}">Previous</a>{% endif %}
-{% if rows|length == 100 %}<a href="{{ url_for('email_control', domain=request.args.get('domain',''), recipient=request.args.get('recipient',''), status=request.args.get('status',''), start=request.args.get('start',''), end=request.args.get('end',''), offset=offset+100) }}">Next</a>{% endif %}
+<div class="email-service-line">
+  <span class="email-service-state {{ '' if live else 'email-service-state--offline' }}"><span aria-hidden="true"></span>{{ 'Sending service online' if live else 'Sending service needs attention' }}</span>
+  <span class="email-caption">{% if live %}Aruba SMTP{% elif worker and worker.heartbeat %}Last seen {{ worker.heartbeat|local_dt(page_zone) }}{% else %}No recent activity from the sending service{% endif %}</span>
+</div>
+<section class="email-summary" aria-label="Email summary across all Domains">
+  <a href="{{ url_for('email_control') }}" class="email-stat"><span>Total messages</span><strong>{{ all_count }}</strong><small>Across all Domains</small></a>
+  <a href="{{ url_for('email_control', status='pending') }}" class="email-stat"><span>In progress</span><strong>{{ pending_count }}</strong><small>Waiting, sending or retrying</small></a>
+  <a href="{{ url_for('email_control', status='ACCEPTED') }}" class="email-stat"><span>Accepted by Aruba</span><strong>{{ counts.get('ACCEPTED', 0) }}</strong><small>Recipient delivery unconfirmed</small></a>
+  <a href="{{ url_for('email_control', status='attention') }}" class="email-stat {{ 'email-stat--attention' if attention_count else '' }}"><span>Needs attention</span><strong>{{ attention_count }}</strong><small>Failed or uncertain outcome</small></a>
+</section>
+<section class="email-register" aria-labelledby="messages-heading">
+  <div class="email-section-heading"><div><h2 id="messages-heading">Messages</h2><p class="email-caption">Find a message by recipient, subject or Domain.</p></div><span class="email-result-count">{{ total }} {{ 'message' if total == 1 else 'messages' }}</span></div>
+  <form method="get" class="email-filters" role="search" aria-label="Search email messages">
+    <div class="email-filter-primary">
+      <label class="email-search">Search<span class="email-input-wrap">{{ icon('search') }}<input name="q" type="search" value="{{ search }}" placeholder="Recipient or subject"></span></label>
+      <label>Domain<select name="domain"><option value="">All Domains</option>{% for domain in domains %}<option value="{{ domain }}" {% if request.args.get('domain') == domain %}selected{% endif %}>{{ domain }}</option>{% endfor %}</select></label>
+      <label>Status<select name="status"><option value="">All statuses</option><option value="attention" {% if request.args.get('status') == 'attention' %}selected{% endif %}>Needs attention</option><option value="pending" {% if request.args.get('status') == 'pending' %}selected{% endif %}>In progress</option>{% for key, info in status_info.items() %}<option value="{{ key }}" {% if request.args.get('status') == key %}selected{% endif %}>{{ info[0] }}</option>{% endfor %}</select></label>
+      <button class="email-button" type="submit">Search</button>
+    </div>
+    <div class="email-filter-secondary"><details {% if request.args.get('start') or request.args.get('end') %}open{% endif %}><summary>Filter by date{% if request.args.get('start') or request.args.get('end') %} · active{% endif %}</summary><div class="email-date-fields"><label>From<input name="start" type="date" value="{{ request.args.get('start', '') }}"></label><label>Through<input name="end" type="date" value="{{ request.args.get('end', '') }}"></label></div></details>{% if request.query_string %}<a href="{{ url_for('email_control') }}" class="email-clear">Clear filters</a>{% endif %}</div>
+  </form>
+  {% if rows %}
+  <div class="email-table-wrap"><table class="email-table"><thead><tr><th scope="col">Message</th><th scope="col">Domain</th><th scope="col">Status</th><th scope="col">Requested</th><th scope="col"><span class="email-sr-only">Action</span></th></tr></thead><tbody>
+  {% for row in rows %}{% set detail_url = url_for('email_detail', domain=row.domain, request_id=row.id, back=request.full_path.rstrip('?')) %}
+    <tr id="message-{{ row.id }}"><td class="email-message-cell"><a class="email-subject" href="{{ detail_url }}">{{ row.subject }}</a><span class="email-recipient">{{ row.recipient }}</span></td><td><span class="email-domain">{{ row.domain }}</span></td><td>{{ status_badge(row.status) }}{% if row.status == 'RETRY' %}<span class="email-row-note">Next attempt {{ row.available_at|local_dt(page_zone) }}</span>{% elif row.status == 'UNCERTAIN' %}<span class="email-row-note">Check before sending again</span>{% elif row.status == 'FAILED' %}<span class="email-row-note">Review the sending issue</span>{% endif %}</td><td class="email-requested">{{ row.created_at|local_dt(page_zone) }}</td><td class="email-row-action"><a class="email-button email-button--{{ 'review' if row.status in ['FAILED','UNCERTAIN'] else 'quiet' }}" href="{{ detail_url }}">{{ 'Review' if row.status in ['FAILED','UNCERTAIN'] else 'Details' }} {{ icon('arrow') }}</a></td></tr>
+  {% endfor %}</tbody></table></div>
+  <div class="email-register-footer"><span>Showing {{ offset + 1 }}–{{ offset + rows|length }} of {{ total }}</span><nav aria-label="Message pages">{% if offset %}<a class="email-button email-button--quiet" href="{{ previous_url }}">Previous</a>{% endif %}{% if offset + rows|length < total %}<a class="email-button email-button--quiet" href="{{ next_url }}">Next</a>{% endif %}</nav></div>
+  {% else %}<div class="email-empty">{{ icon('mail') }}<h3>{{ 'No messages match your filters' if all_count else 'No messages yet' }}</h3><p>{{ 'Try a different recipient, subject or date range.' if all_count else 'Outgoing messages will appear here when they are requested.' }}</p>{% if all_count %}<a class="email-button email-button--quiet" href="{{ url_for('email_control') }}">View all messages</a>{% endif %}</div>{% endif %}
+</section>
+<p class="email-footnote">Times shown in {{ page_zone }}. “Accepted by Aruba” confirms SMTP acceptance, not delivery to the recipient.</p>
 {% endblock %}

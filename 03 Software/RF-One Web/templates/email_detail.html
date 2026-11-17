@@ -1,20 +1,16 @@
-{% extends 'base.html' %}
-{% block page_title %}Email details{% endblock %}
+{% extends '_email_layout.html' %}
+{% from '_nav_macros.html' import breadcrumb %}
+{% block page_title %}Message details Â· RF-One{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('email_control') }}">Email Control</a></p>
-<h1>{{ row.subject }}</h1>
-<p>{{ row.domain }} · {{ row.recipient }} · {{ row.status }}</p>
-<p>ID: {{ row.id }} · Event: {{ row.event }}</p>
-<p>Accepted means accepted by SMTP; recipient delivery is not confirmed.</p>
-{% if row.status == 'UNCERTAIN' %}<p>SMTP acceptance could not be determined. Automatic and manual resends are blocked. Reconcile with Aruba before requesting a new email.</p>{% endif %}
-<h2>Attempts</h2>
-<table><tr><th>Attempt</th><th>Started</th><th>Finished</th><th>Outcome</th><th>Error</th></tr>
-{% for a in attempts %}<tr><td>{{ a.number }}</td><td>{{ a.started_at|local_dt(tz) }}</td><td>{{ a.finished_at|local_dt(tz) if a.finished_at else '—' }}</td><td>{{ a.outcome }}</td><td>{{ a.error or '—' }}</td></tr>{% endfor %}</table>
-{% if row.status in ['QUEUED','RETRY','FAILED'] %}
-<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="hidden" name="action" value="{{ 'resend' if row.status == 'FAILED' else 'cancel' }}">
-<button type="submit">{{ 'Authorize resend' if row.status == 'FAILED' else 'Cancel pending email' }}</button></form>
-{% endif %}
-<h2>Administrative operations</h2>
-{% for item in audit %}<p>{{ item.created_at|local_dt(tz) }} · Account {{ item.actor_account_id }} · {{ item.action }}</p>{% else %}<p>No operations.</p>{% endfor %}
+{{ breadcrumb([('RF-One', url_for('home')), ('Email Control', back_url), ('Message details', None)]) }}
+<div class="email-heading"><div><p class="email-eyebrow">{{ row.domain }} Â· Outgoing email</p><h1 class="email-detail-subject">{{ row.subject }}</h1><p class="email-lead">To {{ row.recipient }}</p></div>{{ status_badge(row.status) }}</div>
+<section class="email-detail-overview"><div><span>Requested</span><strong>{{ row.created_at|local_dt(page_zone) }}</strong></div><div><span>Last update</span><strong>{{ row.updated_at|local_dt(page_zone) }}</strong></div><div><span>Sending attempts</span><strong>{{ row.attempts }}</strong></div></section>
+<section class="email-next-step email-next-step--{{ status_info[row.status][1] }}" aria-labelledby="outcome-heading"><h2 id="outcome-heading">{{ status_info[row.status][0] }}</h2><p>{{ status_info[row.status][2] }}</p>{% if error_help %}<p>{{ error_help }}</p>{% endif %}
+{% if row.status == 'UNCERTAIN' %}<p>Sending again could create a duplicate. Reconcile the outcome with Aruba before authorizing a new message.</p>
+{% elif row.status == 'RETRY' %}<p>Next attempt: {{ row.available_at|local_dt(page_zone) }}. No action is required unless you want to stop this email.</p>
+{% elif row.status == 'QUEUED' %}<p>The sending service will pick up this request automatically.</p>{% endif %}
+{% if row.status in ['QUEUED', 'RETRY', 'FAILED'] %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ back_url }}"><input type="hidden" name="action" value="{{ 'resend' if row.status == 'FAILED' else 'cancel' }}"><button class="email-button {{ 'email-button--quiet' if row.status != 'FAILED' else '' }}" type="submit">{{ 'Authorize another attempt' if row.status == 'FAILED' else 'Cancel this email' }}</button></form>{% endif %}</section>
+<div class="email-detail-columns"><section class="email-detail-card"><h2>Message content</h2><pre class="email-body">{{ row.body }}</pre></section><section class="email-detail-card"><h2>Activity</h2><ol class="email-activity">{% for item in activity %}<li><strong>{{ item.title }}</strong><span>{% if item.meta %}{{ item.meta }} · {% endif %}{{ item.when|local_dt(page_zone) }}</span></li>{% endfor %}</ol></section></div>
+<details class="email-technical"><summary>Technical details</summary><dl><dt>Request ID</dt><dd>{{ row.id }}</dd><dt>Originating event</dt><dd>{{ row.event }}</dd><dt>Latest error code</dt><dd>{{ row.error or 'None' }}</dd></dl>{% if attempts %}<div class="email-table-wrap"><table><thead><tr><th>Attempt</th><th>Started</th><th>Finished</th><th>Error code</th></tr></thead><tbody>{% for a in attempts %}<tr><td>{{ a.number }}</td><td>{{ a.started_at|local_dt(page_zone) }}</td><td>{{ a.finished_at|local_dt(page_zone) if a.finished_at else 'In progress' }}</td><td><code>{{ a.error or 'None' }}</code></td></tr>{% endfor %}</tbody></table></div>{% endif %}</details>
+<div class="email-detail-footer"><a class="email-button email-button--quiet" href="{{ back_url }}#message-{{ row.id }}">Back to messages</a><span>Times shown in {{ page_zone }}</span></div>
 {% endblock %}

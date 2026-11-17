@@ -1,12 +1,12 @@
-"""RF-One Web — the general RF-One entry point (V1: accounts + Domain
+"""RF-One Web â€” the general RF-One entry point (V1: accounts + Domain
 access shell).
 
 This is the common front door RF-One is intended to grow into: a login,
 one Home page listing the Domains an account may enter, and an Admin area
 for managing accounts and their Domain access. It does NOT own or replace
-any existing Domain application (`Tips/app.py`, `Training/`) — moving
+any existing Domain application (`Tips/app.py`, `Training/`) â€” moving
 their actual routes/authentication in here is an explicit, separate future
-task (see the task's own §15).
+task (see the task's own Â§15).
 
 Follows the same small-local-Flask-app convention `Tips/app.py`/
 `Selection/app.py`/`Training`'s own files already establish: server-
@@ -66,7 +66,7 @@ import training_integration  # noqa: E402
 app = Flask(__name__)
 
 # The persistent Flask secret, from Secrets Manager in production
-# (RFONE_FLASK_SECRET_KEY) — never generated randomly here, unlike Tips's
+# (RFONE_FLASK_SECRET_KEY) â€” never generated randomly here, unlike Tips's
 # own (pre-existing, unrelated) `os.urandom(24)` fallback: a general-shell
 # session cookie signed with a secret that changes on every restart would
 # silently log every operator out on each deploy. Local tests set
@@ -81,10 +81,11 @@ if not _secret_key:
     )
 app.secret_key = _secret_key
 register_email_routes(app, SessionFactory=SessionFactory,
-                      load_current_account=load_current_account, require_csrf=require_csrf)
+                      load_current_account=load_current_account, require_csrf=require_csrf,
+                      get_timezone=lambda: inject_site_timezone()['tz'])
 
 # HTTPS-only cookies: App Runner terminates TLS at the edge, so the app
-# itself is always reached over HTTPS in any real deployment — the session
+# itself is always reached over HTTPS in any real deployment â€” the session
 # cookie must never be sent over a plain-HTTP fallback. Never disabled by
 # an environment flag: there is no supported production configuration
 # where this app is served over HTTP.
@@ -113,7 +114,7 @@ def inject_csrf():
 
 @app.context_processor
 def inject_local_environment():
-    """`local_env`: which PC, database, code and AI mode this page runs on —
+    """`local_env`: which PC, database, code and AI mode this page runs on â€”
     only when the server was started by the local Bank environment
     ("Avvia Bank", 03 Software/Infrastructure/Bank Local Environment), which
     sets RFONE_LOCAL_ENV_*; None everywhere else (AWS, tests)."""
@@ -128,12 +129,12 @@ def inject_local_environment():
         "label": os.environ.get("RFONE_LOCAL_ENV_LABEL", ""), "db": os.environ.get("RFONE_LOCAL_ENV_DB", ""),
         "generation": os.environ.get("RFONE_LOCAL_ENV_GENERATION", ""),
         "code": os.environ.get("RFONE_LOCAL_ENV_CODE", ""),
-        "ai": ("SESSION Claude Code (VS Code) — no call to an AI provider" if mode == ai_rules.AI_MODE_SESSION
-               else f"PROVIDER {provider} · {model or 'no model configured'}"),
+        "ai": ("SESSION Claude Code (VS Code) â€” no call to an AI provider" if mode == ai_rules.AI_MODE_SESSION
+               else f"PROVIDER {provider} Â· {model or 'no model configured'}"),
     }}
 
 
-# UI_NAVIGATION_AND_LOCAL_TIME_001 — RF-One UI Rules
+# UI_NAVIGATION_AND_LOCAL_TIME_001 â€” RF-One UI Rules
 # (`03 Software/Shared UI/UI Rules.md`): times in the Location's local time,
 # employees as "Surname I.", one shared formatter for every RF-One app.
 app.jinja_env.filters["local_dt"] = display_format.local_datetime
@@ -150,7 +151,7 @@ app.jinja_env.globals["rfone_home_url"] = lambda: url_for("home")
 @app.context_processor
 def inject_site_timezone():
     """`tz`: the zone every time on an RF-One Web page is shown in, unless
-    the page sets its own (RF-One UI Rules §1) — the IANA timezone of the
+    the page sets its own (RF-One UI Rules Â§1) â€” the IANA timezone of the
     Restaurant's own Clover Location, the same Location Tips and Clover
     Acquisition use. None -> the formatter shows UTC and says so."""
     with SessionFactory() as db:
@@ -167,10 +168,10 @@ def inject_site_timezone():
 
 
 # ---------------------------------------------------------------------------
-# Email verification / password recovery — shared helpers for every route
+# Email verification / password recovery â€” shared helpers for every route
 # below that issues a code (account creation, profile email add/change,
 # forgot-password). One sender address for the whole application
-# (RFONE_EMAIL_FROM_ADDRESS) — never a caller-chosen or recipient-derived
+# (RFONE_EMAIL_FROM_ADDRESS) â€” never a caller-chosen or recipient-derived
 # address (see `ses_email.py`'s own docstring for why).
 # ---------------------------------------------------------------------------
 
@@ -186,7 +187,7 @@ _PASSWORD_RESET_EMAIL_SUBJECT = "Your RF-One password reset code"
 _PASSWORD_RESET_EMAIL_BODY = (
     "Your RF-One password reset code is: {code}\n\n"
     "This code expires in 10 minutes. If you did not request a password reset, you can ignore this "
-    "email — your password has not been changed."
+    "email â€” your password has not been changed."
 )
 _PASSWORD_CHANGED_EMAIL_SUBJECT = "Your RF-One password was changed"
 _PASSWORD_CHANGED_EMAIL_BODY = (
@@ -198,7 +199,7 @@ _PASSWORD_CHANGED_EMAIL_BODY = (
 def _client_ip() -> str | None:
     """App Runner terminates TLS at the edge and proxies to the container;
     the first `X-Forwarded-For` entry is the real client. Used only as a
-    soft rate-limit signal (`recovery_service`'s per-IP cap) — never for
+    soft rate-limit signal (`recovery_service`'s per-IP cap) â€” never for
     any access-control decision."""
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
@@ -210,12 +211,12 @@ def _issue_and_send_code(db, *, account: "m.RFOneAccount", purpose: str, target_
     """Issues a code (committing it immediately, on its own, before any
     email-sending attempt) and emails it. Raises
     `recovery_service.RateLimitedError` if refused by the cooldown/hourly
-    caps — callers decide for themselves whether that must stay invisible
+    caps â€” callers decide for themselves whether that must stay invisible
     (forgot-password: task requires the SAME generic response regardless)
     or may be shown directly (the authenticated profile "resend" action).
     A subsequent SES failure is swallowed here: the code was already
     issued and is still usable (e.g. via a resend) even if this particular
-    send attempt failed — callers must never show `EmailSendError`'s own
+    send attempt failed â€” callers must never show `EmailSendError`'s own
     text to the end user."""
     code = recovery_service.issue_code(
         db, account=account, purpose=purpose, target_email=target_email,
@@ -232,7 +233,7 @@ def _issue_and_send_code(db, *, account: "m.RFOneAccount", purpose: str, target_
 
 
 # ---------------------------------------------------------------------------
-# Shared RF-One branding — same "sibling module, served via
+# Shared RF-One branding â€” same "sibling module, served via
 # send_from_directory" pattern Tips's own `shared_brand_logo` route already
 # uses. Never copied into this app's own `static/`.
 # ---------------------------------------------------------------------------
@@ -263,7 +264,7 @@ def inject_brand_logo():
 
 
 # ---------------------------------------------------------------------------
-# Training integration — mounts Training's EXISTING, unmodified blueprint
+# Training integration â€” mounts Training's EXISTING, unmodified blueprint
 # (single-login: see `training_integration.py`'s own module docstring for
 # how requests are silently authorized against the current RF-One session,
 # so Training's own login form is never shown for an RF-One-integrated
@@ -296,7 +297,7 @@ def training_menu():
 def _safe_next(target: str | None) -> str | None:
     """A post-login destination inside this application only: a local path
     ("/..."), never another host ("//host", "http://..."), so `next` can
-    never send a person elsewhere (CLOVER_ACQUISITION_IDENTITY_001 §3)."""
+    never send a person elsewhere (CLOVER_ACQUISITION_IDENTITY_001 Â§3)."""
     if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
         return None
     return target
@@ -335,7 +336,7 @@ def logout():
 # Home
 # ---------------------------------------------------------------------------
 
-# Home presentation rules (Product Owner, 2026-09-25) — not Domain
+# Home presentation rules (Product Owner, 2026-09-25) â€” not Domain
 # definitions: `domain_registry` is unchanged.
 #   * Selection is Work in progress: its registry name says so and its link
 #     is the provisional `selection_work_in_progress` page. Every other
@@ -383,18 +384,18 @@ def home():
 def require_domain_access(domain_code: str):
     """Decorator factory: the SAME server-side check Home already uses to
     decide which Domain cards to show (`RFOneAccountDomainAccess`,
-    enabled=True) — reused here, not a new authorization mechanism, to gate
+    enabled=True) â€” reused here, not a new authorization mechanism, to gate
     the actual destination route too. An account must be ACTIVE and hold an
     ENABLED access row for `domain_code`; anything else gets a 403 (never a
     redirect that would confirm the route exists to an unauthorized caller,
     matching `require_admin`'s own convention). This is what makes the
-    Home filtering meaningful — a Domain link is never itself the access
+    Home filtering meaningful â€” a Domain link is never itself the access
     control (task: "Il collegamento nella Home filtrato per Domain non
     protegge da solo la destinazione").
 
     ACCOUNT_ITEM_ACCESS_001: when the requested path belongs to one of the
     Domain's items (`domain_registry`), the account must also be allowed
-    that item — the same rule the navigation uses to hide it, so a hidden
+    that item â€” the same rule the navigation uses to hide it, so a hidden
     item is closed by direct URL too, for its pages and its operations."""
     domain = DOMAINS_BY_CODE.get(domain_code)
 
@@ -424,7 +425,7 @@ def require_domain_access(domain_code: str):
 
 def _allowed_items(domain_code: str):
     """The current account's usable items of `domain_code`, in registry
-    order — computed once per request."""
+    order â€” computed once per request."""
     cache = g.setdefault("rfone_allowed_items", {})
     if domain_code not in cache:
         domain = DOMAINS_BY_CODE[domain_code]
@@ -448,7 +449,7 @@ def domain_entry(domain_code: str) -> str | None:
 
 
 # Template globals, not a context processor, so imported macro files
-# (`_bank_macros.html`) see them too: `domain_nav(code)` — (item code, label,
+# (`_bank_macros.html`) see them too: `domain_nav(code)` â€” (item code, label,
 # URL) of the items the account may use, for a Domain's own navigation;
 # `may_use_item(code, item)`; `domain_entry(code)`. All read the one item
 # list in `domain_registry`.
@@ -460,9 +461,9 @@ app.jinja_env.globals.update(
 
 
 # ---------------------------------------------------------------------------
-# Selection — still a provisional "Work in progress" page (task: publish
+# Selection â€” still a provisional "Work in progress" page (task: publish
 # only what's actually ready; Selection's real app is not routed here
-# unless/until it has its own usable server-side auth — see the
+# unless/until it has its own usable server-side auth â€” see the
 # domain_registry.py comment on SELECTION for the current decision).
 # ---------------------------------------------------------------------------
 
@@ -474,7 +475,7 @@ def selection_work_in_progress():
 
 
 # ---------------------------------------------------------------------------
-# Compensation — V1 operational application (manual Payroll Handoff).
+# Compensation â€” V1 operational application (manual Payroll Handoff).
 # Replaces the former "Work in progress" page. Every route is defined in
 # `compensation_routes.py` and gated the same way as every other
 # destination here: `require_domain_access("COMPENSATION")`.
@@ -485,7 +486,7 @@ register_compensation_routes(
     load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
-# Settings > Workweek (COMPENSATION_PERIOD_SUMMARY_001) — the shared
+# Settings > Workweek (COMPENSATION_PERIOD_SUMMARY_001) â€” the shared
 # Restaurant Workweek start, read by every per-week function.
 register_workweek_settings_routes(
     app, require_admin=require_admin, SessionFactory=SessionFactory,
@@ -493,8 +494,8 @@ register_workweek_settings_routes(
 )
 
 # ---------------------------------------------------------------------------
-# Organization — Organizational Responsibility + Attention Management (TASK_
-# ATTENTION_ORG_RUNTIME §12). Since ACCOUNT_ITEM_ACCESS_001 its own Domain
+# Organization â€” Organizational Responsibility + Attention Management (TASK_
+# ATTENTION_ORG_RUNTIME Â§12). Since ACCOUNT_ITEM_ACCESS_001 its own Domain
 # (`require_domain_access("ORGANIZATION")`, per item); every change stays
 # reserved to administrators. Never the eventual end-user Attention Inbox
 # (see `organizational_responsibility_routes.py`'s own module docstring for
@@ -508,7 +509,7 @@ register_organizational_responsibility_routes(
 
 
 # ---------------------------------------------------------------------------
-# Bank Reconciliation — Canonical Financial Model Convergence (Phases 1-6B,
+# Bank Reconciliation â€” Canonical Financial Model Convergence (Phases 1-6B,
 # FINANCIAL_MODEL_CONVERGENCE_001). Manual CSV import (Chase, First
 # Citizens) and PayPal acquisition, normalized into the canonical
 # PaymentInstrument/FinancialTransaction ledger; the Bank Recognition
@@ -524,10 +525,10 @@ register_bank_routes(
 
 
 # ---------------------------------------------------------------------------
-# Tips — period validation only (TIPS_AWS_FINALIZATION_WORKFLOW_001). The
+# Tips â€” period validation only (TIPS_AWS_FINALIZATION_WORKFLOW_001). The
 # human step that turns a CALCULATED Tips period FINAL needs the RF-One
 # login, which only reaches this host; everything else in Tips stays in the
-# Tips app. Gated by `require_domain_access("TIPS")` + CSRF — see
+# Tips app. Gated by `require_domain_access("TIPS")` + CSRF â€” see
 # `tips_validation_routes.py`'s own module docstring.
 # ---------------------------------------------------------------------------
 
@@ -538,7 +539,7 @@ register_tips_validation_routes(
 
 
 # ---------------------------------------------------------------------------
-# Clover Acquisition (CLOVER_ACQUISITION_IDENTITY_001) — Sync Now and
+# Clover Acquisition (CLOVER_ACQUISITION_IDENTITY_001) â€” Sync Now and
 # Historical Backfill, startable only by a signed-in account holding the
 # CLOVER_ACQUISITION access. See `clover_acquisition_routes.py`.
 # ---------------------------------------------------------------------------
@@ -554,7 +555,7 @@ register_clover_acquisition_routes(
 
 
 # ---------------------------------------------------------------------------
-# Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001) — wine types, the
+# Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001) â€” wine types, the
 # purchasable catalog and each Entity's Wine lists. See
 # `restaurant_wines_routes.py`; gated by `require_domain_access("WINES")`.
 # ---------------------------------------------------------------------------
@@ -572,7 +573,7 @@ register_employee_directory_routes(
 
 
 # ---------------------------------------------------------------------------
-# MyRF Project Management — Projects, a Project's plan and its read-only
+# MyRF Project Management â€” Projects, a Project's plan and its read-only
 # Gantt. Gated by `require_domain_access("PROJECTS")` + CSRF; see
 # `projects_routes.py`.
 # ---------------------------------------------------------------------------
@@ -583,7 +584,7 @@ register_projects_routes(
 
 
 # ---------------------------------------------------------------------------
-# Development Journal — a system-level service (`10 System/Development
+# Development Journal â€” a system-level service (`10 System/Development
 # Journal/README.md`). See `dev_journal_routes.py`; every page and document
 # is gated by `require_domain_access("DEV_JOURNAL")`.
 # ---------------------------------------------------------------------------
@@ -595,7 +596,7 @@ register_dev_journal_routes(
 
 
 # ---------------------------------------------------------------------------
-# Admin — accounts
+# Admin â€” accounts
 # ---------------------------------------------------------------------------
 
 
@@ -665,7 +666,7 @@ def admin_account_edit(account_id: int):
             require_csrf()
             display_name = request.form.get("display_name", "").strip()
             status = "ACTIVE" if request.form.get("status") == "ACTIVE" else "INACTIVE"
-            # ADMIN_PERMISSIONS_001 — any number of RF-One administrators;
+            # ADMIN_PERMISSIONS_001 â€” any number of RF-One administrators;
             # the service refuses only what would demote the owner, lock the
             # actor out, or leave no active administrator.
             is_admin = request.form.get("is_admin") == "on"
@@ -759,8 +760,8 @@ def admin_account_access(account_id: int):
                     )
                     if domain.code == "TRAINING":
                         # Explicit, authorized sync point (task: "assegnano o
-                        # modificano il ruolo TRAINING di un account già
-                        # collegato") — same transaction as the access change
+                        # modificano il ruolo TRAINING di un account giÃ 
+                        # collegato") â€” same transaction as the access change
                         # itself, committed together below.
                         training_integration.sync_training_role_if_linked(db, account.id, role_code)
             except ValueError as exc:
@@ -803,11 +804,11 @@ _ACCESS_SELECTED = "selected"
 
 
 # ---------------------------------------------------------------------------
-# Admin — Legal Entities (standalone, separate from Compensation — task:
+# Admin â€” Legal Entities (standalone, separate from Compensation â€” task:
 # "La gestione Legal Entity resta separata da Compensation e richiamabile
 # in futuro dalle impostazioni del dominio"). Compensation only ever reads
 # these rows (`legal_entity_service.list_legal_entities`/`get_legal_entity`
-# — see `compensation_routes.py`); this is the one place they are created
+# â€” see `compensation_routes.py`); this is the one place they are created
 # or edited.
 # ---------------------------------------------------------------------------
 
@@ -870,7 +871,7 @@ def admin_legal_entity_edit(entity_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Admin — linking an RF-One account to a Training identity
+# Admin â€” linking an RF-One account to a Training identity
 # ---------------------------------------------------------------------------
 
 
@@ -924,8 +925,8 @@ def admin_account_training_link(account_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Trainer-facing — creating a brand-new student directly usable with the
-# RF-One login (task §4). Independent of RF-One admin status: gated on
+# Trainer-facing â€” creating a brand-new student directly usable with the
+# RF-One login (task Â§4). Independent of RF-One admin status: gated on
 # "currently has the Training trainer role", never on `is_admin`.
 # ---------------------------------------------------------------------------
 
@@ -970,7 +971,7 @@ def training_trainer_new_student():
             except recovery_service.RateLimitedError:
                 pass  # cannot happen for a brand-new account's first code; defensive only
 
-        flash(f"Student {display_name!r} created — they can now log in to RF-One directly.", "info")
+        flash(f"Student {display_name!r} created â€” they can now log in to RF-One directly.", "info")
         return redirect(url_for("home"))
 
     return render_template("training_trainer_new_student.html")
@@ -1010,10 +1011,10 @@ def training_trainer_reset_student_password(account_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Profile — email on file, verification, and change (task §1). The ONE
+# Profile â€” email on file, verification, and change (task Â§1). The ONE
 # general mechanism every RF-One-login Domain shares; never a per-Domain
 # profile/recovery. Login itself is never gated on email/verification
-# status (task: "mantieni funzionante il login attuale") — only the
+# status (task: "mantieni funzionante il login attuale") â€” only the
 # self-service recovery flow below is.
 # ---------------------------------------------------------------------------
 
@@ -1067,7 +1068,7 @@ def profile_email():
         # Case A (no email on file yet): record it now, unverified, so the
         # profile shows "on file, pending confirmation" immediately. Case B
         # (changing an existing, verified email): deliberately do NOT touch
-        # `account.email` here — it stays the old, verified address until
+        # `account.email` here â€” it stays the old, verified address until
         # the code below is confirmed (task: "Mantieni il vecchio indirizzo
         # verificato fino al completamento"); the new address lives only in
         # the code row's `target_email` until then.
@@ -1132,7 +1133,7 @@ def profile_email_verify():
 
         pending = recovery_service.get_pending_code(db, account.id, recovery_service.PURPOSE_EMAIL_VERIFICATION)
         if pending is None:
-            flash("There is no pending verification code — request a new one.", "error")
+            flash("There is no pending verification code â€” request a new one.", "error")
             return redirect(url_for("profile"))
         target_email = pending.target_email
 
@@ -1154,9 +1155,9 @@ def profile_email_verify():
 
 
 # ---------------------------------------------------------------------------
-# Forgot password — self-service recovery (task §2). The exact same
+# Forgot password â€” self-service recovery (task Â§2). The exact same
 # response is shown for every ineligible case (unknown username, email
-# mismatch, unverified email, inactive account) — never a distinct message
+# mismatch, unverified email, inactive account) â€” never a distinct message
 # per case (task: "non rivelare esistenza, stato o email dell'account").
 # ---------------------------------------------------------------------------
 
@@ -1187,9 +1188,9 @@ def forgot_password():
                         body_template=_PASSWORD_RESET_EMAIL_BODY,
                     )
                 except recovery_service.RateLimitedError:
-                    pass  # same generic response either way — a rate limit is never revealed either
+                    pass  # same generic response either way â€” a rate limit is never revealed either
 
-        # Stored regardless of eligibility — its mere presence proves
+        # Stored regardless of eligibility â€” its mere presence proves
         # nothing (it is just "which username step 2 should check a
         # submitted code against"), and step 2 gives the identical generic
         # error for a real-but-wrong code and a nonexistent/ineligible

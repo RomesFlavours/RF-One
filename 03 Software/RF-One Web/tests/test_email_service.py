@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
-from datetime import timedelta
+from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 import smtplib
@@ -58,7 +58,7 @@ class EmailTests(unittest.TestCase):
         register_email_routes(self.app, SessionFactory=self.factory,
             load_current_account=lambda db: identity.account_for_session(db, account_id=session.get('rfone_account_id'),
                 session_version=session.get('rfone_session_version')),
-            require_csrf=lambda: None)
+            require_csrf=lambda: None, get_timezone=lambda: self.app.config.get("EMAIL_PREVIEW_TIMEZONE"))
         self.client = self.app.test_client()
         self.login(1)
 
@@ -214,6 +214,46 @@ class EmailTests(unittest.TestCase):
         with self.factory.begin() as db:
             db.get(m.RFOneAccount, 2).session_version = 2
         self.assertEqual(self.client.get('/api/email/TRAINING/requests').status_code, 401)
+
+    def test_control_search_and_attention_group(self):
+        failed, accepted = self.enqueue(key='failed'), self.enqueue(key='accepted')
+        with self.factory.begin() as db:
+            db.get(e.EmailRequest, failed).status = 'FAILED'
+            db.get(e.EmailRequest, failed).subject = 'Receipt needs review'
+            db.get(e.EmailRequest, accepted).status = 'ACCEPTED'
+            db.get(e.EmailRequest, accepted).subject = 'Receipt accepted'
+        page = self.client.get('/administration/email?status=attention').get_data(as_text=True)
+        self.assertIn('Receipt needs review', page)
+        self.assertNotIn('Receipt accepted', page)
+        page = self.client.get('/administration/email?q=accepted').get_data(as_text=True)
+        self.assertIn('Receipt accepted', page)
+        self.assertNotIn('Receipt needs review', page)
+
+    def test_control_dates_are_local_inclusive_days(self):
+        self.app.config['EMAIL_PREVIEW_TIMEZONE'] = 'America/New_York'
+        included, excluded = self.enqueue(key='late'), self.enqueue(key='early')
+        with self.factory.begin() as db:
+            db.get(e.EmailRequest, included).created_at = datetime(2026, 11, 18, 3, 30, tzinfo=timezone.utc)
+            db.get(e.EmailRequest, included).subject = 'Local evening message'
+            db.get(e.EmailRequest, excluded).created_at = datetime(2026, 11, 17, 3, 30, tzinfo=timezone.utc)
+            db.get(e.EmailRequest, excluded).subject = 'Previous local day'
+        page = self.client.get('/administration/email?start=2026-11-17&end=2026-11-17').get_data(as_text=True)
+        self.assertIn('Local evening message', page)
+        self.assertNotIn('Previous local day', page)
+        self.assertIn('America/New_York', page)
+
+    def test_detail_escape_safe_return_and_clear_actions(self):
+        rid = self.enqueue()
+        with self.factory.begin() as db:
+            row = db.get(e.EmailRequest, rid)
+            row.status, row.body = 'UNCERTAIN', '<script>alert("test")</script>'
+        response = self.client.get(f'/administration/email/TRAINING/{rid}', query_string={'back': 'https://example.test/evil'})
+        page = response.get_data(as_text=True)
+        self.assertNotIn('https://example.test/evil', page)
+        self.assertIn('&lt;script&gt;', page)
+        self.assertNotIn('Authorize another attempt', page)
+        self.assertNotIn('Cancel this email', page)
+        self.assertEqual(self.client.get(f'/administration/email/TRAINING/{rid}', query_string={'back': 'http://['}).status_code, 200)
 
     def test_http_enqueue_and_control_templates(self):
         response = self.client.post('/api/email/TRAINING/requests', json=dict(recipient='r@example.test', subject='Test',
