@@ -56,11 +56,11 @@ try:
  with app.SessionFactory() as db:
   run=db.scalar(select(ActionRun).where(ActionRun.action_code==action));assert run.status=='WAITING';runid=run.id
   assert db.scalar(select(func.count()).select_from(ws.Decision))==0
-  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox))==1
+  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(~mail_delivery.EmailOutbox.source_key.like('cv-received:%')))==1
   assert db.scalar(select(func.count()).select_from(ws.Event).where(ws.Event.kind=='AUTOMATION_NOTE'))==1
  client.post(execute,data={'csrf_token':token,'action':action})
  with app.SessionFactory() as db:
-  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox))==1
+  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(~mail_delivery.EmailOutbox.source_key.like('cv-received:%')))==1
   mail=mail_delivery.claim(db);db.commit()
  with app.app.test_request_context():
   with app.SessionFactory() as db:
@@ -70,7 +70,7 @@ try:
  with app.SessionFactory() as db:assert db.get(ActionRun,runid).status=='FAILED'
  client.post(execute,data={'csrf_token':token,'action':action})
  with app.SessionFactory() as db:
-  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox))==1
+  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(~mail_delivery.EmailOutbox.source_key.like('cv-received:%')))==1
   assert db.scalar(select(func.count()).select_from(ws.Event).where(ws.Event.kind=='AUTOMATION_NOTE'))==1
   mail=mail_delivery.claim(db);db.commit()
  with app.app.test_request_context():
@@ -106,7 +106,7 @@ try:
  client.post(execute,data={'csrf_token':token,'action':missing_action})
  with app.SessionFactory() as db:
   run=db.scalar(select(ActionRun).where(ActionRun.action_code==missing_action));assert run.status=='FAILED'
-  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox))==1
+  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(~mail_delivery.EmailOutbox.source_key.like('cv-received:%')))==1
  # UNKNOWN must not be retried automatically or displayed as success.
  unknownproc=configure('procedure','Uncertain test',steps=[{'op':'email','subject':'Uncertain','body':'Synthetic'}])
  unknownaction=configure('action','Uncertain action',procedure_code=unknownproc)
@@ -118,7 +118,7 @@ try:
  client.post(execute,data={'csrf_token':token,'action':unknownaction})
  with app.SessionFactory() as db:
   run=db.scalar(select(ActionRun).where(ActionRun.action_code==unknownaction));assert run.status=='UNKNOWN' and len(run.attempts)==1
-  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox))==2
+  assert db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(~mail_delivery.EmailOutbox.source_key.like('cv-received:%')))==2
  # A corrected missing-data situation retries the same version and composes real questions.
  from workspace.role_catalog import JobRole
  from workspace.pdl_rule_store import PDLRule

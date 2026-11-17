@@ -105,6 +105,26 @@ try:
     client.get(f'/selection/posizioni/{positions[0]}/job?modal=1')
     with client.session_transaction() as sess:
         assert sess[routes.CURRENT_JOB_KEY]==positions[1]
+    with app.SessionFactory() as db:
+        from workspace import mail_delivery, cv_received
+        rows=list(db.scalars(select(mail_delivery.EmailOutbox).where(mail_delivery.EmailOutbox.source_key.like('cv-received:%')).order_by(mail_delivery.EmailOutbox.id)))
+        assert len(rows)==2, [r.source_key for r in rows]   # one per Job; the exact duplicate upload sent nothing
+        assert {r.recipient for r in rows}=={'resume.only@example.test'} and all(r.status=='QUEUED' for r in rows)
+        assert rows[0].subject=="Rome's Flavours: we received your résumé"
+        assert rows[0].body.startswith('Hi Synthetic,') and 'apply for our Synthetic SERVER position.' in rows[0].body and 'the team at Rome’s Flavours Synthetic location!' in rows[0].body and 'Synthetic location' in rows[0].body
+        assert 'Synthetic FOOD_RUNNER' in rows[1].body and '—' not in rows[0].body
+    page=client.get(f'/selection/posizioni/{positions[0]}/sp/upload?modal=1');token=re.search(r'name="csrf_token" value="([^"]+)"',page.get_data(as_text=True)).group(1)
+    up=lambda body,name: client.post(f'/selection/posizioni/{positions[0]}/sp/upload',data={'csrf_token':token,'modal':'1','cv':(BytesIO(body.encode()),name)},content_type='multipart/form-data')
+    assert '1 nuovi CV caricati' in up(CV.replace('Served tables','Served many tables'),'second.txt').get_data(as_text=True)
+    assert '1 nuovi CV caricati' in up(CV.replace('resume.only@example.test','').replace('Synthetic Resume Person','Noemail Person'),'noemail.txt').get_data(as_text=True)
+    with patch.object(mail_delivery,'enqueue',side_effect=RuntimeError('mail down')):
+        assert '1 nuovi CV caricati' in up(CV.replace('resume.only@example.test','other.person@example.test').replace('Synthetic Resume Person','Other Person'),'other.txt').get_data(as_text=True)
+    with app.SessionFactory() as db:
+        n=db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(mail_delivery.EmailOutbox.source_key.like('cv-received:%')))
+        assert n==2, n   # same person again: no 2nd email; no email address: none; mail error: upload kept, none
+        assert db.scalar(select(func.count()).select_from(ws.PositionCandidate))==5
+    assert cv_received.body('','Server','').startswith('Hello,') and 'the team at Rome’s Flavours!' in cv_received.body('','Server','')
+    print('PASS: CV received email: staff upload queues one email per person per Job, none for duplicates, none without an email address, and a mail failure never blocks the upload')
     print('PASS: actual extraction and storage, both SP and ordinary PDL, duplicate/error handling, no evaluation/queue/AI, context preserved, three row actions')
 finally:
     app._engine.dispose()

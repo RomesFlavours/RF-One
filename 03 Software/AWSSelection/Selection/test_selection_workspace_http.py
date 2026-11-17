@@ -87,6 +87,11 @@ def fake_deliver(*, to_address, full_name, code):
     outbox.append((to_address, code))
 
 
+def message_rows(s, pc_id):
+    from workspace import mail_delivery
+    return [r for r in mail_delivery.rows_for(s, pc_id) if not r.source_key.startswith('cv-received:')]
+
+
 def last_code(email: str) -> str:
     return next(code for to, code in reversed(outbox) if to == email)
 
@@ -321,6 +326,15 @@ try:
                       content_type="multipart/form-data")
         apply_url = r.headers.get("Location", "")
         check("6. the résumé is imported and the online interview starts", "/selection/my-application/" in apply_url, apply_url)
+        with selection_app.SessionFactory() as s:
+            from workspace import mail_delivery
+            ack = list(s.scalars(select(mail_delivery.EmailOutbox).where(mail_delivery.EmailOutbox.source_key.like('cv-received:%'))))
+            check("6. the candidate gets the 'we received your résumé' email, once",
+                  len(ack) == 1 and ack[0].recipient == "jordan@example.test" and ack[0].body.startswith("Hi Jordan,")
+                  and "We've received your résumé" in ack[0].body and ack[0].status == "QUEUED", [a.recipient for a in ack])
+            for a in ack:   # delivered by the mail worker; the message checks below count only message emails
+                a.status = 'SENT'
+            s.commit()
         page = text(cand.get(apply_url))
         check("6. the interview asks the approved standard questions", "Question 1 of 2" in page and "weekends" in page)
         os.environ["RFONE_PUBLIC_BASE_URL"] = "https://rfone.romesflavours.com"
@@ -405,16 +419,16 @@ try:
             msg = s.scalars(select(ws.Message).where(ws.Message.position_candidate_id == pc_id).order_by(ws.Message.id.desc())).first()
             mid = msg.id
             check('mail: study invitation uses the existing menu link', '/training/menu' in msg.body)
-            check('mail: drafts are never queued', not mail_delivery.rows_for(s, pc_id))
+            check('mail: drafts are never queued', not message_rows(s, pc_id))
         message_url = f'/selection/posizioni/{pid}/messaggi/{mid}'
         mgr.post(message_url, data={'csrf_token': mt, 'action': 'send', 'body': 'x' * 16001})
         with selection_app.SessionFactory() as s:
             check('mail: oversized text stays editable and is not approved or queued',
-                s.get(ws.Message, mid).status == 'DRAFT' and not mail_delivery.rows_for(s, pc_id))
+                s.get(ws.Message, mid).status == 'DRAFT' and not message_rows(s, pc_id))
         mgr.post(message_url, data={'csrf_token': mt, 'action': 'send'})
         mgr.post(message_url, data={'csrf_token': mt, 'action': 'send'})
         with selection_app.SessionFactory() as s:
-            deliveries = mail_delivery.rows_for(s, pc_id)
+            deliveries = message_rows(s, pc_id)
             check('mail: approving twice queues exactly one email to the verified candidate',
                 len(deliveries) == 1 and deliveries[0].recipient == 'jordan@example.test')
         check('mail: unsigned transport call refused', app.test_client().post('/selection/candidate/bridge/mail/claim', json={}).status_code == 403)
@@ -467,7 +481,7 @@ try:
         guest.post(offer_url, data={'csrf_token': csrf, 'slot': pick})
         guest.post(offer_url, data={'csrf_token': csrf, 'slot': pick})
         with selection_app.SessionFactory() as s:
-            confirms = [r for r in mail_delivery.rows_for(s, pc_id) if r.source_key.startswith('appointment:')]
+            confirms = [r for r in message_rows(s, pc_id) if r.source_key.startswith('appointment:')]
             check('mail: choosing an appointment queues one confirmation even after refresh', len(confirms) == 1)
         os.environ.pop('RFONE_SELECTION_ARUBA_KEY', None)
 

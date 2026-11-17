@@ -27,7 +27,7 @@ from rfone_data_store import models as m
 from rfone_data_store.selection import persistence
 from rfone_data_store.selection import workspace_models as ps
 
-from . import cv_delete, engine, position_settings, sp_queue, pdl_rule_application
+from . import cv_delete, cv_received, engine, position_settings, sp_queue, pdl_rule_application
 from .routes import _cfg, _pc, _position, _restaurant_id, access_required, bp, external_url
 from .sp import profiles as spp
 from .sp import ranking as sp_ranking
@@ -244,6 +244,7 @@ def sp_upload(db, actor, position_id):
             analyze_after=False, ai_reading=False)
         if r["status"] == "OK":
             batch["imported"].append(r["position_candidate_id"])
+            cv_received.queue(db, r["position_candidate_id"], delay=cv_received.STAFF_DELAY)
             notes = engine.duplicate_notes(db, db.get(ps.PositionCandidate, r["position_candidate_id"]))
             if notes:
                 batch["possible_duplicates"].append({"pc_id": r["position_candidate_id"], "filename": r["filename"], "note":" ".join(notes)})

@@ -120,7 +120,18 @@ def blockers(db, pcs: list[ps.PositionCandidate]) -> dict[int, list[str]]:
         reason = _reading_blocker(db, pc)
         if reason:
             out[pc.id].append(reason)
-    refs = _references(db, PC_TABLE, ids, _existing_tables(db), skip={ps.Proposal.__tablename__})
+    outbox = "selection_workspace_email_outbox"
+    refs = _references(db, PC_TABLE, ids, _existing_tables(db), skip={ps.Proposal.__tablename__, outbox})
+    if outbox in _existing_tables(db):
+        # A "we received your résumé" email that has not left yet goes with the CV; any other email blocks.
+        from . import cv_received, mail_delivery
+        E = mail_delivery.EmailOutbox
+        for pc_id, count in db.execute(select(E.position_candidate_id, func.count()).where(
+                E.position_candidate_id.in_(ids),
+                ~(E.source_key.like(cv_received.PREFIX + '%') & (E.status == 'QUEUED') & (E.attempts == 0)))
+                .group_by(E.position_candidate_id)).all():
+            if count:
+                refs[pc_id].append(outbox)
     for pc_id, tables in refs.items():
         for name in dict.fromkeys(_TABLE_REASONS.get(t, f"later data is recorded ({t})") for t in tables):
             out[pc_id].append(name)
@@ -188,6 +199,14 @@ def delete_cv(db, *, documents, position_id: int, pc_id: int, actor_id: int | No
 
         tables, kept, remove_file = _existing_tables(db), [], None
         db.execute(sql_delete(ps.Event).where(ps.Event.position_candidate_id == pc.id, ps.Event.kind == ADDED))
+        if "selection_workspace_email_outbox" in tables:
+            from . import cv_received, mail_delivery
+            E = mail_delivery.EmailOutbox
+            db.execute(sql_delete(E).where(E.position_candidate_id == pc.id, E.source_key.like(cv_received.PREFIX + '%'),
+                                           E.status == 'QUEUED', E.attempts == 0))
+            if db.scalar(select(func.count()).select_from(E).where(E.position_candidate_id == pc.id)):
+                db.rollback()   # the worker took the email meanwhile: it may be sent, so the CV stays
+                return {"status": "BLOCKED", "filename": filename, "reasons": [_TABLE_REASONS[E.__tablename__]], "kept": []}
         db.delete(pc)
         db.flush()
 

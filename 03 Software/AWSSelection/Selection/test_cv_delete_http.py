@@ -26,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -259,6 +260,22 @@ try:
         upload(owner, t, job1, [("cv1.txt", cv(1))])
         check("after deletion the same CV can be uploaded again (imported as new, not a duplicate)",
               pcs_of(job1).get("cv1.txt") not in (None, names["cv1.txt"]))
+        from workspace import mail_delivery
+        with selection_app.SessionFactory() as db:
+            E = mail_delivery.EmailOutbox
+            gone = db.scalar(select(func.count()).select_from(E).where(E.position_candidate_id == names["cv1.txt"]))
+            receipts = list(db.scalars(select(E).where(E.source_key.like("cv-received:%"))))
+            later = all(r.next_attempt_at > ws.utcnow() + timedelta(minutes=10) for r in receipts)
+        check("receipt email: the deleted CV's unsent email went with it; staff-upload emails wait 15 minutes before sending",
+              gone == 0 and receipts and later, (gone, len(receipts), later))
+        other = pcs_of(job1)["cv1.txt"]
+        with selection_app.SessionFactory() as db:
+            for r in db.scalars(select(E).where(E.position_candidate_id == other)):
+                r.status = "SENT"
+            db.commit()
+            reasons = cv_delete.blockers(db, [db.get(ws.PositionCandidate, other)])[other]
+        check("receipt email: once sent, the CV can no longer be deleted (the email to the candidate is recorded)",
+              reasons == ["messages to the candidate are recorded"], reasons)
 
         # 3. Security: CSRF, permissions, another Job's CV
         target = pcs_of(job1)["cv2.txt"]
