@@ -1,7 +1,5 @@
-FROM 418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web@sha256:a870a383890078f0e2009839ef69f131b00c11d6b157cac8ab9b3c98666cbe6a
-COPY ["03 Software/RF-One Web/templates/role_profiles.html", "/app/RF-One Web/templates/role_profiles.html"]
-COPY ["03 Software/RF-One Web/static/css/registry-layout.css", "/app/RF-One Web/static/css/registry-layout.css"]
-COPY ["03 Software/RF-One Web/templates/help/registry.html", "/app/RF-One Web/templates/help/registry.html"]
-COPY ["03 Software/RF-One Web/static/js/registry-layout.js", "/app/RF-One Web/static/js/registry-layout.js"]
-COPY test_registry_layout_release.py /app/test_registry_layout_release.py
-RUN python /app/test_registry_layout_release.py /app
+# HOME_REMOVE_SELECTION_OLD_001 — overlay on the live rfone-web image
+# (registry-trainee-c89bd42ba6cc); only the Home template changes.
+FROM 418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-web@sha256:dc8f3355b79c1f530c3619396c04e1b87265b1175feee04f0499c4f348348268
+COPY release/remove_selection_old_home.py /tmp/remove_selection_old_home.py
+RUN python /tmp/remove_selection_old_home.py /app && rm /tmp/remove_selection_old_home.py

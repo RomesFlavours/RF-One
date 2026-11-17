@@ -124,12 +124,13 @@ def main() -> int:
         # --- Domains --------------------------------------------------------
         domains_part = body.split("<h2>MyRFOne</h2>", 1)[1].split('<div class="domain-name">Administration</div>', 1)[0]
         names = re.findall(r'<div class="domain-name">([^<]+)</div>', domains_part)
-        # SELECTION_OLD_ENTRY_001: "Selection Old" follows Selection, same access.
-        expected = ["Compensation", "Organization", "Selection", "Selection Old", "Tips", "Training"]
+        # SELECTION_OLD_ENTRY_001 withdrawn (2026-11-17): Home no longer offers "Selection Old".
+        expected = ["Compensation", "Organization", "Selection", "Tips", "Training"]
         check("Domains ordered alphabetically (Selection released: no Work in progress left)",
               names == expected, f"{names}")
-        check("Selection opens the current interface, Selection Old the historical one",
-              'href="/selection"' in domains_part and 'href="/selection/candidates"' in domains_part)
+        check("Selection opens the current interface; no Selection Old entry remains",
+              'href="/selection"' in domains_part and 'href="/selection/candidates"' not in domains_part
+              and "Selection Old" not in body)
         check("Bank is not presented as a Domain",
               DOMAINS_BY_CODE["BANK"].display_name not in domains_part and 'href="/bank"' not in domains_part)
         check("no side-by-side domain grid remains on Home", 'class="domain-grid"' not in body)
@@ -144,7 +145,7 @@ def main() -> int:
             r'class="domain-card domain-card-(released|unreleased)"[^>]*>\s*<div class="domain-name">([^<]+)</div>',
             domains_part)}
         check("operational Domains, Selection included, are marked released (green)",
-              all(card_states.get(n) == "released" for n in ("Compensation", "Organization", "Selection", "Selection Old", "Tips", "Training")),
+              all(card_states.get(n) == "released" for n in ("Compensation", "Organization", "Selection", "Tips", "Training")),
               f"{card_states}")
         check("every Domain card carries exactly one release state", len(card_states) == len(names), f"{card_states}")
 
