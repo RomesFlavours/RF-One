@@ -132,6 +132,11 @@ def blockers(db, pcs: list[ps.PositionCandidate]) -> dict[int, list[str]]:
                 .group_by(E.position_candidate_id)).all():
             if count:
                 refs[pc_id].append(outbox)
+    from . import cv_received as _cvr
+    if _cvr.central_enabled():   # a central receipt that has not left yet goes with the CV; any other state blocks
+        for pc in pcs:
+            if any(not (r.status == 'QUEUED' and r.attempts == 0) for r in _cvr.central_requests_for(db, pc)):
+                refs[pc.id].append("selection_workspace_email_outbox")
     for pc_id, tables in refs.items():
         for name in dict.fromkeys(_TABLE_REASONS.get(t, f"later data is recorded ({t})") for t in tables):
             out[pc_id].append(name)
@@ -199,14 +204,25 @@ def delete_cv(db, *, documents, position_id: int, pc_id: int, actor_id: int | No
 
         tables, kept, remove_file = _existing_tables(db), [], None
         db.execute(sql_delete(ps.Event).where(ps.Event.position_candidate_id == pc.id, ps.Event.kind == ADDED))
+        from . import cv_received
         if "selection_workspace_email_outbox" in tables:
-            from . import cv_received, mail_delivery
+            from . import mail_delivery
             E = mail_delivery.EmailOutbox
             db.execute(sql_delete(E).where(E.position_candidate_id == pc.id, E.source_key.like(cv_received.PREFIX + '%'),
                                            E.status == 'QUEUED', E.attempts == 0))
             if db.scalar(select(func.count()).select_from(E).where(E.position_candidate_id == pc.id)):
                 db.rollback()   # the worker took the email meanwhile: it may be sent, so the CV stays
                 return {"status": "BLOCKED", "filename": filename, "reasons": [_TABLE_REASONS[E.__tablename__]], "kept": []}
+        if cv_received.central_enabled():
+            from rfone_data_store import email_service as es
+            try:   # atomic against the worker: only a request still waiting can be cancelled
+                for r in cv_received.central_requests_for(db, pc):
+                    es.transition(db, domain=cv_received.CENTRAL_DOMAIN, request_id=r.id, action="cancel",
+                                  actor_account_id=actor_id)
+            except ValueError:
+                db.rollback()   # the worker took the email meanwhile: it may be sent, so the CV stays
+                return {"status": "BLOCKED", "filename": filename,
+                        "reasons": [_TABLE_REASONS["selection_workspace_email_outbox"]], "kept": []}
         db.delete(pc)
         db.flush()
 

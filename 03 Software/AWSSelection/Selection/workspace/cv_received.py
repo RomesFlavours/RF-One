@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import timedelta
+import os
+from datetime import datetime as _dt, timedelta, timezone as _tz
 
 from rfone_data_store.selection import persistence, workspace_models as ps
 from . import mail_delivery
@@ -20,6 +21,35 @@ SUBJECT = "Rome's Flavours: we received your résumé"
 PREFIX = "cv-received:"
 # Staff uploads wait before sending, so a CV uploaded by mistake can still be deleted (with its unsent email).
 STAFF_DELAY = timedelta(minutes=15)
+# RF-One Email Service (shared, deployed by Pino). Off until activation is authorized: the receipt then
+# goes through Selection's existing outbox as before. On: through the central service, never both.
+CENTRAL_SWITCH = 'RFONE_SELECTION_CV_RECEIPT_CENTRAL'
+CENTRAL_DOMAIN = 'SELECTION'
+CENTRAL_EVENT = 'selection.cv_received:'
+
+
+def central_enabled():
+    return os.environ.get(CENTRAL_SWITCH, '').strip() == '1'
+
+
+def central_event(position_id, pc_id):
+    return f"{CENTRAL_EVENT}{position_id}:{pc_id}"
+
+
+def _central_sent(db, position_id, email):
+    """Any central receipt for this person and Job, whatever its state."""
+    from rfone_data_store import email_service as es
+    from sqlalchemy import select as _select
+    return db.scalar(_select(es.EmailRequest.id).where(
+        es.EmailRequest.domain == CENTRAL_DOMAIN, es.EmailRequest.recipient == email,
+        es.EmailRequest.event.like(f"{CENTRAL_EVENT}{position_id}:%")).limit(1)) is not None
+
+
+def central_requests_for(db, pc):
+    from rfone_data_store import email_service as es
+    from sqlalchemy import select as _select
+    return list(db.scalars(_select(es.EmailRequest).where(
+        es.EmailRequest.domain == CENTRAL_DOMAIN, es.EmailRequest.event == central_event(pc.position_id, pc.id))))
 
 
 def _name(db, pc):
@@ -62,10 +92,24 @@ def queue(db, pc_id, delay=None):
         if not email:
             return False
         key = source_key(position.id, email)
+        # Once per person per Job across both paths: an email already queued or sent by either never repeats.
         if db.query(mail_delivery.EmailOutbox.id).filter_by(source_key=key).first():
             return False
-        row = mail_delivery.enqueue(db, pc=pc, source_key=key, subject=SUBJECT,
-                              body=body(_name(db, pc), (position.title or 'open').strip(), (position.location_label or '').strip()))
+        text = body(_name(db, pc), (position.title or 'open').strip(), (position.location_label or '').strip())
+        if central_enabled():
+            if _central_sent(db, position.id, email):
+                return False
+            from rfone_data_store import email_service as es
+            from sqlalchemy import update as _update
+            request = es.enqueue(db, domain=CENTRAL_DOMAIN, recipient=email, subject=SUBJECT, body=text,
+                                 event=central_event(position.id, pc.id), dedup_key=f"cv_received:{pc.id}:v1")
+            if delay:   # only a request not yet picked up by the worker is held back
+                db.execute(_update(es.EmailRequest).where(es.EmailRequest.id == request.id,
+                    es.EmailRequest.status == 'QUEUED', es.EmailRequest.attempts == 0)
+                    .values(available_at=_dt.now(_tz.utc) + delay))
+            db.commit()
+            return True
+        row = mail_delivery.enqueue(db, pc=pc, source_key=key, subject=SUBJECT, body=text)
         if delay:
             row.next_attempt_at = ps.utcnow() + delay
         db.commit()
@@ -98,6 +142,14 @@ def catch_up_list(db):
     contacted = set()
     for model in (mail_delivery.EmailOutbox, ps.Message, ps.Decision, ps.Appointment, ps.SlotOffer, ActionRun):
         contacted.update(db.scalars(select(model.position_candidate_id)).all())
+    if central_enabled():   # receipts already in the central service count as contact
+        from rfone_data_store import email_service as es
+        for event in db.scalars(select(es.EmailRequest.event).where(es.EmailRequest.domain == CENTRAL_DOMAIN,
+                                                                    es.EmailRequest.event.like(CENTRAL_EVENT + '%'))):
+            try:
+                contacted.add(int(event.rsplit(':', 1)[1]))
+            except ValueError:
+                pass
     rows, seen = [], set()
     jobs = db.scalars(select(ps.Position).where(ps.Position.created_at >= CATCH_UP_FROM_UTC)).all()
     for position in jobs:
@@ -107,6 +159,10 @@ def catch_up_list(db):
                 continue
             email = mail_delivery.email_for(db, pc)
             if not email or (position.id, email) in seen:
+                continue
+            # The same person already has this Job's receipt (another CV of theirs): nothing would be sent.
+            if db.query(mail_delivery.EmailOutbox.id).filter_by(source_key=source_key(position.id, email)).first() \
+                    or (central_enabled() and _central_sent(db, position.id, email)):
                 continue
             seen.add((position.id, email))
             rows.append({'pc': pc, 'position': position, 'email': email, 'name': _name(db, pc) or '(no name)'})
