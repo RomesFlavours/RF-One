@@ -39,6 +39,7 @@ from auth import (  # noqa: E402
     require_admin, require_csrf, require_login,
 )
 from db import SessionFactory  # noqa: E402
+from email_routes import register_email_routes  # noqa: E402
 from domain_registry import DOMAINS, TIPS_HOME_URL  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
@@ -75,6 +76,8 @@ if not _secret_key:
         "explicitly instead."
     )
 app.secret_key = _secret_key
+register_email_routes(app, SessionFactory=SessionFactory,
+                      load_current_account=load_current_account, require_csrf=require_csrf)
 
 # HTTPS-only cookies: App Runner terminates TLS at the edge, so the app
 # itself is always reached over HTTPS in any real deployment — the session

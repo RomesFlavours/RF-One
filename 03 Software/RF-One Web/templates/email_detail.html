@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block page_title %}Email details{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('email_control') }}">Email Control</a></p>
+<h1>{{ row.subject }}</h1>
+<p>{{ row.domain }} · {{ row.recipient }} · {{ row.status }}</p>
+<p>ID: {{ row.id }} · Event: {{ row.event }}</p>
+<p>Accepted means accepted by SMTP; recipient delivery is not confirmed.</p>
+{% if row.status == 'UNCERTAIN' %}<p>SMTP acceptance could not be determined. Automatic and manual resends are blocked. Reconcile with Aruba before requesting a new email.</p>{% endif %}
+<h2>Attempts</h2>
+<table><tr><th>Attempt</th><th>Started</th><th>Finished</th><th>Outcome</th><th>Error</th></tr>
+{% for a in attempts %}<tr><td>{{ a.number }}</td><td>{{ a.started_at|local_dt(tz) }}</td><td>{{ a.finished_at|local_dt(tz) if a.finished_at else '—' }}</td><td>{{ a.outcome }}</td><td>{{ a.error or '—' }}</td></tr>{% endfor %}</table>
+{% if row.status in ['QUEUED','RETRY','FAILED'] %}
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="action" value="{{ 'resend' if row.status == 'FAILED' else 'cancel' }}">
+<button type="submit">{{ 'Authorize resend' if row.status == 'FAILED' else 'Cancel pending email' }}</button></form>
+{% endif %}
+<h2>Administrative operations</h2>
+{% for item in audit %}<p>{{ item.created_at|local_dt(tz) }} · Account {{ item.actor_account_id }} · {{ item.action }}</p>{% else %}<p>No operations.</p>{% endfor %}
+{% endblock %}

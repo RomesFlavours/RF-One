@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block page_title %}RF-One · Email Control{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('home') }}">RF-One</a> → Administration → Email Control</p>
+<h1>Email Control</h1>
+<p>Shared Services → Email · Aruba SMTP</p>
+<p>Accepted means accepted by SMTP. Delivery to the recipient is not confirmed.</p>
+<div class="home-stack">
+{% for status in ['QUEUED','RETRY','SENDING','ACCEPTED','FAILED','UNCERTAIN','CANCELLED'] %}
+<div class="domain-card"><strong>{{ status }}</strong>: {{ counts.get(status, 0) }}</div>
+{% endfor %}
+</div>
+<p>Worker: {{ 'Operational' if live else 'No recent heartbeat' }} · {{ worker.mode if worker else 'Not initialized' }}
+{% if worker and worker.heartbeat %} · {{ worker.heartbeat|local_dt(tz) }}{% endif %}</p>
+<form method="get">
+{% for key, label in [('domain','Domain'),('recipient','Recipient'),('status','Status'),('start','From (UTC)'),('end','Until, exclusive (UTC)')] %}
+<label>{{ label }} <input name="{{ key }}" value="{{ request.args.get(key,'') }}" {% if key in ['start','end'] %}type="date"{% endif %}></label>
+{% endfor %}
+<button type="submit">Search</button>
+</form>
+<div style="overflow-x:auto"><table>
+<thead><tr><th>Created</th><th>Domain</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Attempts</th><th>Details</th></tr></thead>
+<tbody>{% for row in rows %}<tr>
+<td>{{ row.created_at|local_dt(tz) }}</td><td>{{ row.domain }}</td><td>{{ row.recipient }}</td>
+<td>{{ row.subject }}</td><td>{{ row.status }}</td><td>{{ row.attempts }}</td>
+<td><a href="{{ url_for('email_detail', domain=row.domain, request_id=row.id) }}">Open</a></td>
+</tr>{% else %}<tr><td colspan="7">No emails found.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if offset %}<a href="{{ url_for('email_control', domain=request.args.get('domain',''), recipient=request.args.get('recipient',''), status=request.args.get('status',''), start=request.args.get('start',''), end=request.args.get('end',''), offset=[0,offset-100]|max) }}">Previous</a>{% endif %}
+{% if rows|length == 100 %}<a href="{{ url_for('email_control', domain=request.args.get('domain',''), recipient=request.args.get('recipient',''), status=request.args.get('status',''), start=request.args.get('start',''), end=request.args.get('end',''), offset=offset+100) }}">Next</a>{% endif %}
+{% endblock %}
