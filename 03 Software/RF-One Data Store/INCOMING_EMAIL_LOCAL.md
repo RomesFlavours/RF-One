@@ -231,3 +231,44 @@ validation of the additive migration, a production vault backend, and a dedicate
 receiver process with least-privilege secret access. It must preserve the current
 outgoing deployment and existing Selection/Training/MyRF flows. This branch
 contains none of those production mutations.
+
+
+## Attachment descriptors — local update
+
+Email Control → New arrivals now lists attachments beneath each message. Expand
+`N attachments` to see filename, MIME type and size. Inline files are labelled;
+missing filenames and unavailable metadata have explicit fallback labels.
+A verified empty list is distinguished from pending or unavailable metadata.
+
+The receiver requests IMAP BODYSTRUCTURE alongside the existing header-only
+PEEK request. It never requests attachment body parts, downloads file content,
+marks mail read or invokes AI. Sizes are transfer-encoded octets reported by
+IMAP, not a claim about the decoded file size. Attached messages/containers are
+listed as single attachments without inspecting their contents.
+
+Previously recorded arrivals are enriched automatically in bounded batches on
+subsequent mailbox checks. Enrichment requires matching mailbox generation and
+UIDVALIDITY; changed identities are labelled unavailable instead of fetching an
+unrelated message. Existing owner authorization and lease fencing apply.
+
+The additive local migration `i9b120261117` adds `attachments` (JSON),
+`attachment_error` and `attachments_checked_at` to `email_arrivals`. The AWS
+revision registry remains `e9a120261117`. No production migration was performed.
+For an existing recognized private sandbox, stop the local server and run:
+
+```powershell
+python -B '03 Software/RF-One Web/run_email_control_local.py' --upgrade --port 8769 --timezone America/New_York
+```
+
+The explicit upgrade creates a consistent sibling SQLite backup before changing
+the schema and preserves mailbox credentials, arrival records and UID cursors.
+It refuses unrelated databases. Fresh private sandboxes include this migration.
+
+Validation: 22 attachment tests, 27 incoming tests and 23 outgoing tests pass
+(72 total), plus four normal-startup checks. Attachment coverage includes nested
+MIME, encoded/literal filenames, inline and unnamed files, malformed structures,
+resource bounds, header-literal spoofing, metadata-only protocol commands,
+backfill, deduplication, owner isolation, HTML escaping, pause fencing and backup/
+upgrade preservation. The migration-chain check passes with one head containing
+the recorded AWS revision. Provider responses are simulated in protocol tests;
+no live Aruba authentication or attachment download was needed for validation.

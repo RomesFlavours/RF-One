@@ -183,3 +183,16 @@
 
 .email-mailbox-top > div { min-width:0; }
 .email-mailbox-top h2 { overflow-wrap:anywhere; }
+
+/* IMAP attachment descriptors only; no download actions or file previews. */
+.email-attachment-note { display:block; color:var(--muted); font-size:.72rem; margin-top:.55rem; }
+.email-attachments { margin-top:.6rem; font-size:.76rem; }
+.email-attachments summary { cursor:pointer; color:var(--olive-700); font-weight:600; }
+.email-attachments ul { list-style:none; padding:0; margin:.6rem 0 0; border:1px solid var(--olive-150); border-radius:6px; }
+.email-attachments li { display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; padding:.65rem; border-top:1px solid var(--olive-150); }
+.email-attachments li:first-child { border-top:0; }
+.email-attachments li > div { min-width:0; }
+.email-attachments strong { display:block; overflow-wrap:anywhere; font-size:.76rem; font-weight:500; }
+.email-attachment-type { display:block; overflow-wrap:anywhere; font-size:.68rem; color:var(--muted); margin-top:.25rem; }
+.email-attachment-size { white-space:nowrap; color:var(--muted); font-size:.72rem; }
+.email-attachments > p { font-size:.66rem; color:var(--muted); line-height:1.5; margin:.5rem 0 0; }

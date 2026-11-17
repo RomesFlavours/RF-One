@@ -49,8 +49,13 @@ def check_one(factory, vault, *, client_factory=HeaderMailboxClient, clock=now):
         db.add(run)
         db.flush()
         run_id, version = run.id, box.config_version
+        pending = list(db.execute(select(incoming.Arrival.id, incoming.Arrival.uid).where(
+            incoming.Arrival.mailbox_id == box.id, incoming.Arrival.generation == box.generation,
+            incoming.Arrival.uidvalidity == box.uidvalidity,
+            incoming.Arrival.attachments_checked_at.is_(None)).order_by(
+                incoming.Arrival.detected_at, incoming.Arrival.id).limit(BATCH_SIZE)))
         db.expunge(box)
-    client, result, error, headers, snapshot = None, 'OK', None, [], None
+    client, result, error, headers, snapshot, enriched = None, 'OK', None, [], None, []
     try:
         client = client_factory(box, vault.load(box.credential_ref))
         snapshot = client.open()
@@ -60,6 +65,10 @@ def check_one(factory, vault, *, client_factory=HeaderMailboxClient, clock=now):
             result, error = 'RESET', 'UIDVALIDITY_CHANGED'
         else:
             headers = client.headers_since(box.last_uid, snapshot)
+            # Stay within the original per-check network budget, including old arrivals.
+            for arrival_id, uid in pending[:max(0, BATCH_SIZE - len(headers))]:
+                files, file_error = client.attachments_for(uid)
+                enriched.append((arrival_id, files, file_error))
         client.verify(snapshot)
     except CredentialError:
         result, error = 'FAILED', 'CREDENTIALS_UNAVAILABLE'
@@ -95,9 +104,25 @@ def check_one(factory, vault, *, client_factory=HeaderMailboxClient, clock=now):
                 saved = db.execute(insert(incoming.Arrival).values(mailbox_id=box.id, generation=box.generation,
                     uidvalidity=snapshot.uidvalidity, uid=header.uid, sender=header.sender,
                     recipient=header.recipient, subject=header.subject, message_id=header.message_id,
-                    message_date=header.message_date, size_bytes=header.size_bytes).on_conflict_do_nothing(
+                    message_date=header.message_date, size_bytes=header.size_bytes,
+                    attachments=list(header.attachments) if header.attachments is not None else None,
+                    attachment_error=header.attachment_error,
+                    attachments_checked_at=finished if header.attachments is not None or header.attachment_error else None
+                    ).on_conflict_do_nothing(
                         index_elements=['mailbox_id', 'generation', 'uidvalidity', 'uid']))
                 count += saved.rowcount
+            for arrival_id, files, file_error in enriched:
+                db.execute(update(incoming.Arrival).where(incoming.Arrival.id == arrival_id,
+                    incoming.Arrival.mailbox_id == box.id, incoming.Arrival.generation == box.generation,
+                    incoming.Arrival.uidvalidity == snapshot.uidvalidity).values(
+                        attachments=list(files) if files is not None else None,
+                        attachment_error=file_error, attachments_checked_at=finished))
+            # Old source identities must never be looked up using a newly assigned UID.
+            db.execute(update(incoming.Arrival).where(incoming.Arrival.mailbox_id == box.id,
+                incoming.Arrival.attachments_checked_at.is_(None),
+                or_(incoming.Arrival.generation != box.generation,
+                    incoming.Arrival.uidvalidity != snapshot.uidvalidity)).values(
+                        attachment_error='SOURCE_CHANGED', attachments_checked_at=finished))
             row.uidvalidity = snapshot.uidvalidity
             if result in ('BASELINED', 'RESET'):
                 row.last_uid = snapshot.uidnext - 1
@@ -106,7 +131,7 @@ def check_one(factory, vault, *, client_factory=HeaderMailboxClient, clock=now):
             else:
                 row.last_uid = max(row.last_uid, snapshot.uidnext - 1)
             row.failures, row.last_success_at = 0, finished
-            delay = 1 if len(headers) == BATCH_SIZE else row.interval_seconds
+            delay = 1 if len(headers) + len(enriched) == BATCH_SIZE else row.interval_seconds
         else:
             row.failures += 1
             delay = 3600 if error == 'AUTHENTICATION_FAILED' else min(3600, row.interval_seconds * 2 ** min(row.failures, 6))

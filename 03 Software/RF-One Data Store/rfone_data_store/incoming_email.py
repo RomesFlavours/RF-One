@@ -8,7 +8,7 @@ from email.utils import parseaddr
 import re
 import uuid
 
-from sqlalchemy import (BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String,
+from sqlalchemy import (JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String,
                         UniqueConstraint, CheckConstraint, select, update)
 from .models import Base
 from .email_service import now
@@ -71,6 +71,9 @@ class Arrival(Base):
     message_id = Column(String(1000))
     message_date = Column(DateTime(timezone=True))
     size_bytes = Column(BigInteger)
+    attachments = Column(JSON)  # Descriptors only. NULL = not yet checked/unavailable; [] = verified none.
+    attachment_error = Column(String(30))
+    attachments_checked_at = Column(DateTime(timezone=True))
     detected_at = Column(DateTime(timezone=True), nullable=False, default=now, index=True)
 
 

@@ -14,6 +14,20 @@ def register_incoming_email_routes(app, *, SessionFactory, load_current_account,
                                    get_timezone=lambda: None, vault=None):
     vault = vault or LocalMailboxVault()
 
+    def format_bytes(value):
+        if value is None:
+            return 'Unknown'
+        value = int(value)
+        if value < 1024:
+            return f'{value} B'
+        for unit in ('KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'):
+            value /= 1024
+            if value < 1024 or unit == 'EiB':
+                return f'{value:.1f} {unit}'
+
+    app.jinja_env.filters['email_bytes'] = format_bytes
+
+
     def account(db):
         current = load_current_account(db)
         if current is None or current.status != 'ACTIVE':

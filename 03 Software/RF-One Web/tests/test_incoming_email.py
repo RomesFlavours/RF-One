@@ -67,6 +67,9 @@ class FakeClient:
             raise KeyboardInterrupt()
         return [h for h in self.server['headers'] if last_uid < h.uid < snapshot.uidnext][:20]
 
+    def attachments_for(self, uid):
+        return (), None
+
     def verify(self, snapshot):
         if self.server.get('verify_failure'):
             raise MailboxError('IMAP_FAILED')
@@ -358,8 +361,10 @@ class ProtocolTests(unittest.TestCase):
                 outer.commands.append((command, *args))
                 if command == 'search': return 'OK', [b'1 10 11 12']
                 uid = int(args[0])
-                return 'OK', [(f'1 (UID {uid} RFC822.SIZE 400)'.encode(),
-                    b'From: Sender <s@example.test>\r\nTo: r@example.test\r\nSubject: =?utf-8?q?CV_ricevuto?=\r\nDate: Tue, 17 Nov 2026 10:00:00 -0500\r\nMessage-ID: <x@example.test>\r\n\r\n')]
+                raw = b'From: Sender <s@example.test>\r\nTo: r@example.test\r\nSubject: =?utf-8?q?CV_ricevuto?=\r\nDate: Tue, 17 Nov 2026 10:00:00 -0500\r\nMessage-ID: <x@example.test>\r\n\r\n'
+                prefix = (f'1 (UID {uid} RFC822.SIZE 400 BODYSTRUCTURE ("TEXT" "PLAIN" NIL NIL NIL "7BIT" 20 1) '
+                          f'BODY[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)]<0> {{{len(raw)}}}').encode()
+                return 'OK', [(prefix, raw), b')']
             def logout(self): outer.commands.append(('logout',))
         self.connection = Connection()
         def factory(host, address, context):
@@ -420,10 +425,15 @@ class MigrationTests(unittest.TestCase):
             with Operations.context(MigrationContext.configure(db)):
                 migration.upgrade()
             self.assertEqual(db.scalar(text('SELECT id FROM email_worker_state WHERE id=2')), 2)
+            next_spec = importlib.util.spec_from_file_location('attachment_migration_test', STORE / 'migrations/versions/i9b120261117_incoming_attachment_metadata.py')
+            attachment_migration = importlib.util.module_from_spec(next_spec); next_spec.loader.exec_module(attachment_migration)
+            with Operations.context(MigrationContext.configure(db)):
+                attachment_migration.upgrade()
             for table in incoming.TABLES:
                 columns = {r[1] for r in db.execute(text('PRAGMA table_info('+table.name+')'))}
                 self.assertEqual(columns, set(table.c.keys()))
             with Operations.context(MigrationContext.configure(db)):
+                attachment_migration.downgrade()
                 migration.downgrade()
             self.assertIsNone(db.scalar(text('SELECT id FROM email_worker_state WHERE id=2')))
         engine.dispose()

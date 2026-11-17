@@ -4,12 +4,14 @@ Starts the independent incoming monitor by default. No SMTP worker is started.
 Run from any directory: python run_email_control_local.py --port 8769
 """
 import argparse
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from contextlib import closing
 import importlib.util
 import logging
 import os
 from pathlib import Path
 import secrets
+import sqlite3
 import subprocess
 import sys
 
@@ -26,6 +28,47 @@ from email_routes import register_email_routes
 from incoming_email_routes import register_incoming_email_routes
 
 
+def _apply_local_migration(db, filename):
+    spec = importlib.util.spec_from_file_location('incoming_local_migration', STORE / 'migrations/versions' / filename)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    from alembic.operations import Operations
+    from alembic.migration import MigrationContext
+    with Operations.context(MigrationContext.configure(db)):
+        migration.upgrade()
+
+
+def upgrade_database(path):
+    """Explicit upgrade of a recognized private sandbox, after a consistent backup."""
+    path = path.resolve()
+    if path == DEFAULT_SQLITE_PATH.resolve() or path.suffix.lower() != '.db':
+        raise RuntimeError('Choose a dedicated local Email Control sandbox .db file.')
+    if not path.exists():
+        return None
+    engine = create_configured_engine('sqlite:///' + path.as_posix(), sqlite_immediate=True)
+    try:
+        with engine.connect() as db:
+            if '_email_control_sandbox' not in inspect(db).get_table_names():
+                raise RuntimeError('This is not an Email Control sandbox. No tables were changed.')
+            version = db.scalar(text('SELECT version FROM _email_control_sandbox'))
+        if version == 'i9b120261117':
+            return None
+        if version != 'i9a120261117':
+            raise RuntimeError('Unexpected sandbox revision. No tables were changed.')
+        backup = path.with_name(path.stem + '.pre-attachments-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '.db')
+        with closing(sqlite3.connect('file:' + path.as_posix() + '?mode=ro', uri=True)) as source:
+            with closing(sqlite3.connect(str(backup))) as target:
+                source.backup(target)
+        with engine.begin() as db:
+            if db.scalar(text('SELECT version FROM _email_control_sandbox')) != 'i9a120261117':
+                raise RuntimeError('Sandbox revision changed. Upgrade refused.')
+            _apply_local_migration(db, 'i9b120261117_incoming_attachment_metadata.py')
+            db.execute(text("UPDATE _email_control_sandbox SET version='i9b120261117' WHERE version='i9a120261117'"))
+        return backup
+    finally:
+        engine.dispose()
+
+
 def prepare_database(path):
     path = path.resolve()
     if path == DEFAULT_SQLITE_PATH.resolve() or path.suffix.lower() != '.db':
@@ -39,20 +82,14 @@ def prepare_database(path):
                 if '_email_control_sandbox' not in names:
                     raise RuntimeError('This is not an Email Control sandbox. No tables were changed.')
                 version = db.scalar(text('SELECT version FROM _email_control_sandbox'))
-                if version != 'i9a120261117':
-                    raise RuntimeError('The sandbox needs an explicit schema upgrade.')
+                if version != 'i9b120261117':
+                    raise RuntimeError('The sandbox needs an explicit schema upgrade: run this launcher with --upgrade.')
                 return engine
             m.Base.metadata.create_all(db, tables=[m.RFOneAccount.__table__] + outgoing.TABLES)
-            spec = importlib.util.spec_from_file_location('incoming_local_bootstrap',
-                STORE / 'migrations/versions/i9a120261117_incoming_email_monitoring.py')
-            migration = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(migration)
-            from alembic.operations import Operations
-            from alembic.migration import MigrationContext
-            with Operations.context(MigrationContext.configure(db)):
-                migration.upgrade()
+            _apply_local_migration(db, 'i9a120261117_incoming_email_monitoring.py')
+            _apply_local_migration(db, 'i9b120261117_incoming_attachment_metadata.py')
             db.execute(text('CREATE TABLE _email_control_sandbox (version VARCHAR(30) NOT NULL)'))
-            db.execute(text("INSERT INTO _email_control_sandbox VALUES ('i9a120261117')"))
+            db.execute(text("INSERT INTO _email_control_sandbox VALUES ('i9b120261117')"))
             db.execute(m.RFOneAccount.__table__.insert().values(id=1, username='local-email-control',
                 display_name='Local user', password_hash='local-sandbox-no-login', is_admin=True, is_owner=True))
             db.execute(outgoing.EmailWorkerState.__table__.insert().values(id=1, mode='STOPPED',
@@ -117,7 +154,11 @@ def seed_demo(engine):
                 db.add(incoming.Arrival(mailbox_id=box.id, generation=1, uidvalidity='100', uid=i,
                     sender='Alex Morgan <alex@example.test>', recipient=address,
                     subject='CV for the restaurant team' if i == 11 else 'Availability for next week',
-                    message_date=outgoing.now() - timedelta(minutes=15), size_bytes=2450))
+                    message_date=outgoing.now() - timedelta(minutes=15), size_bytes=2450,
+                    attachments=[dict(part='2', name='CV_Alex_Morgan.pdf' if i == 11 else 'availability.xlsx',
+                        content_type='application/pdf' if i == 11 else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        size_bytes=124000 if i == 11 else 8200, encoding='BASE64', disposition='attachment')],
+                    attachments_checked_at=outgoing.now()))
 
 
 def main():
@@ -126,10 +167,15 @@ def main():
     parser.add_argument('--port', type=int, default=8769)
     parser.add_argument('--timezone', default=None, help='Location timezone; unset displays explicitly labelled UTC')
     parser.add_argument('--no-monitor', action='store_true')
+    parser.add_argument('--upgrade', action='store_true', help='Back up and upgrade a recognized local sandbox explicitly')
     parser.add_argument('--demo', action='store_true', help='Seed fictional paused mailboxes in this sandbox only')
     args = parser.parse_args()
     if args.demo and args.database.resolve() == (Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'RF-One' / 'email-control-local.db').resolve():
         parser.error('--demo requires a separate --database path')
+    if args.upgrade:
+        backup = upgrade_database(args.database)
+        if backup:
+            print('Local database backup: ' + str(backup), flush=True)
     engine = prepare_database(args.database)
     if args.demo:
         seed_demo(engine)

@@ -1,4 +1,4 @@
-"""Read-only, bounded IMAP monitoring. No BODY/TEXT/attachments, flags or deletes.
+"""Read-only IMAP headers and MIME descriptors. No body/attachment content or flag changes.
 
 Uses the read-only/UID filtering convention already used by Invoice Intake.
 Public address pinning prevents mailbox configuration from becoming an SSRF proxy.
@@ -13,8 +13,10 @@ import ipaddress
 import re
 import socket
 import ssl
+from .imap_structure import fetch_fields, attachment_metadata, StructureError
 
-HEADER_FETCH = '(UID RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)]<0.65536>)'
+HEADER_FETCH = '(UID RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)]<0.65536>)'
+STRUCTURE_FETCH = '(UID BODYSTRUCTURE)'
 BATCH_SIZE = 20
 
 
@@ -68,6 +70,8 @@ class Header:
     message_id: str | None
     message_date: object
     size_bytes: int | None
+    attachments: tuple | None = None
+    attachment_error: str | None = None
 
 
 class HeaderMailboxClient:
@@ -126,15 +130,14 @@ class HeaderMailboxClient:
                 status, data = self.conn.uid('fetch', str(uid), HEADER_FETCH)
                 if status != 'OK':
                     raise MailboxError('IMAP_FAILED')
-                parts = [part for part in data if isinstance(part, tuple) and len(part) == 2]
-                if not parts:  # Expunged between SEARCH and FETCH: advance past this UID safely.
-                    messages.append(Header(uid, '', '', '(Message no longer available)', None, None, None))
+                fields = fetch_fields(data, uid)
+                if fields is None:  # Expunged between SEARCH and FETCH.
+                    messages.append(Header(uid, '', '', '(Message no longer available)', None, None, None,
+                                           None, 'MESSAGE_UNAVAILABLE'))
                     continue
-                meta, raw = parts[0]
+                raw = next((value for key, value in fields.items() if
+                    key.startswith(b'BODY[HEADER.FIELDS ') and key.endswith((b']', b']<0>'))), None)
                 if not isinstance(raw, bytes) or len(raw) > 65536:
-                    raise MailboxError('IMAP_FAILED')
-                found_uid = re.search(rb'\bUID\s+(\d+)', meta)
-                if not found_uid or int(found_uid[1]) != uid:
                     raise MailboxError('IMAP_FAILED')
                 parsed = BytesHeaderParser(policy=default).parsebytes(raw)
                 def clean(name):
@@ -152,17 +155,36 @@ class HeaderMailboxClient:
                         stamp = stamp.astimezone(timezone.utc)
                 except (ValueError, TypeError, OverflowError):
                     pass
-                size = re.search(rb'RFC822.SIZE\s+(\d+)', meta)
-                size_bytes = int(size[1]) if size else None
-                if size_bytes is not None and size_bytes > 0x7FFFFFFFFFFFFFFF:
+                size_bytes = fields.get(b'RFC822.SIZE')
+                if not isinstance(size_bytes, int) or not 0 <= size_bytes <= 0x7FFFFFFFFFFFFFFF:
                     size_bytes = None
+                files, file_error = attachment_metadata(fields)
                 messages.append(Header(uid, clean('From'), clean('To'), clean('Subject') or '(No subject)',
-                    clean('Message-ID') or None, stamp, size_bytes))
+                    clean('Message-ID') or None, stamp, size_bytes, files, file_error))
             return messages
         except MailboxError:
             raise
         except (OSError, imaplib.IMAP4.abort):
             raise MailboxError('CONNECTION_FAILED') from None
+        except Exception:
+            raise MailboxError('IMAP_FAILED') from None
+
+    def attachments_for(self, uid):
+        """Enrich a previously recorded UID using descriptors alone, without fetching headers again."""
+        try:
+            status, data = self.conn.uid('fetch', str(uid), STRUCTURE_FETCH)
+            if status != 'OK':
+                raise MailboxError('IMAP_FAILED')
+            fields = fetch_fields(data, uid)
+            if fields is None:
+                return None, 'MESSAGE_UNAVAILABLE'
+            return attachment_metadata(fields)
+        except MailboxError:
+            raise
+        except (OSError, imaplib.IMAP4.abort):
+            raise MailboxError('CONNECTION_FAILED') from None
+        except StructureError:
+            return None, 'INVALID_STRUCTURE'
         except Exception:
             raise MailboxError('IMAP_FAILED') from None
 
