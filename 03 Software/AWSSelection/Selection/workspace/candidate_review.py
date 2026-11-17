@@ -8,7 +8,15 @@ from rfone_data_store import models as m
 from rfone_data_store.selection import workspace_models as ps
 from . import conversational_rules as conversation, incremental_rules as inc, position_settings, mail_delivery, review_text
 from .routes import bp, access_required, _position, _pc, _cfg
-from local_i18n import ui
+from local_i18n import ui, italian
+
+
+def default_question(detail):
+    """The proposed clarification question in the interface language (Italian locally, English on AWS).
+    The rule title and the AI's reason are stored facts and are quoted unchanged."""
+    if italian():
+        return f"Puoi chiarire questo punto relativo a «{detail['title']}»? {detail.get('reason', '')}"
+    return f"Could you clarify this point about “{detail['title']}”? {detail.get('reason', '')}"
 
 PRIORITIES = {'HIGH': 'Alta', 'MEDIUM': 'Media', 'LOW': 'Bassa'}
 MODES = ('OPEN', 'ANSWER', 'IGNORE', 'ASK')
@@ -105,16 +113,16 @@ def view(db, position, pc, actor):
             entry = {}
         items.append({'id': detail['id'], 'title': detail['title'], 'reason': detail.get('reason', ''),
             'mode': entry.get('mode', 'OPEN'), 'answer': entry.get('answer', ''),
-            'question': entry.get('question') or f"Puoi chiarire questo punto relativo a «{detail['title']}»? {detail.get('reason', '')}"})
+            'question': entry.get('question') or default_question(detail)})
     outbox = db.get(mail_delivery.EmailOutbox, saved.get('outbox_id')) if saved.get('outbox_id') else None
     account = db.get(ps.CandidateAccount, pc.candidate_account_id) if pc.candidate_account_id else None
     phone = (account.phone if account and account.phone else pc.declared_phone or (candidate.phone if candidate else None)) or ''
     text_batch = position_settings.context(position).get('candidate_text_outbox', {}).get(saved.get('text_batch'), {})
-    return {'name': (candidate.full_name if candidate else None) or pc.declared_name or 'Candidato',
+    return {'name': (candidate.full_name if candidate else None) or pc.declared_name or ui('Candidato'),
         'analysis': conclusions(effective_result), 'items': items,
         'accepted': bool(saved.get('accepted') and saved.get('anchor') == anchor),
         'priority': saved.get('priority', '') if saved.get('anchor') == anchor else '',
-        'ai_priority': result.get('qualitative_priority') or 'Da chiarire',
+        'ai_priority': ui(result.get('qualitative_priority') or 'Da chiarire'),
         'can_edit': actor.can_edit(position), 'email': mail_delivery.email_for(db, pc),
         'phone': phone, 'channel': saved.get('channel', 'EMAIL'), 'custom_questions': saved.get('custom_questions', []),
         'text_available': review_text.available(),
