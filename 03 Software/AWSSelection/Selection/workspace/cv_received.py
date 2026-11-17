@@ -27,8 +27,11 @@ def _name(db, pc):
     candidate = persistence.get_candidate(db, pc.candidate_id)
     full = (account.full_name if account else None) or pc.declared_name or (candidate.full_name if candidate else None) or ''
     parts = full.split()
-    first = parts[0].strip(',.;:') if parts else ''
-    return first.capitalize() if first.isupper() else first
+    first = parts[0].strip(",.;:()[]'\"") if parts else ''
+    # An initial ("C", "Cg") is not a name: the email then says "Hello,".
+    if len(first) < 2 or not any(ch in 'aeiouyàèéìòù' for ch in first.lower()):
+        return ''
+    return first.capitalize() if first.isupper() or first.islower() else first
 
 
 def body(first_name, title, location):

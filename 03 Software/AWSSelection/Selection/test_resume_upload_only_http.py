@@ -123,6 +123,10 @@ try:
         n=db.scalar(select(func.count()).select_from(mail_delivery.EmailOutbox).where(mail_delivery.EmailOutbox.source_key.like('cv-received:%')))
         assert n==2, n   # same person again: no 2nd email; no email address: none; mail error: upload kept, none
         assert db.scalar(select(func.count()).select_from(ws.PositionCandidate))==5
+    from types import SimpleNamespace as _NS
+    with patch.object(cv_received.persistence,'get_candidate',return_value=None):
+        names={full:cv_received._name(None,_NS(candidate_account_id=None,declared_name=full,candidate_id=1)) for full in ('azalia rivera','C. Gomez','Cg Smith','JORDAN EXAMPLE','McKenzie Lee','Ty Brown')}
+    assert names=={'azalia rivera':'Azalia','C. Gomez':'','Cg Smith':'','JORDAN EXAMPLE':'Jordan','McKenzie Lee':'McKenzie','Ty Brown':'Ty'}, names   # initials -> Hello,
     assert cv_received.body('','Server','').startswith('Hello,') and 'the team at Rome’s Flavours!' in cv_received.body('','Server','')
     print('PASS: CV received email: staff upload queues one email per person per Job, none for duplicates, none without an email address, and a mail failure never blocks the upload')
     print('PASS: actual extraction and storage, both SP and ordinary PDL, duplicate/error handling, no evaluation/queue/AI, context preserved, three row actions')
