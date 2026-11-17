@@ -54,6 +54,8 @@ class EmailTests(unittest.TestCase):
         self.app.config['TESTING'] = True
         self.app.jinja_env.filters['local_dt'] = lambda value, tz=None: str(value)
         self.app.add_url_rule('/', 'home', lambda: 'home')
+        self.app.add_url_rule('/administration/email/mailboxes', 'email_mailboxes', lambda: 'mailboxes')
+        self.app.add_url_rule('/administration/email/incoming', 'email_incoming', lambda: 'incoming')
         self.app.context_processor(lambda: {'csrf_token': lambda: 'csrf', 'tz': None})
         register_email_routes(self.app, SessionFactory=self.factory,
             load_current_account=lambda db: identity.account_for_session(db, account_id=session.get('rfone_account_id'),

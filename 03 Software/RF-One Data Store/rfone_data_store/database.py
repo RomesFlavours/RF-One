@@ -85,7 +85,7 @@ def redact_database_url(url: str) -> str:
     return url
 
 
-def create_configured_engine(url: str | None = None) -> Engine:
+def create_configured_engine(url: str | None = None, *, sqlite_immediate: bool = False) -> Engine:
     """Create the SQLAlchemy Engine for `url` (or the resolved default).
 
     Enables SQLite foreign-key enforcement (off by default in SQLite) so
@@ -125,7 +125,10 @@ def create_configured_engine(url: str | None = None) -> Engine:
 
         @event.listens_for(engine, "begin")
         def _sqlite_emit_explicit_begin(conn):  # noqa: ANN001
-            conn.exec_driver_sql("BEGIN")
+            # Opt-in for a local UI plus background poller: serialize SQLite
+            # transactions before a read-to-write upgrade can race another writer.
+            # Existing callers and PostgreSQL retain their original behavior.
+            conn.exec_driver_sql("BEGIN IMMEDIATE" if sqlite_immediate else "BEGIN")
 
     return engine
 

@@ -52,9 +52,10 @@
 {% endif %}
 
 <div class="home-stack">
-  {% if bank_available or clover_acquisition_available or can_manage_profiles or employees_available or account.is_admin %}
+  {% if bank_available or clover_acquisition_available or can_manage_profiles or employees_available or account %}
     <div class="domain-card home-block">
       <div class="domain-name">Administration</div>
+      <a class="home-row" href="{{ url_for('email_mailboxes') }}"><strong>Incoming email</strong> &mdash; Manage your mailboxes and new arrivals.</a>
       {% if account.is_admin %}
       <a class="home-row" href="{{ url_for('email_control') }}"><strong>Email Control</strong> &mdash; Monitor the shared email service.</a>
       {% endif %}

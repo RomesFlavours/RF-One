@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block wrap_class %}email-shell{% endblock %}
-{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/email-control.css') }}?v=1">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/email-control.css') }}?v=2">{% endblock %}
 {% macro status_badge(status) -%}
 {% set info = status_info.get(status, (status, 'neutral', '')) %}<span class="email-status email-status--{{ info[1] }}"><span aria-hidden="true"></span>{{ info[0] }}</span>
 {%- endmacro %}
@@ -8,4 +8,12 @@
 <svg class="email-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {% if name == 'mail' %}<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/>{% elif name == 'refresh' %}<path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/>{% elif name == 'arrow' %}<path d="M5 12h14m-5-5 5 5-5 5"/>{% elif name == 'search' %}<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>{% endif %}
 </svg>
+{%- endmacro %}
+
+{% macro email_nav(active, is_admin=true) -%}
+<nav class="email-tabs" aria-label="Email Control views">
+{% if is_admin %}<a href="{{ url_for('email_control') }}" {% if active == 'outgoing' %}aria-current="page"{% endif %}>Outgoing</a>{% endif %}
+<a href="{{ url_for('email_mailboxes') }}" {% if active == 'mailboxes' %}aria-current="page"{% endif %}>Mailboxes</a>
+<a href="{{ url_for('email_incoming') }}" {% if active == 'incoming' %}aria-current="page"{% endif %}>New arrivals</a>
+</nav>
 {%- endmacro %}

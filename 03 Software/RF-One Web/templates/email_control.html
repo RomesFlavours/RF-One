@@ -3,6 +3,7 @@
 {% block page_title %}Email Control · RF-One{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Email Control', None)]) }}
+{{ email_nav('outgoing') }}
 <div class="email-heading">
   <div><p class="email-eyebrow">Administration</p><h1>Email Control</h1><p class="email-lead">Track outgoing messages and resolve sending issues.</p></div>
   <a class="email-button email-button--quiet" href="{{ request.full_path.rstrip('?') }}" aria-label="Refresh email activity">{{ icon('refresh') }} Refresh</a>

@@ -3,6 +3,7 @@
 {% block page_title %}Message details Â· RF-One{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Email Control', back_url), ('Message details', None)]) }}
+{{ email_nav('outgoing') }}
 <div class="email-heading"><div><p class="email-eyebrow">{{ row.domain }} Â· Outgoing email</p><h1 class="email-detail-subject">{{ row.subject }}</h1><p class="email-lead">To {{ row.recipient }}</p></div>{{ status_badge(row.status) }}</div>
 <section class="email-detail-overview"><div><span>Requested</span><strong>{{ row.created_at|local_dt(page_zone) }}</strong></div><div><span>Last update</span><strong>{{ row.updated_at|local_dt(page_zone) }}</strong></div><div><span>Sending attempts</span><strong>{{ row.attempts }}</strong></div></section>
 <section class="email-next-step email-next-step--{{ status_info[row.status][1] }}" aria-labelledby="outcome-heading"><h2 id="outcome-heading">{{ status_info[row.status][0] }}</h2><p>{{ status_info[row.status][2] }}</p>{% if error_help %}<p>{{ error_help }}</p>{% endif %}
