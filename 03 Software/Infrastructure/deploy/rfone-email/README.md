@@ -1,5 +1,8 @@
 # RF-One Email AWS release
 
+For the subsequent Email Control redesign, its UI-only release tool and
+deployment evidence, see [UI_RELEASE_REPORT.md](UI_RELEASE_REPORT.md).
+
 This release adds the centralized email service to the pinned running RF-One
 Web image. It preserves the deployed application's existing functionality;
 it does not replace it with the older local-development baseline.

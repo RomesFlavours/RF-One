@@ -1,5 +1,9 @@
 # RF-One Email Service AWS deployment report
 
+For the later Email Control interface refresh, see
+[UI_RELEASE_REPORT.md](UI_RELEASE_REPORT.md). This report records the initial
+central service deployment; its SMTP worker and schema remain unchanged.
+
 Deployment completed on 17 November 2026. The RF-One Web update completed at
 15:58:42 America/New_York. The central queue, API, administrative page and
 independent Aruba SMTP worker are deployed. No test email was sent.
