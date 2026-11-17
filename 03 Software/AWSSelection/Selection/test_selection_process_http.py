@@ -157,7 +157,7 @@ try:
         # 4-5. Customize and Save Draft
         data = {"csrf_token": t, "role_code": "SERVER", "location": "Mount Dora", "headcount": "2", "title": "Server",
                 "timezone": "America/New_York", "description": "Synthetic Job: evening servers.",
-                "job_ad_en": "Synthetic ad for evening servers.", "questions": "When could you start?\nWeekends?",
+                "job_ad_en": "Synthetic ad for evening servers. We are looking for a Server who looks after our guests and keeps every table moving.", "questions": "When could you start?\nWeekends?",
                 "profile": "Evening table service.", "feat_cv_evaluation": "1", "sp_new_name": "Wine knowledge",
                 "sp_new_look_for": "wine, sommelier", "sp_new_crit": "PREFERRED", "sp_new_weight": "8",
                 "action": "draft"}
@@ -181,7 +181,7 @@ try:
               and sp["rules_draft"]["environment"] is True, (draft.get("recency"), sp["rules_draft"]))
         check("5. Save Draft: everything saved, still Draft, back to the Jobs list",
               r.status_code == 302 and r.headers["Location"].endswith("/selection/")
-              and saved == ("DRAFT", "Synthetic ad for evening servers.", 2), saved)
+              and saved == ("DRAFT", "Synthetic ad for evening servers. We are looking for a Server who looks after our guests and keeps every table moving.", 2), saved)
 
         # 6. Reopen the Draft
         dash = text(owner.get("/selection/"))
@@ -191,7 +191,7 @@ try:
               and 'name="sp_active_recency" value="1"  aria-label' in form.replace("checked", "")
               and 'name="sp_active_recency" value="1" checked' not in form
               and 'name="sp_weight_guest_selling" value="20"' in form and "Wine knowledge" in form
-              and 'name="rule_gaps" value="1"  aria' in form and "Synthetic ad for evening servers." in form)
+              and 'name="rule_gaps" value="1"  aria' in form and "Synthetic ad for evening servers. We are looking for a Server who looks after our guests and keeps every table moving." in form)
 
         # 7. Confirm & Publish
         r = owner.post(f"/selection/posizioni/{pid}/job", data={**data, "action": "publish", "sp_new_name": "",
@@ -375,7 +375,7 @@ try:
         modal_form = text(owner.get(f"/selection/posizioni/{mpid}/job?modal=1"))
         saved = owner.post(f"/selection/posizioni/{mpid}/job", data={
             "csrf_token": t, "modal": "1", "role_code": "SERVER", "location": "Tavares", "headcount": "3",
-            "title": "Server", "timezone": "America/New_York", "job_ad_en": "Modal ad.", "questions": "Weekends?",
+            "title": "Server", "timezone": "America/New_York", "job_ad_en": "Modal ad. We are looking for a Server who looks after our guests, explains the menu and keeps every table moving.", "questions": "Weekends?",
             "feat_cv_evaluation": "1", "action": "draft",
             **{f"sp_active_{x['id']}": "1" for x in STANDARD_REQUIREMENTS},
             **{f"sp_crit_{x['id']}": x["criticality"] for x in STANDARD_REQUIREMENTS},
@@ -384,7 +384,7 @@ try:
         reopened = text(owner.get(f"/selection/posizioni/{mpid}/job?modal=1"))
         published = owner.post(f"/selection/posizioni/{mpid}/job", data={
             "csrf_token": t, "modal": "1", "role_code": "SERVER", "location": "Tavares", "headcount": "3",
-            "title": "Server", "timezone": "America/New_York", "job_ad_en": "Modal ad.", "questions": "Weekends?",
+            "title": "Server", "timezone": "America/New_York", "job_ad_en": "Modal ad. We are looking for a Server who looks after our guests, explains the menu and keeps every table moving.", "questions": "Weekends?",
             "feat_cv_evaluation": "1", "action": "publish",
             **{f"sp_active_{x['id']}": "1" for x in STANDARD_REQUIREMENTS},
             **{f"sp_crit_{x['id']}": x["criticality"] for x in STANDARD_REQUIREMENTS},
@@ -400,7 +400,7 @@ try:
         check("modal: Save Draft closes the window and reloads the list; the Draft reopens with its data",
               "SelectionModal.done()" in text(saved) and "Draft saved" in listing
               and f'href="/selection/posizioni/{mpid}/job" data-job-modal=' in listing
-              and 'name="headcount" value="3"' in reopened and "Modal ad." in reopened)
+              and 'name="headcount" value="3"' in reopened and "Modal ad. We are looking for a Server who looks after our guests, explains the menu and keeps every table moving." in reopened)
         check("modal: Confirm & Publish closes the window, the Job is Active",
               "SelectionModal.done()" in text(published) and mstatus == "OPEN", mstatus)
 
