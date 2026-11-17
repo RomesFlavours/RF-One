@@ -124,18 +124,18 @@ try:
             pid = new_job(role)
             draft_html, _ = job_form(pid)
             check(f"{role}: a Draft Job has no Publish job ad button", 'value="publish_ad"' not in draft_html)
-            save(pid, "draft", job_ad_en="Old ad text.")
+            save(pid, "draft", job_ad_en="Old ad text. We are looking for someone to join the team and help our guests every service, from opening to close.")
             save(pid, "publish_ad")
             check(f"{role}: a Draft Job cannot use Publish job ad", job(pid).approved_job_ad_en is None)
             owner.post(f"/selection/posizioni/{pid}/requisiti/aggiungi", data={
                 "csrf_token": t, "name": "Synthetic requirement", "description": "service",
                 "criticality": "MUST_HAVE", "category": "Experience", "trainability": "TRAINABLE"})
             owner.post(f"/selection/posizioni/{pid}/dettagli", data={
-                "csrf_token": t, "headcount": "1", "job_ad_en": "Old ad text.", "questions": "When could you start?"})
+                "csrf_token": t, "headcount": "1", "job_ad_en": "Old ad text. We are looking for someone to join the team and help our guests every service, from opening to close.", "questions": "When could you start?"})
             owner.post(f"/selection/posizioni/{pid}/approva", data={"csrf_token": t})
             before = job(pid)
             check(f"{role}: the Job is Active with the old ad",
-                  before.status == "OPEN" and before.approved_job_ad_en == "Old ad text.",
+                  before.status == "OPEN" and before.approved_job_ad_en == "Old ad text. We are looking for someone to join the team and help our guests every service, from opening to close.",
                   f"{before.status} {before.approved_job_ad_en!r}")
             active_html, _ = job_form(pid)
             check(f"{role}: an Active Job shows Publish job ad", 'value="publish_ad"' in active_html)
@@ -151,12 +151,12 @@ try:
 
             routes.engine.analyze, routes._approve_position = fake_analyze, fake_approve
             try:
-                r = save(pid, "publish_ad", job_ad_en="New proper ad text for the website.",
+                r = save(pid, "publish_ad", job_ad_en="New proper ad text for the website. We are looking for someone who looks after our guests and keeps service moving.",
                          questions="A question that is not confirmed?")
             finally:
                 routes.engine.analyze, routes._approve_position = orig_analyze, orig_approve
             after = job(pid)
-            check(f"{role}: the new ad is live", after.approved_job_ad_en == "New proper ad text for the website.")
+            check(f"{role}: the new ad is live", after.approved_job_ad_en == "New proper ad text for the website. We are looking for someone who looks after our guests and keeps service moving.")
             check(f"{role}: no candidate evaluation and no full confirmation ran",
                   calls == {"analyze": 0, "approve": 0}, str(calls))
             check(f"{role}: confirmed requirements version unchanged",
@@ -167,7 +167,7 @@ try:
             page = owner.get(f"/selection/jobs/{after.public_token}").get_data(as_text=True)
             careers = owner.get("/selection/careers").get_data(as_text=True)
             check(f"{role}: application page and Careers list show the new ad",
-                  "New proper ad text for the website." in page and "New proper ad text for the website." in careers)
+                  "New proper ad text for the website. We are looking for someone who looks after our guests and keeps service moving." in page and "New proper ad text for the website. We are looking for someone who looks after our guests and keeps service moving." in careers)
             with selection_app.SessionFactory() as s:
                 kinds = [e.kind for e in s.query(ws.WorkspaceEvent).filter_by(position_id=pid)]
             check(f"{role}: recorded in the Job history", "AD_PUBLISHED" in kinds)

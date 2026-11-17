@@ -160,7 +160,7 @@ try:
             "csrf_token": t, "name": "Server experience", "description": "server waiter table service",
             "criticality": "MUST_HAVE", "category": "Experience", "trainability": "PARTIALLY_TRAINABLE"})
         owner.post(f"/selection/posizioni/{pid}/dettagli", data={
-            "csrf_token": t, "headcount": "1", "job_ad_en": "Join our team in Mount Dora as a Server.",
+            "csrf_token": t, "headcount": "1", "job_ad_en": "Join our team in Mount Dora as a Server. You look after our guests, take orders and explain the menu and the wines.",
             "questions": "Are you available to work weekends?\nWhen could you start?"})
         r = owner.post(f"/selection/posizioni/{pid}/approva", data={"csrf_token": t}, follow_redirects=True)
         page = text(r)
