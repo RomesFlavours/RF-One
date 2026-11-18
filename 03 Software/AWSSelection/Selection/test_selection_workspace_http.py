@@ -278,7 +278,7 @@ try:
         page = text(sms.get(job_url))
         st = token(page)
         sms_reg = {"csrf_token": st, "full_name": "Taylor Text", "email": "taylor@example.test",
-                   "password": "synthetic-pass-3", "phone": "(407) 555-0188", "channel": "SMS"}
+                   "password": "synthetic-pass-3", "phone": "(407) 555-0188", "channel": "SMS", "sms_consent": "1"}
         r = sms.post(f"{job_url}/account/code", data=sms_reg)
         check("SMS: without a registered sender number Text Message is explicitly unavailable",
               r.status_code == 503 and "not available yet" in r.get_json()["message"]
@@ -286,6 +286,10 @@ try:
         os.environ["RFONE_SMS_ORIGINATION_IDENTITY"] = "+18005550100"
         texts: list[tuple[str, str]] = []
         careers.deliver_sms_code = lambda *, to_number, code: texts.append((to_number, code))
+        r = sms.post(f"{job_url}/account/code", data={k: v for k, v in sms_reg.items() if k != "sms_consent"})
+        check("SMS: no text without the ticked consent box (it starts unticked)",
+              r.status_code == 400 and "Tick the box" in r.get_json()["message"] and not texts
+              and 'name="sms_consent"' in page and 'name="sms_consent" value="1" id="sms-consent-box" style="width:auto;flex:0 0 auto;margin-top:.2rem" checked' not in page, r.get_json())
         r = sms.post(f"{job_url}/account/code", data=dict(sms_reg, phone="12345")).get_json()
         check("SMS: an invalid US number is refused", not r["ok"] and "valid US mobile number" in r["message"], r)
         r = sms.post(f"{job_url}/account/code", data=dict(sms_reg, phone="")).get_json()
@@ -309,7 +313,7 @@ try:
                 s.commit()
             r = other_phone.post(f"{job_url}/account/code", data={"csrf_token": ot2, "full_name": f"Flood {i}",
                                  "email": f"flood{i}@example.test", "password": "synthetic-pass-4",
-                                 "phone": "(407) 555-0188", "channel": "SMS"}).get_json()
+                                 "phone": "(407) 555-0188", "channel": "SMS", "sms_consent": "1"}).get_json()
         check("SMS: one number cannot be flooded through several registrations",
               not r["ok"] and "sent to this address or number" in r["message"], r)
         os.environ.pop("RFONE_SMS_ORIGINATION_IDENTITY", None)

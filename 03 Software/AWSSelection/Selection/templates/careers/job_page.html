@@ -61,8 +61,12 @@
         <label class="row"><input type="radio" name="channel" value="EMAIL" checked> Email</label>
         <label class="row"><input type="radio" name="channel" value="SMS" {{ 'disabled' if not sms_available }}>
           Text Message{% if not sms_available %} <span class="muted">(not available yet)</span>{% endif %}</label>
-        <p class="small muted" id="sms-consent" hidden>By choosing Text Message you agree to receive one text message from
-          {{ client }} with your verification code. Message and data rates may apply. Reply STOP to opt out, HELP for help.</p>
+        <div id="sms-consent" hidden>
+          <label class="sms-consent" style="display:flex;gap:.55rem;align-items:flex-start;margin:.5rem 0 .2rem;font-size:.9rem;color:#555;font-weight:normal"><input type="checkbox" name="sms_consent" value="1" id="sms-consent-box" style="width:auto;flex:0 0 auto;margin-top:.2rem">
+            <span>I agree to receive one text message from {{ client }} with my verification code. Message and data rates may apply.
+            Reply STOP to opt out, HELP for help. <a href="https://www.romesflavours.com/text-terms" target="_blank" rel="noopener">Text terms</a>
+            &middot; <a href="https://www.romesflavours.com/privacy" target="_blank" rel="noopener">Privacy</a></span></label>
+        </div>
         <p><button type="submit" class="btn" id="receive-code">Receive Code</button></p>
         <div id="code-step" hidden>
           <label for="code">Verification Code</label>
@@ -127,10 +131,15 @@
       form.addEventListener('submit', function (event) {
         event.preventDefault();
         if (!form.reportValidity()) { return; }
+        var smsChosen = form.elements.channel.value === 'SMS';
+        if (smsChosen && !document.getElementById('sms-consent-box').checked) {
+          show('Tick the box to agree to receive the text message, or choose Email.', true); return;
+        }
         lock(true); show('Sending your code…', false, true);
         post(urls.code, {full_name: form.elements.full_name.value, email: form.elements.email.value,
                          password: form.elements.password.value, phone: form.elements.phone.value,
-                         channel: form.elements.channel.value}).then(function (res) {
+                         channel: form.elements.channel.value,
+                         sms_consent: smsChosen && document.getElementById('sms-consent-box').checked ? '1' : ''}).then(function (res) {
           if (res.ok) {
             verifiedEmail = res.email; codeStep.hidden = false; receive.textContent = 'Send a new code';
             show(res.message, false); lock(false); document.getElementById('code').focus();

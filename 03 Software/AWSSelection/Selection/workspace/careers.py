@@ -325,6 +325,9 @@ def account_code(token):
     channel = (request.form.get("channel") or ps.CHANNEL_EMAIL).upper()
     if channel == ps.CHANNEL_SMS and not sms_available():
         return jsonify(ok=False, message="Text messages are not available yet. Please choose Email."), 503
+    # Carrier rule: a text is sent only after the candidate ticked the (unticked by default) consent box.
+    if channel == ps.CHANNEL_SMS and request.form.get("sms_consent") != "1":
+        return jsonify(ok=False, message="Tick the box to agree to receive the text message, or choose Email."), 400
     with _cfg.SessionFactory() as db:
         _public_position(db, token)
         try:
