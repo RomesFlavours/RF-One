@@ -135,7 +135,7 @@ def install(app, *, SessionFactory, secret=None):
             try:
                 invitation, token = enroll.issue(db, actor=hirer, email=source['email'], selection_id=selection_id)
                 invitation.created_by_id = issuer.id
-                email = invitation.email
+                email, name = invitation.email, invitation.name
                 link = public_base() + url_for('tw_enrollment_link', token=token)
                 db.commit()
             except (ValueError, IntegrityError) as exc:
@@ -143,9 +143,9 @@ def install(app, *, SessionFactory, secret=None):
                 message = str(exc) if isinstance(exc, ValueError) else 'Another session updated this invitation.'
                 return jsonify(status='skipped', message=message + ' Invite them from Training, Students, Invite student.'), 409
         try:
-            account_email.send_email(to_address=email, subject='RF-One Training: complete your activation',
-                text_body=f'Complete your details and activate Training: {link}\n'
-                          'The link is personal, valid for 48 hours and works once.\n')
+            from training_enrollment_routes import invitation_email
+            subject, body = invitation_email(name, link)
+            account_email.send_email(to_address=email, subject=subject, text_body=body)
         except account_email.EmailSendError:
             return jsonify(status='created', message='Invitation created but the email could not be sent. '
                            'Create a new one from Training, Students, Invite student after one minute.'), 502

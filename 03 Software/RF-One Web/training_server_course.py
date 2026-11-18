@@ -233,9 +233,9 @@ def install(app, *, SessionFactory, auth):
                 db.rollback()
                 return jsonify(status='skipped', message=str(exc) if isinstance(exc, ValueError) else 'Try again in a minute.'), 409
         try:
-            account_email.send_email(to_address=email, subject='RF-One Training: complete your activation',
-                text_body=f'Complete your details and activate Training: {link}\n'
-                          'The link is personal, valid for 48 hours and works once.\n')
+            from training_enrollment_routes import invitation_email
+            subject, body = invitation_email('', link)
+            account_email.send_email(to_address=email, subject=subject, text_body=body)
         except account_email.EmailSendError:
             return jsonify(status='created', message='The email could not be sent. Try again in a minute.'), 502
         return jsonify(status='sent')

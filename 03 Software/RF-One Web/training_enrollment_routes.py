@@ -11,7 +11,29 @@ from rfone_data_store.technical import account_email
 import training_integration as integration
 from training_account_routes import public_base
 
-INVALID = 'Invalid, expired or used invitation. Ask your trainer for a new invitation.'
+INVALID = 'This link has expired or was already used. Ask your manager to send you a new one.'
+PASSWORD_MIN, PASSWORD_MAX = 8, 64
+
+
+def first_name(name):
+    """The first word of a name, for a greeting; '' when it does not look like a name."""
+    parts = (name or '').split()
+    first = parts[0].strip(",.;:()[]'\"") if parts else ''
+    if len(first) < 2 or not any(ch in 'aeiouy\u00e0\u00e8\u00e9\u00ec\u00f2\u00f9' for ch in first.lower()):
+        return ''
+    return first.capitalize() if first.isupper() or first.islower() else first
+
+
+def invitation_email(name, link):
+    """(subject, text) of the Training invitation, the same wherever it is sent from."""
+    first = first_name(name)
+    return ("Welcome to Rome's Flavours: your training is ready",
+            f"{'Hi ' + first + ',' if first else 'Hello,'}\n\n"
+            'Welcome to the team! Your training is ready for you.\n\n'
+            f'Tap this link to set up your account: {link}\n\n'
+            'The link is just for you. It works once and is good for 48 hours. '
+            'If it expires, ask your manager for a new one.\n\n'
+            "See you soon,\nThe Rome\u2019s Flavours Team\n")
 
 
 def protected(response):
@@ -53,8 +75,12 @@ def complete(db, invitation, form):
         username = account.username
     else:
         password = form.get('password', '')
-        if len(password) < 8 or len(password) > 1024 or password != form.get('password_confirm', ''):
-            raise ValueError('Choose and confirm a password between 8 and 1024 characters.')
+        if len(password) < PASSWORD_MIN:
+            raise ValueError(f'Your password needs at least {PASSWORD_MIN} characters.')
+        if len(password) > PASSWORD_MAX:
+            raise ValueError(f'Please keep your password to {PASSWORD_MAX} characters or fewer.')
+        if password != form.get('password_confirm', ''):
+            raise ValueError("The two passwords don't match. Please type them again.")
         username = integration.generate_username(db, first, last)
     confirmation = f'person:{invitation.person_id}' if invitation.person_id else f'account:{account.id}' if account else None
     if invitation.person_id:
@@ -104,7 +130,7 @@ def install(app, *, SessionFactory, auth, trainer):
                         confirmation=request.form.get('confirmation'))
                     base = request.url_root.rstrip('/') if current_app.config.get('TRAINING_ENROLLMENT_LOCAL') else public_base()
                     link = base + url_for('tw_enrollment_link', token=token)
-                    email = invitation.email
+                    email, invited_name = invitation.email, invitation.name
                     db.commit()
                 except (ValueError, IntegrityError) as exc:
                     db.rollback(); error = str(exc) if isinstance(exc, ValueError) else 'Another session updated the invitation. Reload and try again.'
@@ -114,8 +140,8 @@ def install(app, *, SessionFactory, auth, trainer):
                         flash('Invitation ready. Copy the personal link; it works on this computer.', 'info')
                     else:
                         try:
-                            account_email.send_email(to_address=email, subject='RF-One Training: complete your activation',
-                                text_body=f'Complete your details and activate Training: {link}\nThe link is personal, valid for 48 hours and works once.\n')
+                            subject, body = invitation_email(invited_name, link)
+                            account_email.send_email(to_address=email, subject=subject, text_body=body)
                             flash('Invitation sent.', 'info')
                         except account_email.EmailSendError:
                             flash('Invitation created but email delivery failed. Copy the link or create a new invitation after one minute.', 'error')
@@ -149,11 +175,13 @@ def install(app, *, SessionFactory, auth, trainer):
                             auth.log_in(account.id, account.session_version)
                             session.pop('tw_enrollment_token', None)
                             session['tw_student_session'] = True
-                            flash(f'Activation completed. RF-One username: {account.username}. Welcome to Training.', 'info')
+                            first = first_name(account.display_name)
+                            flash(f"You're all set{', ' + first if first else ''}! Your username is {account.username}. "
+                                  "Save it somewhere, because you'll need it to sign in.", 'info')
                             return protected(redirect(url_for('training.home')))
                 data = dict(email=invitation.email, name=invitation.name, phone=invitation.phone)
             else:
                 error = INVALID; data = None
         return protected(app.make_response((render_template('training_workspace/enrollment_activation.html',
             active_tab='activation', help_section='training_enrollment_activation', error=error,
-            invitation=data, existing_account=existing, draft=request.form), 400 if error else 200)))
+            invitation=data, existing_account=existing, draft=request.form, first_name=first_name), 400 if error else 200)))

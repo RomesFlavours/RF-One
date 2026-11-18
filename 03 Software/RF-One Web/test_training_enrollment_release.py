@@ -216,7 +216,7 @@ def run(browser=False):
                         page.goto(link);page.get_by_label('First name',exact=True).fill(marker);page.get_by_label('Surname',exact=True).fill('Browser')
                         page.get_by_label('Choose your password',exact=True).fill('Browser-Pass9');page.get_by_label('Confirm password',exact=True).fill('Browser-Pass9')
                         page.screenshot(path=str(dest/'02-activation.png'),full_page=True)
-                        page.get_by_role('button',name='Confirm and activate Training',exact=True).click()
+                        page.get_by_role('button',name='Start my training',exact=True).click()
                         expect(page).to_have_url(base+'/training');page.screenshot(path=str(dest/'03-training.png'),full_page=True)
                         browser_instance.close()
                     checks.append('Edge browser: Students -> Selection prefill/direct invitation -> one activation page -> Training; only loopback resources')
