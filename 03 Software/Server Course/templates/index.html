@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RF One {{ course.title|replace("The ", "") }}</title>
+{% set mgmt = kind == "management" %}
+<link rel="icon" href="{{ url_for('static', filename='rf-one-logo.png') }}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Instrument+Serif&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <button class="brand" data-go="home" type="button">
+      <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="RF One" width="44" height="44">
+      <span><span class="tag">Rome's Flavours</span><span class="brand-name">RF One</span></span>
+    </button>
+    {% if not trainee %}<span class="test-tag">Test version</span>{% endif %}
+  </header>
+
+  <!-- HOME -->
+  <section id="v-home" class="view">
+    {% if not trainee and not mgmt %}
+    <div class="intro">
+      <h1>One engine, two directions</h1>
+      <p class="sub">In <b>Selection</b> the AI takes information in: it reads the CVs and interviews the candidates. In <b>Training</b> it gives information back: it teaches the Server Course, one unit at a time. People decide.</p>
+    </div>
+
+    <div class="grid2">
+      <div class="box">
+        <div class="tag">Step 1 · CVs in order</div>
+        <h2 class="h2">Candidates</h2>
+        <p class="small">Upload the CVs from Indeed or direct applications. The AI reads each one and puts them in order by chance of being hired, with the red flags to check. Call the first ones on the list.</p>
+        <button data-go="candidates" type="button">Open candidates <span id="cand-count"></span></button>
+      </div>
+      <div class="box">
+        <div class="tag">Step 2 · before the in-person interview</div>
+        <h2 class="h2">The interview link</h2>
+        <p class="small">After your call, send the candidate their link from their page. On their own phone, the AI checks availability, the questions their CV raises, and real situations on a shift. You read the answers, score them, and invite them in.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <section class="course-head{{ ' solo' if trainee }}">
+      <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="RF One" class="course-logo" width="96" height="96">
+      <div>
+        {% if trainee %}<div class="tag">Rome's Flavours Academy</div>{% elif mgmt %}<div class="tag">For the leads and managers</div>{% else %}<div class="tag">Step 3 · for a new hire</div>{% endif %}
+        <h1>{{ course.title }}</h1>
+        {% if mgmt %}
+        <p class="sub">Four modules, then a look back. Each module has a case to reason through with the AI Trainer, a quick card, and one small real task in your own work. Go at your own pace: the next module opens once you've done the case and the card, and you can tell the Trainer about the real task when you've done it. There's no score and no right answer to guess: we look at the reasoning that leads to a sustainable conclusion.</p>
+        <p id="overall" class="overall"></p>
+        {% if trainee %}<p class="small">{% if hire %}Your progress is saved with your name, so you can continue on any phone with your own link.{% else %}Your progress is saved on this device.{% endif %} Your reasoning on each case is kept as training evidence, separate from your real work, and you can see it and correct it. What you describe about how the work runs is kept without your name, to improve the processes. Nothing about health, family or private life is kept. This is paid training time: the time counted here leaves out pauses longer than {{ (idle_seconds // 60) }} minutes, and breaks you take with Take a break.</p>{% endif %}
+        {% else %}
+        <p class="sub">{{ modules|length }} units in four levels, in order. In each unit we work through a few short modules with the AI Trainer, then take a short multiple-choice test. Every unit has a guide to download. Some units also have practical checks we do in person with the lead.</p>
+        <p id="overall" class="overall"></p>
+        {% if trainee %}<p class="small">{% if hire %}Your progress is saved with your name, so you can continue on any phone with your own link.{% else %}Your progress is saved on this device.{% endif %} The Rome's Flavours team can see how far you've got, your test results and your training time, so they can help you. Training is paid working time: the time counted here leaves out pauses longer than {{ (idle_seconds // 60) }} minutes, and breaks you take with Take a break.</p>
+        <p class="small" id="total-time"></p>
+        <p class="small"><b>Finishing the course doesn't mean working tables alone yet:</b> your lead watches the practical checks in person and decides. Until then you work with a lead or a trainer server.</p>{% endif %}
+        {% if trainee and hire and kind != 'management' and hire.rf.state != 'off' %}
+        <div id="rf-training" class="rf-training">
+          <h2>RF-One Training</h2>
+          {% if rt_msg %}<p class="small" role="status"><b>{{ rt_msg.text }}</b></p>{% endif %}
+          {% if hire.rf.state == 'joined' %}
+          <p class="small">Your RF-One Training account is connected. You can open this course from RF-One Training too, with the same progress, and see the Visual Menu there.</p>
+          <p><a class="btn" href="{{ training_url }}/training">Open RF-One Training</a></p>
+          {% else %}
+          {% if hire.rf.state == 'invited' %}<p class="small">We emailed your invitation to <b>{{ hire.rf.email }}</b>. Open the email, choose your password, then open the Server Course from RF-One Training. Your progress comes with you. Wrong email, or it never arrived? Enter it again below.</p>
+          {% else %}<p class="small">Get your RF-One Training account, where you'll also find the Visual Menu. Enter the email you want to use and we'll send you the invitation. Your progress here stays as it is.</p>{% endif %}
+          <form method="post" action="{{ url_for('training_account') }}" class="row"><input type="email" name="email" required maxlength="254" placeholder="Your email" aria-label="Your email" autocomplete="email" value="{{ hire.rf.email }}"><button type="submit">{{ 'Send it again' if hire.rf.state == 'invited' else 'Send my invitation' }}</button></form>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </section>
+    {% if not trainee %}
+    <div class="box">
+      {% if mgmt %}<h2 class="h2">The leads</h2>
+      <p class="small">Add each lead or manager here to give them their own private link. Their page shows their progress, their reasoning kept as training evidence, and what they described about how the work runs, to verify.</p>
+      {% else %}<h2 class="h2">New hires</h2>
+      <p class="small">Add each new hire here to give them their own link. Their progress is kept with their name, on any phone. The lead marks the practical checks on their page and signs when they're ready to work tables alone.</p>{% endif %}
+      <form id="hire-form" class="row"><input id="hire-name" placeholder="Name" required autocomplete="off" aria-label="Name"><select id="hire-loc" aria-label="Location"><option>Winter Park</option><option>Mount Dora</option></select><button type="submit">Add and get their link</button></form>
+      <p id="hire-msg" class="small"></p>
+      <div id="hire-list" class="stack"></div>
+    </div>
+    {% endif %}
+    {% if not trainee and not mgmt %}
+    <div class="box">
+      <h2 class="h2">The shared link (no names)</h2>
+      <p class="small">The older link, the same for everyone. It still works, but progress stays on that phone and nobody's name is attached. For real new hires, use their own link above.</p>
+      <div class="row"><input id="tr-link" readonly aria-label="New hire's link" data-path="{{ trainee_link }}"><button type="button" id="tr-copy">Copy link</button></div>
+    </div>
+    <div class="box">
+      <h2 class="h2">Shared-link activity</h2>
+      <p class="small">Every browser that used the shared link, newest first. No names: each one gets a short id, with its device. Named hires are in New hires above. Times are in your own time zone.</p>
+      <div id="tr-activity" class="small">Loading…</div>
+    </div>
+    {% endif %}
+    <div id="trainee-box"></div>
+    <div id="course-grid" class="courses"></div>
+  </section>
+
+  <!-- CANDIDATES: CVs in order -->
+  <section id="v-candidates" class="view" hidden>
+    <p class="crumb"><button data-go="home" type="button">Home</button> › Candidates</p>
+    <h1>Candidates</h1>
+    <p class="sub">In order by chance of being hired, from the CV alone. The order is the AI's proposal: you call, you decide.</p>
+    <form id="cv-form" class="box cv-upload">
+      <label for="cv-files">Add CVs (PDF, Word or text; several at once is fine)</label>
+      <input id="cv-files" type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,.html" required>
+      <div class="row">
+        <select id="cv-source" aria-label="Where the CVs came from"><option>Indeed</option><option>Direct application</option></select>
+        <select id="cv-loc" aria-label="Location"><option>Winter Park</option><option>Mount Dora</option></select>
+        <button type="submit" id="cv-go">Read and put in order</button>
+      </div>
+      <p id="cv-msg" class="small"></p>
+    </form>
+    <div id="cand-items" class="stack"></div>
+  </section>
+
+  <!-- CHAT (training), in the original Trainer layout -->
+  <section id="v-chat" class="view chat-view" hidden>
+    <p class="crumb"><button data-go="home" type="button">{{ course.title|replace("The ", "") if trainee else "Home" }}</button> › <span id="chat-title"></span></p>
+    <div class="chat-grid">
+      <aside class="rail">
+        <section class="box" id="rail-course">
+          <h2 id="rail-title"></h2>
+          <p id="rail-sub" class="small"></p>
+          <ul id="rail-modules" class="checklist"></ul>
+        </section>
+        <section class="box">
+          <h2>How it works</h2>
+          <ul id="rail-how"></ul>
+        </section>
+        <section class="box">
+          <h2>Support documents</h2>
+          <div id="rail-guides" class="guides stacked"></div>
+        </section>
+      </aside>
+      <div class="main">
+        <div class="bar">
+          <span class="clock" id="clock">0:00</span>
+          <span class="status" id="status"></span>
+          <button type="button" class="ghost small-btn" id="read-btn" aria-pressed="false" hidden>Read aloud: off</button>
+          <button type="button" class="ghost small-btn" id="break-btn" hidden>Take a break</button>
+          <button type="button" class="warn" id="end-btn">End session</button>
+        </div>
+        <div id="log" class="log" aria-live="polite"></div>
+        <form id="say" class="composer">
+          <textarea id="msg" rows="2" placeholder="Type your answer…" required></textarea>
+          <button type="submit" id="send">Send</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- THE SHORT TEST AT THE END OF A COURSE -->
+  <section id="v-test" class="view" hidden>
+    <p class="crumb"><button data-go="home" type="button">{{ course.title|replace("The ", "") if trainee else "Home" }}</button> › <span id="test-crumb"></span></p>
+    <div class="test-wrap">
+      <div class="tag">Unit test</div>
+      <h1 id="test-title"></h1>
+      <p id="test-rule" class="sub"></p>
+      <div class="test-progress"><span id="test-step" class="small"></span><span class="progress"><span id="test-bar"></span></span></div>
+      <div id="test-box" class="box test-box"></div>
+    </div>
+  </section>
+
+  <!-- ONE NEW HIRE (team) -->
+  <section id="v-hire" class="view" hidden>
+    <p class="crumb"><button data-go="home" type="button">Home</button> › <span id="hr-name"></span></p>
+    <h1 id="hr-title"></h1>
+    <p id="hr-meta" class="sub"></p>
+    <div class="grid2">
+      <div class="box">
+        <h2 class="h2">Their own link</h2>
+        <p class="small">Send it to them by text. It opens only the {{ course.title|replace("The ", "") }}, with their progress.</p>
+        <div class="row"><input id="hr-link" readonly aria-label="Their link"><button type="button" id="hr-copy">Copy link</button></div>
+      </div>
+      <div class="box">
+        <h2 class="h2">Who's signing</h2>
+        <p class="small">Your role, saved with each check you mark. Roles, not names.</p>
+        <input id="hr-signer" placeholder="For example: Lead on shift" aria-label="Your role">
+      </div>
+    </div>
+    <div class="box" id="hr-ready"{% if mgmt %} hidden{% endif %}></div>
+    <h2 class="h2">{{ "The modules" if mgmt else "Units and practical checks" }}</h2>
+    <div id="hr-units" class="stack"></div>
+    {% if mgmt %}<div class="box" id="hr-reasoning"></div>
+    <div class="box" id="hr-work"></div>{% endif %}
+    <div class="box" id="hr-time"></div>
+    <div class="box" id="hr-refs"></div>
+    <p class="small"><button type="button" class="linkish" id="hr-archive">Archive</button></p>
+  </section>
+
+  <!-- ONE CANDIDATE -->
+  <section id="v-candidate" class="view" hidden>
+    <p class="crumb"><button data-go="home" type="button">Home</button> › <button data-go="candidates" type="button">Candidates</button> › <span id="rv-name"></span></p>
+    <h1 id="rv-title"></h1>
+    <p id="rv-meta" class="sub"></p>
+
+    <div class="grid2">
+      <div class="box">
+        <h2 class="h2">Where they are</h2>
+        <select id="rv-stage" aria-label="Stage"></select>
+        <p class="small">Interview link, to send after your call (by text or email):</p>
+        <div class="row"><input id="rv-link" readonly aria-label="Interview link"><button type="button" id="rv-copy">Copy link</button></div>
+      </div>
+      <div class="box">
+        <h2 class="h2">From the CV <span id="rv-chance" class="chance-inline"></span></h2>
+        <p id="rv-fit" class="small"></p>
+        <p class="small"><b>Strengths</b></p>
+        <ul id="rv-strengths" class="small"></ul>
+        <p class="small"><b>Red flags</b> (the interview asks about these)</p>
+        <ul id="rv-flags" class="flags"></ul>
+      </div>
+    </div>
+
+    <details class="box">
+      <summary>The CV screening in detail (Pino's six criteria)</summary>
+      <table class="crit"><thead><tr><th>Criterion</th><th>Level</th><th>From the CV</th><th>Weight</th></tr></thead><tbody id="rv-crit"></tbody></table>
+      <p class="small"><b>Work history as read:</b></p>
+      <pre id="rv-summary" class="cvsum"></pre>
+      <p class="small"><a id="rv-cv" href="#">Download the original CV</a></p>
+    </details>
+
+    <h2 class="h2">The interview</h2>
+    <p id="rv-iv-none" class="small">Not done yet. Send the link above after your call.</p>
+    <div id="rv-iv" hidden>
+      <p id="rv-iv-meta" class="small"></p>
+      <p id="rv-note" class="note"></p>
+      <h2 class="mod-h">Availability and reliability</h2>
+      <div id="rv-checks" class="stack"></div>
+    </div>
+    <details class="box">
+      <summary>How to score (draft criteria, for the trainer to validate)</summary>
+      <ul class="small">
+        <li><b>5</b> The answer contains everything in "Shown when", and they could explain it to a colleague.</li>
+        <li><b>4</b> Everything in "Shown when", in their own words.</li>
+        <li><b>3</b> Most of it; one part missing that isn't about safety.</li>
+        <li><b>2</b> Some of it; the main action is missing or wrong.</li>
+        <li><b>1</b> None of it, or an answer that would cause harm.</li>
+        <li><b>Not evaluated</b> The situation wasn't asked, or the answer doesn't let you tell. Never turned into a number.</li>
+      </ul>
+      <p class="small">The score is yours, with a short reason. The AI's status and quote are evidence only. The category is a separate judgment: Capability (can do it now), Trainability (can learn it before working alone), Guidability (can do it now with short hints during work), Unsafe / not suitable for now, or Unknown.</p>
+    </details>
+    <div id="rv-modules" class="stack"></div>
+    <div class="box">
+      <h2 class="h2">Hand to Training</h2>
+      <p class="small">This makes them a named new hire with their own link to the Server Course. Everyone follows the same 15 units; what the interview showed lets the Trainer go faster, it doesn't skip units.</p>
+      <div id="rv-plan"></div>
+      <label class="check"><input type="checkbox" id="rv-confirm"> As trainer, I confirm this training path.</label>
+      <button type="button" id="rv-handoff">Hired: start training for this person</button>
+      <p id="rv-msg" class="small"></p>
+    </div>
+    <p class="small">Only the candidate's answers are kept, not the whole conversation. The candidate never sees this page. <button type="button" class="linkish" id="rv-delete">Delete this candidate</button></p>
+  </section>
+
+</div>
+
+<div id="celebrate" class="celebrate" hidden>
+  <canvas id="confetti"></canvas>
+  <div class="box center pop">
+    <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="" width="72" height="72">
+    <div class="tag">Unit complete</div>
+    <h1 id="cel-title"></h1>
+    <p id="cel-text"></p>
+    <button type="button" id="cel-close">Continue</button>
+  </div>
+</div>
+
+<script>window.RF_KIND = {{ kind|tojson }}; window.RF_SESSION_MIN = {{ session_minutes }}; window.RF_COURSE_TITLE = {{ course.title|replace("The ", "")|tojson }};</script>
+<script>window.RF_TRAINEE = {{ trainee|tojson }}; window.RF_HIRE = {{ hire|tojson }};</script>
+<script>window.RF_MODULES = {{ modules|tojson }}; window.RF_SELECTION = {{ selection|tojson }}; window.RF_LEVELS = {{ levels|tojson }}; window.RF_IDLE = {{ idle_seconds }}; window.RF_CRITERIA = {{ criteria|tojson }}; window.RF_STAGES = {{ stages|tojson }};</script>
+<script src="{{ url_for('static', filename='banners.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
