@@ -1258,6 +1258,10 @@ register_interview_routes(app, SessionFactory=SessionFactory, require_login=requ
     require_admin=require_admin, require_csrf=require_csrf, require_domain_access=require_domain_access)
 
 
+from forgot_username_routes import register_forgot_username_routes  # noqa: E402
+register_forgot_username_routes(app, SessionFactory=SessionFactory, require_csrf=require_csrf, m=m,
+    account_service=account_service, send_email=ses_email.send_email,
+    from_address=EMAIL_FROM_ADDRESS, region_name=AWS_REGION)
 from role_profile_routes import register_role_profile_routes
 register_role_profile_routes(app, SessionFactory=SessionFactory, require_admin=require_admin,
     load_current_account=load_current_account, require_csrf=require_csrf, domains=DOMAINS)
