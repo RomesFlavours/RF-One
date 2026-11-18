@@ -155,6 +155,34 @@ def install(app, *, SessionFactory, auth):
     def secret():
         return app.secret_key
 
+    @app.before_request
+    def _assign_before_home():
+        """A student's courses exist before their home page lists them (never "No training path assigned")."""
+        if request.endpoint != 'training.home':
+            return None
+        try:
+            with SessionFactory() as db:
+                account = auth.load_current_account(db)
+                if account is None:
+                    return None
+                result = integration.check_training_authorization(db, account)
+                if result.training_account is not None and result.training_account.role == 'student'                         and ensure_visual_menu(db, result.training_account.id):
+                    db.commit()
+        except Exception:
+            app.logger.exception('Training: could not assign the courses before the home page')
+        return None
+
+    @app.context_processor
+    def _server_course_pill_id():
+        def server_course_pill_id():
+            try:
+                with SessionFactory() as db:
+                    pill = server_course_pill(db)
+                    return pill.id if pill else None
+            except Exception:
+                return None
+        return dict(server_course_pill_id=server_course_pill_id)
+
     @app.context_processor
     def _server_course_progress():
         def server_course_progress():
