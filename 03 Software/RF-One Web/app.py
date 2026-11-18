@@ -1168,17 +1168,26 @@ _FORGOT_PASSWORD_GENERIC_MESSAGE = "If the details match an eligible account, yo
 def forgot_password():
     if request.method == "POST":
         require_csrf()
-        username_raw = request.form.get("username", "")
-        email_raw = request.form.get("email", "")
-        normalized_username = username_raw.strip().lower()
+        # One box: the username OR the verified email (18 Nov 2026). The code only ever goes to the
+        # account's own verified email, so knowing the email or the username is enough to ask for it.
+        identifier = request.form.get("username", "").strip()
+        normalized_username = identifier.lower()
 
         with SessionFactory() as db:
-            account = account_service.get_account_by_username(db, normalized_username)
+            if "@" in identifier:
+                matches = list(db.scalars(select(m.RFOneAccount).where(
+                    m.RFOneAccount.email == account_service.normalize_email(identifier),
+                    m.RFOneAccount.status == "ACTIVE", m.RFOneAccount.email_verified_at.is_not(None)).limit(2)))
+                # an email shared by two accounts is ambiguous: nobody gets a code, same answer
+                account = matches[0] if len(matches) == 1 else None
+                if account is not None:
+                    normalized_username = account.username
+            else:
+                account = account_service.get_account_by_username(db, normalized_username)
             eligible = (
                 account is not None
                 and account.status == "ACTIVE"
                 and account.email_verified_at is not None
-                and account.email == account_service.normalize_email(email_raw)
             )
             if eligible:
                 try:
