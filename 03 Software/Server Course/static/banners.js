@@ -9,6 +9,39 @@ window.RF_BANNERS = (function () {
     return s;
   }
   return {
+    // Hands, glasses and the table: a tray carried on an open hand, glasses held low, the table edge below.
+    m13: wrap("#edf1e7",
+      `<circle cx="64" cy="38" r="16" fill="${G}" opacity=".55"/>` +
+      `<rect x="0" y="112" width="400" height="10" fill="${W}" opacity=".85"/><rect x="0" y="122" width="400" height="28" fill="${O}"/>` +
+      `<path d="M70 112 v-16 M64 96 v6 M76 96 v6 M70 96 v6" stroke="${O}" stroke-width="3" stroke-linecap="round"/><path d="M92 112 v-22 q6 4 0 12" stroke="${O}" stroke-width="3" fill="none" stroke-linecap="round"/>` +
+      `<path d="M168 30 h28 q0 24 -14 28 q-14 -4 -14 -28z" fill="${W}" stroke="${INK}" stroke-width="2"/><path d="M182 58 v12 M172 71 h20" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>` +
+      `<rect x="208" y="40" width="20" height="31" rx="3" fill="${SKY}" stroke="${INK}" stroke-width="2"/><path d="M210 52 h16" stroke="${W}" stroke-width="3"/>` +
+      `<path d="M240 30 h28 q0 24 -14 28 q-14 -4 -14 -28z" fill="${W}" stroke="${INK}" stroke-width="2"/><path d="M242 42 h24 q-2 14 -12 16 q-10 -2 -12 -16z" fill="#7a1f2b"/><path d="M254 58 v12 M244 71 h20" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>` +
+      `<g transform="translate(-6,-14)"><path d="M400 150 L400 104 Q352 96 300 98 L286 104 Q332 112 400 150z" fill="${O}"/>` +
+      `<path d="M292 96 h-8 v12 h10z" fill="${W}" stroke="${O}" stroke-width="2"/>` +
+      `<path d="M286 98 q-24 -6 -54 -4 q-22 2 -30 8 q14 8 40 8 q30 0 44 -6z" fill="${CREAM}" stroke="${O}" stroke-width="2.5"/>` +
+      `<path d="M212 102 q8 4 20 4 M222 98 q8 4 22 4" stroke="${O}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".6"/></g>` +
+      `<ellipse cx="218" cy="78" rx="84" ry="10" fill="#d6dcc6" stroke="${O}" stroke-width="3"/>`),
+
+    // Following through and concluding: the check presenter, a pen, and coffee to close the meal.
+    m14: wrap("#f3eee2",
+      `<circle cx="352" cy="36" r="18" fill="${G}" opacity=".45"/>` +
+      `<rect x="0" y="122" width="400" height="28" fill="${O}"/>` +
+      `<rect x="104" y="50" width="124" height="72" rx="7" fill="${O}"/><rect x="118" y="34" width="78" height="80" rx="3" fill="${W}" stroke="${O2}" stroke-width="2"/>` +
+      `<path d="M130 50 h54 M130 62 h40 M130 74 h48 M130 86 h30" stroke="${O2}" stroke-width="3" stroke-linecap="round"/><path d="M130 100 h22 M162 100 h22" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>` +
+      `<path d="M206 44 l42 50" stroke="${G}" stroke-width="8" stroke-linecap="round"/><path d="M248 94 l4 6" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>` +
+      `<ellipse cx="300" cy="120" rx="46" ry="8" fill="${W}" stroke="${O2}" stroke-width="2.5"/>` +
+      `<path d="M272 82 h56 v14 q0 22 -28 22 q-28 0 -28 -22z" fill="${W}" stroke="${O}" stroke-width="3"/><path d="M328 90 q16 0 14 12 q-2 10 -16 8" stroke="${O}" stroke-width="3" fill="none"/>` +
+      `<path d="M288 74 q-8 -10 0 -20 q8 -10 0 -20 M308 74 q-8 -10 0 -20 q8 -10 0 -20" stroke="${O2}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".7"/>`),
+    // Practice, shadowing and transfer: the trainee following the lead's steps, a star for the hand-over.
+    m16: wrap("#e9efe6",
+      `<rect x="0" y="118" width="400" height="32" fill="${O}"/>` +
+      [[96, 130], [128, 138], [160, 130], [192, 138], [224, 130]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="7" ry="4" fill="${CREAM}" opacity=".85"/>`).join("") +
+      `<circle cx="258" cy="50" r="19" fill="${O2}"/><path d="M228 118 q30 -72 60 0z" fill="${O2}"/>` +
+      `<path d="M286 86 l30 -16" stroke="${O2}" stroke-width="7" stroke-linecap="round"/>` +
+      `<circle cx="170" cy="66" r="14" fill="${T}"/><path d="M148 118 q22 -54 44 0z" fill="${T}"/>` +
+      `<path d="M330 40 l6 12 l13 2 l-9 9 l2 13 l-12 -6 l-12 6 l2 -13 l-9 -9 l13 -2z" fill="${G}"/>` +
+      `<path d="M196 90 q20 -12 34 -4" stroke="${INK}" stroke-width="3" fill="none" stroke-dasharray="4 6" stroke-linecap="round" opacity=".5"/>`),
     m1: wrap(SKY,
       `<circle cx="310" cy="58" r="34" fill="${G}" opacity=".85"/>` +
       `<path d="M0 118 Q120 96 220 112 T400 104 V150 H0z" fill="${O2}" opacity=".5"/>` +

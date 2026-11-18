@@ -43,6 +43,38 @@
     </div>
     {% endif %}
 
+    {% if trainee and not mgmt %}
+    {% if hire and hire.rf.state == 'joined' %}<p class="sc-back"><a href="{{ training_url }}/training">&larr; Back to your training</a></p>{% endif %}
+    <section class="sc-hero">
+      <div class="sc-hero-main">
+        <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="RF One" class="sc-logo" width="72" height="72">
+        <div>
+          <div class="tag">Rome's Flavours Academy</div>
+          <h1>{{ course.title }}</h1>
+          <p class="sc-lead">{{ modules|length }} short units in four levels, one after the other. In each unit you chat with the AI Trainer through a few short modules, then take a quick multiple-choice test. Every unit has a guide you can download, and some end with a practical check with your lead.</p>
+        </div>
+      </div>
+      <div class="sc-progress">
+        <div class="sc-bar"><span id="overall-bar" style="width:0%"></span></div>
+        <p id="overall" class="overall"></p>
+      </div>
+      <p class="sc-callout"><b>Finishing the course doesn't mean working tables alone yet.</b> Your lead watches the practical checks in person and decides when you're ready. Until then, you work alongside a lead or a trainer server.</p>
+      <details class="sc-more">
+        <summary>How this course works</summary>
+        <p class="small">{% if hire %}Your progress is saved with your name, so you can continue on any phone with your own link.{% else %}Your progress is saved on this device.{% endif %} The Rome's Flavours team can see how far you've got, your test results and your training time, so they can help you. Training is paid working time: the time counted here leaves out pauses longer than {{ (idle_seconds // 60) }} minutes, and breaks you take with Take a break.</p>
+        <p class="small" id="total-time"></p>
+      </details>
+      {% if hire and kind != 'management' and hire.rf.state not in ('off', 'joined') %}
+      <div id="rf-training" class="sc-account">
+        <h2>Get your RF-One Training account</h2>
+        {% if rt_msg %}<p class="small" role="status"><b>{{ rt_msg.text }}</b></p>{% endif %}
+        {% if hire.rf.state == 'invited' %}<p class="small">We emailed your invitation to <b>{{ hire.rf.email }}</b>. Open it, create your password, and you'll find this course and the Visual Menu in RF-One Training, with all your progress. Wrong email, or it never arrived? Enter it again below.</p>
+        {% else %}<p class="small">That's where you'll also find the Visual Menu, our guide to every dish. Enter your email and we'll send you the invitation. Everything you've done here comes with you.</p>{% endif %}
+        <form method="post" action="{{ url_for('training_account') }}" class="row"><input type="email" name="email" required maxlength="254" placeholder="Your email" aria-label="Your email" autocomplete="email" value="{{ hire.rf.email }}"><button type="submit">{{ 'Send it again' if hire.rf.state == 'invited' else 'Send my invitation' }}</button></form>
+      </div>
+      {% endif %}
+    </section>
+    {% else %}
     <section class="course-head{{ ' solo' if trainee }}">
       <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="RF One" class="course-logo" width="96" height="96">
       <div>
@@ -75,6 +107,7 @@
         {% endif %}
       </div>
     </section>
+    {% endif %}
     {% if not trainee %}
     <div class="box">
       {% if mgmt %}<h2 class="h2">The leads</h2>

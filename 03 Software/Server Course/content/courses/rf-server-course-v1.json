@@ -909,7 +909,7 @@
    "prerequisites": [
     "B3"
    ],
-   "banner": "m4",
+   "banner": "m14",
    "sources": [],
    "extra": [],
    "practical": [],
@@ -1171,7 +1171,7 @@
     "A4",
     "C1"
    ],
-   "banner": "m10",
+   "banner": "m13",
    "sources": [],
    "extra": [],
    "practical": [
@@ -1780,7 +1780,7 @@
    "prerequisites": [
     "D1"
    ],
-   "banner": "m6",
+   "banner": "m16",
    "sources": [],
    "extra": [],
    "practical": [

@@ -536,7 +536,8 @@
   async function renderHome() {
     const t = S.trainee;
     const completed = COURSES.filter(courseDone).length;
-    $("overall").textContent = t ? (t.fullName || t.name) + " · " + t.location + " · " + completed + "/" + COURSES.length + (MGMT ? " modules done" : " units complete") + (totalTime() ? " · " + fmtMin(totalTime()) + " of training counted" : "") : "";
+    $("overall").textContent = t ? [t.fullName || t.name, t.location, completed + " of " + COURSES.length + (MGMT ? " modules done" : " units complete"), totalTime() ? fmtMin(totalTime()) + " of training counted" : ""].filter(Boolean).join(" · ") : "";
+    if ($("overall-bar")) $("overall-bar").style.width = Math.round(100 * completed / Math.max(1, COURSES.length)) + "%";
     if ($("total-time")) {
       const all = COURSES.reduce((a, c) => a + courseMinutes(c), 0);
       $("total-time").textContent = "The conversation part takes about " + fmtMin(all * 60) + " in all, in sessions of up to 20 minutes, plus the practical checks with your lead.";
