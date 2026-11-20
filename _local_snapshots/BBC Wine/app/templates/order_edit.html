@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Order ' ~ order.id if order else 'New order' }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('orders') }}">Orders</a> › {{ '#' ~ order.id if order else 'New order' }}</p>
+<h1 class="page-title">{{ 'Edit order #' ~ order.id if order else 'New order' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% macro hv(name, default='') %}{% if form %}{{ form.get(name, '') }}{% elif order and order[name] is not none %}{{ order[name] }}{% else %}{{ default }}{% endif %}{% endmacro %}
+{% set chosen_customer = (form.get('customer_id') if form else (order.customer_id if order else preset))|string %}
+<form method="post" id="order-form" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <div><label for="customer">Customer</label><select id="customer" name="customer_id" required><option value="">Choose…</option>{% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if chosen_customer == c.id|string }}>{{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>Date</label><input type="date" name="order_date" value="{{ hv('order_date', today) }}" required></div>
+    <div><label for="rep">Rep</label><select id="rep" name="rep_user_id"><option value="">HOUSE</option>{% set cur_rep = hv('rep_user_id', (g.user.id if g.user.is_rep else ''))|string %}{% for r in reps %}<option value="{{ r.id }}" {{ 'selected' if cur_rep == r.id|string }}>{{ r.full_name }}</option>{% endfor %}</select></div>
+    <div><label>P.O.#</label><input name="po_number" maxlength="60" value="{{ hv('po_number') }}"></div>
+    <div><label>Ship via</label><input name="ship_via" maxlength="60" value="{{ hv('ship_via') }}"></div>
+    <div><label for="terms">Terms (Net days)</label><input id="terms" type="number" min="0" name="terms_days" value="{{ hv('terms_days', 10) }}"></div>
+  </div>
+
+  <h2 class="section-title">Wines</h2>
+  <datalist id="wine-options">{% for w in wines %}<option value="{{ w.item_code }} — {{ w.display_name }} ({{ w.bottle_size_ml }} ml)"></option>{% endfor %}</datalist>
+  <div class="table-scroll">
+  <table class="grid order-lines">
+    <thead><tr><th>Wine</th><th>Location</th><th class="num">Bottles</th><th class="num">Price/btl</th><th class="num">Discount</th><th class="num">Amount</th><th></th></tr></thead>
+    <tbody id="lines"></tbody>
+  </table>
+  </div>
+  <p><button type="button" class="btn-secondary" id="add-line">+ Add wine</button></p>
+
+  <div class="form-grid">
+    <div>
+      <label>Order discount</label>
+      <div style="display:flex;gap:.4rem">
+        <input id="odisc" name="discount_value" inputmode="decimal" value="{{ hv('discount_value', '0') }}" style="max-width:8rem">
+        {% set odt = hv('discount_type', 'PCT')|string %}
+        <select id="odtype" name="discount_type" style="width:auto"><option value="PCT" {{ 'selected' if odt == 'PCT' }}>%</option><option value="AMT" {{ 'selected' if odt == 'AMT' }}>$</option></select>
+      </div>
+      <label>Notes</label><textarea name="notes" rows="2">{{ hv('notes') }}</textarea>
+    </div>
+    <div class="totals">
+      <div><span>Bottles</span><span id="t-bottles">0</span></div>
+      <div><span>Subtotal</span><span id="t-sub">$0.00</span></div>
+      <div><span>Order discount</span><span id="t-disc">$0.00</span></div>
+      <div class="grand"><span>Total</span><span id="t-total">$0.00</span></div>
+    </div>
+  </div>
+  <p class="cell-note">Saving removes the bottles from the chosen locations immediately. A location without enough bottles stops the save.</p>
+  <div class="btn-row"><button type="submit">Save order</button><a class="button-link secondary" href="{{ url_for('order_view', order_id=order.id) if order else url_for('orders') }}">Cancel</a></div>
+</form>
+
+<script>
+(function () {
+  var catalog = {{ catalog|tojson }}, locations = {{ locations|map(attribute='id')|list|tojson }},
+      locationNames = {{ locations|map(attribute='name')|list|tojson }}, initial = {{ initial|tojson }},
+      customers = {{ customer_info|tojson }}, isNew = {{ 'false' if order else 'true' }};
+  var byLabel = {};
+  Object.keys(catalog).forEach(function (id) {
+    var w = catalog[id];
+    byLabel[w.code + " — " + w.name + " (" + w.size + " ml)"] = id;
+  });
+  var body = document.getElementById("lines");
+  function fmt(n) { return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  function num(v) { var n = parseFloat(String(v || "").replace(/[$,]/g, "")); return isNaN(n) ? 0 : n; }
+  function cents(n) { return Math.round(n * 100) / 100; }
+  function discount(gross, type, value) {
+    value = num(value);
+    if (type === "PCT") return cents(gross * Math.min(value, 100) / 100);
+    return Math.min(cents(value), gross);
+  }
+  function addLine(data) {
+    data = data || {};
+    var tr = document.createElement("tr");
+    var w = data.wine ? catalog[data.wine] : null;
+    tr.innerHTML =
+      '<td class="w-wine"><input list="wine-options" class="wine-pick" placeholder="Type code or name" aria-label="Wine">' +
+      '<input type="hidden" name="line_wine"><span class="stock-hint"></span></td>' +
+      '<td><select name="line_location" aria-label="Location">' + locations.map(function (id, i) {
+        return '<option value="' + id + '">' + locationNames[i] + '</option>'; }).join("") + '</select></td>' +
+      '<td class="num"><input class="w-small" type="number" min="1" name="line_bottles" aria-label="Bottles"></td>' +
+      '<td class="num"><input class="w-small" inputmode="decimal" name="line_price" aria-label="Price per bottle"></td>' +
+      '<td class="num" style="white-space:nowrap"><input class="w-small" inputmode="decimal" name="line_discount" value="0" aria-label="Line discount">' +
+      '<select name="line_discount_type" aria-label="Discount type" style="width:auto"><option value="PCT">%</option><option value="AMT">$</option></select></td>' +
+      '<td class="num line-amount">$0.00</td>' +
+      '<td><button type="button" class="btn-secondary remove" aria-label="Remove line">×</button></td>';
+    body.appendChild(tr);
+    var pick = tr.querySelector(".wine-pick"), hidden = tr.querySelector("[name=line_wine]");
+    if (w) { pick.value = w.code + " — " + w.name + " (" + w.size + " ml)"; hidden.value = data.wine; }
+    if (data.location) tr.querySelector("[name=line_location]").value = data.location;
+    tr.querySelector("[name=line_bottles]").value = data.bottles || "";
+    tr.querySelector("[name=line_price]").value = data.price || "";
+    tr.querySelector("[name=line_discount]").value = data.discount || "0";
+    tr.querySelector("[name=line_discount_type]").value = data.dtype || "PCT";
+    pick.addEventListener("change", function () {
+      var id = byLabel[pick.value] || "";
+      hidden.value = id;
+      if (id) {
+        tr.querySelector("[name=line_price]").value = catalog[id].price;
+        var sel = tr.querySelector("[name=line_location]");
+        // Default to the first location that has stock.
+        for (var i = 0; i < locations.length; i++) { if ((catalog[id].stock[locations[i]] || 0) > 0) { sel.value = locations[i]; break; } }
+        var b = tr.querySelector("[name=line_bottles]"); if (!b.value) b.value = 1; b.focus(); b.select();
+      }
+      recalc();
+    });
+    tr.querySelector(".remove").addEventListener("click", function () { tr.remove(); recalc(); });
+    recalc();
+    return tr;
+  }
+  function recalc() {
+    var subtotal = 0, bottles = 0, used = {};
+    body.querySelectorAll("tr").forEach(function (tr) {
+      var id = tr.querySelector("[name=line_wine]").value, loc = tr.querySelector("[name=line_location]").value;
+      var b = parseInt(tr.querySelector("[name=line_bottles]").value, 10) || 0;
+      if (id) { used[id + ":" + loc] = (used[id + ":" + loc] || 0) + b; }
+    });
+    body.querySelectorAll("tr").forEach(function (tr) {
+      var id = tr.querySelector("[name=line_wine]").value, loc = tr.querySelector("[name=line_location]").value;
+      var b = parseInt(tr.querySelector("[name=line_bottles]").value, 10) || 0;
+      var price = num(tr.querySelector("[name=line_price]").value);
+      var gross = cents(b * price);
+      var net = gross - discount(gross, tr.querySelector("[name=line_discount_type]").value, tr.querySelector("[name=line_discount]").value);
+      tr.querySelector(".line-amount").textContent = fmt(net);
+      subtotal += net; bottles += b;
+      var hint = tr.querySelector(".stock-hint");
+      if (id) {
+        var w = catalog[id], have = w.stock[loc] || 0, need = used[id + ":" + loc];
+        var perCase = w.case ? " · " + w.case + " btl/case" : "";
+        hint.textContent = "Available here: " + have + " btl" + perCase + (need > have ? " — not enough" : "");
+        hint.className = "stock-hint" + (need > have ? " bad" : "");
+      } else {
+        hint.textContent = tr.querySelector(".wine-pick").value ? "Choose a wine from the list" : "";
+        hint.className = "stock-hint bad";
+      }
+    });
+    var od = discount(subtotal, document.getElementById("odtype").value, document.getElementById("odisc").value);
+    document.getElementById("t-bottles").textContent = bottles;
+    document.getElementById("t-sub").textContent = fmt(subtotal);
+    document.getElementById("t-disc").textContent = "−" + fmt(od);
+    document.getElementById("t-total").textContent = fmt(subtotal - od);
+  }
+  body.addEventListener("input", recalc);
+  body.addEventListener("change", recalc);
+  document.getElementById("odisc").addEventListener("input", recalc);
+  document.getElementById("odtype").addEventListener("change", recalc);
+  document.getElementById("add-line").addEventListener("click", function () { addLine().querySelector(".wine-pick").focus(); });
+  document.getElementById("customer").addEventListener("change", function () {
+    var c = customers[this.value];
+    if (!c || !isNew) return;
+    document.getElementById("terms").value = c.terms;
+    document.getElementById("rep").value = c.rep;
+  });
+  if (initial.length) { initial.forEach(addLine); } else { addLine(); }
+  if (isNew && !{{ 'true' if form else 'false' }}) {
+    var c = customers[document.getElementById("customer").value];
+    if (c) { document.getElementById("terms").value = c.terms; document.getElementById("rep").value = c.rep; }
+  }
+})();
+</script>
+{% endblock %}

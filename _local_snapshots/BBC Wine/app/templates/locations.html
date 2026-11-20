@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Locations{% endblock %}
+{% block content %}
+<h1 class="page-title">Locations</h1>
+<p class="muted">Warehouses holding stock. Each order line says which location the bottles leave from.</p>
+<table class="grid">
+  <thead><tr><th>Name</th><th>Address</th><th class="num">Bottles</th><th>Active</th><th></th></tr></thead>
+  <tbody>
+  {% for l in rows %}
+  {% set fid = 'loc-' ~ l.id %}
+  <tr>
+    <td><form id="{{ fid }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ l.id }}"></form>
+      <input form="{{ fid }}" name="name" value="{{ l.name }}" maxlength="120" required style="margin:0" aria-label="Name"></td>
+    <td><input form="{{ fid }}" name="address" value="{{ l.address or '' }}" style="margin:0" aria-label="Address"></td>
+    <td class="num">{{ stock.get(l.id, 0) }}</td>
+    <td><input form="{{ fid }}" type="checkbox" name="active" value="1" {{ 'checked' if l.active }} aria-label="Active" style="width:auto"></td>
+    <td><button form="{{ fid }}">Save</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2 class="section-title">New location</h2>
+<form method="post" class="toolbar" style="justify-content:flex-start">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input name="name" placeholder="Name" maxlength="120" required style="margin:0;width:auto">
+  <input name="address" placeholder="Address" style="margin:0;width:auto">
+  <button>Add location</button>
+</form>
+{% endblock %}

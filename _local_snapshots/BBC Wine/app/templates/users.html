@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1 class="page-title">Users &amp; access</h1>
+  <a class="button-link" href="{{ url_for('user_edit') }}">New user</a>
+</div>
+<table class="grid">
+  <thead><tr><th>Name</th><th>Username</th><th>Rep</th><th>Access</th><th></th></tr></thead>
+  <tbody>
+  {% for u in rows %}
+  <tr><td>{{ u.full_name }}{% if not u.active %} <span class="pill bad">Inactive</span>{% endif %}</td><td>{{ u.username }}</td><td>{{ 'Yes' if u.is_rep else '' }}</td>
+    <td>{% if u.is_admin %}<span class="pill ok">Administrator — everything</span>{% else %}{% for p in u.permissions %}<span class="pill">{{ m.FUNCTIONS.get(p.function, p.function) }} · {{ m.LEVELS[p.level] }}</span> {% else %}<span class="muted">No access</span>{% endfor %}{% endif %}</td>
+    <td><a href="{{ url_for('user_edit', user_id=u.id) }}">Edit</a></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

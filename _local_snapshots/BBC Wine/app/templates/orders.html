@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Orders{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1 class="page-title">Orders</h1>
+  <div>
+    <a class="button-link secondary" href="{{ url_for('orders', status='OPEN') }}">Open</a>
+    <a class="button-link secondary" href="{{ url_for('orders', status='CANCELLED') }}">Cancelled</a>
+    {% if may_edit('orders') %}<a class="button-link" href="{{ url_for('order_edit') }}">New order</a>{% endif %}
+  </div>
+</div>
+<p class="muted">{{ 'Cancelled orders' if status == 'CANCELLED' else 'Open orders' }}, newest first.</p>
+<table class="grid">
+  <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Rep</th><th>P.O.#</th><th class="num">Bottles</th><th class="num">Total</th><th></th></tr></thead>
+  <tbody>
+  {% for o in rows %}
+  <tr id="order-{{ o.id }}"><td><a href="{{ url_for('order_view', order_id=o.id) }}">#{{ o.id }}</a></td><td>{{ o.order_date|d }}</td><td>{{ o.customer.name }}</td>
+    <td>{{ o.rep.full_name if o.rep else 'HOUSE' }}</td><td>{{ o.po_number or '' }}</td>
+    <td class="num">{{ totals[o.id].bottles }}</td><td class="num">{{ totals[o.id].total|usd }}</td>
+    <td>{% if may('invoices') and o.status == m.ORDER_OPEN %}<a href="{{ url_for('invoice', order_id=o.id) }}">Invoice</a>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">No orders.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ wine_list.name if wine_list.id else 'New wine list' }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('wine_lists') }}">Wine Lists</a> › {{ wine_list.name if wine_list.id else 'New wine list' }}</p>
+<h1 class="page-title">{{ 'Edit wine list' if wine_list.id else 'New wine list' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% set f = request.form if request.method == 'POST' else None %}
+{% set chosen_customer = (f.get('customer_id') if f else (wine_list.customer_id or preset))|string %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <div><label>Customer</label><select name="customer_id" required><option value="">Choose…</option>{% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if chosen_customer == c.id|string }}>{{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>List name</label><input name="name" maxlength="160" required value="{{ f.get('name', '') if f else (wine_list.name or '') }}" placeholder="e.g. Spring 2026 proposal"></div>
+  </div>
+  <label>Notes <span class="muted">(printed under the title)</span></label><textarea name="notes" rows="2">{{ f.get('notes', '') if f else (wine_list.notes or '') }}</textarea>
+  <div class="toolbar">
+    <label style="margin:0">Wines <span class="muted" id="count"></span></label>
+    <div style="display:flex;gap:.5rem;align-items:center">
+      <input type="search" id="filter" placeholder="Filter wines" style="margin:0">
+      <label class="check" style="margin:0"><input type="checkbox" id="only-selected"> Only selected</label>
+      <label class="check" style="margin:0"><input type="checkbox" id="only-stock"> Only in stock</label>
+    </div>
+  </div>
+  <div class="picker-list" id="picker">
+    {% for w in wines %}
+    <label data-text="{{ (w.display_name ~ ' ' ~ w.item_code ~ ' ' ~ (w.region or ''))|lower }}" data-stock="{{ w.total_stock }}">
+      <input type="checkbox" name="wine_id" value="{{ w.id }}" {{ 'checked' if w.id in selected }}>
+      <span>{{ w.display_name }} <span class="muted">· {{ w.bottle_size_ml }} ml · {{ w.item_code }}</span></span>
+      <span class="muted">{{ w.price|usd if w.price is not none else 'no price' }} · stock {{ w.total_stock }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="btn-row" style="margin-top:1rem"><button>Save list</button><a class="button-link secondary" href="{{ url_for('wine_list_view', list_id=wine_list.id) if wine_list.id else url_for('wine_lists') }}">Cancel</a></div>
+</form>
+{% if wine_list.id %}
+<form method="post" action="{{ url_for('wine_list_delete', list_id=wine_list.id) }}" onsubmit="return confirm('Delete this wine list?')" style="margin-top:1.5rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary">Delete list</button>
+</form>
+{% endif %}
+<script>
+(function () {
+  var filter = document.getElementById("filter"), onlySel = document.getElementById("only-selected"),
+      onlyStock = document.getElementById("only-stock"), rows = document.querySelectorAll("#picker label"),
+      count = document.getElementById("count");
+  function apply() {
+    var q = filter.value.trim().toLowerCase(), n = 0;
+    rows.forEach(function (row) {
+      var box = row.querySelector("input");
+      if (box.checked) n++;
+      var show = (!q || row.dataset.text.indexOf(q) >= 0) && (!onlySel.checked || box.checked) &&
+                 (!onlyStock.checked || Number(row.dataset.stock) > 0);
+      row.style.display = show ? "" : "none";
+    });
+    count.textContent = "(" + n + " selected)";
+  }
+  [filter, onlySel, onlyStock].forEach(function (el) { el.addEventListener("input", apply); });
+  document.getElementById("picker").addEventListener("change", apply);
+  apply();
+})();
+</script>
+{% endblock %}

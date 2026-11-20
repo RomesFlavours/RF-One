@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ target.full_name if target.id else 'New user' }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('users') }}">Users</a> › {{ target.full_name if target.id else 'New user' }}</p>
+<h1 class="page-title">{{ 'Edit user' if target.id else 'New user' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% set f = request.form if request.method == 'POST' else None %}
+<form method="post" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <div><label>Full name</label><input name="full_name" maxlength="120" required value="{{ f.get('full_name', '') if f else (target.full_name or '') }}"></div>
+    <div><label>Username</label><input name="username" maxlength="60" required value="{{ f.get('username', '') if f else (target.username or '') }}"></div>
+    <div><label>{{ 'New password (leave empty to keep it)' if target.id else 'Password' }}</label><input type="password" name="password" minlength="8" autocomplete="new-password" {{ '' if target.id else 'required' }}></div>
+  </div>
+  <label class="check"><input type="checkbox" name="active" value="1" {{ 'checked' if (f.get('active') if f else target.active) }}> Active (can sign in)</label>
+  <label class="check"><input type="checkbox" name="is_rep" value="1" {{ 'checked' if (f.get('is_rep') if f else target.is_rep) }}> Sales rep (can be chosen as Rep on customers, orders and invoices)</label>
+  <label class="check"><input type="checkbox" id="is-admin" name="is_admin" value="1" {{ 'checked' if (f.get('is_admin') if f else target.is_admin) }}> Administrator (every function, plus Company, Locations and Users)</label>
+
+  <h2 class="section-title">Functions</h2>
+  <p class="muted">Tick the functions this user may open. View = see and print only; User = also create and change.</p>
+  <table class="grid perm-table" id="perms">
+    <thead><tr><th>Function</th><th>Access</th><th>Level</th></tr></thead>
+    <tbody>
+    {% for key, label in m.FUNCTIONS.items() %}
+    {% set on = (f.get('fn_' ~ key) == '1') if f else (key in granted) %}
+    {% set lvl = (f.get('level_' ~ key)) if f else granted.get(key, 'user') %}
+    <tr><td>{{ label }}</td>
+      <td><input type="checkbox" name="fn_{{ key }}" value="1" {{ 'checked' if on }} aria-label="{{ label }}" style="width:auto;margin:0"></td>
+      <td><select name="level_{{ key }}" aria-label="Level for {{ label }}">{% for lk, ll in m.LEVELS.items() %}<option value="{{ lk }}" {{ 'selected' if lvl == lk }}>{{ ll }}</option>{% endfor %}</select></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="btn-row" style="margin-top:1rem"><button>Save user</button><a class="button-link secondary" href="{{ url_for('users') }}">Cancel</a></div>
+</form>
+<script>
+(function () {
+  var admin = document.getElementById("is-admin"), table = document.getElementById("perms");
+  function sync() {
+    table.querySelectorAll("tbody tr").forEach(function (tr) {
+      var box = tr.querySelector("input[type=checkbox]"), sel = tr.querySelector("select");
+      box.disabled = admin.checked;
+      sel.disabled = admin.checked || !box.checked;
+    });
+  }
+  admin.addEventListener("change", sync);
+  table.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

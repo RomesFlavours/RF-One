@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Stock movements{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('inventory') }}">Availability</a> › Stock movements</p>
+<h1 class="page-title">Stock movements{% if wine %} — {{ wine.display_name }}{% endif %}</h1>
+{% if wine %}<p><a href="{{ url_for('movements') }}">Show all wines</a></p>{% endif %}
+<table class="grid">
+  <thead><tr><th>When (UTC)</th><th>Wine</th><th>Location</th><th class="num">Bottles</th><th class="num">Balance</th><th>Reason</th><th>Order</th><th>Note</th><th>By</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td>{{ r.at.strftime('%m/%d/%Y %H:%M') }}</td><td>{{ r.wine.display_name }}</td><td>{{ r.location.name }}</td>
+    <td class="num">{{ '%+d'|format(r.bottles) }}</td><td class="num">{{ r.balance_after }}</td><td>{{ m.MOVE_LABELS.get(r.reason, r.reason) }}</td>
+    <td>{% if r.order_id %}<a href="{{ url_for('order_view', order_id=r.order_id) }}">#{{ r.order_id }}</a>{% endif %}</td>
+    <td>{{ r.note or '' }}</td><td>{{ r.user.full_name if r.user else '' }}</td></tr>
+  {% else %}<tr><td colspan="9" class="muted">No movements yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

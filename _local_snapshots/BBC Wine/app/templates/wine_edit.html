@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit wine' if wine.id else 'New wine' }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('inventory') }}">Availability</a> › {{ wine.display_name if wine.id else 'New wine' }}</p>
+<h1 class="page-title">{{ 'Edit wine' if wine.id else 'New wine' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% set f = request.form if request.method == 'POST' else None %}
+{% macro val(name) %}{% if f %}{{ f.get(name, '') }}{% elif wine[name] is not none %}{{ wine[name] }}{% endif %}{% endmacro %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <div><label>Item code</label><input name="item_code" value="{{ val('item_code') }}" maxlength="30" required></div>
+    <div><label>Wine type</label><input name="type_name" value="{{ val('type_name') }}" maxlength="120" required></div>
+    <div><label>Producer</label><input name="producer" value="{{ val('producer') }}" maxlength="160" required></div>
+    <div><label>Label</label><input name="label_name" value="{{ val('label_name') }}" maxlength="200"></div>
+    <div><label>Vintage <span class="muted">(empty = NV)</span></label><input name="vintage_year" type="number" min="1900" max="2100" value="{{ val('vintage_year') }}"></div>
+    <div><label>Category</label><select name="category">{% for k, v in m.CATEGORIES.items() %}<option value="{{ k }}" {{ 'selected' if val('category') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label>Style</label><select name="style">{% for k, v in m.STYLES.items() %}<option value="{{ k }}" {{ 'selected' if val('style') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label>Denomination</label><input name="denomination" value="{{ val('denomination') }}" maxlength="80"></div>
+    <div><label>Region</label><input name="region" value="{{ val('region') }}" maxlength="80"></div>
+    <div><label>Bottle size (ml)</label><input name="bottle_size_ml" type="number" min="1" value="{{ val('bottle_size_ml') }}" required></div>
+    <div><label>Bottles per case</label><input name="bottles_per_case" type="number" min="1" value="{{ val('bottles_per_case') }}"></div>
+    <div><label>Price per bottle ($)</label><input name="price" inputmode="decimal" value="{{ val('price') }}"></div>
+    <div><label>Availability</label><select name="availability">{% for k, v in m.AVAILABILITIES.items() %}<option value="{{ k }}" {{ 'selected' if val('availability') == k }}>{{ v }}</option>{% endfor %}</select></div>
+  </div>
+  <label>Notes</label><textarea name="notes" rows="2">{{ val('notes') }}</textarea>
+  <p class="cell-note">Stock is not changed here: set it per location in the Availability list.</p>
+  <div class="btn-row"><button>Save</button><a class="button-link secondary" href="{{ url_for('inventory') }}">Cancel</a></div>
+</form>
+{% endblock %}

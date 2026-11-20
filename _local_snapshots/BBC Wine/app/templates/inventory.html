@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Availability{% endblock %}
+{% block content %}
+{% set editable = may_edit('inventory') %}
+<h1 class="page-title">Availability &amp; Inventory</h1>
+<div class="toolbar">
+  <form method="get">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search wine, producer, code, region">
+    <select name="status"><option value="">All availability</option>{% for k, v in m.AVAILABILITIES.items() %}<option value="{{ k }}" {{ 'selected' if status == k }}>{{ v }}</option>{% endfor %}</select>
+    <button>Filter</button>
+  </form>
+  <div>
+    <a class="button-link secondary" href="{{ url_for('movements') }}">Stock movements</a>
+    {% if editable %}<a class="button-link" href="{{ url_for('wine_edit') }}">New wine</a>{% endif %}
+  </div>
+</div>
+<p class="muted">{{ wines|length }} wines. Stock is counted in bottles; cases are calculated from the bottles per case.{% if editable %} To change a stock, type the bottles counted and the reason, then Set.{% endif %}</p>
+<div class="table-scroll">
+<table class="grid">
+  <thead><tr><th>Code</th><th>Wine</th><th class="num">Size</th><th class="num">Btl/case</th><th class="num">Price/btl</th><th>Status</th>
+  {% for loc in locations %}<th class="num">{{ loc.name }}</th>{% endfor %}{% if locations|length > 1 %}<th class="num">Total</th>{% endif %}<th></th></tr></thead>
+  <tbody>
+  {% for w in wines %}
+  <tr id="wine-{{ w.id }}">
+    <td>{{ w.item_code }}</td>
+    <td>{{ w.display_name }}<br><span class="muted">{{ m.CATEGORIES[w.category] }} · {{ m.STYLES[w.style] }}{% if w.denomination %} · {{ w.denomination }}{% endif %}{% if w.region %} · {{ w.region }}{% endif %}</span></td>
+    <td class="num">{{ w.bottle_size_ml }} ml</td>
+    <td class="num">{{ w.bottles_per_case or '—' }}</td>
+    <td class="num">{{ w.price|usd if w.price is not none else '—' }}</td>
+    <td><span class="pill {{ 'ok' if w.availability == 'AVAILABLE' else ('bad' if w.availability == 'UNAVAILABLE' else '') }}">{{ m.AVAILABILITIES[w.availability] }}</span></td>
+    {% for loc in locations %}{% set n = w.stock_at(loc.id) %}
+    <td class="num">
+      {% if editable %}
+      <form class="stock-form" method="post" action="{{ url_for('stock_set', wine_id=w.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="location_id" value="{{ loc.id }}">
+        <input type="hidden" name="back" value="{{ request.full_path }}#wine-{{ w.id }}">
+        <input type="number" name="bottles" min="0" value="{{ n }}" aria-label="Bottles at {{ loc.name }}">
+        <input name="note" placeholder="Reason" aria-label="Reason">
+        <button>Set</button>
+      </form>
+      {% else %}{{ n }}{% endif %}
+      <span class="muted">{{ cases(n, w.bottles_per_case) }}</span>
+    </td>{% endfor %}
+    {% if locations|length > 1 %}<td class="num">{{ w.total_stock }}<br><span class="muted">{{ cases(w.total_stock, w.bottles_per_case) }}</span></td>{% endif %}
+    <td>{% if editable %}<a href="{{ url_for('wine_edit', wine_id=w.id) }}">Edit</a> · {% endif %}<a href="{{ url_for('movements', wine=w.id) }}">History</a></td>
+  </tr>
+  {% else %}<tr><td colspan="9" class="muted">No wines match.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

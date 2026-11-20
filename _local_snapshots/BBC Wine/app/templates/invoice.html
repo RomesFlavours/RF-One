@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ order.id }}{% endblock %}
+{% block head %}
+<style>
+  .invoice { max-width: 8in; margin: 0 auto; font-family: "Times New Roman", Times, serif; color: #000; font-size: 13px; }
+  .invoice table { width: 100%; border-collapse: collapse; }
+  .inv-top { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: start; }
+  .inv-company { display: flex; gap: .7rem; align-items: flex-start; }
+  .inv-company img { width: 64px; }
+  .inv-company h2 { margin: 0; font-size: 20px; }
+  .inv-company p { margin: 0; font-weight: bold; font-size: 12px; white-space: pre-line; }
+  .inv-pay { border: 1px solid #000; padding: .5rem .8rem; text-align: center; font-weight: bold; font-size: 11px; white-space: pre-line; margin-top: 1.4rem; }
+  .inv-title { text-align: right; }
+  .inv-title h1 { font-family: Arial, Helvetica, sans-serif; margin: 0 0 .3rem; font-size: 26px; }
+  .inv-title table { width: auto; margin-left: auto; }
+  .invoice td, .invoice th { border: 1px solid #000; padding: 3px 6px; }
+  .invoice th { font-family: Arial, Helvetica, sans-serif; font-weight: bold; text-align: center; font-size: 12px; }
+  .inv-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; margin: 1.6rem 0 1.2rem; }
+  .inv-box { border: 1px solid #000; }
+  .inv-box div:first-child { border-bottom: 1px solid #000; padding: 3px 12px; font-family: Arial, Helvetica, sans-serif; font-weight: bold; }
+  .inv-box div:last-child { padding: 3px 6px; min-height: 5.4em; white-space: pre-line; text-transform: uppercase; }
+  .inv-meta td { text-align: center; font-weight: bold; }
+  .inv-lines td { border-top: none; border-bottom: none; vertical-align: top; }
+  .inv-lines tr.filler td { height: 2.5in; }
+  .inv-lines .num { text-align: right; white-space: nowrap; }
+  .inv-foot { display: grid; grid-template-columns: 1fr 19rem; border: 1px solid #000; border-top: none; }
+  .inv-foot .legal { border-right: 1px solid #000; font-size: 7.5px; font-weight: bold; }
+  .inv-foot .legal div { padding: 4px 6px; }
+  .inv-foot .legal div:first-child { font-size: 13px; border-bottom: 1px solid #000; padding: 8px 6px; }
+  .inv-foot .sums div { display: flex; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #000; font-family: Arial, Helvetica, sans-serif; font-weight: bold; }
+  .inv-foot .sums div:last-child { border-bottom: none; }
+  .inv-foot .sums span:last-child { font-family: "Times New Roman", Times, serif; }
+  @media print { @page { size: letter; margin: .4in; } .invoice { max-width: none; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="toolbar no-print">
+  <p class="muted" style="margin:0"><a href="{{ url_for('orders') }}">Orders</a> › <a href="{{ url_for('order_view', order_id=order.id) }}">#{{ order.id }}</a> › Invoice</p>
+  <button type="button" onclick="window.print()">Print</button>
+</div>
+{% if order.status != m.ORDER_OPEN %}<div class="error no-print">This order is cancelled: the invoice is shown only for reference.</div>{% endif %}
+<div class="invoice">
+  <div class="inv-top">
+    <div class="inv-company">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+      <div><h2>{{ company.name if company else '' }}</h2><p>{{ company.address if company and company.address else '' }}</p></div>
+    </div>
+    <div class="inv-pay">{{ company.payment_instructions if company and company.payment_instructions else '' }}</div>
+    <div class="inv-title">
+      <h1>Invoice</h1>
+      <table><tr><th>Date</th><th>Invoice #</th></tr><tr><td style="text-align:center">{{ order.order_date|d }}</td><td style="text-align:center">{{ order.id }}</td></tr></table>
+    </div>
+  </div>
+  <div class="inv-boxes">
+    <div class="inv-box"><div>Bill To</div><div>{{ order.customer.name }}
+{{ order.customer.bill_to or '' }}{% if order.customer.license_number %}
+{{ order.customer.license_number }}{% endif %}</div></div>
+    <div class="inv-box"><div>Ship To</div><div>{{ order.customer.name }}
+{{ order.customer.ship_to or order.customer.bill_to or '' }}{% if order.customer.phone %}
+PH:{{ order.customer.phone }}{% endif %}</div></div>
+  </div>
+  <table class="inv-meta">
+    <tr><th>License #</th><th>Rep</th><th>P.O.#</th><th>Terms</th><th>Ship</th><th>Via</th><th>Due Date</th></tr>
+    <tr><td>{{ company.license_number if company else '' }}</td><td>{{ (order.rep.full_name if order.rep else 'HOUSE')|upper }}</td><td>{{ order.po_number or '' }}</td>
+      <td>Net {{ order.terms_days }}</td><td></td><td>{{ order.ship_via or '' }}</td><td>{{ due|d }}</td></tr>
+  </table>
+  <table class="inv-lines">
+    <tr><th style="width:17%">Item Code</th><th>Description</th><th style="width:7%">Cases</th><th style="width:8%">Quantity</th><th style="width:10%">Price</th><th style="width:12%">Amount</th></tr>
+    {% for line in order.lines %}{% set t = totals.lines[loop.index0] %}
+    <tr><td>{{ line.item_code }}</td>
+      <td>{{ line.description }}{% if t.discount %}<br><i>Discount{% if line.discount_type == m.DISCOUNT_PERCENT %} {{ '%g'|format(line.discount_value|float) }}%{% endif %}</i>{% endif %}</td>
+      <td class="num">{% if line.bottles_per_case %}{{ '%g'|format((line.bottles / line.bottles_per_case)|round(2)) }}{% endif %}</td>
+      <td class="num">{{ line.bottles }}</td>
+      <td class="num">{{ '{:,.2f}'.format(line.unit_price) }}</td>
+      <td class="num">{{ '{:,.2f}'.format(t.gross) }}{% if t.discount %}<br>-{{ '{:,.2f}'.format(t.discount) }}{% endif %}</td></tr>
+    {% endfor %}
+    {% if totals.order_discount %}
+    <tr><td>Discount</td><td>Order discount{% if order.discount_type == m.DISCOUNT_PERCENT %} {{ '%g'|format(order.discount_value|float) }}%{% endif %}</td><td></td><td></td><td></td><td class="num">-{{ '{:,.2f}'.format(totals.order_discount) }}</td></tr>
+    {% endif %}
+    <tr class="filler"><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+  </table>
+  <div class="inv-foot">
+    <div class="legal"><div>RECEIVED BY: (Print name)</div><div style="white-space:pre-line">{{ company.invoice_terms_text if company and company.invoice_terms_text else '' }}</div></div>
+    <div class="sums"><div><span>Total</span><span>{{ totals.total|usd }}</span></div><div><span>Payments/Credits</span><span>$0.00</span></div><div><span>Balance Due</span><span>{{ totals.total|usd }}</span></div></div>
+  </div>
+</div>
+{% endblock %}

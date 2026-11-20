@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}QBO Export{% endblock %}
+{% block content %}
+<h1 class="page-title">Invoices &amp; QuickBooks Online export</h1>
+<form method="get" class="toolbar">
+  <div style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+    <label>From <input type="date" name="from" value="{{ start }}"></label>
+    <label>To <input type="date" name="to" value="{{ end }}"></label>
+    <button>Show</button>
+  </div>
+  {% if rows %}<a class="button-link" href="{{ url_for('qbo_export', **{'from': start, 'to': end, 'download': 1}) }}">Download CSV for QBO</a>{% endif %}
+</form>
+<p class="muted">Open orders dated in the period. Each one is an invoice with the order number as invoice number. In QuickBooks Online: Settings › Import data › Invoices, then choose the downloaded file. Discounts are imported as negative "Discount" lines.</p>
+<table class="grid">
+  <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th class="num">Bottles</th><th class="num">Total</th><th></th></tr></thead>
+  <tbody>
+  {% for o in rows %}
+  <tr><td>#{{ o.id }}</td><td>{{ o.order_date|d }}</td><td>{{ o.customer.name }}</td><td class="num">{{ totals[o.id].bottles }}</td><td class="num">{{ totals[o.id].total|usd }}</td>
+    <td><a href="{{ url_for('invoice', order_id=o.id) }}">Invoice</a></td></tr>
+  {% else %}<tr><td colspan="6" class="muted">No invoices in this period.</td></tr>{% endfor %}
+  </tbody>
+  {% if rows %}<tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="num"><strong>{{ totals.values()|sum(attribute='total')|usd }}</strong></td><td></td></tr></tfoot>{% endif %}
+</table>
+{% endblock %}

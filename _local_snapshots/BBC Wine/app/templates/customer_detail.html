@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('customers') }}">Customers</a> › {{ customer.name }}</p>
+<div class="toolbar">
+  <h1 class="page-title">{{ customer.name }}</h1>
+  <div>
+    {% if may_edit('customers') %}<a class="button-link secondary" href="{{ url_for('customer_edit', customer_id=customer.id) }}">Edit customer</a>{% endif %}
+    {% if may_edit('wine_lists') %}<a class="button-link secondary" href="{{ url_for('wine_list_edit', customer=customer.id) }}">New wine list</a>{% endif %}
+    {% if may_edit('orders') %}<a class="button-link" href="{{ url_for('order_edit', customer=customer.id) }}">New order</a>{% endif %}
+  </div>
+</div>
+<div class="form-grid">
+  <div><strong>Bill To</strong><br>{{ (customer.bill_to or '—')|replace('\n', '<br>'|safe) }}{% if customer.license_number %}<br>{{ customer.license_number }}{% endif %}</div>
+  <div><strong>Ship To</strong><br>{{ (customer.ship_to or '—')|replace('\n', '<br>'|safe) }}{% if customer.phone %}<br>PH: {{ customer.phone }}{% endif %}</div>
+  <div><strong>Terms</strong> Net {{ customer.terms_days }}<br><strong>Rep</strong> {{ customer.rep.full_name if customer.rep else 'HOUSE' }}{% if customer.email %}<br>{{ customer.email }}{% endif %}</div>
+</div>
+
+<h2 class="section-title">Purchases</h2>
+<form method="get" class="toolbar no-print">
+  <div style="display:flex;gap:.5rem;align-items:flex-end">
+    <label>From <input type="date" name="from" value="{{ start }}"></label>
+    <label>To <input type="date" name="to" value="{{ end }}"></label>
+    <button>Show</button>{% if start or end %}<a href="{{ url_for('customer_detail', customer_id=customer.id) }}">All dates</a>{% endif %}
+  </div>
+</form>
+<p><strong>Total purchased{% if start or end %} in the period{% endif %}: {{ grand|usd }}</strong> <span class="muted">(cancelled orders excluded)</span></p>
+<table class="grid">
+  <thead><tr><th>Code</th><th>Wine</th><th class="num">Bottles</th><th class="num">Amount</th><th>Last bought</th></tr></thead>
+  <tbody>
+  {% for code, r in purchased %}
+  <tr><td>{{ code }}</td><td>{{ r.description }}</td><td class="num">{{ r.bottles }} <span class="muted">{{ cases(r.bottles, r.per_case) }}</span></td><td class="num">{{ r.amount|usd }}</td><td>{{ r.last|d }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No purchases.</td></tr>{% endfor %}
+  </tbody>
+</table>
+
+<h2 class="section-title">Orders</h2>
+<table class="grid">
+  <thead><tr><th>Order</th><th>Date</th><th>P.O.#</th><th class="num">Bottles</th><th class="num">Total</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for o in orders %}
+  <tr><td><a href="{{ url_for('order_view', order_id=o.id) }}">#{{ o.id }}</a></td><td>{{ o.order_date|d }}</td><td>{{ o.po_number or '' }}</td>
+    <td class="num">{{ totals[o.id].bottles }}</td><td class="num">{{ totals[o.id].total|usd }}</td>
+    <td>{% if o.status == m.ORDER_CANCELLED %}<span class="pill bad">Cancelled</span>{% else %}<span class="pill ok">Open</span>{% endif %}</td>
+    <td>{% if may('invoices') and o.status == m.ORDER_OPEN %}<a href="{{ url_for('invoice', order_id=o.id) }}">Invoice</a>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">No orders.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

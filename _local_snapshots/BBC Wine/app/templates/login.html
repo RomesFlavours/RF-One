@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="login-box">
+  <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+  <h1 class="page-title">Sign in</h1>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label for="u">Username</label><input id="u" name="username" autocomplete="username" required autofocus>
+    <label for="p">Password</label><input id="p" type="password" name="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+{% endblock %}

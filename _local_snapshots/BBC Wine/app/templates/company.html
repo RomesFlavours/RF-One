@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Company{% endblock %}
+{% block content %}
+<h1 class="page-title">Company data</h1>
+<p class="muted">Printed on invoices and wine lists.</p>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <div><label>Name</label><input name="name" value="{{ c.name or '' }}" maxlength="160" required></div>
+    <div><label>License # (printed on invoices)</label><input name="license_number" value="{{ c.license_number or '' }}" maxlength="60"></div>
+    <div><label>Phone</label><input name="phone" value="{{ c.phone or '' }}" maxlength="60"></div>
+    <div><label>Email</label><input name="email" type="email" value="{{ c.email or '' }}" maxlength="160"></div>
+  </div>
+  <div class="form-grid">
+    <div><label>Address (one line per row)</label><textarea name="address" rows="4">{{ c.address or '' }}</textarea></div>
+    <div><label>Payment instructions (box at the top of the invoice)</label><textarea name="payment_instructions" rows="4">{{ c.payment_instructions or '' }}</textarea></div>
+  </div>
+  <label>Terms and conditions (bottom of the invoice)</label><textarea name="invoice_terms_text" rows="6">{{ c.invoice_terms_text or '' }}</textarea>
+  <div class="btn-row"><button>Save</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name if customer.id else 'New customer' }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('customers') }}">Customers</a> › {{ customer.name if customer.id else 'New customer' }}</p>
+<h1 class="page-title">{{ 'Edit customer' if customer.id else 'New customer' }}</h1>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% set f = request.form if request.method == 'POST' else None %}
+{% macro val(name) %}{% if f %}{{ f.get(name, '') }}{% elif customer[name] is not none %}{{ customer[name] }}{% endif %}{% endmacro %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <div><label>Name</label><input name="name" value="{{ val('name') }}" maxlength="160" required></div>
+    <div><label>License # <span class="muted">(e.g. BEV…)</span></label><input name="license_number" value="{{ val('license_number') }}" maxlength="60"></div>
+    <div><label>Phone</label><input name="phone" value="{{ val('phone') }}" maxlength="60"></div>
+    <div><label>Email</label><input name="email" type="email" value="{{ val('email') }}" maxlength="160"></div>
+    <div><label>Terms (Net days)</label><input name="terms_days" type="number" min="0" value="{{ val('terms_days') }}"></div>
+    <div><label>Rep</label><select name="rep_user_id"><option value="">HOUSE</option>{% for r in reps %}<option value="{{ r.id }}" {{ 'selected' if val('rep_user_id')|string == r.id|string }}>{{ r.full_name }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="form-grid">
+    <div><label>Bill To</label><textarea name="bill_to" rows="4">{{ val('bill_to') }}</textarea></div>
+    <div><label>Ship To</label><textarea name="ship_to" rows="4">{{ val('ship_to') }}</textarea></div>
+  </div>
+  <label>Notes</label><textarea name="notes" rows="2">{{ val('notes') }}</textarea>
+  <label class="check"><input type="checkbox" name="active" value="1" {{ 'checked' if (f.get('active') if f else customer.active) }}> Active</label>
+  <div class="btn-row"><button>Save</button><a class="button-link secondary" href="{{ url_for('customer_detail', customer_id=customer.id) if customer.id else url_for('customers') }}">Cancel</a></div>
+</form>
+{% endblock %}

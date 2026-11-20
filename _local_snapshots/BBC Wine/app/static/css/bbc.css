@@ -1,0 +1,70 @@
+/* BBC Wine: RF-One's base stylesheet (base.css) recoloured to the BBC seal. */
+:root {
+  --olive-900: #4a1015;
+  --olive-700: #8c1c24;
+  --olive-600: #a3242d;
+  --olive-500: #b8474f;
+  --olive-300: #dcc3c5;
+  --olive-150: #f1e5e6;
+  --olive-050: #faf5f5;
+}
+body { padding: 0 1.5rem 3rem; }
+.wrap { max-width: 1180px; }
+.site-header { padding: 1rem 0 .8rem; margin-bottom: 1rem; }
+.bbc-brand { display: flex; align-items: center; gap: .8rem; text-decoration: none; color: var(--olive-900); }
+.bbc-brand img { width: 52px; height: 52px; object-fit: contain; }
+.bbc-brand strong { font-size: 1.2rem; letter-spacing: .04em; }
+.bbc-brand span { display: block; font-size: .75rem; color: var(--muted); letter-spacing: .02em; }
+.bbc-user { display: flex; align-items: center; gap: .7rem; font-size: .82rem; color: var(--muted); }
+.bbc-user form { margin: 0; }
+.bbc-user button { padding: .3rem .7rem; font-size: .78rem; }
+.bbc-nav { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0 0 1.4rem; border-bottom: 1px solid var(--olive-300); }
+.bbc-nav a { padding: .5rem .85rem; text-decoration: none; color: var(--olive-900); font-size: .88rem; border-bottom: 3px solid transparent; }
+.bbc-nav a.is-active { border-bottom-color: var(--olive-700); font-weight: 600; }
+.bbc-nav .bbc-nav-admin { margin-left: auto; }
+h1.page-title { font-size: 1.35rem; margin: 0 0 .8rem; color: var(--olive-900); }
+.toolbar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; justify-content: space-between; margin-bottom: 1rem; }
+.toolbar form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: flex-end; margin: 0; }
+.toolbar input, .toolbar select { margin: 0; width: auto; }
+.button-link { display: inline-block; padding: .5rem .9rem; background: var(--olive-700); color: #fff; border-radius: 6px; text-decoration: none; font-size: .85rem; }
+.button-link.secondary { background: #fff; color: var(--olive-900); border: 1px solid var(--olive-300); }
+table.grid { width: 100%; border-collapse: collapse; font-size: .84rem; }
+table.grid th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--olive-300); padding: .45rem .5rem; white-space: nowrap; }
+table.grid td { border-bottom: 1px solid var(--olive-150); padding: .45rem .5rem; vertical-align: top; }
+table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.grid tr:target td { background: var(--olive-050); }
+.stock-form { display: flex; gap: .3rem; align-items: center; margin: 0; }
+.stock-form input { width: 5rem; margin: 0; padding: .25rem .4rem; }
+.stock-form input[name=note] { width: 8rem; }
+.stock-form button { padding: .25rem .55rem; font-size: .75rem; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0 1rem; }
+.form-grid input, .form-grid select, .form-grid textarea { max-width: 100%; }
+.check { display: flex; gap: .4rem; align-items: center; font-size: .88rem; margin: .2rem 0 .8rem; }
+.check input { width: auto; margin: 0; }
+.pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .72rem; background: var(--olive-150); color: var(--olive-900); }
+.pill.bad { background: #f6dcd8; color: var(--bad); }
+.pill.ok { background: #dcefe3; color: var(--ok); }
+.order-lines td { padding: .3rem .3rem; }
+.order-lines input, .order-lines select { margin: 0; padding: .3rem .4rem; font-size: .82rem; }
+.order-lines .w-wine { min-width: 20rem; }
+.order-lines .w-small { width: 5.5rem; }
+.order-lines .stock-hint { display: block; font-size: .72rem; color: var(--muted); margin-top: .15rem; }
+.order-lines .stock-hint.bad { color: var(--bad); }
+.totals { margin-left: auto; max-width: 22rem; font-size: .9rem; }
+.totals div { display: flex; justify-content: space-between; padding: .25rem 0; }
+.totals .grand { font-weight: 700; border-top: 1px solid var(--olive-300); margin-top: .3rem; padding-top: .45rem; }
+.picker-list { max-height: 28rem; overflow-y: auto; border: 1px solid var(--olive-300); border-radius: 6px; }
+.picker-list label { display: flex; gap: .6rem; align-items: baseline; margin: 0; padding: .35rem .6rem; border-bottom: 1px solid var(--olive-150); font-size: .84rem; color: var(--ink); cursor: pointer; }
+.picker-list input { width: auto; margin: 0; }
+.picker-list .muted { margin-left: auto; white-space: nowrap; }
+.perm-table td { vertical-align: middle; }
+.perm-table select { margin: 0; width: auto; }
+.section-title { font-size: 1rem; margin: 1.6rem 0 .6rem; color: var(--olive-900); }
+.login-box { max-width: 360px; margin: 3rem auto; text-align: center; }
+.login-box img { width: 110px; }
+.login-box form { text-align: left; }
+@media print {
+  .no-print, .site-header, .bbc-nav { display: none !important; }
+  body { padding: 0; }
+  .wrap { max-width: none; }
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}BBC Wine{% endblock %} · BBC Wine</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bbc.css') }}?v=1">
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="wrap">
+  <header class="site-header">
+    <a class="bbc-brand" href="{{ url_for('home') }}">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="BBC Wine Imports seal">
+      <div><strong>{{ company.name if company and company.name else 'BBC WINE IMPORTS' }}</strong><span>Inventory · Orders · Invoices</span></div>
+    </a>
+    {% if user %}
+    <div class="bbc-user">
+      <span>{{ user.full_name }}</span>
+      <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary">Sign out</button></form>
+    </div>
+    {% endif %}
+  </header>
+  {% if user %}
+  {% set ep = request.endpoint or '' %}
+  <nav class="bbc-nav" aria-label="Main">
+    {% if may('orders') %}<a href="{{ url_for('orders') }}" class="{{ 'is-active' if ep.startswith('order') }}">Orders</a>{% endif %}
+    {% if may('customers') %}<a href="{{ url_for('customers') }}" class="{{ 'is-active' if ep.startswith('customer') }}">Customers</a>{% endif %}
+    {% if may('wine_lists') %}<a href="{{ url_for('wine_lists') }}" class="{{ 'is-active' if ep.startswith('wine_list') }}">Wine Lists</a>{% endif %}
+    {% if may('inventory') %}<a href="{{ url_for('inventory') }}" class="{{ 'is-active' if ep in ('inventory', 'wine_edit', 'movements') }}">Availability</a>{% endif %}
+    {% if may('invoices') %}<a href="{{ url_for('qbo_export') }}" class="{{ 'is-active' if ep in ('qbo_export', 'invoice') }}">QBO Export</a>{% endif %}
+    {% if user.is_admin %}
+    <a href="{{ url_for('company_settings') }}" class="bbc-nav-admin {{ 'is-active' if ep == 'company_settings' }}">Company</a>
+    <a href="{{ url_for('locations_page') }}" class="{{ 'is-active' if ep == 'locations_page' }}">Locations</a>
+    <a href="{{ url_for('users') }}" class="{{ 'is-active' if ep in ('users', 'user_edit') }}">Users</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% for category, message in messages %}<div class="{{ 'error' if category == 'error' else 'info' }} no-print">{{ message }}</div>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<h1 class="page-title">Customers</h1>
+<div class="toolbar">
+  <form method="get"><input type="search" name="q" value="{{ q }}" placeholder="Search name or license"><button>Search</button></form>
+  {% if may_edit('customers') %}<a class="button-link" href="{{ url_for('customer_edit') }}">New customer</a>{% endif %}
+</div>
+<table class="grid">
+  <thead><tr><th>Customer</th><th>License</th><th>Phone</th><th>Terms</th><th>Rep</th><th></th></tr></thead>
+  <tbody>
+  {% for c in rows %}
+  <tr><td><a href="{{ url_for('customer_detail', customer_id=c.id) }}">{{ c.name }}</a>{% if not c.active %} <span class="pill bad">Inactive</span>{% endif %}</td>
+    <td>{{ c.license_number or '' }}</td><td>{{ c.phone or '' }}</td><td>Net {{ c.terms_days }}</td>
+    <td>{{ c.rep.full_name if c.rep else 'HOUSE' }}</td>
+    <td><a href="{{ url_for('customer_detail', customer_id=c.id) }}">Purchases</a></td></tr>
+  {% else %}<tr><td colspan="6" class="muted">No customers yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

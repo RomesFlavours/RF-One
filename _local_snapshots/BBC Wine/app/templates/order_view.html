@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order.id }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="{{ url_for('orders') }}">Orders</a> › #{{ order.id }}</p>
+<div class="toolbar">
+  <h1 class="page-title">Order #{{ order.id }} — {{ order.customer.name }}
+    {% if order.status == m.ORDER_CANCELLED %}<span class="pill bad">Cancelled</span>{% else %}<span class="pill ok">Open</span>{% endif %}</h1>
+  <div>
+    {% if order.status == m.ORDER_OPEN %}
+      {% if may('invoices') %}<a class="button-link" href="{{ url_for('invoice', order_id=order.id) }}">Invoice</a>{% endif %}
+      {% if may_edit('orders') %}<a class="button-link secondary" href="{{ url_for('order_edit', order_id=order.id) }}">Edit</a>{% endif %}
+    {% endif %}
+  </div>
+</div>
+<div class="form-grid">
+  <div><strong>Date</strong> {{ order.order_date|d }}<br><strong>Due</strong> {{ due|d }} (Net {{ order.terms_days }})</div>
+  <div><strong>Rep</strong> {{ order.rep.full_name if order.rep else 'HOUSE' }}<br><strong>P.O.#</strong> {{ order.po_number or '—' }} · <strong>Via</strong> {{ order.ship_via or '—' }}</div>
+  <div>{% if may('customers') %}<a href="{{ url_for('customer_detail', customer_id=order.customer_id) }}">Customer purchases</a>{% endif %}</div>
+</div>
+<table class="grid" style="margin-top:1rem">
+  <thead><tr><th>Code</th><th>Wine</th><th>Location</th><th class="num">Bottles</th><th class="num">Price</th><th class="num">Discount</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for line in order.lines %}{% set t = totals.lines[loop.index0] %}
+  <tr><td>{{ line.item_code }}</td><td>{{ line.description }}</td><td>{{ line.location.name }}</td>
+    <td class="num">{{ line.bottles }} <span class="muted">{{ cases(line.bottles, line.bottles_per_case) }}</span></td>
+    <td class="num">{{ line.unit_price|usd }}</td>
+    <td class="num">{% if t.discount %}{{ ('%g%%'|format(line.discount_value|float)) if line.discount_type == m.DISCOUNT_PERCENT else '' }} −{{ t.discount|usd }}{% endif %}</td>
+    <td class="num">{{ t.net|usd }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="totals">
+  <div><span>Subtotal</span><span>{{ totals.subtotal|usd }}</span></div>
+  {% if totals.order_discount %}<div><span>Order discount{% if order.discount_type == m.DISCOUNT_PERCENT %} {{ '%g'|format(order.discount_value|float) }}%{% endif %}</span><span>−{{ totals.order_discount|usd }}</span></div>{% endif %}
+  <div class="grand"><span>Total</span><span>{{ totals.total|usd }}</span></div>
+</div>
+{% if order.notes %}<p><strong>Notes</strong> {{ order.notes }}</p>{% endif %}
+{% if order.status == m.ORDER_OPEN and may_edit('orders') %}
+<form method="post" action="{{ url_for('order_cancel', order_id=order.id) }}" onsubmit="return confirm('Cancel order #{{ order.id }}? Its bottles go back into stock.')" style="margin-top:2rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn-secondary">Cancel order</button>
+</form>
+{% endif %}
+{% endblock %}
