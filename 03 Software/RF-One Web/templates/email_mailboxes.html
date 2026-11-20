@@ -2,6 +2,35 @@
 {% from '_nav_macros.html' import breadcrumb %}
 {% block head_extra %}{{ super() }}<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>{% endblock %}
 {% block page_title %}Mailboxes · Email Control{% endblock %}
+{% macro rule_dialog(box) -%}
+{% set saved = saved_rules.get(box.id) %}{% set reopen = rule_form.get('mailbox_id') == box.id %}
+{% set v = rule_form['values'] if reopen else ({} if not saved else {'instructions': saved.instructions, 'selection': saved.selection, 'conditions': saved.conditions, 'actions': saved.actions, 'missing': saved.missing}) %}
+<dialog class="email-rule-dialog" id="rule-{{ box.id }}" aria-labelledby="rule-title-{{ box.id }}" data-assist-url="{{ url_for('email_attachment_rule_assist', mailbox_id=box.id) }}" {% if reopen %}data-rule-reopen{% endif %}>
+<div class="email-rule-head"><div><p class="email-eyebrow">Regole allegati</p><h2 id="rule-title-{{ box.id }}">Casella: {{ box.label }}</h2><p class="email-caption">{{ box.address }} · la regola vale solo per questa casella</p></div><button type="button" class="email-rule-close" aria-label="Chiudi" data-rule-close>&times;</button></div>
+<div class="email-rule-helpline"><button type="button" class="email-rule-helplink" data-rule-help>Come funziona questa finestra</button></div>
+<div class="email-rule-body">
+<p class="email-rule-state"><span class="email-status email-status--neutral"><span aria-hidden="true"></span>Inattiva</span> Questa fase configura solo il comportamento futuro: nessun allegato viene scaricato, letto o elaborato.</p>
+{% if saved %}<section class="email-rule-saved" aria-labelledby="rule-saved-{{ box.id }}"><h3 id="rule-saved-{{ box.id }}">Regola salvata · versione {{ saved.version }} · {{ saved.updated_at|local_dt(page_zone) }}</h3>
+<dl><div><dt>Allegati da selezionare</dt><dd>Solo PDF{% if saved.selection %} · {{ saved.selection }}{% endif %}</dd></div><div><dt>Condizioni</dt><dd>{{ saved.conditions or 'Nessuna indicata' }}</dd></div><div><dt>Cosa fare con gli allegati</dt><dd>{{ saved.actions or 'Non ancora indicato' }}</dd></div><div><dt>Informazioni mancanti</dt><dd>{{ saved.missing or 'Nessuna' }}</dd></div></dl></section>
+{% else %}<p class="email-caption">Nessuna regola salvata per questa casella.</p>{% endif %}
+<section class="email-rule-chat" aria-labelledby="rule-chat-{{ box.id }}"><h3 id="rule-chat-{{ box.id }}">Assistente AI</h3>
+{% if not ai_available %}<p class="email-rule-warning" role="status">L’assistente AI non è disponibile in questo ambiente ({{ ai_detail }}). Puoi compilare e salvare la regola manualmente.</p>{% endif %}
+<ol class="email-rule-log" aria-live="polite" aria-label="Conversazione con l’assistente"></ol>
+<form class="email-rule-ask" novalidate><label for="rule-msg-{{ box.id }}">Descrivi cosa fare con gli allegati PDF</label><textarea id="rule-msg-{{ box.id }}" name="message" rows="3" maxlength="{{ rule_limit }}" {% if not ai_available %}disabled{% endif %} placeholder="Es.: salva le fatture PDF dei fornitori…"></textarea><div class="email-rule-ask-row"><span class="email-caption" data-rule-status role="status"></span><button class="email-button" {% if not ai_available %}disabled{% endif %}>Invia</button></div></form>
+<p class="email-caption">All’assistente vengono inviati solo i testi scritti qui e nella bozza. Mai email, allegati o credenziali.</p>
+<div class="email-rule-proposal" hidden><h4>Proposta dell’assistente <small>non salvata</small></h4><dl><div><dt>Allegati da selezionare</dt><dd data-p="selection"></dd></div><div><dt>Condizioni</dt><dd data-p="conditions"></dd></div><div><dt>Cosa fare con gli allegati</dt><dd data-p="actions"></dd></div><div><dt>Informazioni mancanti</dt><dd data-p="missing"></dd></div></dl><button type="button" class="email-button email-button--quiet" data-rule-apply>Copia nella bozza</button></div>
+</section>
+<form class="email-rule-form" method="post" action="{{ url_for('email_attachment_rule_save', mailbox_id=box.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<h3>Bozza della regola</h3>
+{% if reopen and rule_form.get('error') %}<p class="email-mailbox-issue" role="alert">{{ rule_form['error'] }}</p>{% endif %}
+<label>Descrizione con parole tue<textarea name="instructions" rows="3" maxlength="{{ rule_limit }}">{{ v.get('instructions', '') }}</textarea></label>
+<label>Allegati da selezionare <span class="email-rule-fixed">Tipo di file: solo PDF</span><textarea name="selection" rows="2" maxlength="{{ rule_limit }}" placeholder="Quali PDF, es. nome file o mittente">{{ v.get('selection', '') }}</textarea></label>
+<label>Condizioni da applicare<textarea name="conditions" rows="2" maxlength="{{ rule_limit }}">{{ v.get('conditions', '') }}</textarea></label>
+<label>Cosa fare con gli allegati<textarea name="actions" rows="2" maxlength="{{ rule_limit }}">{{ v.get('actions', '') }}</textarea></label>
+<label>Informazioni ancora mancanti<textarea name="missing" rows="2" maxlength="{{ rule_limit }}">{{ v.get('missing', '') }}</textarea></label>
+<div class="email-rule-footer"><button type="button" class="email-button email-button--quiet" data-rule-close>Annulla</button><button class="email-button">Salva regola</button></div>
+</form></div></dialog>
+{%- endmacro %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Email Control', url_for('email_control')), ('Mailboxes', None)] if email_is_admin else [('RF-One', url_for('home')), ('Mailboxes', None)]) }}
 {{ email_nav('mailboxes', email_is_admin) }}
@@ -11,7 +40,90 @@
 <div class="email-mailbox-top"><div><h2>{{ box.label }}</h2><p>{{ box.address }}</p></div><span class="email-status email-status--{{ 'neutral' if not box.enabled else 'warn' if box.last_error else 'ok' if box.last_success_at else 'neutral' }}"><span></span>{{ 'Paused' if not box.enabled else 'Checking' if checking(box) else 'Needs attention' if box.last_error else 'Connected' if box.last_success_at else 'Awaiting first check' }}</span></div>
 {% if box.last_error %}<p class="email-mailbox-issue">{{ errors.get(box.last_error, 'The check could not be completed.') }}</p>{% elif box.uidvalidity is none %}<p class="email-caption">The first successful check starts monitoring from now. Existing messages are not imported.</p>{% endif %}
 <dl class="email-mailbox-facts"><div><dt>Last check</dt><dd>{{ box.last_checked_at|local_dt(page_zone) if box.last_checked_at else 'Not checked yet' }}</dd></div><div><dt>Detected arrivals</dt><dd><a href="{{ url_for('email_incoming', mailbox=box.id) }}">{{ counts.get(box.id, 0) }} messages</a></dd></div><div><dt>Checking interval</dt><dd>{{ box.interval_seconds }} seconds</dd></div><div><dt>Next check</dt><dd>{{ box.next_check_at|local_dt(page_zone) if box.enabled else 'Paused' }}</dd></div></dl>
-<div class="email-mailbox-actions"><form method="post" action="{{ url_for('email_mailbox_action', mailbox_id=box.id, action='check') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="email-button email-button--quiet" {% if not box.enabled or checking(box) %}disabled{% endif %}>Check now</button></form><a class="email-button email-button--quiet" href="{{ url_for('email_mailbox_form', mailbox_id=box.id) }}">Settings</a><form method="post" action="{{ url_for('email_mailbox_action', mailbox_id=box.id, action='pause' if box.enabled else 'resume') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="email-button email-button--quiet">{{ 'Pause' if box.enabled else 'Resume' }}</button></form><a class="email-caption" href="{{ url_for('email_mailbox_checks', mailbox_id=box.id) }}">Check history</a></div>
+<div class="email-mailbox-actions"><form method="post" action="{{ url_for('email_mailbox_action', mailbox_id=box.id, action='check') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="email-button email-button--quiet" {% if not box.enabled or checking(box) %}disabled{% endif %}>Check now</button></form><a class="email-button email-button--quiet" href="{{ url_for('email_mailbox_form', mailbox_id=box.id) }}">Settings</a><button type="button" class="email-button email-button--quiet" data-rule-open="rule-{{ box.id }}" aria-haspopup="dialog">Regole allegati</button><form method="post" action="{{ url_for('email_mailbox_action', mailbox_id=box.id, action='pause' if box.enabled else 'resume') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="email-button email-button--quiet">{{ 'Pause' if box.enabled else 'Resume' }}</button></form><a class="email-caption" href="{{ url_for('email_mailbox_checks', mailbox_id=box.id) }}">Check history</a></div>
+{{ rule_dialog(box) }}
 </section>{% endfor %}</div>{% else %}<div class="email-register email-empty">{{ icon('mail') }}<h3>Connect your first mailbox</h3><p>Monitor new arrivals without changing messages in your mail app. Only your RF-One account can see the mailboxes you connect.</p><a class="email-button" href="{{ url_for('email_mailbox_form') }}">Connect a mailbox</a></div>{% endif %}
 <p class="email-footnote">Only headers are retrieved. Message bodies and attachments stay in the mailbox. Times shown in {{ page_zone }}.</p>
+<dialog class="email-rule-dialog email-rule-help" id="rule-help" aria-labelledby="rule-help-title">
+<div class="email-rule-head"><h2 id="rule-help-title">Come funziona questa finestra</h2><button type="button" class="email-rule-close" aria-label="Chiudi" data-rule-close>&times;</button></div>
+<div class="email-rule-body">
+<p><strong>A cosa serve.</strong> Configura cosa RF-One dovrà fare in futuro con gli allegati PDF della casella indicata nel titolo. Ogni casella ha la sua regola.</p>
+<p><strong>Assistente AI.</strong> Descrivi la regola con parole tue e premi <em>Invia</em>. L’assistente fa domande se mancano informazioni e propone una regola. La proposta non viene salvata: premi <em>Copia nella bozza</em> per portarla nei campi, poi modificala come vuoi. All’assistente arrivano solo i testi che scrivi; email, allegati e credenziali non vengono mai inviati. Se l’assistente non è disponibile la finestra lo dice e puoi compilare i campi a mano.</p>
+<p><strong>Campi.</strong> <em>Allegati da selezionare</em>: quali PDF (in questa versione solo PDF). <em>Condizioni</em>: quando applicare la regola. <em>Cosa fare</em>: l’azione indicata da te. <em>Informazioni mancanti</em>: cosa resta da chiarire.</p>
+<p><strong>Salva regola</strong> memorizza la bozza per questa casella e la registra nella cronologia della casella. <strong>Annulla</strong> chiude senza salvare. Riaprendo la finestra trovi l’ultima regola salvata.</p>
+<p><strong>Conseguenze.</strong> La regola resta <em>Inattiva</em>: oggi nessun allegato viene scaricato, letto o elaborato e il monitoraggio della casella non cambia.</p>
+</div></dialog>
+<script>
+(function () {
+  var csrf = {{ csrf_token()|tojson }};
+  var FIELDS = ['selection', 'conditions', 'actions', 'missing'];
+  function open(dialog, trigger) {
+    dialog._trigger = trigger || document.activeElement;
+    dialog.showModal();
+    document.body.classList.add('modal-open');
+  }
+  document.querySelectorAll('.email-rule-dialog').forEach(function (dialog) {
+    dialog.addEventListener('close', function () {
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open');
+      if (dialog._trigger && dialog._trigger.focus) dialog._trigger.focus();
+    });
+    dialog.querySelectorAll('[data-rule-close]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var form = dialog.querySelector('.email-rule-form');
+        if (form && !dialog.hasAttribute('data-rule-reopen')) form.reset();
+        dialog.close();
+      });
+    });
+    var help = dialog.querySelector('[data-rule-help]');
+    if (help) help.addEventListener('click', function () { open(document.getElementById('rule-help'), help); });
+    var ask = dialog.querySelector('.email-rule-ask');
+    if (!ask) return;
+    var history = [], proposal = null;
+    var log = dialog.querySelector('.email-rule-log'), status = dialog.querySelector('[data-rule-status]');
+    var panel = dialog.querySelector('.email-rule-proposal'), form = dialog.querySelector('.email-rule-form');
+    function say(role, text) {
+      var li = document.createElement('li'); li.className = 'email-rule-msg email-rule-msg--' + role;
+      var who = document.createElement('strong'); who.textContent = role === 'user' ? 'Tu' : 'Assistente';
+      var body = document.createElement('p'); body.textContent = text;
+      li.appendChild(who); li.appendChild(body); log.appendChild(li); li.scrollIntoView({block: 'nearest'});
+    }
+    ask.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var box = ask.querySelector('textarea'), button = ask.querySelector('button'), message = box.value.trim();
+      if (!message || button.disabled) return;
+      var data = new FormData();
+      data.append('csrf_token', csrf); data.append('message', message);
+      data.append('history', JSON.stringify(history));
+      ['instructions'].concat(FIELDS).forEach(function (k) { data.append(k, form.elements[k].value); });
+      button.disabled = true; status.textContent = 'L’assistente sta rispondendo…';
+      fetch(dialog.dataset.assistUrl, {method: 'POST', body: data, credentials: 'same-origin'})
+        .then(function (r) { return r.json().catch(function () { return {message: 'Risposta non valida.'}; }).then(function (j) { return [r.ok, j]; }); })
+        .then(function (res) {
+          if (!res[0]) { status.textContent = res[1].message || 'Richiesta non riuscita.'; return; }
+          say('user', message); say('assistant', res[1].reply);
+          history.push({role: 'user', content: message}, {role: 'assistant', content: res[1].reply});
+          proposal = res[1].rule; box.value = ''; status.textContent = '';
+          FIELDS.forEach(function (k) { panel.querySelector('[data-p="' + k + '"]').textContent = proposal[k] || '—'; });
+          panel.hidden = false;
+        })
+        .catch(function () { status.textContent = 'Connessione non riuscita. La bozza non è stata modificata.'; })
+        .finally(function () { button.disabled = false; });
+    });
+    dialog.querySelector('[data-rule-apply]').addEventListener('click', function () {
+      if (!proposal) return;
+      FIELDS.forEach(function (k) { form.elements[k].value = proposal[k] || ''; });
+      if (!form.elements.instructions.value) {
+        form.elements.instructions.value = history.filter(function (t) { return t.role === 'user'; }).map(function (t) { return t.content; }).join('\n').slice(0, {{ rule_limit }});
+      }
+      status.textContent = 'Proposta copiata nella bozza. Non è ancora salvata.';
+      form.elements.selection.focus();
+    });
+  });
+  document.querySelectorAll('[data-rule-open]').forEach(function (b) {
+    b.addEventListener('click', function () { open(document.getElementById(b.dataset.ruleOpen), b); });
+  });
+  var reopen = document.querySelector('.email-rule-dialog[data-rule-reopen]');
+  if (reopen) open(reopen, document.querySelector('[data-rule-open="' + reopen.id + '"]'));
+})();
+</script>
 {% endblock %}

@@ -1,18 +1,25 @@
 """User-owned mailbox configuration and header-only arrivals in Email Control."""
 from datetime import timedelta, timezone
 
-from flask import abort, flash, redirect, render_template, request, url_for
+import json
+
+from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import incoming_email as incoming, display_format
+from rfone_data_store import incoming_attachment_rules as rules
 from rfone_data_store.email_service import EmailWorkerState, now
 from rfone_data_store.technical.mailbox_credentials import LocalMailboxVault, CredentialError
 
 
 def register_incoming_email_routes(app, *, SessionFactory, load_current_account, require_csrf,
-                                   get_timezone=lambda: None, vault=None):
+                                   get_timezone=lambda: None, vault=None, rule_assistant=None,
+                                   ai_status=None):
     vault = vault or LocalMailboxVault()
+    # Injected only by tests; production uses the shared AI engine via rules.assist.
+    rule_assistant = rule_assistant or rules.assist
+    ai_status = ai_status or rules.provider_status
 
     def format_bytes(value):
         if value is None:
@@ -40,20 +47,69 @@ def register_incoming_email_routes(app, *, SessionFactory, load_current_account,
     def checking(box):
         return bool(box.lease_owner and box.lease_until and box.lease_until.replace(tzinfo=timezone.utc) > now())
 
+    def render_mailboxes(db, current, *, rule_form=None, status=200):
+        boxes = list(db.scalars(select(incoming.Mailbox).where(
+            incoming.Mailbox.owner_account_id == current.id).order_by(incoming.Mailbox.label)))
+        counts = dict(db.execute(select(incoming.Arrival.mailbox_id, func.count()).join(incoming.Mailbox,
+            incoming.Mailbox.id == incoming.Arrival.mailbox_id).where(
+                incoming.Mailbox.owner_account_id == current.id).group_by(incoming.Arrival.mailbox_id)).all())
+        saved_rules = {row.mailbox_id: row for row in db.scalars(select(rules.AttachmentRule).join(
+            incoming.Mailbox, incoming.Mailbox.id == rules.AttachmentRule.mailbox_id).where(
+                incoming.Mailbox.owner_account_id == current.id))}
+        state = db.get(EmailWorkerState, incoming.RECEIVER_STATE_ID)
+        live = bool(state and state.heartbeat and (state.heartbeat.replace(tzinfo=timezone.utc) > now() - timedelta(seconds=15)
+            or (state.mode == 'CHECKING' and state.lease_until.replace(tzinfo=timezone.utc) > now())))
+        ai_available, ai_detail = ai_status()
+        return render_template('email_mailboxes.html', boxes=boxes, counts=counts,
+            checking=checking, errors=incoming.ERRORS, monitor_live=live, saved_rules=saved_rules,
+            rule_form=rule_form or {}, rule_fields=rules.FIELDS, rule_limit=rules.FIELD_LIMIT,
+            ai_available=ai_available, ai_detail=ai_detail, **view(current)), status
+
     @app.get('/administration/email/mailboxes')
     def email_mailboxes():
         with SessionFactory() as db:
+            return render_mailboxes(db, account(db))
+
+    @app.post('/administration/email/mailboxes/<mailbox_id>/attachment-rule')
+    def email_attachment_rule_save(mailbox_id):
+        with SessionFactory() as db:
             current = account(db)
-            boxes = list(db.scalars(select(incoming.Mailbox).where(
-                incoming.Mailbox.owner_account_id == current.id).order_by(incoming.Mailbox.label)))
-            counts = dict(db.execute(select(incoming.Arrival.mailbox_id, func.count()).join(incoming.Mailbox,
-                incoming.Mailbox.id == incoming.Arrival.mailbox_id).where(
-                    incoming.Mailbox.owner_account_id == current.id).group_by(incoming.Arrival.mailbox_id)).all())
-            state = db.get(EmailWorkerState, incoming.RECEIVER_STATE_ID)
-            live = bool(state and state.heartbeat and (state.heartbeat.replace(tzinfo=timezone.utc) > now() - timedelta(seconds=15)
-                or (state.mode == 'CHECKING' and state.lease_until.replace(tzinfo=timezone.utc) > now())))
-            return render_template('email_mailboxes.html', boxes=boxes, counts=counts,
-                checking=checking, errors=incoming.ERRORS, monitor_live=live, **view(current))
+            require_csrf()
+            values = {key: request.form.get(key, '') for key in rules.FIELDS}
+            try:
+                rules.save_rule(db, owner=current.id, mailbox_id=mailbox_id, **values)
+                db.commit()
+            except LookupError:
+                abort(404)
+            except ValueError as exc:
+                db.rollback()
+                # Reopen the same modal with the person's unsaved text.
+                return render_mailboxes(db, current, status=400,
+                                        rule_form=dict(mailbox_id=mailbox_id, values=values, error=str(exc)))
+            flash('Regola allegati salvata. Resta inattiva: nessun allegato viene scaricato o elaborato.', 'info')
+            return redirect(url_for('email_mailboxes') + '#mailbox-' + mailbox_id)
+
+    @app.post('/administration/email/mailboxes/<mailbox_id>/attachment-rule/assist')
+    def email_attachment_rule_assist(mailbox_id):
+        with SessionFactory() as db:
+            current = account(db)
+            require_csrf()
+            if incoming.owned(db, current.id, mailbox_id) is None:
+                abort(404)
+        # The AI call happens outside any database session and writes nothing.
+        try:
+            history = json.loads(request.form.get('history') or '[]')
+            if not isinstance(history, list):
+                raise ValueError('Conversazione non valida.')
+            draft = {key: request.form.get(key, '') for key in rules.FIELDS}
+            answer = rule_assistant(message=request.form.get('message', ''), history=history, draft=draft)
+        except (ValueError, json.JSONDecodeError) as exc:
+            return jsonify(error='INVALID', message=str(exc) if isinstance(exc, ValueError) and not isinstance(
+                exc, json.JSONDecodeError) else 'Richiesta non valida.'), 400
+        except rules.AssistantUnavailable as exc:
+            code = exc.code if exc.code in rules.ASSISTANT_ERRORS else 'PROVIDER_ERROR'
+            return jsonify(error=code, message=rules.ASSISTANT_ERRORS[code]), 504 if code == 'TIMEOUT' else 503
+        return jsonify(reply=answer['reply'], rule=answer['rule'])
 
     @app.route('/administration/email/mailboxes/new', methods=['GET', 'POST'])
     @app.route('/administration/email/mailboxes/<mailbox_id>/edit', methods=['GET', 'POST'])

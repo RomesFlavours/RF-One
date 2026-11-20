@@ -23,6 +23,7 @@ from sqlalchemy import select, func, text
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from rfone_data_store import models as m, incoming_email as incoming, email_service as outgoing
+from rfone_data_store import incoming_attachment_rules as attachment_rules
 from rfone_data_store import rfone_web_session as identity, display_format
 from rfone_data_store.database import create_configured_engine, create_session_factory
 from rfone_data_store.incoming_email_worker import check_one
@@ -85,7 +86,7 @@ class IncomingTests(unittest.TestCase):
         self.engine = create_configured_engine('sqlite:///' + self.path.as_posix(), sqlite_immediate=True)
         m.Base.metadata.create_all(self.engine, tables=[m.RFOneAccount.__table__, m.RFOneAccountDomainAccess.__table__,
             m.EmployeeContextLink.__table__, m.RFOneTrainingIdentityLink.__table__, m.RFOneAccountDomainItemAccess.__table__]
-            + outgoing.TABLES + incoming.TABLES)
+            + outgoing.TABLES + incoming.TABLES + attachment_rules.TABLES)
         self.factory = create_session_factory(self.engine)
         with self.factory.begin() as db:
             for account_id in (1, 2):

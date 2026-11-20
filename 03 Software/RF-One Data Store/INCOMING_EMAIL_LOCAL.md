@@ -272,3 +272,80 @@ backfill, deduplication, owner isolation, HTML escaping, pause fencing and backu
 upgrade preservation. The migration-chain check passes with one head containing
 the recorded AWS revision. Provider responses are simulated in protocol tests;
 no live Aruba authentication or attachment download was needed for validation.
+
+## Attachment rules per mailbox — local update (configuration only)
+
+Each mailbox card has **Regole allegati**, opening a modal (local Italian UI)
+for that mailbox only. The person describes in natural language what should
+happen to the mailbox's attachments; the AI assistant can ask clarifying
+questions and propose a rule. The editable draft shows four parts: which
+attachments to select (PDF only in this version), conditions, what to do with
+the attachments, and information still missing. A proposal is shown in a
+separate "not saved" panel; **Copia nella bozza** copies it into the form and
+only **Salva regola** persists it. Reopening the modal shows the last saved
+rule (version, local time) and pre-fills the draft. A contextual
+"Come funziona questa finestra" link sits right-aligned below the title divider.
+
+The rule is always **inactive**. Nothing downloads attachments, reads PDFs or
+executes actions; saving does not touch the mailbox cursor, lease, schedule or
+credentials, and the monitor is unaffected.
+
+AI engine: the shared RF-One client `rfone_data_store/selection/parsing/ai_client.py`,
+through its per-consumer selector `generate_json_for_email_rules` — the same
+Bedrock implementation and the same per-consumer convention Tips uses
+(`RFONE_TIPS_*` in the canonical branch). It never reads or changes the global
+`RFONE_AI_PROVIDER`, and has no provider fallback. One attempt, 45-second timeout.
+
+| Variable | Local value | Meaning |
+| --- | --- | --- |
+| `RFONE_EMAIL_AI_PROVIDER` | `BEDROCK` | Only supported value |
+| `RFONE_EMAIL_BEDROCK_MODEL_ID` | `openai.gpt-oss-120b-1:0` | Same OpenAI model on Bedrock that Tips uses |
+| `RFONE_EMAIL_AWS_PROFILE` | `rfone-dev-login` | Named profile in `~/.aws`; no keys in RF-One files |
+| `AWS_REGION` | `us-east-1` | Shared convention |
+
+The values are read through the client's existing lookup (process environment,
+then the nearest ancestor `.env`). Locally they live in a minimal, non-secret
+`.env` at this worktree's root, excluded from Git through `.git/info/exclude`
+(this branch has no `.gitignore`). The canonical `.env`, which also holds
+unrelated connector secrets, was deliberately not copied. Dependency: `boto3`,
+already declared in `RF-One Data Store/requirements.txt`.
+
+The prompt contains only the person's chat messages and draft text plus fixed
+rule-writing instructions (PDF-only scope; no claims of access or processing;
+no invented actions, destinations or capabilities; ask openly when the action is
+missing). No mailbox address, server, username, credential, message, header or
+attachment name is sent. The answer is validated server-side into the modal's
+four fields (types, lengths, control characters, non-empty reply; a missing
+action and non-PDF selections are noted under "missing"). Error categories
+shown to the person: not configured, dependency missing, timeout (HTTP 504),
+unusable answer, service unreachable (HTTP 503); provider details are never
+returned or logged, and the draft and typed message are preserved. When the
+configuration is incomplete the modal says so and disables the chat; manual
+compilation and saving keep working. No answer is ever simulated.
+
+| Route | Behavior |
+| --- | --- |
+| POST `/administration/email/mailboxes/{id}/attachment-rule` | Owned mailbox, CSRF; validates and saves; audit `ATTACHMENT_RULE_SAVE` (event only, no rule text) |
+| POST `/administration/email/mailboxes/{id}/attachment-rule/assist` | Owned mailbox, CSRF; returns an unsaved draft as JSON; writes nothing |
+
+Additive local migration `i9c120261117` (parent `i9b120261117`) creates
+`email_attachment_rules`: one row per mailbox (`mailbox_id` primary key), text
+fields `instructions`, `selection`, `conditions`, `actions`, `missing`, a
+version counter and the last editor. Database constraints enforce
+`file_type = 'PDF'` and `NOT active`. Not applied to AWS. An existing sandbox is
+upgraded with the same explicit command (`--upgrade`), which now walks the
+ordered sandbox steps and writes a `*.pre-i9c120261117-<UTC>.db` backup first.
+
+Validation: `python -B '03 Software/RF-One Web/tests/test_attachment_rules.py'`
+(17 tests, including the Email selector configuration, error categories,
+timeouts, malformed answers and proposal validation; earlier 12: owner isolation, CSRF, save/reopen/versioning/audit, invalid input
+reopening the modal, escaping, AI draft not altering the saved rule, prompt
+privacy, inactive/PDF-only constraints and untouched mailbox state, AI
+unavailability, sandbox upgrade/backup and fresh sandbox).
+
+Next steps before execution: decide the closed vocabulary of executable
+actions and destinations; turn the free-text rule into a validated structured
+rule; add explicit activation with confirmation; implement attachment download
+(BODY.PEEK of the selected part, generation/UIDVALIDITY re-check, size limits,
+storage location and retention); PDF reading; idempotent, audited execution per
+arrival; and an English shared/release interface before any publication.

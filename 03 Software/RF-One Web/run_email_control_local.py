@@ -38,6 +38,14 @@ def _apply_local_migration(db, filename):
         migration.upgrade()
 
 
+# Ordered local sandbox schema steps: (from revision, to revision, migration file).
+SANDBOX_STEPS = [
+    ('i9a120261117', 'i9b120261117', 'i9b120261117_incoming_attachment_metadata.py'),
+    ('i9b120261117', 'i9c120261117', 'i9c120261117_incoming_attachment_rules.py'),
+]
+SANDBOX_VERSION = SANDBOX_STEPS[-1][1]
+
+
 def upgrade_database(path):
     """Explicit upgrade of a recognized private sandbox, after a consistent backup."""
     path = path.resolve()
@@ -51,19 +59,22 @@ def upgrade_database(path):
             if '_email_control_sandbox' not in inspect(db).get_table_names():
                 raise RuntimeError('This is not an Email Control sandbox. No tables were changed.')
             version = db.scalar(text('SELECT version FROM _email_control_sandbox'))
-        if version == 'i9b120261117':
+        if version == SANDBOX_VERSION:
             return None
-        if version != 'i9a120261117':
+        known = [step[0] for step in SANDBOX_STEPS]
+        if version not in known:
             raise RuntimeError('Unexpected sandbox revision. No tables were changed.')
-        backup = path.with_name(path.stem + '.pre-attachments-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '.db')
+        backup = path.with_name(path.stem + '.pre-' + SANDBOX_VERSION + '-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '.db')
         with closing(sqlite3.connect('file:' + path.as_posix() + '?mode=ro', uri=True)) as source:
             with closing(sqlite3.connect(str(backup))) as target:
                 source.backup(target)
         with engine.begin() as db:
-            if db.scalar(text('SELECT version FROM _email_control_sandbox')) != 'i9a120261117':
+            if db.scalar(text('SELECT version FROM _email_control_sandbox')) != version:
                 raise RuntimeError('Sandbox revision changed. Upgrade refused.')
-            _apply_local_migration(db, 'i9b120261117_incoming_attachment_metadata.py')
-            db.execute(text("UPDATE _email_control_sandbox SET version='i9b120261117' WHERE version='i9a120261117'"))
+            for source_rev, target_rev, filename in SANDBOX_STEPS[known.index(version):]:
+                _apply_local_migration(db, filename)
+                db.execute(text('UPDATE _email_control_sandbox SET version=:target WHERE version=:source'),
+                           dict(target=target_rev, source=source_rev))
         return backup
     finally:
         engine.dispose()
@@ -82,14 +93,15 @@ def prepare_database(path):
                 if '_email_control_sandbox' not in names:
                     raise RuntimeError('This is not an Email Control sandbox. No tables were changed.')
                 version = db.scalar(text('SELECT version FROM _email_control_sandbox'))
-                if version != 'i9b120261117':
+                if version != SANDBOX_VERSION:
                     raise RuntimeError('The sandbox needs an explicit schema upgrade: run this launcher with --upgrade.')
                 return engine
             m.Base.metadata.create_all(db, tables=[m.RFOneAccount.__table__] + outgoing.TABLES)
             _apply_local_migration(db, 'i9a120261117_incoming_email_monitoring.py')
-            _apply_local_migration(db, 'i9b120261117_incoming_attachment_metadata.py')
+            for _, _, filename in SANDBOX_STEPS:
+                _apply_local_migration(db, filename)
             db.execute(text('CREATE TABLE _email_control_sandbox (version VARCHAR(30) NOT NULL)'))
-            db.execute(text("INSERT INTO _email_control_sandbox VALUES ('i9b120261117')"))
+            db.execute(text('INSERT INTO _email_control_sandbox VALUES (:version)'), dict(version=SANDBOX_VERSION))
             db.execute(m.RFOneAccount.__table__.insert().values(id=1, username='local-email-control',
                 display_name='Local user', password_hash='local-sandbox-no-login', is_admin=True, is_owner=True))
             db.execute(outgoing.EmailWorkerState.__table__.insert().values(id=1, mode='STOPPED',

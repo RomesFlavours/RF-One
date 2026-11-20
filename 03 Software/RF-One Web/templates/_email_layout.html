@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block wrap_class %}email-shell{% endblock %}
-{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/email-control.css') }}?v=3">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', filename='css/email-control.css') }}?v=4">{% endblock %}
 {% macro status_badge(status) -%}
 {% set info = status_info.get(status, (status, 'neutral', '')) %}<span class="email-status email-status--{{ info[1] }}"><span aria-hidden="true"></span>{{ info[0] }}</span>
 {%- endmacro %}

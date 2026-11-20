@@ -55,6 +55,21 @@ class AIProviderTimeout(AIProviderUnavailable):
     so every existing `except AIProviderUnavailable` still handles it."""
 
 
+# Finer kinds of `AIProviderUnavailable`, so an interactive caller can tell
+# the person what is wrong without showing provider details. Subclasses:
+# every existing `except AIProviderUnavailable` still handles them.
+class AIProviderNotConfigured(AIProviderUnavailable):
+    """A required configuration value (provider, model) is missing or invalid."""
+
+
+class AIProviderDependencyMissing(AIProviderUnavailable):
+    """The Python package for the configured provider is not installed."""
+
+
+class AIProviderBadResponse(AIProviderUnavailable):
+    """The provider answered, but not with a usable JSON object."""
+
+
 def _read_env_or_dotenv(var_name: str) -> str | None:
     """Generic version of this module's original `.env` resolution
     convention (previously inlined in `_anthropic_api_key` alone) — env var
@@ -108,7 +123,8 @@ def _limits(timeout: float | None) -> tuple[float, int]:
     return DEFAULT_TIMEOUT_SECONDS, DEFAULT_ATTEMPTS
 
 
-def _bedrock_client(boto3, region: str | None, read_timeout: float, attempts: int):
+def _bedrock_client(boto3, region: str | None, read_timeout: float, attempts: int,
+                    profile_name: str | None = None):
     """The cached bedrock-runtime client for this configuration, created once
     under `_CLIENT_LOCK`. The key includes the `boto3.client` factory itself,
     so a test that replaces it (or the test isolation guard) is always asked
@@ -116,10 +132,14 @@ def _bedrock_client(boto3, region: str | None, read_timeout: float, attempts: in
     from botocore.config import Config
 
     factory = boto3.client
-    key = (factory, region, read_timeout, attempts)
+    key = (factory, region, read_timeout, attempts, profile_name)
     with _CLIENT_LOCK:
         client = _BEDROCK_CLIENTS.get(key)
         if client is None:
+            # A named local AWS profile (consumer-specific configuration) uses
+            # its own boto3 Session; without one, boto3's default chain as before.
+            if profile_name:
+                factory = boto3.Session(profile_name=profile_name).client
             client = factory("bedrock-runtime", region_name=region, config=Config(
                 read_timeout=read_timeout, connect_timeout=10,
                 retries={"total_max_attempts": attempts, "mode": "standard"}))
@@ -174,7 +194,8 @@ def _generate_json_anthropic(prompt: str, timeout: float | None = None) -> dict:
         raise AIProviderUnavailable(f"AI provider call failed: {exc}") from exc
 
 
-def _generate_json_bedrock(prompt: str, timeout: float | None = None) -> dict:
+def _generate_json_bedrock(prompt: str, timeout: float | None = None, *,
+                           model_id: str | None = None, profile_name: str | None = None) -> dict:
     """AWS Bedrock Runtime, behind the exact same `generate_json` contract
     (RFONE_AI_PROVIDER_BEDROCK_001). Deliberately introduces NO new AWS
     credential mechanism: `boto3.client("bedrock-runtime")` with no explicit
@@ -194,15 +215,15 @@ def _generate_json_bedrock(prompt: str, timeout: float | None = None) -> dict:
     `timeout`, when given, bounds the wait for the answer (read timeout) and
     allows one attempt only, so the caller gets `AIProviderTimeout` instead of
     a hung request; without it the default limit applies (`_limits`)."""
-    model_id = _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
+    model_id = model_id or _read_env_or_dotenv("RFONE_BEDROCK_MODEL_ID")
     if not model_id:
-        raise AIProviderUnavailable("No RFONE_BEDROCK_MODEL_ID configured.")
+        raise AIProviderNotConfigured("No RFONE_BEDROCK_MODEL_ID configured.")
 
     try:
         import boto3
         from botocore.exceptions import BotoCoreError, ClientError, ConnectTimeoutError, ReadTimeoutError
     except ImportError as exc:
-        raise AIProviderUnavailable("The 'boto3' package is not installed.") from exc
+        raise AIProviderDependencyMissing("The 'boto3' package is not installed.") from exc
 
     read_timeout, attempts = _limits(timeout)
     try:
@@ -211,7 +232,7 @@ def _generate_json_bedrock(prompt: str, timeout: float | None = None) -> dict:
         # environment, so boto3 cannot see it on its own) — passed through
         # explicitly; `None` falls back to boto3's own standard region
         # resolution (`~/.aws/config`, etc.) unchanged.
-        client = _bedrock_client(boto3, _read_env_or_dotenv("AWS_REGION"), read_timeout, attempts)
+        client = _bedrock_client(boto3, _read_env_or_dotenv("AWS_REGION"), read_timeout, attempts, profile_name)
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
@@ -227,13 +248,47 @@ def _generate_json_bedrock(prompt: str, timeout: float | None = None) -> dict:
         text = "".join(block["text"] for block in content_blocks if "text" in block)
         return json.loads(_strip_markdown_json_fence(text))
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-        raise AIProviderUnavailable(f"AWS Bedrock returned an unparsable response: {exc}") from exc
+        raise AIProviderBadResponse(f"AWS Bedrock returned an unparsable response: {exc}") from exc
 
 
 _PROVIDERS = {
     PROVIDER_ANTHROPIC: _generate_json_anthropic,
     PROVIDER_BEDROCK: _generate_json_bedrock,
 }
+
+
+def _email_rules_configuration() -> tuple[str, str | None, str | None]:
+    provider = (_read_env_or_dotenv("RFONE_EMAIL_AI_PROVIDER") or "").strip().upper()
+    return (provider, _read_env_or_dotenv("RFONE_EMAIL_BEDROCK_MODEL_ID"),
+            _read_env_or_dotenv("RFONE_EMAIL_AWS_PROFILE"))
+
+
+def email_rules_provider_description() -> tuple[str, str | None]:
+    """(provider, model) Email attachment-rule assistance would use; nothing called."""
+    provider, model_id, _ = _email_rules_configuration()
+    return provider or "NOT CONFIGURED", model_id
+
+
+def generate_json_for_email_rules(prompt: str, *, timeout: float | None = None) -> dict:
+    """Email Control attachment-rule assistance, configured per consumer exactly
+    like Tips (`RFONE_TIPS_*` in the canonical branch): its own provider,
+    model and optional local AWS profile, with NO fallback to the global
+    `RFONE_AI_PROVIDER`, which this never reads or changes.
+
+      RFONE_EMAIL_AI_PROVIDER       BEDROCK (the only supported value)
+      RFONE_EMAIL_BEDROCK_MODEL_ID  a Bedrock model this account can use
+      RFONE_EMAIL_AWS_PROFILE       optional named profile in ~/.aws (no keys here)
+      AWS_REGION                    shared convention, as for every Bedrock call
+    """
+    provider, model_id, profile_name = _email_rules_configuration()
+    if provider != PROVIDER_BEDROCK:
+        raise AIProviderNotConfigured("RFONE_EMAIL_AI_PROVIDER must be BEDROCK; no provider fallback is enabled.")
+    if not model_id:
+        raise AIProviderNotConfigured("No RFONE_EMAIL_BEDROCK_MODEL_ID configured.")
+    result = _generate_json_bedrock(prompt, timeout, model_id=model_id, profile_name=profile_name)
+    if not isinstance(result, dict):
+        raise AIProviderBadResponse("Bedrock returned JSON that is not an object.")
+    return result
 
 
 def active_provider_description() -> tuple[str, str | None]:
