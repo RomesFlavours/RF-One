@@ -27,9 +27,6 @@
           <div class="domain-unavailable-label">Non ancora disponibile</div>
         </div>
       {% endif %}
-      {% if domain.code == 'TIPS' and tips_validation_available %}
-        <a class="home-row home-subrow" href="{{ url_for('tips_validation_runs') }}"><strong>Tips</strong> &mdash; validate saved periods</a>
-      {% endif %}
     {% endfor %}
   </div>
 {% else %}

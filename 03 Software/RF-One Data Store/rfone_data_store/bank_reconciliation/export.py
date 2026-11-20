@@ -63,6 +63,22 @@ def month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
+def _not_confirmed_duplicate():
+    """The ONE predicate that keeps a transaction in a month's scope unless a
+    human confirmed it as a duplicate.
+
+    Only `duplicate_status == 'CONFIRMED_DUPLICATE'` excludes. A NULL status
+    — rows loaded before the duplicate flow set 'NONE' on every import —
+    means "never judged a duplicate", not "duplicate". A bare
+    `duplicate_status != 'CONFIRMED_DUPLICATE'` is NULL, not TRUE, for those
+    rows in SQL, which silently emptied the month; NULL is therefore kept
+    explicitly."""
+    return or_(
+        m.FinancialTransaction.duplicate_status.is_(None),
+        m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+    )
+
+
 def in_scope_transactions(session: Session, year: int, month: int) -> list["m.FinancialTransaction"]:
     """The transactions this month's export is about.
 
@@ -87,7 +103,7 @@ def in_scope_transactions(session: Session, year: int, month: int) -> list["m.Fi
         select(m.FinancialTransaction).where(
             m.FinancialTransaction.posting_date >= start,
             m.FinancialTransaction.posting_date <= end,
-            m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+            _not_confirmed_duplicate(),
             accounting_dedup.not_suppressed_filter(),
         ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
     ).all())
@@ -105,7 +121,7 @@ def _unresolved_settlement_transactions(
         select(m.FinancialTransaction).where(
             m.FinancialTransaction.posting_date >= start,
             m.FinancialTransaction.posting_date <= end,
-            m.FinancialTransaction.duplicate_status != "CONFIRMED_DUPLICATE",
+            _not_confirmed_duplicate(),
             m.FinancialTransaction.accounting_status
             == accounting_dedup.UNRESOLVED_NO_SETTLEMENT_ACCOUNT,
         ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)

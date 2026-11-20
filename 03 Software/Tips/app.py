@@ -190,6 +190,7 @@ app.jinja_env.globals["rfone_web_home_url"] = rfone_web_link.home_url
 app.jinja_env.globals["rfone_home_url"] = rfone_web_link.home_url
 app.jinja_env.globals["rfone_web_base_url"] = rfone_web_link.base_url
 app.jinja_env.globals["rfone_web_run_url"] = rfone_web_link.tips_run_url
+app.jinja_env.globals["rfone_web_runs_url"] = rfone_web_link.tips_runs_url
 app.jinja_env.globals["rfone_web_not_configured_message"] = rfone_web_link.NOT_CONFIGURED_MESSAGE
 
 

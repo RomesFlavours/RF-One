@@ -112,7 +112,7 @@ def main() -> int:
         # --- configured -------------------------------------------------
         set_base(BASE)
         page = client.get("/tips-runs").get_data(as_text=True)
-        web_links = [h for h in hrefs(page) if h.startswith(BASE)]
+        web_links = [h for h in hrefs(page) if h.startswith(f"{BASE}/tips/runs/")]
         check("1. /tips-runs renders an RF-One Web action for every saved run",
               sorted(web_links) == sorted(f"{BASE}/tips/runs/{i}" for i in run_ids)
               and page.count(">Review / Finalize in RF-One</a>") == len(run_ids),
@@ -121,6 +121,9 @@ def main() -> int:
               f'href="{BASE}/tips/runs/7"' in page)
         check("3. run 8 links exactly to <base>/tips/runs/8",
               f'href="{BASE}/tips/runs/8"' in page)
+
+        check("1b. Saved Periods offers 'Validate saved periods', linking exactly to <base>/tips/runs",
+              f'<a href="{BASE}/tips/runs">Validate saved periods</a>' in page)
 
         detail_ok = True
         for run_id in (1, 7, 8):
@@ -146,7 +149,8 @@ def main() -> int:
             listing = client.get("/tips-runs").get_data(as_text=True)
             detail = client.get("/tips-runs/7").get_data(as_text=True)
             unsafe_ok = unsafe_ok \
-                and "/tips/runs/" not in listing and "/tips/runs/" not in detail \
+                and "/tips/runs" not in listing and "/tips/runs/" not in detail \
+                and "Validate saved periods" not in listing \
                 and "RF-One Web navigation is not configured" in listing \
                 and "RF-One Web navigation is not configured" in detail \
                 and "Review / Finalize in RF-One" in listing  # the explanation still names the action

@@ -338,7 +338,6 @@ def home():
             # Released = operational (see the rules above): the card's colour
             # follows this, never a per-Domain choice in the template.
             work_in_progress_codes=_HOME_WORK_IN_PROGRESS_CODES,
-            tips_validation_available="TIPS" in enabled_codes,
             bank_available="BANK" in enabled_codes,
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
         )
