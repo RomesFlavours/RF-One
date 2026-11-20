@@ -1,0 +1,176 @@
+{#- IMPORT SET REVIEW (BANK_SOURCE_AND_IMPORT_REVIEW_001).
+
+    Shown right after the operator selects the files and BEFORE anything is
+    imported. Everything here comes from `import_preview.preview_import`,
+    which rehearses the real import and rolls it back. Two decisions only:
+
+      CONFIRM IMPORT  `bank_upload_confirm` imports the set, once;
+      CANCEL          `bank_upload_cancel` discards it. Nothing was written.
+
+    Closing the dialog any other way (×, Escape, backdrop) is a Cancel too:
+    a set is never left half-decided. Rendered open by the server, so it
+    works without JavaScript. Expects: import_review, staged_token. -#}
+{%- set r = import_review %}
+{%- macro names(items) -%}
+  {%- if items %}{{ items|join(', ') }}{% else %}<span class="muted">None</span>{% endif -%}
+{%- endmacro %}
+<div id="import-review-dialog" class="org-modal-overlay import-review-overlay" aria-hidden="false">
+  <div class="org-modal-panel import-review-panel" role="dialog" aria-modal="true" aria-labelledby="import-review-title">
+    <button class="org-modal-close" type="button" aria-label="Cancel import" data-import-review-cancel>&times;</button>
+    <div class="modal-header"><h3 id="import-review-title" tabindex="-1">Import Set Review</h3></div>
+    <p class="muted">Nothing has been imported yet. Check the set, then confirm or cancel.</p>
+
+    <dl class="import-review-summary">
+      <div><dt>Uploaded files</dt><dd data-review="files">{{ r.file_count }}</dd></div>
+      <div><dt>Expected active Sources</dt><dd data-review="expected">{{ r.expected_sources|length }}</dd></div>
+      <div><dt>Recognized</dt><dd data-review="recognized">{{ r.recognized_count }}</dd></div>
+      <div><dt>Would import</dt><dd data-review="importable">{{ r.importable_count }}</dd></div>
+      <div><dt>Period in files</dt><dd data-review="period">{% if r.date_start %}{{ r.date_start }} &rarr; {{ r.date_end }}{% else %}<span class="muted">none detected</span>{% endif %}</dd></div>
+    </dl>
+
+    <table class="table-compact import-review-facts">
+      <tbody>
+        <tr data-review-row="missing">
+          <th>Missing Sources</th>
+          <td>
+            {%- set ns = namespace(any=false) %}
+            {%- for p in r.periods if p.missing %}{% set ns.any = true %}
+              <div><strong>{{ p.month }}</strong>{% if not p.controlled %} <span class="cell-note">(historical)</span>{% endif %}: {{ p.missing|join(', ') }}</div>
+            {%- endfor %}
+            {%- if not ns.any %}<span class="muted">None</span>{% endif %}
+          </td>
+        </tr>
+        <tr data-review-row="unrecognized"><th>Unrecognized files</th><td>{{ names(r.unrecognized) }}</td></tr>
+        <tr data-review-row="duplicates"><th>Duplicates</th><td>{{ names(r.duplicates) }}</td></tr>
+      </tbody>
+    </table>
+
+    {% if r.periods %}
+      {%- set with_missing = r.periods|selectattr('missing')|list %}
+      <h4>Coverage</h4>
+      <p class="cell-note" data-review="coverage">
+        {{ r.periods|length }} period(s) covered by the files ({{ r.periods[0].month }}{% if r.periods|length > 1 %} &rarr; {{ r.periods[-1].month }}{% endif %})
+        &middot; {{ with_missing|length }} with missing Sources.
+      </p>
+      <details class="import-review-details"{{ ' open' if r.periods|length <= 6 else '' }}>
+      <summary>Period by period</summary>
+      <div class="table-scroll">
+        <table class="table-compact table-stack import-review-coverage">
+          <thead><tr><th>Period</th><th>Expected</th><th>In this upload</th><th>Imported earlier</th><th>Resolved</th><th>Missing</th></tr></thead>
+          <tbody>
+            {% for p in r.periods %}
+              <tr data-review-period="{{ p.month }}">
+                <td data-label="Period">{{ p.label }}{% if not p.controlled %} <span class="cell-note">historical</span>{% endif %}</td>
+                <td data-label="Expected">{{ p.expected_count }}</td>
+                <td data-label="In this upload">{{ p.in_upload_count }}</td>
+                <td data-label="Imported earlier">{{ p.earlier_count }}</td>
+                <td data-label="Resolved">{{ p.resolved_count }}</td>
+                <td data-label="Missing"><span class="badge {{ 'bad' if p.missing else 'ok' }}">{{ p.missing|length }}</span></td>
+              </tr>
+              {% if p.unexpected %}
+                <tr><td colspan="6" class="cell-note">Not expected for {{ p.label }}: {{ p.unexpected|join(', ') }}</td></tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      </details>
+      <details class="import-review-details">
+        <summary>Source by source</summary>
+        {% for p in r.periods %}
+          <p class="cell-note"><strong>{{ p.label }}</strong></p>
+          <ul class="plain">
+            {% for line in p.lines %}
+              <li><span class="badge {{ 'bad' if line.state == 'MISSING' else ('ok' if line.state == 'IN_UPLOAD' else '') }}">{{ line.state|replace('_', ' ')|lower }}</span> {{ line.source }} <span class="cell-note">{{ line.detail }}</span></li>
+            {% else %}
+              <li class="muted">No active Source is expected for this period.</li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      </details>
+    {% endif %}
+
+    <h4>Files</h4>
+    <div class="table-scroll">
+      <table class="table-compact table-stack import-review-files">
+        <thead><tr><th>File</th><th>Result</th><th>Source</th><th>Rows</th><th>Period</th></tr></thead>
+        <tbody>
+          {% for f in r.files %}
+            <tr data-review-file="{{ f.status }}">
+              <td data-label="File" class="col-description">{{ f.file_name }}{% if f.detected_format %}<span class="cell-note">{{ f.detected_format }}</span>{% endif %}</td>
+              <td data-label="Result">
+                <span class="badge {{ 'ok' if f.status == 'NEW' else ('bad' if f.status == 'UNRECOGNIZED' else 'warn') }}">{{ {'NEW': 'Will import', 'ALREADY_IMPORTED': 'Already imported', 'DUPLICATE_IN_SET': 'Duplicate in set', 'UNRECOGNIZED': 'Unrecognized'}.get(f.status, f.status) }}</span>
+                {% for note in f.notes %}<span class="status-reason">{{ note }}</span>{% endfor %}
+              </td>
+              <td data-label="Source">{{ f.sources|join(', ') if f.sources else '—' }}</td>
+              <td data-label="Rows" class="col-narrow">{{ f.row_count or '—' }}</td>
+              <td data-label="Period" class="col-date">{% if f.date_start %}{{ f.date_start }}<br>{{ f.date_end }}{% else %}&mdash;{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Warnings</h4>
+    {% if r.warnings %}
+      <ul class="plain import-review-warnings">{% for w in r.warnings %}<li class="cell-note">{{ w }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">None</p>{% endif %}
+
+    <h4>Blocking issues</h4>
+    {% if r.blocking %}
+      <ul class="plain import-review-blocking">{% for b in r.blocking %}<li class="error">{{ b }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">None</p>{% endif %}
+
+    <div class="who-picker-actions import-review-actions">
+      <form method="post" action="{{ url_for('bank_upload_confirm', token=staged_token) }}" data-import-review-confirm-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" id="import-review-confirm" {{ 'disabled' if r.blocking else '' }}>Confirm Import</button>
+      </form>
+      <form method="post" action="{{ url_for('bank_upload_cancel', token=staged_token) }}" id="import-review-cancel-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-secondary" id="import-review-cancel">Cancel</button>
+      </form>
+    </div>
+  </div>
+</div>
+<style>
+  .import-review-panel { width: min(58rem, 100%); max-height: calc(100vh - 3rem); overflow-y: auto; }
+  .import-review-summary { display: flex; flex-wrap: wrap; gap: .4rem 1.5rem; margin: .4rem 0 .8rem; }
+  .import-review-summary div { display: flex; flex-direction: column; }
+  .import-review-summary dt { font-size: .8rem; color: var(--muted, #6b6f5e); }
+  .import-review-summary dd { margin: 0; font-weight: 700; font-size: 1.15rem; }
+  .import-review-facts th { text-align: left; width: 11rem; vertical-align: top; }
+  .import-review-panel h4 { margin: .9rem 0 .3rem; }
+  .import-review-files td[data-label="Source"] { min-width: 9rem; }
+  .import-review-files td[data-label="Result"] { min-width: 14rem; }
+  .import-review-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
+  .import-review-actions form { margin: 0; }
+  .import-review-actions button { margin: 0; }
+</style>
+<script>
+// Opened by the server; the shared controller adds Escape, focus trap and
+// scroll lock. Any close that is not Confirm submits Cancel, so a staged
+// set is never left undecided.
+document.addEventListener("DOMContentLoaded", function () {
+  var overlay = document.getElementById("import-review-dialog");
+  var cancelForm = document.getElementById("import-review-cancel-form");
+  if (!overlay || !cancelForm || !window.RFOneModal) { return; }
+  var deciding = false;
+  overlay.querySelector("[data-import-review-confirm-form]").addEventListener("submit", function () {
+    deciding = true;
+    var button = document.getElementById("import-review-confirm");
+    // One click, one import: the server also refuses a second Confirm.
+    setTimeout(function () { button.disabled = true; button.textContent = "Importing…"; }, 0);
+  });
+  cancelForm.addEventListener("submit", function () { deciding = true; });
+  var modal = window.RFOneModal.create({
+    overlay: overlay,
+    onClose: function () { if (!deciding) { deciding = true; cancelForm.submit(); } },
+    // The title, not a button: the review is read from the top, and
+    // focusing Confirm would scroll the summary out of view.
+    initialFocus: function () { return document.getElementById("import-review-title"); },
+  });
+  overlay.querySelector("[data-import-review-cancel]").addEventListener("click", function () { modal.close(); });
+  modal.open();
+});
+</script>
