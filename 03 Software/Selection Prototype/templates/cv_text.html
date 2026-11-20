@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set name = candidate.full_name or pc.declared_name or 'Candidato' %}
+{% block title %}CV · {{ name }}{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('dashboard') }}">Posizioni</a> ›
+  <a href="{{ url_for('position_detail', position_id=position.id) }}">{{ position.title }}</a> ›
+  <a href="{{ url_for('candidate_detail', position_id=position.id, pc_id=pc.id) }}">{{ name }}</a> › <b>Testo letto dal CV</b></div>{% endblock %}
+{% block content %}
+<h1>Testo letto dal CV</h1>
+<p class="small muted">Testo estratto dal documento originale, senza modifiche.{% if highlight %} Evidenziata la citazione selezionata.{% endif %}
+  <a href="{{ url_for('candidate_original', position_id=position.id, pc_id=pc.id) }}" target="_blank">Apri il CV originale</a></p>
+<pre class="cv" id="cvtext">{{ text }}</pre>
+{% if highlight %}
+<script>
+(function () {
+  var q = {{ highlight|tojson }}, el = document.getElementById('cvtext'), t = el.textContent;
+  var norm = function (s) { return s.replace(/\s+/g, ' ').toLowerCase(); };
+  // map normalized positions back to the original text
+  var map = [], n = '', prevSpace = false;
+  for (var i = 0; i < t.length; i++) {
+    var ch = /\s/.test(t[i]) ? ' ' : t[i].toLowerCase();
+    if (ch === ' ' && prevSpace) continue;
+    prevSpace = ch === ' '; n += ch; map.push(i);
+  }
+  var at = n.indexOf(norm(q).trim());
+  if (at < 0) return;
+  var start = map[at], end = map[at + norm(q).trim().length - 1] + 1;
+  el.innerHTML = '';
+  el.appendChild(document.createTextNode(t.slice(0, start)));
+  var mk = document.createElement('mark'); mk.textContent = t.slice(start, end); el.appendChild(mk);
+  el.appendChild(document.createTextNode(t.slice(end)));
+  mk.scrollIntoView({block: 'center'});
+})();
+</script>
+{% endif %}
+{% endblock %}

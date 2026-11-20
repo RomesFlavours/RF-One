@@ -301,7 +301,7 @@ A Clover named Role (`SourceRole`, e.g. `"Server"`) is source evidence — real,
 
 ---
 
-## 11. Personnel Management boundary
+## 11. Management and people-related Shared Domains boundary
 
 **Restaurant Domain** owns Restaurant-specific operational semantics:
 
@@ -314,17 +314,19 @@ Restaurant Role
 Employee Assignment in Restaurant context
 ```
 
-**Personnel Management** (`01 Domains/Shared Domains/Personnel Management/`) owns cross-industry workforce semantics:
+Cross-industry semantics about people and work are owned by Shared Domains:
 
 ```text
-Workforce
+Management / People           (professional knowledge of the person)
+Management / Organization     (work design, roles, coverage and assignments —
+                               formerly Workforce and Personnel Decisions)
+Management / Project Manager  (approved work: planning, execution, verification)
 Selection
-Training
 Performance
-Personnel Decisions
+Training service
 ```
 
-Restaurant Domain does not duplicate or redefine any Personnel Management concept. Personnel Management consumes Restaurant's technical content (e.g. "this Employee's Restaurant Role and Operational Area during the evaluated period") as an input, the same way it consumes any other technical Domain's content — see `01 Domains/Shared Domains/Personnel Management/README.md`, "Relationship to technical Domains," and `Organization/README.md`, "Relationship to Personnel Management."
+Restaurant Domain does not duplicate or redefine any of these concepts. They consume Restaurant's technical content (e.g. "this Employee's Restaurant Role and Operational Area during the evaluated period") as an input, the same way they consume any other Business Domain's content — see `01 Domains/Shared Domains/Management/Organization/README.md` §3 and §12, and `Organization/README.md`, "Relationship to Management." (Until 2026-10-25 these were attributed to the now-retired Personnel Management Domain.)
 
 ---
 
@@ -399,6 +401,6 @@ Both are valid: each configured Operational Area satisfies the canonical meaning
 - [Organization/Restaurant Profile.md](Organization/Restaurant%20Profile.md), [Organization/Operational Area.md](Organization/Operational%20Area.md), [Organization/Physical Area.md](Organization/Physical%20Area.md), [Organization/Restaurant Role.md](Organization/Restaurant%20Role.md), [Organization/Employee Assignment.md](Organization/Employee%20Assignment.md) — full concept-level definitions and business rules
 - [Model/OU-Restaurant.md](Model/OU-Restaurant.md), [Model/OperationalArea.md](Model/OperationalArea.md) — Core-inherited Corporate/Brand/Operational Unit placement (a different axis — see § 3)
 - [Sales/Restaurant Sales Model.md](Sales/Restaurant%20Sales%20Model.md) — Table Service, Order, and sales-side canonical model (does not reference Operational Area/Physical Area/Restaurant Role at this time)
-- [../Personnel Management/README.md](../../Shared%20Domains/Personnel%20Management/README.md) — Personnel Management boundary
+- [../../Shared Domains/Management/README.md](../../Shared%20Domains/Management/README.md) — Management boundary
 - `03 Software/RF-One Data Store/DATABASE_SCHEMA.md` § 4a, `03 Software/RF-One Data Store/RESTAURANT_PROFILE.md` — implemented schema and the Tips/Payroll future contract
 - `07 Tasks/Reports/TASK_RESTAURANT_001_REPORT.md`, `07 Tasks/Reports/TASK_RESTAURANT_002_REPORT.md` — implementation and canonicalization history

@@ -91,7 +91,7 @@ The same person's raw Performance Evidence could support any of these Indicator 
 - It is not a [Performance Measure](PerformanceMeasure.md) — every Indicator is grounded in a Measure or Evidence, but not every Measure is an Indicator.
 - It is not a fixed or permanent KPI — see "Indicator relevance is derived, not assumed" above.
 - It is not a universal scalar score.
-- It is not itself a [Personnel Decision](../Personnel%20Management/Personnel%20Decisions/README.md) — an Indicator informs that Decision but does not make it.
+- It is not itself a personnel decision ([Management / Organization](../Management/Organization/README.md), formerly Personnel Decisions) — an Indicator informs that Decision but does not make it.
 
 ---
 

@@ -47,8 +47,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Store"))
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)  # the `workspace` package (SELECTION_AI_INTEGRATION_001)
 
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+# Local résumé files: `uploads/` here unless RFONE_SELECTION_UPLOAD_DIR names
+# a folder outside OneDrive (the local launcher, `local_server.py`, does).
+UPLOAD_DIR = os.environ.get("RFONE_SELECTION_UPLOAD_DIR") or os.path.join(BASE_DIR, "uploads")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DEFAULT_DB_PATH = os.path.join(DATA_DIR, "selection.db")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -136,6 +140,7 @@ from rfone_data_store.selection.industry.restaurant_templates import (  # noqa: 
 )
 from rfone_data_store.selection.parsing.dedup import compute_content_hash  # noqa: E402
 from rfone_data_store.selection.parsing.text_extraction import SUPPORTED_EXTENSIONS, extract_text  # noqa: E402
+from workspace import PUBLIC_BLUEPRINT, register_workspace  # noqa: E402
 
 ALLOWED_EXT = set(SUPPORTED_EXTENSIONS)
 # SELECTION_AWS_PUBLISH_001 — uploads/ locally, a private S3 bucket when deployed.
@@ -223,6 +228,11 @@ def _send_direct_visits_to_the_official_entry():
 @app.before_request
 def _require_rfone_login_and_selection_access():
     if not RFONE_LOGIN_MODE or request.endpoint == "static":
+        return None
+    if request.blueprint == PUBLIC_BLUEPRINT:
+        # Public candidate pages: external candidates, never an RF-One
+        # account (SELECTION_AI_INTEGRATION_001 §4). They reach no internal
+        # function — every internal route keeps this check.
         return None
     with SessionFactory() as db_session:
         account = shared_session.account_for_session(
@@ -381,8 +391,11 @@ def _candidate_rows(session, candidates: list["m.Candidate"]) -> list[dict]:
     return rows
 
 
-@app.route("/")
+@app.route("/candidates")
 def home():
+    # SELECTION_AI_INTEGRATION_001 — Selection's entry page ("/") is now the
+    # position workspace (`workspace/routes.py`); this historical candidate
+    # list stays available here, outside the navigation.
     with SessionFactory() as session:
         restaurant = _bootstrap_restaurant(session)
         candidates = persistence.list_candidates(session, restaurant_id=restaurant.id)
@@ -3990,6 +4003,16 @@ def application_audit_json(application_id: int):
         report = audit_svc.build_audit(session, application_id)
         session.commit()
         return jsonify(audit_svc.to_json_dict(report))
+
+
+# ---------------------------------------------------------------------------
+# SELECTION_AI_INTEGRATION_001 — the operational interface: the position
+# workspace (five functions) and the public candidate pages, transferred from
+# the approved Selection AI prototype. Registered last; the historical routes
+# above stay available but are no longer in the navigation.
+# ---------------------------------------------------------------------------
+
+register_workspace(app, SessionFactory=SessionFactory, documents=DOCUMENTS, rfone_web_base_url=_rfone_web_base_url)
 
 
 if __name__ == "__main__":

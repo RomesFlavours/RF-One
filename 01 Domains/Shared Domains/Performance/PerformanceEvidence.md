@@ -88,7 +88,7 @@ Forcing every observation into a single-person attribution where the underlying 
 
 ## Cross-Domain evidence: Customer Feedback and Review
 
-Customer Feedback and Review are separate transversal Domain candidates, outside Personnel Management (see [../README.md](../Personnel%20Management/README.md), "Relationship to Customer Feedback and Review", and [../../Domain Architecture.md](../../Domain%20Architecture.md) §6). Performance does not own, move, or duplicate their concepts. It may, however, consume specific items from them as Performance Evidence when they are genuinely relevant to a person's Performance:
+Customer Feedback and Review are separate transversal Domain candidates, outside Management and outside this Domain (see [../../Domain Architecture.md](../../Domain%20Architecture.md) §6). Performance does not own, move, or duplicate their concepts. It may, however, consume specific items from them as Performance Evidence when they are genuinely relevant to a person's Performance:
 
 ```text
 Customer Feedback

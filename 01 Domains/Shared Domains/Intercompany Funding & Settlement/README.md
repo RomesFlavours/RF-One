@@ -12,7 +12,7 @@
 - [../../README.md](../../README.md) (`01 Domains/` purpose, the Shared Domains / Business Domain taxonomy)
 - [INTERCOMPANY_FUNDING_AND_SETTLEMENT_001.md](INTERCOMPANY_FUNDING_AND_SETTLEMENT_001.md) — the full conceptual/domain model: concepts, economic dimensions, boundaries, event/history principle
 - [SETTLEMENT_POLICY_001.md](SETTLEMENT_POLICY_001.md) — the SettlementPolicy structure and the current RF Gelati configuration, documented as one example instance of it
-- [../Personnel Management/Compensation/README.md](../Personnel%20Management/Compensation/README.md), "Legal Entity is a distinct canonical concept" — the existing `Legal Entity` concept this Domain references, never redefines (`Corporate → Legal Entity → Restaurant (Operational Unit) → Location`)
+- [../Administration/Compensation/README.md](../Administration/Compensation/README.md), "Legal Entity is a distinct canonical concept" — the existing `Legal Entity` concept this Domain references, never redefines (`Corporate → Legal Entity → Restaurant (Operational Unit) → Location`)
 - [../Administration/README.md](../Administration/README.md) — the Domain that translates this Domain's economic results into accounting/administrative representation
 - [../Purchased/README.md](../Purchased/README.md) — the Shared Domain owning the purchase fact itself, distinct from this Domain's intercompany financial consequence of a purchase
 - [../Administration/Bank Reconciliation/README.md](../Administration/Bank%20Reconciliation/README.md) — matches real bank transactions; consumes/validates this Domain's financial execution facts without defining their intercompany meaning
@@ -66,7 +66,7 @@ This Domain supports, without being limited to:
 
 ## What this Domain does NOT own
 
-- **Legal Entity itself** — an existing RF-One concept (`Corporate → Legal Entity → Restaurant (Operational Unit) → Location`, see `Personnel Management/Compensation/README.md`); this Domain references it, never redefines it.
+- **Legal Entity itself** — an existing RF-One concept (`Corporate → Legal Entity → Restaurant (Operational Unit) → Location`, see `Administration/Compensation/README.md`); this Domain references it, never redefines it.
 - **Who is owed what for work performed or tips earned** — that is Tips' and Compensation's own decision; this Domain handles only the intercompany financial relationship if a different Legal Entity executes the resulting payment.
 - **The supplier relationship, purchasing decision, order, or goods/services acquired** — that is Purchasing's/Purchased's own scope; this Domain handles only the financial/intercompany consequence when one Legal Entity buys, funds, or pays in relation to another.
 - **Debit/credit accounting logic, ledger posting, or provider-specific representation** — that is Administration's role, applied *after* this Domain has established the economic relationship. See "Architectural principle" below.

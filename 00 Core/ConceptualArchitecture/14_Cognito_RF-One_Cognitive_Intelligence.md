@@ -131,6 +131,19 @@ This document does not rename either concept. It only records the distinction ex
 
 ---
 
+## 9. Specialist reasoning remains with the owning Domain
+
+> **Clarification by Product Owner decision (2026-10-25) — recorded in `00 Core/Core Evolution.md`.** It states how §1's existing boundary ("does not substitute itself for a Domain") applies when Cognito interacts with a person on behalf of a specialist field. It adds no capability to §6 and does not redefine Cognito.
+
+When Cognito interacts with a person within a specialist field, responsibilities divide as follows:
+
+- **Cognito** provides the **sensory functions** (perceiving speech, text, events and authorized context — §1, and documents 15–17), the **understanding of language**, and the **management of the conversation** (asking, following up, confirming understanding, pausing and resuming, and adapting the form of the exchange to the person, per document 15).
+- **The specialist Domain leads the specialist reasoning** of its field — in particular **People** (`01 Domains/Shared Domains/Management/People/README.md`) for the professional knowledge of persons, and **Selection** (`01 Domains/Shared Domains/Selection/README.md`) for candidate evaluation. The specialist Domain decides **what to explore, for which professional purpose**, which distinctions must be preserved, and which professional conclusion the evidence supports.
+
+Cognito does not take over that specialist reasoning, and a specialist Domain does not replicate Cognito's perception, language and conversation capabilities as an independent intelligence of its own. The capabilities of §6 are unchanged; they are exercised in service of the conversation and of the owning Domain's reasoning, never as a substitute for it. Information Cognito perceives or collects in order to assist a person does not automatically become assessment evidence in a specialist Domain (consistent with documents 15 §9 and 16 §10).
+
+---
+
 ## Non-assumptions
 
 Do not assume:
@@ -150,4 +163,6 @@ this document elevates `00 Core/Cognitive Interface/RF-ONE_COGNITIVE_INTERFACE_C
 this document renames or modifies AWS Cognito or any other System-level
   authentication technology
 the list of Cognito's capabilities in §6 is closed or complete
+Cognito performs the specialist reasoning of People, Selection or any other
+  Domain on their behalf (§9)
 ```

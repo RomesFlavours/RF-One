@@ -42,6 +42,7 @@ This is Restaurant-independent and POS-independent at the Domain level. Nothing 
 | [Tips Payment Execution.md](Tips%20Payment%20Execution.md) | Core 2.0 Process-First pilot: paying a finalized Tip Allocation out through an external Payment Executor (Mercury, sandbox only), Payment Instruction identity, funding check, and Outcome Verification — status PILOT, for technical review |
 | [Finalized Tips Period.md](Finalized%20Tips%20Period.md) | Closing a calculated period: the Rule Version lifecycle (ACTIVE/OLD/CANCELLED), the one monetary control (Total Tips + Gratuity == Total Employee Entitlements), validation through the existing RF-One login, the separate MANUAL/AUTOMATIC Validation Mode, immutability of a final period, the Calculation Run Report, and the Payroll contract — status IMPLEMENTED |
 | [Tips Configuration.md](Tips%20Configuration.md) | Calculation/Payment Schedule, Payment Cycle, Payment Readiness, Restaurant-scoped Approve & Pay authority, connector-neutral payment execution, and the Tips Configuration/Payment Control UI — status IMPLEMENTED |
+| [Historical Tip Payments.md](Historical%20Tip%20Payments.md) | Imported document evidence of historical paid tips, separately auditable without creating entitlements or changing finalized periods. |
 
 ---
 
@@ -100,9 +101,9 @@ Clover Gratuity / order-fee Service Charge   ≠ Payment Tip
 
 ---
 
-## Relationship to Personnel Management
+## Relationship to Management and other Shared Domains
 
-Tips is Restaurant-specific operational calculation; it does not belong to, and does not redefine, Personnel Management's Workforce/Selection/Training/Performance/Personnel Decisions modules (`01 Domains/Shared Domains/Personnel Management/README.md`). Realized Tip Allocation is documented Service Quality evidence for the Restaurant Domain's own `Server Performance` module (`01 Domains/Business Domain/Restaurant/Server Performance/Perceived Service Quality.md`, TASK_SERVER_PERFORMANCE_001) — Tips itself still makes no Performance judgment, and Server Performance does not redefine Tip allocation.
+Tips is Restaurant-specific operational calculation; it does not belong to, and does not redefine, Management (`01 Domains/Shared Domains/Management/README.md` — whose Organization component absorbed the former Personnel Management modules Workforce and Personnel Decisions), Selection, the Training service or Performance. Tips amounts are consumed by Compensation (`01 Domains/Shared Domains/Administration/Compensation/README.md`). Realized Tip Allocation is documented Service Quality evidence for the Restaurant Domain's own `Server Performance` module (`01 Domains/Business Domain/Restaurant/Server Performance/Perceived Service Quality.md`, TASK_SERVER_PERFORMANCE_001) — Tips itself still makes no Performance judgment, and Server Performance does not redefine Tip allocation.
 
 ---
 

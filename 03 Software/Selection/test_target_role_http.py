@@ -89,7 +89,7 @@ def main() -> int:
                     return session.query(m.Candidate).count()
 
             # --- 1. no / unsupported target role -> nothing imported -------
-            home = client.get("/").get_data(as_text=True)
+            home = client.get("/candidates").get_data(as_text=True)
             check("1. the upload form has a required target-role choice with no preselection",
                   'name="target_role" required' in home and 'value="" selected disabled' in home
                   and '<option value="SERVER">Server</option>' in home
@@ -150,7 +150,7 @@ def main() -> int:
                   and "which decisions were yours to take" in page_tl)
             check("5. the same person's Server application is analysed for Server",
                   "Target role experience (Server)" in page_sv)
-            listing = client.get("/").get_data(as_text=True)
+            listing = client.get("/candidates").get_data(as_text=True)
             check("5. the candidate list shows each application's target role",
                   "<td>FOH Team Leader</td>" in listing and "<td>Server</td>" in listing)
 

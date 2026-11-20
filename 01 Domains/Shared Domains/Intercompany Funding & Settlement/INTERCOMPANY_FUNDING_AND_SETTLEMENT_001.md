@@ -12,7 +12,7 @@
 - [README.md](README.md) — Domain purpose, scope, boundaries, and the Cross-Domain-not-Administration architectural principle
 - [SETTLEMENT_POLICY_001.md](SETTLEMENT_POLICY_001.md) — the `SettlementPolicy` structure this document's concepts are governed by, and the current RF Gelati configuration documented as one example instance
 - [../../Domain Architecture.md](../../Domain%20Architecture.md) §4 — Shared Domains / Business Domain taxonomy
-- [../Personnel Management/Compensation/README.md](../Personnel%20Management/Compensation/README.md) — the existing `Legal Entity` concept, referenced not redefined
+- [../Administration/Compensation/README.md](../Administration/Compensation/README.md) — the existing `Legal Entity` concept, referenced not redefined (Compensation moved from Personnel Management to Administration on 2026-10-25)
 - [../Administration/README.md](../Administration/README.md), [../Administration/Bank Reconciliation/README.md](../Administration/Bank%20Reconciliation/README.md) — the accounting/reconciliation boundary
 - [../Purchased/README.md](../Purchased/README.md) — the purchase-fact boundary
 - [../../Business Domain/Restaurant/Tips/README.md](../../Business%20Domain/Restaurant/Tips/README.md) — the Tips boundary
@@ -31,7 +31,7 @@ Intercompany Funding & Settlement exists to answer one recurring question, in a 
 
 ### A. Legal Entity
 
-An existing RF-One concept, referenced only — never redefined here. The actual juridical/employing entity (`Corporate → Legal Entity → Restaurant (Operational Unit) → Location`; see `Personnel Management/Compensation/README.md`, "Legal Entity is a distinct canonical concept"). Every concept below is expressed in terms of one or more Legal Entities.
+An existing RF-One concept, referenced only — never redefined here. The actual juridical/employing entity (`Corporate → Legal Entity → Restaurant (Operational Unit) → Location`; see `Administration/Compensation/README.md`, "Legal Entity is a distinct canonical concept"). Every concept below is expressed in terms of one or more Legal Entities.
 
 ### B. Funding Balance
 

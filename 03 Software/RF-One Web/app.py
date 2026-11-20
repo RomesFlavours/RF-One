@@ -56,6 +56,10 @@ from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
 from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
 from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
+from employee_registry_routes import register_employee_registry_routes  # noqa: E402
+from interview_routes import home_state as interview_home_state, register_interview_routes  # noqa: E402
+from people_routes import register_people_routes  # noqa: E402
+from rfone_data_store import people_registry  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -75,6 +79,11 @@ if not _secret_key:
         "explicitly instead."
     )
 app.secret_key = _secret_key
+
+# Optional local prototype only. Does not bootstrap schema or alter deployed apps.
+if os.environ.get("RFONE_AI_ORGANIZATION_LOCAL") == "1":
+    from ai_organization_routes import register_ai_organization_routes
+    # Registered below, once the shell's domain-access decorator is defined.
 
 # HTTPS-only cookies: App Runner terminates TLS at the edge, so the app
 # itself is always reached over HTTPS in any real deployment — the session
@@ -341,7 +350,14 @@ def home():
             work_in_progress_codes=_HOME_WORK_IN_PROGRESS_CODES,
             bank_available="BANK" in enabled_codes,
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
+            **interview_home_state(db, account),
         )
+
+
+register_interview_routes(app, SessionFactory=SessionFactory, require_login=require_login,
+    require_admin=require_admin, require_csrf=require_csrf)
+register_people_routes(app, SessionFactory=SessionFactory, require_admin=require_admin,
+    require_csrf=require_csrf)
 
 
 def require_domain_access(domain_code: str):
@@ -370,6 +386,11 @@ def require_domain_access(domain_code: str):
             return view(*args, **kwargs)
         return wrapped
     return decorator
+
+
+if os.environ.get("RFONE_AI_ORGANIZATION_LOCAL") == "1":
+    register_ai_organization_routes(app, SessionFactory=SessionFactory,
+        require_domain_access=require_domain_access, require_csrf=require_csrf)
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +491,9 @@ register_clover_acquisition_routes(
 # `restaurant_wines_routes.py`; gated by `require_domain_access("WINES")`.
 # ---------------------------------------------------------------------------
 
+register_employee_registry_routes(app, SessionFactory=SessionFactory,
+    require_admin=require_admin, require_csrf=require_csrf, current_account_id=current_account_id)
+
 register_restaurant_wines_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
@@ -558,7 +582,8 @@ def admin_account_edit(account_id: int):
             flash("Account updated.", "info")
             return redirect(url_for("admin_accounts"))
 
-        return render_template("admin_account_form.html", mode="edit", account=account)
+        return render_template("admin_account_form.html", mode="edit", account=account,
+            linked_person=people_registry.person_for_account(db, account.id))
 
 
 @app.route("/admin/accounts/<int:account_id>/reset-password", methods=["POST"])

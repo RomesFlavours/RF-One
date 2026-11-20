@@ -44,6 +44,13 @@ class DomainDefinition:
 
 DOMAINS: tuple[DomainDefinition, ...] = (
     DomainDefinition(
+        code="AI_ORGANIZATION",
+        display_name="AI Organization",
+        description="Intervista guidata per progettare e rivedere l’organizzazione aziendale.",
+        future_path="/ai-organization",
+        link="/ai-organization" if os.environ.get("RFONE_AI_ORGANIZATION_LOCAL") == "1" else None,
+    ),
+    DomainDefinition(
         code="TRAINING",
         display_name="Training",
         description="Staff dish and wine knowledge training — self-check quizzes and trainer-assigned learning paths.",

@@ -21,7 +21,7 @@ RF-One does not pretend to know the private/personal reason a Server performed d
 - intervenes only on what RF-One can actually influence (Brand guidance, timely information, coaching, training);
 - measures what changes as a result.
 
-This mirrors, for the Server role specifically, the general principle already stated in [Personnel Management/Performance.md](../../../Shared%20Domains/Performance/Performance.md): Performance grounds Personnel Management in observed Reality rather than impression, reputation or prediction.
+This mirrors, for the Server role specifically, the general principle already stated in [Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md): Performance grounds people-related reasoning (Management) in observed Reality rather than impression, reputation or prediction.
 
 ---
 
@@ -90,7 +90,7 @@ RF-One does **not** assume causation from these signals — a void may reflect a
 
 ## Epistemic discipline (mandatory)
 
-Every important Server Performance concept distinguishes, where appropriate, three epistemic states — the same discipline already established generically by [Personnel Management/Performance](../../../Shared%20Domains/Performance/README.md) and by Core's [Epistemic Boundary](../../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md), applied here to Restaurant evidence specifically. See [Evidence Sources.md](Evidence%20Sources.md) for the full model and worked examples (e.g. "Server sold wine on 8 of 20 qualifying tables" → 40% conversion → "may be weak at introducing wine to this archetype").
+Every important Server Performance concept distinguishes, where appropriate, three epistemic states — the same discipline already established generically by [Performance](../../../Shared%20Domains/Performance/README.md) and by Core's [Epistemic Boundary](../../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md), applied here to Restaurant evidence specifically. See [Evidence Sources.md](Evidence%20Sources.md) for the full model and worked examples (e.g. "Server sold wine on 8 of 20 qualifying tables" → 40% conversion → "may be weak at introducing wine to this archetype").
 
 ```text
 Observed   directly evidenced (a transaction, a Payment Tip, a Shift, a QR Survey response)
@@ -159,4 +159,4 @@ Server Performance uses canonical `Employee`, `Restaurant`, `Location`, `Restaur
 - [Brand Expectation and Personal Baseline.md](Brand%20Expectation%20and%20Personal%20Baseline.md)
 - [Individual Performance Profile.md](Individual%20Performance%20Profile.md)
 - [Evidence Sources.md](Evidence%20Sources.md)
-- [../../Personnel Management/Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md)
+- [../../../Shared Domains/Performance/Performance.md](../../../Shared%20Domains/Performance/Performance.md)

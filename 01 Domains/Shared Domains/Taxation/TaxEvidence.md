@@ -10,7 +10,7 @@
 
 **Tax Evidence** is information supporting tax facts, treatments, positions, assumptions, or interpretations.
 
-Tax Evidence is a Taxation-Domain-specific application of the Core [Evidence](../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md) concept, reusing Core's epistemic semantics rather than defining a parallel one — in the same way [Candidate Evidence](../Selection/CandidateEvidence.md) (Selection Domain) and [Performance Evidence](../Performance/PerformanceEvidence.md) (Personnel Management) already apply it.
+Tax Evidence is a Taxation-Domain-specific application of the Core [Evidence](../../../00%20Core/ConceptualArchitecture/05_Epistemic_Boundary_and_Subject_Sovereignty.md) concept, reusing Core's epistemic semantics rather than defining a parallel one — in the same way [Candidate Evidence](../Selection/CandidateEvidence.md) (Selection Domain) and [Performance Evidence](../Performance/PerformanceEvidence.md) (Performance Domain) already apply it.
 
 ---
 
@@ -51,7 +51,7 @@ This Domain does not prescribe a database schema or field list for these propert
 
 ## Direct source content vs. derived conclusion
 
-A piece of statutory text, an administrative ruling, or a professional opinion is not the same thing as a conclusion drawn from applying it to the Subject's specific facts. Tax Evidence is the former (the source content, preserved with its provenance); a [Tax Position](TaxPosition.md) or [Tax Treatment](TaxTreatment.md) is the latter (the conclusion). The conclusion must be kept visibly separate from the Evidence it was drawn from — the same discipline already applied by [PerformanceEvidence.md](../Performance/PerformanceEvidence.md) within Personnel Management.
+A piece of statutory text, an administrative ruling, or a professional opinion is not the same thing as a conclusion drawn from applying it to the Subject's specific facts. Tax Evidence is the former (the source content, preserved with its provenance); a [Tax Position](TaxPosition.md) or [Tax Treatment](TaxTreatment.md) is the latter (the conclusion). The conclusion must be kept visibly separate from the Evidence it was drawn from — the same discipline already applied by [PerformanceEvidence.md](../Performance/PerformanceEvidence.md) within the Performance Domain.
 
 ---
 

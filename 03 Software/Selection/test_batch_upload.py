@@ -303,7 +303,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
         # 3. Persistence — candidates remain visible after a fresh request
         #    (simulates "refresh the page").
         # ---------------------------------------------------------------
-        home_response = client.get("/")
+        home_response = client.get("/candidates")  # SELECTION_AI_INTEGRATION_001: "/" is the position workspace
         check("14: the candidate list page loads successfully after the batch", home_response.status_code == 200)
         body = home_response.get_data(as_text=True)
         check(

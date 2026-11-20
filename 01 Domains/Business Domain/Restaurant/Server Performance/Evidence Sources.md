@@ -61,7 +61,7 @@ None of these sources is required to be present for Server Performance to functi
 
 ## Epistemic model: Observed / Derived / Inferred
 
-Every important Server Performance concept distinguishes, where appropriate, these three epistemic states — the same discipline `Personnel Management/Performance/PerformanceEvidence.md` requires generically, applied here to Restaurant Server evidence specifically:
+Every important Server Performance concept distinguishes, where appropriate, these three epistemic states — the same discipline `Shared Domains/Performance/PerformanceEvidence.md` requires generically, applied here to Restaurant Server evidence specifically:
 
 ### Observed
 
@@ -99,6 +99,6 @@ This mirrors the service-attribution caution Tips already established (`Tips/REA
 ## Related documents
 
 - [Server Performance.md](Server%20Performance.md)
-- [../../Personnel Management/Performance/PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md)
+- [../../../Shared Domains/Performance/PerformanceEvidence.md](../../../Shared%20Domains/Performance/PerformanceEvidence.md)
 - [../Tips/README.md](../Tips/README.md)
 - [../Dining Intelligence/README.md](../Dining%20Intelligence/README.md)

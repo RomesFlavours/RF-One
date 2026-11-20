@@ -55,7 +55,7 @@ concurrent service load                  Server Performance/Concurrent Service L
 operational context                      Sales / Organization evidence
 ```
 
-Service Copilot computes no consumption pattern itself (that is Dining Intelligence's responsibility) and makes no Personnel Decision itself (that remains Personnel Management's).
+Service Copilot computes no consumption pattern itself (that is Dining Intelligence's responsibility) and makes no personnel decision itself (that remains with the authorized people identified by Management / Organization, `01 Domains/Shared Domains/Management/Organization/README.md`).
 
 ---
 

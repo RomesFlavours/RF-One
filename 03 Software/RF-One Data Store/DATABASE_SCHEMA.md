@@ -273,7 +273,7 @@ For every current-scope `SourceRole` (matching this Restaurant's `RestaurantLoca
 
 ## 4d. Payroll (TASK_PAYROLL_001)
 
-Administration Domain, transversal — independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
+Administration Domain, transversal — independent from Restaurant, Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` and `01 Domains/Shared Domains/Administration/Compensation/` (which owns Compensation Terms) for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
 
 ### `payroll_schedules`
 

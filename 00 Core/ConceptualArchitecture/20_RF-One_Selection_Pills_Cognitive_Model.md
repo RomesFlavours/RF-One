@@ -50,7 +50,7 @@ Example: the Carbonara recipe belongs to the Restaurant Business Domain. Trainin
 
 ### Shared Domain
 
-Provides a capability or knowledge structure genuinely shared across multiple Business Domains — industry-independent, per [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §3-4. This document does not redefine any existing Shared Domain (Selection, Operational Knowledge, Continuous Productivity Development, Performance, Personnel Management, Taxation, Administration).
+Provides a capability or knowledge structure genuinely shared across multiple Business Domains — industry-independent, per [Domain Architecture.md](../../01%20Domains/Domain%20Architecture.md) §3-4. This document does not redefine any existing Shared Domain (Selection, Operational Knowledge, Continuous Productivity Development, Performance, Management (formerly Personnel Management), Taxation, Administration).
 
 ### Template Domain
 
@@ -249,6 +249,8 @@ Operational evidence may be more meaningful than an artificial quiz when it dire
 
 **But: Cognitive Observation produces Evidence, not automatic truth.** High-risk competence may still require explicit certification or human verification.
 
+*Reconciliation note (2026-10-25):* this section is read subject to the approved Cognito / specialist-Domain boundary — see §25, item 7.
+
 ---
 
 ## 13. Assistance Dependency
@@ -313,7 +315,7 @@ The normal debriefing should be short unless something significant happened.
 
 Debriefing feeds different knowledge areas.
 
-**Employee Knowledge** — updates Person ↔ Pill Evidence (§5).
+**Employee Knowledge** — updates Person ↔ Pill Evidence (§5). *Reconciliation note (2026-10-25):* see §25, item 7, for how this relates to People's professional knowledge.
 
 **Customer Knowledge** — stores relevant facts learned about the guest. Explicit/observed facts must remain separate from inference.
 
@@ -508,4 +510,6 @@ These are genuine, unresolved architectural questions. Per this task's own instr
 
 6. **Restaurant Training as a physical/organizational artifact is not defined.** §7 and §21 refer to "Restaurant Training specialization" as the target of Shelbi/SWYFox's work, consistent with the Selection Template/Cognitive Template naming pattern (§1), but no canonical document (this one included) defines what that specialization concretely is — a new module under Restaurant, a configuration of the Training Template, or something else. Not decided here.
 
-None of these six items are resolved by this document. They are recorded so that Shelbi/SWYFox and the Product Owner's Cognitive workstream (§21) share the same list of open questions, rather than each silently assuming a different resolution.
+7. **Cognitive Observation and Debriefing vs. the approved Cognito / People boundary (added 2026-10-25).** The Product Owner decided on 2026-10-25 (`00 Core/ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` §9) that Cognito provides sensory functions, language understanding and conversation management, while People (`01 Domains/Shared Domains/Management/People/README.md`) and Selection lead the specialist reasoning of their fields; information collected to assist a person does not automatically become assessment evidence. §11 (OBSERVATION as "continuous assessment sensor"), §12, §16 ("what was learned about the employee") and §17 ("Employee Knowledge") were written before that decision. Until reconciled, read them as: Cognitive Observation may *produce evidence candidates*; whether and how any of it becomes professional knowledge or assessment is decided by People (and, for the training cycle's own Person ↔ Pill evidence, by the Training service, which is unchanged), never automatically by Cognito. The relationship between Person ↔ Pill Evidence and the People profile is not decided here (Management `DECISIONS_AND_GAPS.md`, G27–G28).
+
+Items 1–6 were recorded by this document's own task; item 7 was added by the 2026-10-25 Management reorganization. None of these seven items are resolved by this document. They are recorded so that Shelbi/SWYFox and the Product Owner's Cognitive workstream (§21) share the same list of open questions, rather than each silently assuming a different resolution.

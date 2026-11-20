@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% set name = candidate.full_name or pc.declared_name or '(nome non letto)' %}
+{% block title %}{{ name }}{% endblock %}
+{% block crumbs %}<div class="crumbs"><a href="{{ url_for('dashboard') }}">Posizioni</a> ›
+  <a href="{{ url_for('position_detail', position_id=position.id) }}">{{ position.title }}</a> › <b>{{ name }}</b></div>{% endblock %}
+{% block content %}
+<div class="row" style="justify-content:space-between">
+  <div>
+    <h1>{{ name }}</h1>
+    <div class="small muted">{{ channel }} · {{ pc.added_at|local(position.timezone) }} ·
+      {{ candidate.email or pc.declared_email or '—' }} · {{ candidate.phone or pc.declared_phone or '—' }}
+      {% if decision %}· <span class="pill ok">{{ DECISION_LABELS[decision.decision] }}</span>{% endif %}</div>
+  </div>
+  <div class="row">
+    <a class="btn ghost small" href="{{ url_for('candidate_original', position_id=position.id, pc_id=pc.id) }}" target="_blank">CV originale</a>
+    <a class="btn ghost small" href="{{ url_for('candidate_text', position_id=position.id, pc_id=pc.id) }}">Testo letto</a>
+  </div>
+</div>
+{% if duplicates %}<div class="banner warn">{% for d in duplicates %}<div>⚠ {{ d }}</div>{% endfor %}</div>{% endif %}
+{% if pc.import_note %}<div class="banner info">{{ pc.import_note }}</div>{% endif %}
+
+<div class="grid g2" style="margin-top:.8rem">
+<div>
+  {# ---------------- 3 Valutazione ---------------- #}
+  <div class="card">
+    <h2 style="margin-top:0">Valutazione</h2>
+    {% if not lead %}
+      <p class="muted">{% if position.approved_snapshot_id %}Non ancora valutato.{% else %}In attesa dell'approvazione della posizione.{% endif %}</p>
+    {% else %}
+      <div class="row"><span class="pill {{ 'ok' if lead.group_code == 'INTERVIEW' else ('warn' if lead.group_code == 'DEEPEN' else 'bad') }}" style="font-size:.85rem">{{ GROUP_LABELS[lead.group_code] }}</span>
+        <span class="small muted">proposta da: {{ SOURCE_LABELS[lead.source] }} · {{ lead.created_at|local(position.timezone) }}</span></div>
+      <ul class="small">{% for r in lead.payload.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+      {% if not ai %}<div class="banner off small">Valutazione AI di CV e risposte non attiva: proposta dei motori esistenti di Selection
+        (confronto per parole chiave del CV con i requisiti approvati). Le risposte all'intervista sono qui sotto da leggere.</div>{% endif %}
+      {% if rules %}
+      <table style="margin-top:.4rem"><tr><th>Requisito</th><th>Regole (CV)</th>{% if ai %}<th>AI (CV e risposte)</th>{% endif %}</tr>
+      {% for i in rules.payload['items'] %}{% set a = ai_by_id.get(i.id) %}
+      <tr>
+        <td><b>{{ i.name }}</b><div class="small muted">{{ CRITICALITY_LABELS[i.criticality] }}</div></td>
+        <td class="small">{{ STATUS_LABELS[i.status] }}
+          {% for e in i.evidence %}<div class="ev {{ e.relationship }}"><a href="{{ e.ref|anchor }}">{{ e.text }}</a></div>{% endfor %}</td>
+        {% if ai %}<td class="small">{% if a %}{{ STATUS_LABELS[a.status] }}
+          {% for q in a.quotes %}<div class="ev SUPPORTS">{% if q.source == 'CV' %}«<a href="{{ url_for('candidate_text', position_id=position.id, pc_id=pc.id, q=q.text) }}">{{ q.text }}</a>» <span class="muted">CV</span>
+            {% else %}«<a href="#risposte">{{ q.text }}</a>» <span class="muted">risposta</span>{% endif %}</div>{% endfor %}
+          {% if a.explanation %}<div class="muted">{{ a.explanation }}</div>{% endif %}
+          {% if a.dropped_quotes %}<div class="muted">Citazioni scartate perché non trovate: {{ a.dropped_quotes|length }}</div>{% endif %}
+        {% endif %}</td>{% endif %}
+      </tr>{% endfor %}</table>
+      {% if ai %}<div class="small muted">AI: {{ ai.provider_label }}. Ogni citazione è verificata parola per parola sul CV o sulle risposte.</div>{% endif %}
+      {% endif %}
+      <p class="small muted" style="margin-bottom:0">«Non dimostrato» = informazione assente, non prova che il requisito manchi. Nessuna esclusione automatica.</p>
+    {% endif %}
+  </div>
+
+  {% set questions = (ai.payload.questions if ai else []) + (rules.payload.questions if rules else []) %}
+  {% if questions %}<div class="card"><h3>Da chiedere al colloquio</h3>
+    <ul class="small">{% for q in questions %}<li>{{ q }}</li>{% endfor %}</ul></div>{% endif %}
+
+  {# ---------------- 4 Colloquio ---------------- #}
+  <div class="card" id="colloquio">
+    <h2 style="margin-top:0">Colloquio</h2>
+    {% for a in appointments %}<div class="small" style="margin:.25rem 0;{{ 'opacity:.5;text-decoration:line-through' if a.status == 'CANCELLED' }}">
+      📅 <b>{{ a.starts_at|local(position.timezone, '%a %d/%m/%Y %H:%M') }}</b> · {{ KIND_LABELS[a.kind] }} · {{ a.duration_min }} min
+      {% if a.place %}· {{ a.place }}{% endif %}{% if a.booked_by == 'CANDIDATE' %} <span class="pill blue">scelto dal candidato</span>{% endif %}</div>{% endfor %}
+    {% for o in offers if o.status == 'OPEN' %}<div class="small" style="margin:.25rem 0">⏳ Orari proposti, in attesa di scelta:
+      {% for s in o.slots %}{{ s|local(position.timezone, '%a %d/%m %H:%M') }}{{ ', ' if not loop.last }}{% endfor %}
+      · link: <a href="{{ slot_url(o) }}" target="_blank">{{ slot_url(o) }}</a></div>{% endfor %}
+    {% if can_edit %}
+    <form method="post" action="{{ url_for('interview_book', position_id=position.id, pc_id=pc.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid g3">
+        <div><label>Tipo</label><select name="kind">{% for code, label in KIND_LABELS.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+        <div><label>Durata (min)</label><input type="text" name="duration" value="30" inputmode="numeric"></div>
+        <div><label>Luogo / telefono</label><input type="text" name="place" placeholder="Ristorante / numero"></div>
+      </div>
+      <div class="grid g2" style="margin-top:.4rem">
+        <div class="col"><b class="small">Fissa direttamente</b>
+          <label>Data e ora (ora della sede)</label><input type="datetime-local" name="starts_at">
+          <label>Nota</label><input type="text" name="note">
+          <button class="btn small" style="margin-top:.5rem" name="mode" value="book">Registra appuntamento</button></div>
+        <div class="col"><b class="small">Proponi orari al candidato</b>
+          {% for i in range(3) %}<label>Orario {{ i + 1 }}</label><input type="datetime-local" name="slot">{% endfor %}
+          <button class="btn ghost small" style="margin-top:.5rem" name="mode" value="offer">Crea link con gli orari</button></div>
+      </div>
+    </form>{% endif %}
+  </div>
+
+  {# ---------------- 5 Decisione ---------------- #}
+  <div class="card" id="decisione">
+    <h2 style="margin-top:0">Decisione</h2>
+    {% if can_edit %}
+    <form method="post" action="{{ url_for('record_decision', position_id=position.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="pc_id" value="{{ pc.id }}">
+      <input type="hidden" name="back" value="{{ url_for('candidate_detail', position_id=position.id, pc_id=pc.id) }}#decisione">
+      <div class="row">
+        {% for code in ['INTERVIEW','DEEPEN','HIRED','ON_HOLD','NOT_SELECTED'] %}
+        <label class="row" style="margin:0;color:var(--ink)"><input type="radio" name="decision" value="{{ code }}" {{ 'checked' if decision and decision.decision == code }}> {{ DECISION_LABELS[code] }}</label>{% endfor %}
+      </div>
+      <div class="grid g2">
+        <div><label>Motivo (per «Non selezionato»)</label><select name="reason"><option value="">—</option>
+          {% for code, label in NOT_SELECTED_REASONS.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
+        <div><label>Nota</label><input type="text" name="note"></div>
+      </div>
+      <p><button class="btn">Registra</button></p>
+    </form>{% endif %}
+    {% for d in decisions %}<div class="small" style="margin:.3rem 0">{{ d.created_at|local(position.timezone) }} · <b>{{ d.actor_name }}</b>:
+      {{ DECISION_LABELS[d.decision] }}{% if d.reason_code %} — {{ NOT_SELECTED_REASONS[d.reason_code] }}{% endif %}{% if d.note %} · «{{ d.note }}»{% endif %}
+      {% if d.differs_from_proposal %}<span class="muted">(diversa dalla proposta «{{ GROUP_LABELS[d.proposal_group] }}»)</span>{% endif %}</div>{% endfor %}
+  </div>
+
+  <div class="card" id="comunicazioni">
+    <h2 style="margin-top:0">Comunicazioni</h2>
+    <p class="small muted">Testi in inglese preparati {% if ai_policy.ai_enabled %}dall'AI (senza inviarle dati del candidato){% else %}da modelli standard (AI non attiva){% endif %}.
+      Ogni testo va approvato. Invio automatico non disponibile: copia il testo approvato e invialo tu.</p>
+    {% if can_edit %}
+    <form method="post" action="{{ url_for('message_new', position_id=position.id, pc_id=pc.id) }}" class="row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="kind" style="width:auto">{% for code, label in MESSAGE_KINDS.items() if code != 'SLOTS' %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+      <button class="btn ghost small">Prepara testo</button></form>{% endif %}
+    {% for msg in messages %}
+    <div class="cand">
+      <div class="row" style="justify-content:space-between"><b class="small">{{ MESSAGE_KINDS[msg.kind] }}</b>
+        <span class="small">{% if msg.status == 'APPROVED' %}<span class="pill ok">approvato</span> {{ msg.approved_by_name }}, {{ msg.approved_at|local(position.timezone) }}
+          {% else %}<span class="pill warn">bozza</span>{% endif %} <span class="pill">{{ 'AI' if msg.source == 'AI' else 'testo standard' }}</span></span></div>
+      {% if msg.status == 'DRAFT' and can_edit %}
+      <form method="post" action="{{ url_for('message_update', position_id=position.id, message_id=msg.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <textarea name="body" style="min-height:9rem">{{ msg.body }}</textarea>
+        <div class="row" style="margin-top:.4rem"><button class="btn small ok" name="action" value="approve">Approva</button>
+          <button class="btn ghost small" name="action" value="delete">Elimina</button></div>
+      </form>
+      {% else %}
+      <pre class="cv small" id="msg-{{ msg.id }}" style="margin:.4rem 0">{{ msg.body }}</pre>
+      <button class="btn ghost small" type="button" onclick="navigator.clipboard.writeText(document.getElementById('msg-{{ msg.id }}').textContent);this.textContent='Copiato'">Copia testo</button>
+      {% endif %}
+    </div>{% endfor %}
+  </div>
+</div>
+
+<div>
+  {# ---------------- Risposte ---------------- #}
+  <div class="card" id="risposte">
+    <h2 style="margin-top:0">Intervista del candidato</h2>
+    {% if application %}
+      <div class="small muted">{{ APPLICATION_STATUS_LABELS[application.status] }}{% if application.submitted_at %} · inviata il {{ application.submitted_at|local(position.timezone) }}{% endif %}
+        · {{ answers|length }} risposte su {{ application.questions|length }}</div>
+      {% for a in answers %}<div class="ev" style="margin:.5rem 0">
+        <div class="small"><b>{{ a.question_text }}</b> {% if a.question_source == 'AI' %}<span class="pill blue">domanda AI dal CV</span>{% endif %}</div>
+        <div class="small" style="white-space:pre-wrap">{{ a.answer_text }}</div>
+        <div class="small muted">{{ 'a voce (dettatura)' if a.input_mode == 'VOICE' else 'scritta' }} · {{ a.answered_at|local(position.timezone) }}</div></div>
+      {% else %}<p class="small muted">Nessuna risposta ancora.</p>{% endfor %}
+    {% else %}<p class="small muted">CV caricato dal manager: nessuna intervista online.</p>{% endif %}
+  </div>
+
+  {% if full_analysis %}
+  <div class="card"><h3>Esperienza ({{ view.target_role_label }})</h3>
+    {% for ind in view.indicators %}<div class="row small" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:.25rem 0">
+      <span>{{ ind.name }}</span><span><b>{{ ind.raw_value }}</b></span></div>{% endfor %}
+    <div class="small muted">Indicatori esistenti di Selection. Nessun punteggio complessivo.</div>
+  </div>{% endif %}
+
+  {% if view.flags %}<div class="card"><h3>Da chiarire</h3>
+    {% for f in view.flags %}<div class="ev small"><b>{{ f.explanation }}</b><div class="muted">{{ f.evidence }}</div></div>{% endfor %}</div>{% endif %}
+
+  <div class="card" id="cv">
+    <h3>Esperienze</h3>
+    {% for w in profile.work_history %}
+    <div id="esperienza-{{ loop.index0 }}" class="ev" style="margin:.5rem 0">
+      <b>{{ w.original_job_title or 'Ruolo non letto' }}</b> · {{ w.employer or 'datore non letto' }}
+      <div class="small muted">{{ w.start_date_text or '?' }} – {{ w.end_date_text or ('in corso' if w.is_current else '?') }}
+        {% if w.structure_confidence == 'LOW' %}<span class="pill warn">lettura incerta</span>{% endif %}</div>
+      {% if w.responsibilities %}<div class="small" style="white-space:pre-wrap">{{ w.responsibilities }}</div>{% endif %}
+    </div>{% else %}<p class="small muted">Nessuna esperienza letta. Controlla il CV originale.</p>{% endfor %}
+    <h3 id="formazione">Formazione</h3>
+    {% for e in profile.education %}<div class="small">{{ e.qualification or e.program or '' }} {{ e.institution or '' }}</div>{% else %}<div class="small muted">—</div>{% endfor %}
+    <h3 id="certificazioni">Certificazioni</h3>
+    {% for c in profile.certifications %}<div class="small">{{ c.name }} {{ c.issuer or '' }} {{ c.date_text or '' }}</div>{% else %}<div class="small muted">—</div>{% endfor %}
+    <h3 id="competenze">Competenze</h3><div class="small">{{ profile.skills|join(', ') or '—' }}</div>
+    <h3 id="lingue">Lingue</h3>
+    <div class="small">{% for l in profile.languages_detail %}{{ l.language }}{% if l.proficiency %} ({{ l.proficiency }}){% endif %}{{ ', ' if not loop.last }}{% else %}{{ profile.languages or '—' }}{% endfor %}</div>
+    <h3 id="disponibilita">Disponibilità dichiarata nel CV</h3><div class="small">{{ profile.declared_availability or '—' }}</div>
+    <p class="small muted">Età, contesto anagrafico e altre informazioni personali non pertinenti non sono mostrate né usate.</p>
+  </div>
+</div>
+</div>
+{% endblock %}

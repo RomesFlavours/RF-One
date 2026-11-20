@@ -1,0 +1,412 @@
+{
+  "prepared": "2026-10-24",
+  "purpose": "Original-source integrity inventory; not copied source content or approval evidence",
+  "sources": [
+    {
+      "id": "M03",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_Cross_Domain_v0.3_EN.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_Cross_Domain_v0.3_EN.md",
+      "bytes": 32276,
+      "sha256": "c2ba27e6757f9834c2713852a3f82fb1a5aba866638dabd08e7812d8e23f173e",
+      "coverage": "Complete text reviewed",
+      "status": "Draft for joint review, 2026-10-23; reports agreements but is not technical approval"
+    },
+    {
+      "id": "P01",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_People_Project_Specifications_v0.1_EN.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_People_Project_Specifications_v0.1_EN.pdf",
+      "bytes": 63441,
+      "sha256": "b21e7323854cc75e5757ef4513b5873f42779ac1265bc56d0140d8e9c98ec836",
+      "coverage": "All 9 pages extracted and reviewed",
+      "status": "Functional draft, 2026-10-24; proposed consolidation; ends at section 12.4"
+    },
+    {
+      "id": "L02",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\Three Knowledge Layers - Architecture - Draft 0.2 - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/Three Knowledge Layers - Architecture - Draft 0.2 - Shelbi Fox.md",
+      "bytes": 15709,
+      "sha256": "c6a9f4ed6dd5beb2137f1912ea2c31b66b226d04fc02740a41b4718211600fb2",
+      "coverage": "Complete text retrieved; layers, rules, mapping reviewed",
+      "status": "Architecture Draft 0.2; Pino refinements reported, not final reclassification approval"
+    },
+    {
+      "id": "C01",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\Management Cross-Domain v0.2 - Comments - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/Management Cross-Domain v0.2 - Comments - Shelbi Fox.md",
+      "bytes": 2639,
+      "sha256": "bae46576003c54e7b652dc563c3806ebbf5b9c193035400d9f7135b61bd4eda2",
+      "coverage": "Complete text reviewed",
+      "status": "Shelbi comments; ten points; reports agreements and makes proposals"
+    },
+    {
+      "id": "C02",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\AI Interview Proposal - Comments - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/AI Interview Proposal - Comments - Shelbi Fox.md",
+      "bytes": 1587,
+      "sha256": "e4aafc07a4776c56649fc01b18f6371ecec5eb6c362a36d8e04d94931d8ce292",
+      "coverage": "Complete text reviewed",
+      "status": "Shelbi review comments; pilot/governance proposals"
+    },
+    {
+      "id": "O01",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Organization_Interview_Specification_v0.1.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Organization_Interview_Specification_v0.1.md",
+      "bytes": 12801,
+      "sha256": "1733e109fdeb8c02b2be1c9b909c8194437b78431b727c1604a20ce9bce4e9be",
+      "coverage": "Complete text reviewed",
+      "status": "Functional specification v0.1 for review, 2026-10-21; not technical specification"
+    },
+    {
+      "id": "O02",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Organization\\Organization Model - Draft 0.2 - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Organization/Organization Model - Draft 0.2 - Shelbi Fox.md",
+      "bytes": 20342,
+      "sha256": "b9e94973c2210b0f20e887d53de9b7202d9df3fb65ad65f01d9c530dbd4d94a1",
+      "coverage": "Text retrieved; introduction, authority/control, decision stages, project/backup passages reviewed; not every passage reviewed",
+      "status": "Draft 0.2; not the referenced Organization Model 0.4"
+    },
+    {
+      "id": "O03",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Organization\\Organization Model - Two Locations - Draft 0.1 - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Organization/Organization Model - Two Locations - Draft 0.1 - Shelbi Fox.md",
+      "bytes": 24883,
+      "sha256": "6da06670e509eb428c13297478ba5d179501547c713c64f260b9d437fca27d44",
+      "coverage": "Opening through function catalog inspected; remaining text not reviewed",
+      "status": "Draft 0.1; named configuration and decisions not approved by this package"
+    },
+    {
+      "id": "O04",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Organization\\Comments_on_the_Proposal_RF.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Organization/Comments_on_the_Proposal_RF.md",
+      "bytes": 6315,
+      "sha256": "60afdbc45ce070864c0c12934175b0d27635c8e10709a1719e12ff968f03bab6",
+      "coverage": "Complete text reviewed",
+      "status": "Source commentary; asks functions before people and distinguishes authority classes"
+    },
+    {
+      "id": "O05",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Organization\\Anthony - Role Proposal - Draft 0.1 - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Organization/Anthony - Role Proposal - Draft 0.1 - Shelbi Fox.md",
+      "bytes": 9241,
+      "sha256": "417629f8343739274732d665c756c49b57f949d88ea4c4c9516c62f513e37bc6",
+      "coverage": "Opening retrieved as contextual inventory; not used to establish rules",
+      "status": "Role proposal Draft 0.1; no authority assignment inferred"
+    },
+    {
+      "id": "R01",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\README.md",
+      "relative_path": "../../../README.md",
+      "bytes": 2604,
+      "sha256": "1212e790c9b250ffedd91452ba7946c9cfb043551208517119596fbef9cc710e",
+      "coverage": "Authority and repository structure reviewed",
+      "status": "Canonical repository index"
+    },
+    {
+      "id": "R02",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Domain Architecture.md",
+      "relative_path": "../../Domain Architecture.md",
+      "bytes": 29544,
+      "sha256": "69a173393f8d52920d309b8a35e43c4bdca28cb27412323712a8789299c30c06",
+      "coverage": "Taxonomy, boundaries and cross-domain principles reviewed",
+      "status": "Canonical domain architecture; individual open questions retain own status"
+    },
+    {
+      "id": "R03",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Shared Domains\\PERSON_CONTINUITY_001.md",
+      "relative_path": "../PERSON_CONTINUITY_001.md",
+      "bytes": 22292,
+      "sha256": "94b9ba90fd65d10a60ee912ae59ac831fd1eeb70aa5884305f3568d9f9c6fe06",
+      "coverage": "Sections 0-5 inspected",
+      "status": "Draft v0.1; continuity requirement, no technical identity decision"
+    },
+    {
+      "id": "R04",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\90 Archive\\Superseded Documents\\01 Domains\\Shared Domains\\Personnel Management\\README.md",
+      "relative_path": "../../../90 Archive/Superseded Documents/01 Domains/Shared Domains/Personnel Management/README.md",
+      "relocated": "2026-10-25 from ../Personnel Management/README.md (archived unchanged; sha256 re-verified identical)",
+      "bytes": 11837,
+      "sha256": "951bd80bb6beb0120201144fc3ed505b8ab84aa7b3a265dfb55dbb9d8b5f2596",
+      "coverage": "Purpose, module map and Core relationship inspected",
+      "status": "Draft v0.2; canonical structure, varying module maturity"
+    },
+    {
+      "id": "R05",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Business Domain\\Restaurant\\Organization\\README.md",
+      "relative_path": "../../Business Domain/Restaurant/Organization/README.md",
+      "bytes": 8312,
+      "sha256": "883d9a1623ae57b5ba56f16d23811d2909e51df9dfa75c2c70d274839ebb6df7",
+      "coverage": "Purpose, file map and model/role boundaries inspected",
+      "status": "Approved v1.0; Restaurant-specific scope"
+    },
+    {
+      "id": "R06",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\10 System\\Identity & Access\\README.md",
+      "relative_path": "../../../10 System/Identity & Access/README.md",
+      "bytes": 10458,
+      "sha256": "58cdf1d2dc3a28833651974c1636959db45f7bf35841ca5b15746e1e0c8d3d1c",
+      "coverage": "Purpose, boundaries, services and freeze rules inspected",
+      "status": "Existing system authority; structural freeze, approved consumption allowed"
+    },
+    {
+      "id": "R07",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\10 System\\Organizational Responsibility and Attention Management\\README.md",
+      "relative_path": "../../../10 System/Organizational Responsibility and Attention Management/README.md",
+      "bytes": 16963,
+      "sha256": "290e14c7a8ff880e08b2e24e77944a006753aa2d9a3b4be84c110e9920c7b480",
+      "coverage": "Foundation boundary, capabilities, limitations and open items reviewed",
+      "status": "Existing system-level foundation; not proof of Management integration"
+    },
+    {
+      "id": "R08",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Shared Domains\\Continuous Productivity Development\\README.md",
+      "relative_path": "../Continuous Productivity Development/README.md",
+      "bytes": 14002,
+      "sha256": "ba815063a31566e0b61c060dd2c5996d7d1e61dfbe78c8b9afa4cef8bd8af5fd",
+      "coverage": "Purpose and boundary excerpts inspected; full integration audit remains pending",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R09",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\00 Core\\ConceptualArchitecture\\14_Cognito_RF-One_Cognitive_Intelligence.md",
+      "relative_path": "../../../00 Core/ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md",
+      "bytes": 14611,
+      "sha256": "a0e57f1197bddb5ea74cae5b8d0104e2835b7f29451a5b0969085ab6f5d601d4",
+      "coverage": "Purpose and boundary excerpts inspected; full integration audit remains pending",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R10",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Shared Domains\\Performance\\README.md",
+      "relative_path": "../Performance/README.md",
+      "bytes": 13512,
+      "sha256": "434475e36dbc6849f32de835b51f540ead1634da1b845ac36804f9507dc391a7",
+      "coverage": "Purpose and boundary excerpts inspected; full integration audit remains pending",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R11",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Shared Domains\\Selection\\README.md",
+      "relative_path": "../Selection/README.md",
+      "bytes": 16514,
+      "sha256": "30c85ad3b5687bc7905172f8e5dcf42a7e397d85a42e97f9a66b6a6f5dbc6731",
+      "coverage": "Dependency located; inspect before detailed integration design",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R12",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Shared Domains\\Operational Knowledge\\README.md",
+      "relative_path": "../Operational Knowledge/README.md",
+      "bytes": 12094,
+      "sha256": "3aab918156681ff7443b801d7c4d8d6b589c02875025e67633e1aa75b8ec9292",
+      "coverage": "Purpose and boundary excerpts inspected; full integration audit remains pending",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R13",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\Shared Domains\\TRAINING_SERVICE_001.md",
+      "relative_path": "../TRAINING_SERVICE_001.md",
+      "bytes": 13457,
+      "sha256": "0b4d0a6e1076ea03858f3be0704c558bebfef5c4a4aeaef377b6f510504f69e4",
+      "coverage": "Purpose and boundary excerpts inspected; full integration audit remains pending",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R14",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\CLAUDE.md",
+      "relative_path": "../../../CLAUDE.md",
+      "bytes": 23211,
+      "sha256": "0013c82418ecb89c61618f06ef8b29c228fe017d50f5689bcd457a6be950375b",
+      "coverage": "Relevant repository instructions/index reviewed",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": "R15",
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\01 Domains\\README.md",
+      "relative_path": "../../README.md",
+      "bytes": 13326,
+      "sha256": "14544b8f992cbbbf61251a0d4d0170333d3b2dacc2d024e3d79bc0ace4e52326",
+      "coverage": "Canonical index reviewed; Management reference pointer added without approving new domain ownership",
+      "status": "Existing repository source; own status controls, not approved by this package"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Legacy\\1. Brand definition.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Legacy/1. Brand definition.pdf",
+      "bytes": 745508,
+      "sha256": "d8d1489eaee35cf0abc0361a062881814513698290d1dac99a0e5d8ab7a7bfb8",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Legacy\\2. Value Generation Model - Principles.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Legacy/2. Value Generation Model - Principles.pdf",
+      "bytes": 743808,
+      "sha256": "ee37d7eb2f34b9e7784fa261cfce0d16ce64c200dfea2517cd21696bf085500c",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Legacy\\3. Management Value Generation Rules.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Legacy/3. Management Value Generation Rules.pdf",
+      "bytes": 775114,
+      "sha256": "8ce12e1a9112a92df0e4570f30a95debd85a3e5ee7ad9d0ba6d59b470b3bc189",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Legacy\\4. RF-One — Operational Value Generation Model.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Legacy/4. RF-One — Operational Value Generation Model.pdf",
+      "bytes": 829806,
+      "sha256": "6ec0d92ba74573ab19a8bf4df788a34d0452883ebdfc26cbac5caf98edb55bf4",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Legacy\\My take on the 16 principles - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Legacy/My take on the 16 principles - Shelbi Fox.md",
+      "bytes": 13303,
+      "sha256": "7df3768f75b5d34d95a27ecbce0f63d0200dd1eedf371651e2e2c3c57de15ab5",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Legacy\\Shelbi_16_Principles_Pino_Comments_EN.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Legacy/Shelbi_16_Principles_Pino_Comments_EN.md",
+      "bytes": 22098,
+      "sha256": "de0b3fad313d8a3a3abff1c077296e08778a7d7e2b9f6671867582b8f016e877",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_Cross_Domain_v0.2_EN.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_Cross_Domain_v0.2_EN.md",
+      "bytes": 25175,
+      "sha256": "b5ec4e4dce4da44ff523f65bc9d260bc4884109f1ba73c8db0929fef6cac8e89",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_Project_Specifications_EN.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_Project_Specifications_EN.pdf",
+      "bytes": 47780,
+      "sha256": "95b81a84bbb23a9dc16234c7343e5abc43fea4085fa348a3ea4e05f14fb6658d",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_Specifiche_di_Progetto_IT.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_Specifiche_di_Progetto_IT.pdf",
+      "bytes": 48531,
+      "sha256": "32a08c2a96fbb1de913202c343e8b4d94e5a40df3e7f4b7d65bfbed1c5eb577f",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_Vision_for_Shelbi_EN.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_Vision_for_Shelbi_EN.pdf",
+      "bytes": 117665,
+      "sha256": "0487b406c673299f71317d471016948d7a4c80b9e410e1a37f941284025ce5ce",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Management_Visione_per_Shelbi_IT.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Management_Visione_per_Shelbi_IT.pdf",
+      "bytes": 88090,
+      "sha256": "943bc10b3673bf0201757c2c613e456872738852ffecd839f9ba90773c2adf83",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_Organization_AI_Interview_Proposal_EN.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_Organization_AI_Interview_Proposal_EN.pdf",
+      "bytes": 85041,
+      "sha256": "c6c4d04dbc8f372df1e7c86b766599ab53531e4598f1693478011d3da1242a83",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\RF1_RFCore_Characteristics_Proposal_EN.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/RF1_RFCore_Characteristics_Proposal_EN.pdf",
+      "bytes": 57614,
+      "sha256": "04d4468e84e73d0a94067e54adc49bb6af66876642c7d8d4ecb6512f03d69101",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Management\\Three Knowledge Layers - Architecture - Draft 0.1 - Shelbi Fox.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Management/Three Knowledge Layers - Architecture - Draft 0.1 - Shelbi Fox.pdf",
+      "bytes": 93254,
+      "sha256": "cc46fbba83efbe9962e0c05e261ac0b1cd8666e53da0b096a9612177f96efa03",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Procedures\\Procedure 001 - FOH Supplies and Glassware - Draft 0.3 - Shelbi Fox.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Procedures/Procedure 001 - FOH Supplies and Glassware - Draft 0.3 - Shelbi Fox.pdf",
+      "bytes": 82807,
+      "sha256": "fead8a91a548181670e366cdce7e79d04e4f76e22736e178d355d3cecf41ce75",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Procedures\\Procedure 001 - Test Scenarios - Version 1 - Shelbi Fox.pdf",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Procedures/Procedure 001 - Test Scenarios - Version 1 - Shelbi Fox.pdf",
+      "bytes": 117092,
+      "sha256": "70ebea3b7c6ee8e1d2d85621b7c2b11c230cde623c6638f5a559cb0fd62bd778",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Procedures\\ProcedureEngine_V.0.1.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Procedures/ProcedureEngine_V.0.1.md",
+      "bytes": 6039,
+      "sha256": "dfe20695bb09e64a60acaae95a7333af82493278145a8089c6b0303fb21459ee",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Procedures\\RF-One_Procedures_MyRF. ver. 0.1.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Procedures/RF-One_Procedures_MyRF. ver. 0.1.md",
+      "bytes": 6173,
+      "sha256": "e634bfa8cd9acaa08b2c1603c22f5eabbc815467f64624863df661dbb0f2ec69",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\RF-One_Procedures_MyRF.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/RF-One_Procedures_MyRF.md",
+      "bytes": 6173,
+      "sha256": "e634bfa8cd9acaa08b2c1603c22f5eabbc815467f64624863df661dbb0f2ec69",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    },
+    {
+      "id": null,
+      "path": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\Models-Shelby & Pino\\Models\\Rules of Working - Draft 0.2 - Shelbi Fox.md",
+      "relative_path": "../../../../Models-Shelby & Pino/Models/Rules of Working - Draft 0.2 - Shelbi Fox.md",
+      "bytes": 21132,
+      "sha256": "39c8b4be5abd96099f84bac21eb6a2a5b70d81cfefb8896ff86800b44cc02b76",
+      "coverage": "Located and fingerprinted only; not substantively reviewed",
+      "status": "Additional source input; no approval inferred"
+    }
+  ]
+}

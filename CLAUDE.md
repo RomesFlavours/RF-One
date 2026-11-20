@@ -35,19 +35,22 @@ Application Domains use only the Core concepts they require.
 
 Every Domain lives under one of two families, physically expressed as the two folders directly inside `01 Domains/` (verify against `01 Domains/README.md` and `01 Domains/Domain Architecture.md` §4 before assuming this list is complete — those files are authoritative, this is a pointer to them):
 
-- **Shared Domains** (`01 Domains/Shared Domains/`, formerly named **Cross Domain**) — industry-independent, reusable by any business: Selection, Operational Knowledge, Continuous Productivity Development, Performance, Personnel Management, Taxation, Administration, Purchased.
+- **Shared Domains** (`01 Domains/Shared Domains/`, formerly named **Cross Domain**) — industry-independent, reusable by any business: Management, Selection, Operational Knowledge, Continuous Productivity Development, Performance, Taxation, Administration, Purchased, Intercompany Funding & Settlement.
 - **Business Domain** (`01 Domains/Business Domain/`) — industry-specific: Restaurant (currently the only one).
 
 A Shared Domain may consume industry-specific content a Business Domain supplies, but must never structurally depend on one specific Business Domain. `_Shared/` holds domain-independent-but-not-universal knowledge reused across multiple Domains (e.g. `_Shared/Environment/`) — it is not itself a Domain, and lives outside both families, directly under `01 Domains/`. **Do not confuse `_Shared/` (not a Domain; not-yet-universal environment/context knowledge) with the `Shared Domains/` family (Domains that are Domains, just reusable by any Business Domain).**
 
 **Purchased** (`01 Domains/Shared Domains/Purchased/`) is a Shared Domain consumed by Business Domains: it turns what the business was invoiced for into normalized purchased facts (one line per economic item/service/charge on a source document), owning only the purchase fact — never whether it was paid (Bank Reconciliation boundary, owned by the consuming Business Domain). See `01 Domains/Shared Domains/Purchased/README.md`. It does not redefine or merge with Restaurant's existing, Business-Domain-specific `Purchasing` module (see below) — their relationship is an explicitly open question, not decided by Purchased's own definition.
 
-**Selection, Operational Knowledge, Continuous Productivity Development and Performance are each their own top-level Shared Domain** (`01 Domains/Shared Domains/Selection/`, `.../Operational Knowledge/`, `.../Continuous Productivity Development/`, `.../Performance/` — TASK_DOMAINS_003 for Selection; the Cross Domain/Business Domain reorganization (Cross Domain since renamed Shared Domains) for the former Training (now Operational Knowledge) and Performance; a later reorganization for Continuous Productivity Development), not modules of Personnel Management or of Restaurant — usable by any industry, closely related to but not owned by Personnel Management's Personnel Decisions module. Do not nest any of them under either. **Operational Knowledge is the shared repository of retrievable operational information (Operational Knowledge Pills) that Copilot and other RF-One functions may retrieve — it does not train, test, assess, or certify.** It is independent of, and must not be confused with, Continuous Productivity Development, which identifies gaps/opportunities, decides interventions (of which actual human training is only one candidate), measures outcomes, and learns from results. Restaurant's Industry Extension of Selection (role catalog, client/role configurations) lives at `01 Domains/Business Domain/Restaurant/Selection/`, depending on Selection Core, never the reverse.
+**Management** (`01 Domains/Shared Domains/Management/`) is a Shared Domain made of three components (Product Owner decision, 2026-10-25): **People** (continuous professional knowledge of the person — capability, experience, evidence, confidential observations, coaching and development; link to the Training service), **Organization** (design of work — processes, functions, roles, responsibilities, authority, role coverage and assignments; it absorbed the former Workforce and Personnel Decisions modules) and **Project Manager** (planning, execution and verification of approved assignments). **Personnel Management is no longer a Domain** — do not recreate it; its documents are archived in `90 Archive/Superseded Documents/`. Management introduces no new register of people, roles, assignments or authority: it links Restaurant's Employee Assignment and the `10 System/` Position foundation. **Cognito** provides sensory functions, language understanding and conversation management; People (and Selection in its field) leads the specialist reasoning and decides what to explore — do not re-attribute that reasoning to Cognito (`00 Core/ConceptualArchitecture/14_Cognito_RF-One_Cognitive_Intelligence.md` §9). Open boundaries: `01 Domains/Shared Domains/Management/DECISIONS_AND_GAPS.md`.
+
+**Selection, Operational Knowledge, Continuous Productivity Development and Performance are each their own top-level Shared Domain** (`01 Domains/Shared Domains/Selection/`, `.../Operational Knowledge/`, `.../Continuous Productivity Development/`, `.../Performance/` — TASK_DOMAINS_003 for Selection; the Cross Domain/Business Domain reorganization (Cross Domain since renamed Shared Domains) for the former Training (now Operational Knowledge) and Performance; a later reorganization for Continuous Productivity Development), not components of Management or modules of Restaurant — usable by any industry, closely related to but not owned by Management / Organization (which holds the former Personnel Decisions responsibility). Do not nest any of them under either. The training cycle stays with the Training service (`01 Domains/Shared Domains/TRAINING_SERVICE_001.md`) and is not absorbed by People. **Operational Knowledge is the shared repository of retrievable operational information (Operational Knowledge Pills) that Copilot and other RF-One functions may retrieve — it does not train, test, assess, or certify.** It is independent of, and must not be confused with, Continuous Productivity Development, which identifies gaps/opportunities, decides interventions (of which actual human training is only one candidate), measures outcomes, and learns from results. Restaurant's Industry Extension of Selection (role catalog, client/role configurations) lives at `01 Domains/Business Domain/Restaurant/Selection/`, depending on Selection Core, never the reverse.
 
 Several familiar business-capability names are **modules of an existing Domain**, not Domains in their own right. Do not create a new top-level `01 Domains/<name>/` folder for any of these — extend the owning Domain instead:
 
 - Purchasing and Sales are modules of the Restaurant Domain (`Restaurant Domain └── Purchasing module`, `Restaurant Domain └── Sales module`, canonically `01 Domains/Business Domain/Restaurant/Purchasing/` and `01 Domains/Business Domain/Restaurant/Sales/`). Restaurant's Purchasing module is not the same thing as the Purchased Shared Domain above; see that Domain's README for the currently-open question about their relationship.
-- Workforce and Personnel Decisions are modules of the Personnel Management Domain (`Personnel Management Domain └── <module>`, canonically `01 Domains/Shared Domains/Personnel Management/<module>/`). Note the canonical module name is **Personnel Decisions**, not "Personal Decision." **Operational Knowledge, Continuous Productivity Development and Performance are NOT modules of Personnel Management** — despite the similar naming pattern, all three are independent top-level Shared Domains (see above); do not re-nest them under Personnel Management.
+- People, Organization and Project Manager are components of the Management Domain (`01 Domains/Shared Domains/Management/<component>/`). **Workforce** and **Personnel Decisions** (not "Personal Decision") are no longer modules or folders: they are responsibilities inside Management / Organization. **Operational Knowledge, Continuous Productivity Development and Performance are NOT components of Management** — all three are independent top-level Shared Domains (see above); do not nest them under Management.
+- Compensation and Payroll are distinct sibling modules of the Administration Domain (`01 Domains/Shared Domains/Administration/Compensation/` and `.../Payroll/`): Compensation determines and approves what is owed (including Compensation Terms); Payroll and the external Payroll Provider handle processing and result acquisition. Do not merge or duplicate them.
 
 **"BD" is an accepted textual abbreviation for "Business Domain"** in RF-One documents (never a folder/path rename — `Business Domain/` stays spelled out on disk).
 
@@ -342,6 +345,7 @@ Provide a concise implementation report containing:
 - concepts implemented;
 - references updated;
 - tests or consistency checks performed;
+- How Works Help updated with the change, or why the change is technical only;
 - unresolved issues;
 - questions requiring Product Owner decisions.
 
@@ -350,6 +354,8 @@ Never hide unresolved contradictions.
 ---
 
 # RF-One UI Rules
+
+**Standing Product Owner browser preference (2026-10-26): always open user-facing pages and local trials in Microsoft Edge. Never present them in Codex's internal browser or an assistant-owned browser window. Reuse Edge where possible.**
 
 **Standing instruction, applied automatically to every RF-One interface
 task.** Full text and implementation pointers:
@@ -365,12 +371,110 @@ task.** Full text and implementation pointers:
 4. Every sub-page shows its clickable hierarchical path (breadcrumb)
    instead of a generic "Home" link; the path reflects the real structure
    and never invents levels.
+5. After an action started from a list row (Edit, Save, Cancel, Confirm…)
+   the person is back on that same record, at the same place on screen,
+   with focus on the button used — never at the top of the list, also
+   after a reload (`rf-one-row-return.js`, rows marked `data-rr-key`).
+6. Every modal window has a close X at its top right, visible while the
+   window scrolls, calling the window's own Cancel/close.
 
 Every future UI refinement reuses these rules.
 
 ---
 
+# RF-One How Works Standard
+
+**Standing Product Owner instruction (2026-11-02), mandatory for every
+Domain and Module (UI_HOW_WORKS_001).** The one normative text is
+`03 Software/Shared UI/How Works Standard.md`; this is a pointer to it.
+
+1. Every operational page shows a visible **How Works** link that opens the
+   Help section of *that* page inside its Domain or Module guide
+   (`<guide>#<section>`), never the top of the manual.
+2. The Help describes the behaviour actually implemented in the published
+   version and how to use it. It never describes planned features.
+3. **Code and Help are one release unit.** A functional change without its
+   Help update is incomplete and is not released. A technical-only commit
+   says so on its own line: `How-Works: technical - <reason>`.
+4. Every new page is registered, with its Help target, in
+   `03 Software/Shared UI/how_works_registry.json`. Its `help_missing`
+   list only shrinks: a new page never enters it.
+5. Before a release: `python "03 Software/Shared UI/check_how_works.py"
+   --app <App> --rev <commit> --since <live commit>`. Any error is a
+   release error (`release_selection.py` runs it itself). Checklist:
+   `03 Software/Infrastructure/deploy/RELEASE_CHECKLIST.md`.
+
+MIEAF — every function explains how it works, in the same release in which
+it is published.
+
+---
+
+# Local Database Policy
+
+**Standing Product Owner instruction (2026-10-26): one local RF-One database.**
+
+- Maintain one canonical local working database for RF-One. Modules and worktrees must reuse it; do not create permanent parallel databases or dated working copies.
+- Keep the local database aligned with AWS when needed and compatible with the work being performed. Data alignment is strictly one-way: **AWS to local**. Never synchronize local data back to AWS. This policy does not authorize AWS writes.
+- Create a separate disposable database only when a test requires isolation. Delete that test database after the test finishes; do not leave completed test environments or staging databases behind.
+- Before creating a database, locate and reuse the canonical local database. Temporary staging for a safe refresh must be removed after successful verification. A rollback database must not become another permanent working database; retain recovery as a clearly identified backup file instead.
+- Keep backup files distinct from working databases, with clear purpose and restore references. Do not silently accumulate backups or treat them as additional environments; agree retention when consolidating existing copies.
+- Existing local databases and legacy copies require an inventory and a controlled consolidation into the single canonical database. This instruction records the target policy; it does not by itself authorize indiscriminate deletion of existing databases or backups.
+
+This policy supersedes earlier instructions that would require separate permanent local databases for individual modules. Existing launcher and data-safety rules still apply until consolidation is implemented; report conflicts instead of creating further copies.
+
+---
+
 # Bank Local Environment
+
+**Standing Product Owner instruction (2026-10-17): purpose first when populating Bank WHY.**
+Read the complete bank description, direction, dates, source and related evidence.
+Record the recognizable general purpose even when its detailed composition is unknown.
+Example: `ADP Tax` identifies a payroll-tax payment; it must not remain without WHY
+merely because employer taxes and employee withholdings are not separated.
+`IND NAME: RF GELATI LLC` identifies the named beneficiary context independently.
+Use an appropriate general WHY, without forcing a detailed WHAT or an unsupported
+employer-only expense. The current Bank service permits WHY without WHAT.
+Distinguish direct textual evidence from contextual deductions in decision notes;
+leave open only purposes that are actually unclear, not merely less detailed.
+
+**User-provided general monthly reconciliation rules (2026-10-17).**
+Retain these for the future user-facing page of general rules provided by the user.
+They are user policy, not universal accounting/tax law. Recording them here does
+not itself change transactions, WHO defaults, or executable AI Rules.
+
+1. **Restaurant meals:** a restaurant payment on a company card is a business
+   meal; a restaurant payment on a personal card is a personal expense. Use the
+   configured card ownership, not a guessed interpretation of the card name.
+2. **Travel:** recognize a trip from related transaction evidence and ask about
+   the trip as a whole, rather than repeatedly asking about its individual rows.
+   Example modal: "Vedo un viaggio a Cozumel. Personale o business?" Exactly two
+   choices: "Personale" and "Business". After selection, close the modal and
+   populate the associated classifications. Destination is an example, not a
+   hardcoded trigger. Do not infer vacation versus work from destination alone.
+   The user also specified: "se la carta è personale è personale altrimenti business".
+   Preserve this card-based instruction alongside the trip-level question.
+   **Open precedence question:** when the explicit trip answer and card ownership
+   disagree, which governs classification? The user has not yet resolved this;
+   do not silently override the answer or silently invent an exception.
+3. **Research each WHO before deducing WHY:** look up the counterparty on the
+   web, prefer its official website, verify the identity against location and
+   transaction context, and retain the URL, lookup date and relevant evidence.
+   Do not classify a supplier payment merely as Accounts Payable Settlement
+   when the operational purpose is identifiable. Web research informs the
+   deduction; it does not prove the precise contents of every purchase or
+   justify attaching a namesake's activity to a private individual.
+   **Explicit user correction:** PRIME LINE DISTR = FOOD_PURCHASES (2026-10-17).
+   Official evidence: https://www.primelinedist.com/about (food importer and
+   distributor serving restaurants); https://www.primelinedist.com/contact
+   (Orlando division). Preserve this approved WHO/WHY knowledge for reuse.
+4. **Clarifications must be conversational (2026-10-17):** do not ask the user
+   to fill a WHY selection form. Let the user explain in chat; ask follow-up
+   questions where needed; restate the complete reusable rule and obtain its
+   explicit confirmation. Only then show an actual preview over the entire
+   database, all periods and Sources, including already-classified movements.
+   Show before/after values, unchanged/protected/conflicting/unclear cases and
+   any excluded accounting duplicates. Do not apply classifications merely
+   because the user confirmed the interpretation or requested its preview.
 
 The local Bank working environment (both PCs) is run ONLY through
 `03 Software/Infrastructure/Bank Local Environment/` (Configura PC, Avvia
@@ -436,6 +540,36 @@ notification is guaranteed.
 
 ---
 
+# RF-One Problem-Solving Rule (MIEAF)
+
+**Standing Product Owner instruction (2026-10-23), applied to all RF-One
+development.** The task is not only to find problems but to solve them.
+**MIEAF: the technical complexity is Claude's to manage, never transferred
+to the user.**
+
+When an obstacle appears:
+
+1. Analyze its cause autonomously.
+2. Find the simplest, cheapest solution compatible with approved decisions.
+3. Verify it technically as far as possible.
+4. If it is within the authorizations already given, implement it and continue.
+5. If it needs new authorization, spending, a production change, or carries
+   significant risk: propose one concrete solution and ask **only** for the
+   indispensable approval.
+
+Never change approved architectural decisions without a documented reason.
+Never present a list of problems without first having looked for their
+solutions. Never ask the Product Owner to choose between technical
+alternatives Claude can evaluate itself — choose, and state why. Never run
+operations blocked by security controls and never try to bypass them.
+
+Reports state, for each obstacle: **problem found → solution identified →
+action taken, or the strictly necessary authorization.** This complements
+the Report Standard and the Blocked Alert above (a Blocked Alert is only for
+what genuinely needs the Product Owner, after this rule has been applied).
+
+---
+
 # Final Principles
 
 When working on the **Core**, ask first:
@@ -457,3 +591,12 @@ When working on a **Product**, ask:
 And always remember:
 
 **Core ≠ Domain ≠ Product ≠ Runtime.**
+
+## Bank AI provider preference (updated 2026-10-23)
+Bank conversation AI uses ChatGPT/OpenAI; never silently fall back to another provider.
+For reconciliation (the unified engine, `reconcile_engine.py`), the Product Owner decided on 2026-10-23 to use
+**both** ChatGPT and Claude as directors: their results are integrated after a non-overlap check — when one
+names a WHO (or WHY) and the other a different one, the case is flagged to a person, never decided silently.
+
+## Bank rule learning lifecycle (2026-10-17)
+Parliamone is the queue for unresolved transactions. Once a conversational rule is explicitly confirmed, persist it in the Bank rule catalogue and display it under rules. Preserve its identity and versions. Keep or return ambiguous/conflicting exceptions to Parliamone with the existing rule as context, refine in chat, then confirm the revised rule. Never equate rule confirmation or preview with applying transaction classifications.
