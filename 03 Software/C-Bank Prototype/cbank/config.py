@@ -1,0 +1,46 @@
+"""C-Bank Prototype configuration — every path in one place.
+
+The prototype READS the operational Bank (database and code) and WRITES only
+to its own experimental store. Nothing here points a writer at Bank.
+"""
+import os
+from pathlib import Path
+
+_LOCAL = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+
+# Operational Bank working database (read-only, opened with mode=ro).
+# BANK-2026-11-04: every default points to this prototype's own data folder, never to the original Bank.
+_OWN = _LOCAL / "RF-One" / "BANK-2026-11-04"
+BANK_DB = Path(os.environ.get("CBANK_BANK_DB", _OWN / "rfone.db"))
+
+# Operational Bank code whose models match BANK_DB (imported, never modified).
+BANK_CODE_ROOT = Path(os.environ.get(
+    "CBANK_BANK_CODE_ROOT",
+    Path(__file__).resolve().parents[3]))
+
+# Phase 3A: the engine's records live in the Bank database itself (`store.py`); this folder keeps only the
+# exported workbooks. The former experimental store `cbank.db` is migrated and kept frozen as an archive.
+STORE_DIR = Path(os.environ.get("CBANK_STORE_DIR", _OWN / "C-Bank"))
+STORE_DB = BANK_DB
+EXPORT_DIR = STORE_DIR / "exports"
+
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("CBANK_PORT", "5090"))
+
+# Display timezone for timestamps shown to a person (RF-One UI rule 1).
+DISPLAY_TZ = "America/New_York"
+
+# Automatic acceptance thresholds (decision 05: classify new cases only when
+# the evidence is sufficiently reliable).
+MEMORY_MIN_PRECEDENTS = 2      # concordant human precedents for MEMORY
+
+# WHO -> WHY knowledge (simulation, not active by default): after the Recognition Profile, an
+# EXPLICITLY APPROVED WHO -> WHY association (Bank Configuration, source HUMAN) decides the WHY;
+# historical associations are AI evidence only. It also completes the missing WHY of a human
+# decision. Off unless CBANK_WHO_WHY=1.
+WHO_WHY_KNOWLEDGE = os.environ.get("CBANK_WHO_WHY", "0") == "1"
+AI_MIN_CONFIDENCE = 0.85       # AI confidence for an automatic classification
+
+# Retired WHO history/AI recognition cannot be reactivated by an environment variable.
+WHO_EXTRA_RECOGNITION = False  # compatibility for callers of the former switch
+

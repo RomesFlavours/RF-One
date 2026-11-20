@@ -1,0 +1,4 @@
+{% if next_url %}
+<p><a id="review-more" href="{{ next_url }}">{{ 'Visualizza altre' if ui_language == 'it' else 'Show more' }}</a></p>
+<script defer src="{{ url_for('static', filename='js/bank-review-more.js') }}"></script>
+{% endif %}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="{{ 'it' if ui_language == 'it' else 'en' }}">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WHO Pattern Training · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-analysis1">
+  <style>.wp-scroll{max-height:72vh}.wp-structure{font-family:Consolas,monospace;font-size:.86rem;overflow-wrap:anywhere}.wp-subs{margin-top:6px;font-size:.86rem}.wp-subs table{margin-top:4px}.wp-num{text-align:right;white-space:nowrap}</style>
+  <script defer src="/static/bank-assistant/flow_i18n.js?v=who-analysis1"></script><script defer src="/static/bank-assistant/flow.js?v=who-analysis1"></script><script defer src="/static/bank-assistant/who_patterns.js?v=2"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  {#- BANK_WHO_PATTERN_SEARCH_001 (Product Owner, 2026-11-06): the page starts from the automatic search of the recurring
+      patterns in the original descriptions (method of the WHO-Formati research). "Define rule" opens the one AI rule
+      editor (flow.js) in the context of that pattern. The search creates no rule and changes no movement. -#}
+  {% import "_bank_macros.html" as bank %}{{ bank.module_nav('who_rules', leaf='Pattern ed estrazione WHO', how_works=('who-patterns-page', 'WHO Pattern Training')) }}
+  <div class="page-heading"><div><h2>WHO Pattern Training</h2><p class="muted">RF-One looks for the recurring patterns in the descriptions of all loaded movements. Define the rule of a pattern from its row.</p></div></div>
+  <section class="card" aria-labelledby="wp-h"><div class="section-heading"><div><h2 id="wp-h">Patterns <span class="badge" id="wp-count">—</span></h2></div>
+    <div class="flow-actions"><button type="button" id="wp-search">Search patterns</button></div></div>
+    <p role="status" id="wp-status"></p>
+    <div class="who-scroll wp-scroll" id="wp-list" hidden><table class="who-table"><thead><tr><th>Pattern</th><th>Common structure</th><th class="wp-num">Movements</th><th></th></tr></thead><tbody id="wp-rows"></tbody></table></div>
+  </section>
+</div>
+{% include "_bank_flow_rule_dialogs.html" %}
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

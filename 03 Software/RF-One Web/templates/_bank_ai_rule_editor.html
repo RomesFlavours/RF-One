@@ -1,0 +1,204 @@
+{#- The AI Rule editor: ONE window, used by the AI Rules page and by Completa (Product Owner, 2026-11-18). Driven by
+    static/js/bank-ai-rule-editor.js (window.BankAIRuleEditor); needs rf-one-modal.js (base.html).
+
+    `ai_rule_compact` (Completa): the window shows only the rule's name, its text, Simula / Salva / Applica and a short
+    result. The other parts are not shown but stay in the form: they carry the saved rule's options, which Simula and
+    Salva send unchanged. Completa includes this file INSIDE its own <dialog>, so the window opens above it.
+    The AI Rules page includes it without the flag and passes its period, filters, search and WHO / WHY lists. -#}
+{%- set compact = ai_rule_compact|default(false) %}
+<div id="ai-rule-modal" class="org-modal-overlay" hidden aria-hidden="true" data-compact="{{ '1' if compact else '0' }}"
+     data-preview-url="{{ url_for('bank_ai_rules_preview') }}" data-ai-provider="{{ provider|default('') }}"
+     data-draft-url="{{ url_for('bank_ai_rules_save_draft') }}"
+     data-save-url="{{ url_for('bank_ai_rules_save') }}"
+     data-save-apply-url="{{ url_for('bank_ai_rules_save_apply') }}"
+     data-draft-get-template="{{ url_for('bank_ai_rules_draft', draft_id=0) }}"
+     data-rule-get-template="{{ url_for('bank_ai_rules_rule', rule_id=0) }}"
+     data-rule-title-template="{{ url_for('bank_ai_rules_rule_title', rule_id=0) }}"
+     data-create-who-template="{{ url_for('bank_ai_rules_create_who', preview_id=0) }}"
+     data-batch-size="{{ batch_size|default(40) }}" data-period-count="{{ 0 if compact else period_total|default(0) }}">
+  <div class="org-modal-panel ai-rule-panel{{ ' ai-rule-compact' if compact }}" role="dialog" aria-modal="true" aria-labelledby="ai-rule-title">
+    <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="ai-rule-title">AI Rule</h3>
+      <span{{ ' hidden' if compact }}><span class="badge" id="ai-rule-operative-badge" hidden></span></span></div>
+
+    <section class="ai-rule-origin" aria-label="Starting transaction"{{ ' hidden' if compact }}>
+      <p class="ai-rule-label">Starting transaction <span class="badge">Example</span></p>
+      <p><strong id="ai-rule-origin-description"></strong></p>
+      <p class="cell-note"><span id="ai-rule-origin-date"></span> &middot; <span id="ai-rule-origin-amount"></span> &middot; <span id="ai-rule-origin-source"></span></p>
+      <p class="cell-note">Current WHO: <strong id="ai-rule-origin-who"></strong> &middot; Current WHY: <strong id="ai-rule-origin-why"></strong></p>
+    </section>
+
+    <form id="ai-rule-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="origin_transaction_id" id="ai-rule-origin-id" value="">
+      <input type="hidden" name="draft_id" id="ai-rule-draft-id" value="">
+      <input type="hidden" name="rule_id" id="ai-rule-rule-id" value="">
+      <input type="hidden" name="preview_id" id="ai-rule-preview-id" value="">
+      <input type="hidden" name="selected_ids" id="ai-rule-selected-ids" value="">
+      <input type="hidden" name="date_from" value="{{ '' if compact else date_from }}">
+      <input type="hidden" name="date_to" value="{{ '' if compact else date_to }}">
+      {#- BANK_AI_RULES_025 — the list's perimeter, so the server limits a selection to it when a search is active. -#}
+      <input type="hidden" name="cls" value="{{ 'all' if compact else cls }}">
+      <input type="hidden" name="q" value="{{ '' if compact else q }}">
+      {#- BANK_AI_RULES_022 — the rule's Title, above its text. For an operative rule, "Save title" saves only
+          the Title: the rule is not reinterpreted or reapplied. -#}
+      <div{{ ' hidden' if compact }}>
+        <label for="ai-rule-user-title">Title <span class="cell-note">optional &middot; shown first in the list of rules</span></label>
+        <div class="ai-rule-title-row">
+          <input type="text" id="ai-rule-user-title" name="user_title" maxlength="200" autocomplete="off"
+                 placeholder="e.g. Publix groceries">
+          <button type="button" class="btn-secondary" id="ai-rule-save-title" hidden>Save title</button>
+        </div>
+      </div>
+      <label for="ai-rule-text">Rule, in your own words</label>
+      {#- BANK_AI_RULES_026 — Rewrite with AI: rewrites and verifies the text only (never saves or applies). -#}
+      <div class="ai-rule-text-row">
+        <textarea id="ai-rule-text" name="rule_text" rows="4" class="ai-rules-textarea"
+                  placeholder="e.g. Every Publix purchase is WHO PUBLIX, WHY groceries, except refunds."></textarea>
+        <div class="ai-rule-rewrite-actions"{{ ' hidden' if compact }}>
+          <button type="button" class="btn-secondary" id="ai-rule-rewrite"
+                  data-rewrite-url="{{ url_for('bank_ai_rules_rewrite') }}">Rewrite with AI</button>
+          <button type="button" class="btn-secondary" id="ai-rule-rewrite-undo" hidden>Undo rewrite</button>
+        </div>
+      </div>
+      <div{{ ' hidden' if compact }}><div class="ai-rule-rewrite-status" id="ai-rule-rewrite-status" role="status" hidden></div></div>
+      {#- Conflicts with the other ACTIVE rules (ai_rules.rule_conflicts), found at Rewrite with AI, Preview and Save
+          and Apply: a conflict between rules, never a problem of this text. Nothing is resolved automatically. -#}
+      <div class="ai-rule-conflicts" id="ai-rule-conflicts" role="alert" hidden></div>
+      {#- BANK_AI_RULES_004 — pick lists that only write text into the rule,
+          at the last cursor position: WHO = "NAME" / WHY = "name". Not in the compact window. -#}
+      {%- if not compact %}
+      <div class="ai-rule-pickers" aria-label="Insert a WHO or a WHY into the rule">
+        {% for kind, names, label in (('who', who_names, 'WHO'), ('why', why_names, 'WHY')) %}
+        <div class="ai-rule-picker" data-kind="{{ kind }}">
+          <label for="ai-rule-{{ kind }}-search">{{ label }} <span class="cell-note">{{ names|length }} &middot; click to insert into the rule</span></label>
+          <input type="search" id="ai-rule-{{ kind }}-search" class="ai-rule-picker-search" autocomplete="off"
+                 placeholder="Search {{ label }}" aria-controls="ai-rule-{{ kind }}-list">
+          <div class="ai-rule-picker-list" id="ai-rule-{{ kind }}-list" role="listbox" aria-label="{{ label }}">
+            {%- for name in names %}
+            <button type="button" class="ai-rule-pick" role="option" data-kind="{{ label }}" data-name="{{ name }}">{{ name }}</button>
+            {%- endfor %}
+          </div>
+          <p class="cell-note ai-rule-picker-empty" hidden>No {{ label }} matches.</p>
+        </div>
+        {% endfor %}
+      </div>
+      {%- endif %}
+      {#- The rule's options, one box per choice, stacked vertically (A–F). Alternatives are radio buttons of one
+          group; independent, combinable options are checkboxes. The field names and values the server reads are
+          unchanged: "only_unsettled" / "who_only" are "on" or "off", and the A group is sent as scope_all /
+          scope_selected by bank-ai-rule-editor.js (formBody). In the compact window they are not shown: they keep
+          the saved rule's options. -#}
+      <div class="ai-rule-option-boxes"{{ ' hidden' if compact }}>
+        {#- A — BANK_AI_RULES_006: where the rule applies among the existing transactions. "None" = the Preview
+            shows the period on screen and nothing is applied to it. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Which existing transactions should the rule apply to?</legend>
+          <label class="ai-rule-option"><input type="radio" name="scope_existing" value="none" id="ai-scope-none" checked>
+            No existing transactions
+            <span class="cell-note">the Preview shows the transactions of the period on screen; nothing is applied to them</span></label>
+          <label class="ai-rule-option"><input type="radio" name="scope_existing" value="all" id="ai-scope-all">
+            All existing transactions, in the whole database
+            <span class="cell-note">not only the period shown</span></label>
+          <label class="ai-rule-option"><input type="radio" name="scope_existing" value="selected" id="ai-scope-selected">
+            Only the selected transactions
+            <span class="cell-note" id="ai-scope-selected-count">0 selected</span></label>
+        </fieldset>
+        {#- B — BANK_AI_RULES_006: independent, combines with any choice of A. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Apply the rule to new transactions too?</legend>
+          <label class="ai-rule-option"><input type="checkbox" name="scope_future" id="ai-scope-future">
+            Apply automatically to transactions imported from now on
+            <span class="cell-note">can be combined with the choice for existing transactions</span></label>
+        </fieldset>
+        <fieldset class="ai-rule-scopes">
+          <legend>How should this rule apply?</legend>
+          <select name="application_mode" id="ai-rule-application-mode">
+            <option value="FILL_MISSING">Fill missing values</option>
+            <option value="UPDATE_ASSIGNED">Also update assigned values</option>
+          </select>
+          <p class="cell-note">Only the fields specified by the rule will change. Review the preview before applying.
+            Each application can be rolled back from history, preserving later changes.</p>
+        </fieldset>
+        <div hidden aria-hidden="true">
+        {#- C — BANK_AI_RULES_013: "only not yet classified" selected by default; Preview and Apply use the same choice. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Which AI classifications may be updated?</legend>
+          <label class="ai-rule-option"><input type="radio" name="only_unsettled" value="on" id="ai-rule-only-unsettled" checked>
+            Only transactions not yet classified by AI rules</label>
+          <label class="ai-rule-option"><input type="radio" name="only_unsettled" value="off" id="ai-rule-include-ai-settled">
+            Also include transactions already classified by AI rules</label>
+          <p class="cell-note">Manual or confirmed classifications stay protected either way: replacing them depends only on
+            the option in the next box.</p>
+        </fieldset>
+        {#- D — BANK_AI_RULES_011: explicit, per rule (on for a NEW rule: NEW_RULE_DEFAULTS in bank-ai-rule-editor.js), recorded with the rule's version and its previews. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Allow replacing manual or confirmed classifications?</legend>
+          <label class="ai-rule-option"><input type="checkbox" name="override_protected" id="ai-rule-override-protected">
+            Allow this rule to replace manual or confirmed WHO and WHY</label>
+          <p class="cell-note">For Whom is kept, the transaction goes back to “To confirm” and the replacement is recorded.
+            The permission applies to this rule only: every other rule keeps the protections.</p>
+        </fieldset>
+        {#- E — BANK_AI_RULES_018: a run mode, not a rule option; Preview and Apply use the same choice. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Which parts of the rule should be applied?</legend>
+          <label class="ai-rule-option"><input type="radio" name="who_only" value="off" id="ai-rule-all-parts" checked>
+            Apply every part of the rule</label>
+          <label class="ai-rule-option"><input type="radio" name="who_only" value="on" id="ai-rule-who-only">
+            Apply only WHO</label>
+          <p class="cell-note">“Apply only WHO” does not apply WHY, default WHY and For Whom now, but keeps them in the rule.</p>
+        </fieldset>
+        </div>
+        {#- F — BANK_AI_RULES_003: per rule. -#}
+        <fieldset class="ai-rule-scopes">
+          <legend>Create missing WHO?</legend>
+          <label class="ai-rule-option"><input type="checkbox" name="create_missing_who" id="ai-rule-create-missing">
+            Create the WHO extracted by the rule that are not in the catalog</label>
+        </fieldset>
+      </div>
+      <p class="cell-note" id="ai-rule-scope-note"{{ ' hidden' if compact }}></p>
+      <div class="ai-rules-actions">
+        <button type="submit" id="ai-rule-preview-button">Preview</button>
+        {#- Product Owner, 2026-11-18: three buttons, each doing what it says — Simula, Salva, Applica (Applica only
+            after Salva, on the saved version, through the single engine). Save Draft and Save and Apply stay in the
+            form, not shown, because the editor still reads them; the window closes with its ×. -#}
+        <button type="button" class="btn-secondary" id="ai-rule-save-draft" hidden>Save Draft</button>
+        <button type="button" class="btn-secondary" id="ai-rule-save">Save</button>
+        <button type="button" id="ai-rule-apply" disabled
+                data-apply-template="{{ url_for('bank_ai_rule_engine_apply', rule_id=0) }}"
+                title="Apply is available after Save: it applies the saved version.">Apply</button>
+        <button type="button" id="ai-rule-save-apply" disabled hidden>Save and Apply</button>
+        <span class="cell-note" id="ai-rule-draft-status" role="status"{{ ' hidden' if compact }}></span>
+      </div>
+    </form>
+
+    <div id="ai-rule-wait" class="ai-rule-wait" role="status" hidden><span class="ai-rule-spinner" aria-hidden="true"></span>
+      <span id="ai-rule-wait-text">Evaluating…</span></div>
+    <div id="ai-rule-error" class="error" role="alert" hidden></div>
+    <div id="ai-rule-applied" class="ai-rule-applied" role="status" hidden></div>
+
+    <section id="ai-rule-result" class="ai-rule-result" hidden aria-label="Preview">
+      {#- The short result of the compact window. -#}
+      <p class="ai-rule-clean-result" id="ai-rule-clean-result" hidden></p>
+      <div{{ ' hidden' if compact }}>
+        <div id="ai-rule-stale" class="ai-rule-stale" role="status" hidden>
+          <strong>Superseded:</strong> the rule, its options, its scope or the selection changed after this preview.
+          Run <strong>Preview</strong> again.</div>
+        <p class="ai-rule-summary" id="ai-rule-summary"></p>
+        <p class="ai-rule-plan" id="ai-rule-plan"></p>
+        <p class="cell-note" id="ai-rule-interpretation" hidden></p>
+        <p class="cell-note" id="ai-rule-origin-verdict"></p>
+        <div class="ai-rule-new-who" id="ai-rule-new-who" hidden>
+          <button type="button" id="ai-rule-create-who">Add the new WHO to the list</button>
+          <span class="cell-note" id="ai-rule-new-who-count"></span>
+          <div id="ai-rule-create-who-result" role="status"></div>
+        </div>
+        <h4>Matches <span class="badge ok" id="ai-rule-match-count">0</span></h4>
+        <div class="table-scroll"><table class="table-compact table-stack ai-rule-items" id="ai-rule-matches"></table></div>
+        <h4>Doubtful cases <span class="badge warn" id="ai-rule-doubt-count">0</span></h4>
+        <div class="table-scroll"><table class="table-compact table-stack ai-rule-items" id="ai-rule-doubts"></table></div>
+      </div>
+    </section>
+  </div>
+</div>
+<script defer src="{{ url_for('static', filename='js/bank-ai-rule-editor.js') }}?v=1"></script>

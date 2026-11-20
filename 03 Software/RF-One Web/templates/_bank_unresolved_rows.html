@@ -1,0 +1,134 @@
+          {% for txn in transactions %}
+            {% set explanation = explanations_by_id.get(txn.explanation_id) %}
+            {% set resolved = explanation and explanation.decision_status in resolved_decision_statuses %}
+            {% set suppressed = txn.accounting_status == DUPLICATE_SUPPRESSED %}
+            {% set unresolved_settlement = txn.accounting_status == UNRESOLVED_NO_SETTLEMENT_ACCOUNT %}
+            {% set counterpart = counterpart_by_transaction_id.get(txn.id) %}
+            {% set match_candidates = match_candidates_by_transaction_id.get(txn.id) %}
+            {% set fw = for_whom_by_transaction_id.get(txn.id, {}) %}
+            <tr id="t-{{ txn.id }}" data-rr-key="txn:{{ txn.id }}" class="{{ 'row-suppressed' if suppressed else '' }}">
+              {#- Riconcilio layout (Product Owner, 2026-11-06): a row to complete carries ONE command, "Completa";
+                  the other row commands (selection, WHOM choice, duplicates, WHO / WHY, Ricalcola, transfer match,
+                  AI, Use as example) are no longer on the row. Their information stays visible read-only.
+                  "Completa" is the rightmost column. -#}
+              {#- BANK_REVIEW_FOR_WHOM_001 — the Source is provenance, set by the
+                  import's file -> Source mapping, and is shown read-only. Under
+                  it, FOR WHOM: the Reporting Entity / LLC that benefited, a
+                  reconciliation decision that can be made at any time. -#}
+              <td data-label="Account" class="col-source">
+                <span class="source-name">{{ instruments_by_id.get(txn.payment_instrument_id).display_name if instruments_by_id.get(txn.payment_instrument_id) else txn.payment_instrument_id }}</span>
+                {% if fw.split %}
+                  <span class="cell-note">WHOM: split</span>
+                {% else %}
+                  {%- set fw_entity = for_whom_entities|selectattr('id', 'equalto', fw.for_whom)|first %}
+                  <span class="cell-note">WHOM: {{ fw_entity.name if fw_entity else '—' }}</span>
+                {% endif %}
+              </td>
+              <td data-label="Date" class="col-date">{{ txn.posting_date }}</td>
+              <td data-label="Description" class="col-description">{{ txn.description_original }}{% set zm = zelle_memo(txn.id) %}{% if zm %}<span class="small muted" style="display:block">Memo Zelle: {{ zm.memo or '(nessun memo)' }}</span>{% endif %}</td>
+              <td data-label="Amount" class="col-amount">{{ "%.2f"|format(txn.amount_minor / 100) }}</td>
+              <td data-label="Source">{{ 'Chase' if 'CHASE' in (txn.bank_source or '') else ('PayPal' if 'PAYPAL' in (txn.bank_source or '') else (txn.bank_source or '—').replace('_',' ').title()) }}</td>
+              <td data-label="Duplicates">
+                <span class="badge {{ 'bad' if txn.duplicate_status == 'CANDIDATE_DUPLICATE' else ('warn' if txn.duplicate_status == 'CONFIRMED_DUPLICATE' else 'ok') }}">{{ {'NONE':'—','CONFIRMED_DISTINCT':'Distinct','CONFIRMED_DUPLICATE':'Duplicate','CANDIDATE_DUPLICATE':'Needs review'}.get(txn.duplicate_status,'—') }}</span>
+                {% if txn.duplicate_status == 'CANDIDATE_DUPLICATE' %}
+                  {% if txn.duplicate_of_transaction_id %}
+                    <span class="cell-note">Same instrument, date, description and amount as transaction #{{ txn.duplicate_of_transaction_id }}.</span>
+                  {% endif %}
+                {% endif %}
+              </td>
+              {# BANK_RECONCILIATION_WHO_WHY_WHAT_001: one control, one
+                 choice. The Why and the What are read-only consequences of
+                 the Who, shown from the decision's own immutable snapshot
+                 so this row keeps saying what it was actually classified
+                 as even after the vocabulary is edited. #}
+              <td data-label="WHO / WHY">
+                {# BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a copy
+                   excluded from accounting is never given Who/Why/What work.
+                   The classification belongs to the canonical transaction —
+                   asking for it again here would be duplicated effort on a
+                   row that will never reach the books. #}
+                {% if txn.id in completed_cards and 'attesa di abbinamento' in completed_cards[txn.id] %}Credit Card Statement Payment
+                {% elif suppressed %}
+                  {% set canonical = canonical_by_id.get(txn.accounting_canonical_transaction_id) %}
+                  <span class="badge warn">EXCLUDED FROM ACCOUNTING</span>
+                  <span class="cell-note">
+                    Same accounting fact as transaction
+                    #{{ txn.accounting_canonical_transaction_id or '—' }}.
+                    Classify that one &mdash; not this copy.
+                  </span>
+                  <details>
+                    <summary>Duplicate group</summary>
+                    <p class="cell-note">{{ txn.accounting_dedup_reason }}</p>
+                    <table class="table-compact">
+                      <thead><tr><th>#</th><th>Role</th><th>Batch / file</th><th>Instrument</th></tr></thead>
+                      <tbody>
+                        {% for member in dedup_groups.get(txn.id, []) %}
+                          {% set batch = batches_by_id.get(member.import_batch_id) %}
+                          <tr>
+                            <td data-label="#">{{ member.id }}</td>
+                            <td data-label="Role">
+                              {% if member.accounting_status == DUPLICATE_SUPPRESSED %}
+                                Excluded copy
+                              {% else %}
+                                <strong>Canonical (kept)</strong>
+                              {% endif %}
+                            </td>
+                            <td data-label="Batch / file">
+                              {% if batch %}#{{ batch.id }} <code>{{ batch.original_file_name }}</code>{% else %}&mdash;{% endif %}
+                            </td>
+                            <td data-label="Account">
+                              {{ instruments_by_id.get(member.payment_instrument_id).display_name if instruments_by_id.get(member.payment_instrument_id) else member.payment_instrument_id }}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </details>
+                {% else %}
+                
+                {% if canonical_copy_counts.get(txn.id) %}
+                  <span class="cell-note">
+                    Canonical for {{ canonical_copy_counts[txn.id] }} excluded copy/copies &mdash;
+                    this classification covers the whole group.
+                  </span>
+                {% endif %}
+                {% if unresolved_settlement %}
+                  <span class="badge bad">NO SETTLEMENT ACCOUNT</span>
+                  <span class="cell-note">
+                    This transaction has no accounting identity and was not deduplicated.
+                    Configure the card's settlement account in
+                    <a href="{{ url_for('bank_sources') }}">Source</a>.
+                  </span>
+                {% endif %}
+                {% if resolved %}
+                  <span class="cell-note">
+                    Who: {{ explanation.occurrence_name_snapshot or (explanation.occurrence.canonical_name if explanation.occurrence else '—') }}<br>
+                    Why: {{ explanation.transaction_reason_name_snapshot or (explanation.transaction_reason.name if explanation.transaction_reason else '—') }}<br>
+                    What:
+                    {%- if explanation.accounting_classification_code_snapshot %}
+                      <code>{{ explanation.accounting_classification_code_snapshot }}</code>
+                      {{ explanation.accounting_classification_name_snapshot }}
+                      {%- if explanation.accounting_statement_type_snapshot %}
+                        ({{ 'Profit & Loss' if explanation.accounting_statement_type_snapshot == 'PROFIT_LOSS' else 'Balance Sheet' }})
+                      {%- else %}
+                        <span class="badge bad">NO STATEMENT TYPE</span>
+                      {%- endif %}
+                    {%- elif explanation.what_label_snapshot %}
+                      {{ explanation.what_label_snapshot }} <span class="badge warn">LEGACY LABEL</span>
+                    {%- else %} &mdash;
+                    {%- endif %}
+                  </span>
+                {% endif %}
+                <div class="bank-pipeline-status" data-pipeline-id="{{ txn.id }}"></div>
+                {% endif %}
+              </td>
+              <td data-label="Internal Transfer">
+                {% if counterpart %}
+                  <span class="badge ok">Internal transfer</span>
+                  <span class="cell-note">&harr; {{ instruments_by_id.get(counterpart.payment_instrument_id).display_name if instruments_by_id.get(counterpart.payment_instrument_id) else counterpart.payment_instrument_id }}
+                  ({{ "%.2f"|format(counterpart.amount_minor / 100) }})</span>
+                {% endif %}
+              </td>
+              <td data-label="" class="col-complete">{% if txn.id in completed_cards %}<span class="badge ok">{{ completed_cards[txn.id] }}</span>{% elif not suppressed %}<button type="button" class="bank-complete-open" data-complete="{{ txn.id }}">Complete</button>{% endif %}</td>
+            </tr>
+          {% endfor %}

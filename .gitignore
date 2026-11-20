@@ -1,0 +1,81 @@
+# RFBank — only source code and current technical documentation are versioned.
+# Never commit databases, bank data, backups, credentials or runtime state.
+
+# --- Databases and SQLite temporary files ---
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# --- Bank statements, financial data and exports ---
+*.csv
+*.tsv
+*.pdf
+*.xls
+*.xlsx
+*.xlsm
+*.ofx
+*.qfx
+*.qbo
+*.qif
+Export/
+C-Bank/
+conversations/
+
+# --- Backups, dumps, archives, private recovery and parked copies ---
+backups/
+recovery/
+parking/
+*.bak
+*.backup
+*.dump
+*.sql
+*.zip
+*.7z
+*.tar
+*.gz
+*.bundle
+
+# --- Credentials, tokens and sensitive configuration ---
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*secret*
+*token*
+*credential*
+bank-chat-provider-consent.json
+
+# --- Runtime state, verification evidence and local reports (may contain data) ---
+server.json
+local-database.json
+*.json
+REPORT.txt
+PERFORMANCE_REPORT_*.txt
+RECOVERY_README.md
+
+# --- One-off migration scripts from earlier Bank copies (not part of RFBank) ---
+_setup/inventory.py
+_setup/transfer_module.py
+
+# --- Virtual environments, caches, logs, temporary files ---
+venv/
+.venv/
+env/
+__pycache__/
+pycache/
+*.pyc
+*.pyo
+.pytest_cache/
+*.log
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

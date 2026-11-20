@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Riconciliazione bancaria · QuickBooks Online · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('work', leaf='QuickBooks Online', how_works=('quickbooks-online', 'QuickBooks Online')) }}
+{#- BANK_UPLOAD_AND_RECONCILE_001 — step 5 of Carica e riconcilia, PER COMPANY: each company's QBO chart,
+    correspondences and export files. Preview, generated file, confirmed import and API are separate states. -#}
+{%- set p = view.plan %}
+{%- macro money(minor) %}{{ "{:,.2f}".format((minor or 0) / 100).replace(",", "_").replace(".", ",").replace("_", ".") }}{% endmacro %}
+
+<div class="card" id="stages">
+  <h2>QuickBooks Online</h2>
+  <table class="table-compact"><thead><tr><th>Stato</th><th>Significato</th><th>Qui</th></tr></thead><tbody>
+    <tr><td>Anteprima</td><td>Mostra come ogni movimento verrebbe registrato in QBO, con i relativi controlli. Non esporta nulla.</td>
+      <td><a href="{{ url_for('bank_work_qbo_preview') }}">Scarica l’anteprima (JSON)</a></td></tr>
+    <tr><td>File generato</td><td>File QBO «Import journal entries» dei movimenti pronti di una sola azienda. Gli stessi movimenti non entrano in altri file.</td><td>Qui sotto, per azienda</td></tr>
+    <tr><td>File scaricato</td><td>Lo stesso file può essere scaricato più volte. Il download non dimostra l’importazione in QBO.</td><td>File dell’azienda</td></tr>
+    <tr><td>Importazione confermata</td><td>Dichiari che il file è stato importato nel QuickBooks dell’azienda (Settings → Import data → Journal entries). Solo allora i movimenti risultano importati.</td><td>File dell’azienda</td></tr>
+    <tr><td>Accettato dalle API QBO</td><td>Non disponibile: Bank non è collegato a QuickBooks.</td><td>—</td></tr>
+  </tbody></table>
+  <details class="small"><summary>Requisiti per l’invio diretto a QBO</summary><ul>
+    {% for x in prerequisites %}<li>{{ x|bank_ui_it }}</li>{% endfor %}</ul></details>
+</div>
+
+<div class="card" id="company">
+  <h2>Azienda</h2>
+  <p class="small">Ogni azienda ha il proprio QuickBooks, piano dei conti, corrispondenze e file. I dati di esportazione non vengono condivisi tra aziende.</p>
+  <div class="table-scroll"><table class="table-compact table-stack"><thead><tr><th>Azienda</th><th>Pronti</th><th>Bloccati</th><th>In un file</th><th></th></tr></thead><tbody>
+  {% for co in view.companies %}<tr><td data-label="Azienda">{{ co.owner }}</td><td data-label="Pronti">{{ co.ready }}</td>
+    <td data-label="Bloccati">{{ co.blocked }}</td><td data-label="In un file">{{ co.exported }}</td>
+    <td>{% if co.owner_id %}{% if company and co.owner_id == company.id %}<strong>mostrata qui sotto</strong>{% else %}<a href="{{ url_for('bank_work_qbo', company=co.owner_id) }}">Apri</a>{% endif %}{% else %}<span class="small muted">azienda non determinabile — consulta i motivi</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">Nessun movimento ancora presente.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% for c in companies %}{% if not company or c.id != company.id %}{% if not view.companies|selectattr('owner_id', 'equalto', c.id)|list %}<a class="small" href="{{ url_for('bank_work_qbo', company=c.id) }}">{{ c.name }}</a> {% endif %}{% endif %}{% endfor %}
+  {% if view.reasons %}<p class="small">Bloccati perché: {% for label, n in view.reasons %}{{ label|bank_ui_it }} ({{ n|bank_ui_it }}){% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+  {% set no_owner = p['items']|selectattr('owner_id', 'none')|list %}
+  {% if no_owner %}<details class="small"><summary>{{ no_owner|length }} movimenti con azienda non determinabile</summary><ul>
+    {% for i in no_owner[:30] %}<li>#{{ i.txn_id }} {{ i.date }} {{ i.description }} — {% for b in i.blockers if b.code == 'NO_OWNER' %}{{ b.detail }}{% endfor %}</li>{% endfor %}</ul></details>{% endif %}
+</div>
+
+{% if company %}
+<div class="card" id="chart">
+  <h2>{{ company.name }} · Piano dei conti QuickBooks <span class="muted small">({{ chart|length }} conti)</span></h2>
+  <p class="small">In <strong>{{ company.name }}</strong> in QuickBooks Online apri Reports → Account List, esporta in CSV e carica il file qui. Bank legge nomi e tipi dei conti solo per questa azienda. Il file non contiene ID QBO. Un nuovo caricamento sostituisce l’elenco: i conti assenti non sono più utilizzabili.</p>
+  <form method="post" action="{{ url_for('bank_work_qbo_accounts') }}" enctype="multipart/form-data" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+    <input type="file" name="file" accept=".csv,.CSV" required aria-label="Elenco conti di {{ company.name }}">
+    <button type="submit" class="btn-secondary">Importa elenco conti di {{ company.name }}</button>
+  </form>
+</div>
+
+<div class="card" id="mappings">
+  <h2>{{ company.name }} · Corrispondenze</h2>
+  {% if need.sources or need.whats %}
+    <p class="small">Corrispondenze necessarie ai movimenti dell’azienda: impostale una volta, saranno riutilizzate. I suggerimenti di altre aziende o configurazioni precedenti sono solo proposte: scegli il conto nel piano di questa azienda.</p>
+    <div class="table-scroll"><table class="table-compact table-stack"><thead><tr><th>In Bank</th><th>Movimenti</th><th>{{ company.name }}'s Conto QBO</th></tr></thead><tbody>
+    {% for rows in [need.sources or [], need.whats or []] %}{% for row in rows %}
+      <tr data-rr-key="map-{{ row.kind }}-{{ row.local_id }}"><td data-label="In Bank">{{ 'Conto o carta' if row.kind == PAYMENT_ACCOUNT else 'WHAT' }}: {{ row.label }}
+          {% if row.current and row.current.status == 'PROPOSED' %}<br><span class="small">Proposto: <strong>{{ row.current.name }}</strong> (da {{ row.current.proposed_from }})</span>{% endif %}
+          {% for h in row.hints %}<br><span class="small muted">Suggerimento: {{ h.name }} — {{ h.origin }}{% if h.name not in chart|map(attribute='name')|list %}, non presente nel piano dei conti di questa azienda{% endif %}</span>{% endfor %}</td>
+        <td data-label="Movimenti">{{ row.movements }}</td>
+        <td data-label="Conto QBO">{% if chart %}<form method="post" action="{{ url_for('bank_work_qbo_map') }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+          <input type="hidden" name="kind" value="{{ row.kind }}"><input type="hidden" name="local_id" value="{{ row.local_id }}">
+          {% set pre = (row.current.name if row.current else None) or (row.hints[0].name if row.hints else None) %}
+          <select name="name" required aria-label="Conto QBO for {{ row.label }}"><option value="">Choose…</option>
+            {% for a in chart %}{% if row.kind == CATEGORY or a.account_type in ('Bank', 'Credit Card') %}<option value="{{ a.name }}"{% if a.name == pre %} selected{% endif %}>{{ a.name }} · {{ a.account_type }}</option>{% endif %}{% endfor %}</select>
+          <button type="submit" class="btn-secondary">Verifica e salva</button></form>
+          {% else %}<span class="small muted">Importa elenco conti di {{ company.name }} first.</span>{% endif %}</td></tr>
+    {% endfor %}{% endfor %}
+    </tbody></table></div>
+  {% else %}<p class="small muted">Nessuna corrispondenza mancante per i movimenti pronti dell’azienda.</p>{% endif %}
+
+  {% set others = companies|rejectattr('id', 'equalto', company.id)|list %}
+  {% if others %}<form method="post" action="{{ url_for('bank_work_qbo_copy') }}" class="inline-form small">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+    Copia le corrispondenze WHAT di <select name="from_company_id" aria-label="Copia dall’azienda">{% for c in others %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+    come proposte per {{ company.name }} <button type="submit" class="btn-secondary">Copia come proposte</button>
+    <span class="muted">— ogni corrispondenza sarà utilizzata solo dopo la verifica nel piano di piano di {{ company.name }}.</span></form>{% endif %}
+
+  {% if mine %}
+  <details{% if mine|selectattr('status', 'equalto', 'PROPOSED')|list %} open{% endif %}><summary>Corrispondenze di {{ company.name }} ({{ mine|length }})</summary>
+    <table class="table-compact"><thead><tr><th>In Bank</th><th>Conto QBO</th><th>Stato</th><th></th></tr></thead><tbody>
+    {% for e in mine %}<tr data-rr-key="mine-{{ e.id }}"><td>{{ 'Conto o carta' if e.kind == PAYMENT_ACCOUNT else 'WHAT' }}: {{ e.local }}</td><td>{{ e.name }}{% if e.type %} · {{ e.type }}{% endif %}</td>
+      <td>{% if e.status == 'VERIFIED' %}verificato rispetto a {{ 'l’elenco conti importato' if e.verified_by == 'ACCOUNT_LIST_FILE' else 'QBO' }}{% if not e.has_id %} · ID QBO non ancora disponibile{% endif %}
+          {% else %}proposta da {{ e.proposed_from }}, non utilizzata prima della verifica{% endif %}</td>
+      <td>{% if e.status == 'PROPOSED' %}<form method="post" action="{{ url_for('bank_work_qbo_verify', map_id=e.id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+        <button type="submit" class="btn-secondary">Verifica nel piano di {{ company.name }}</button></form>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></details>
+  {% endif %}
+  {% if legacy %}
+  <details class="small"><summary>Corrispondenze made before they were per company ({{ legacy|length }}) — non attribuite a un’azienda</summary>
+    <p class="muted">Non vengono usate per esportare: compaiono come suggerimenti da verificare per ogni azienda.</p>
+    <ul>{% for e in legacy %}<li>{{ 'Conto o carta' if e.kind == PAYMENT_ACCOUNT else 'WHAT' }}: {{ e.local }} → {{ e.name }}</li>{% endfor %}</ul></details>
+  {% endif %}
+</div>
+
+<div class="card" id="files">
+  <h2>{{ company.name }} · File di esportazione</h2>
+  {% set co = view.companies|selectattr('owner_id', 'equalto', company.id)|first %}
+  <p class="small">{{ co.ready if co else 0 }} movimenti pronti di {{ company.name }}. Un file contiene una sola azienda; ogni movimento è una scrittura contabile (numero <code>RFB-&lt;movement&gt;</code>), fino a {{ MAX_ROWS }} righe per file (gli altri movimenti entrano nel file successivo).</p>
+  {% if co and co.ready %}
+  <form method="post" action="{{ url_for('bank_work_qbo_export') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+    <p class="small"><label><input type="checkbox" name="feeds_excluded" value="1" required>
+      Nel QuickBooks di {{ company.name }}, i corrispondenti movimenti del flusso bancario di questi conti saranno
+      <strong>esclusi, non aggiunti</strong>. Questo percorso richiede l’esclusione dal flusso bancario per evitare una seconda registrazione dello stesso movimento.</label></p>
+    <button type="submit" class="btn-primary">Genera il file di {{ co.ready }} movimenti</button>
+  </form>
+  {% endif %}
+  {% if batches %}
+  <div class="table-scroll"><table class="table-compact table-stack"><thead><tr><th>File</th><th>Registrazioni · righe</th><th>Totale</th><th>Stato</th><th>Download</th><th></th></tr></thead><tbody>
+  {% for b in batches %}<tr data-rr-key="batch-{{ b.id }}"><td data-label="File"><a href="{{ url_for('bank_work_qbo_file', batch_id=b.id) }}">{{ b.file_name }}</a></td>
+    <td data-label="Registrazioni · righe">{{ b.journals }} · {{ b.lines }}</td><td data-label="Totale">{{ money(b.total_minor) }}</td>
+    <td data-label="Stato">{{ b.state|bank_ui_it }}{% if b.confirmed_at %} ({{ b.confirmed_at|local_dt(tz) }}{% if b.note %}: {{ b.note }}{% endif %}){% endif %}{% if b.withdrawn_at %} — {{ b.withdraw_reason }}{% endif %}</td>
+    <td data-label="Download">{{ b.downloads }}</td>
+    <td>{% if b.status == 'GENERATED' %}
+      <form method="post" action="{{ url_for('bank_work_qbo_confirm', batch_id=b.id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+        <input type="text" name="note" placeholder="Nota (facoltativa)" aria-label="Nota sull’importazione"><button type="submit" class="btn-secondary">Importato in QuickBooks</button></form>
+      <form method="post" action="{{ url_for('bank_work_qbo_withdraw', batch_id=b.id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="company_id" value="{{ company.id }}">
+        <input type="text" name="reason" required placeholder="Motivo della mancata importazione" aria-label="Motivo"><button type="submit" class="btn-link">Non importato: ritira il file</button></form>
+      {% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
