@@ -27,9 +27,9 @@ def first_name(name):
 def invitation_email(name, link):
     """(subject, text) of the Training invitation, the same wherever it is sent from."""
     first = first_name(name)
-    return ("Welcome to Rome's Flavours: your training is ready",
+    return ("Your training at Rome's Flavours is ready",
             f"{'Hi ' + first + ',' if first else 'Hello,'}\n\n"
-            'Welcome to the team! Your training is ready for you.\n\n'
+            "Your training at Rome\u2019s Flavours is ready. It has two parts that run together: online courses and practice on the floor. Your job is confirmed after the final evaluation at the end of training.\n\n"
             f'Tap this link to set up your account: {link}\n\n'
             'The link is just for you. It works once and is good for 48 hours. '
             'If it expires, ask your manager for a new one.\n\n'
