@@ -2,6 +2,18 @@
 
 # RF-One Project Instructions
 
+## Contextual help placement — Product Owner, 2026-11-14
+
+Before any development, apply this standing rule to ALL RF-One domains,
+modules, pages and modal windows: the contextual help link ("Come funziona
+questa pagina" / "How this page works") is always right-aligned immediately
+below the divider separating the window/page title from its content.
+It must not appear left-aligned or replace the contextual explanation with
+a generic help target. This instruction supersedes earlier placement rules
+that put the link inside the navigation tabs above their divider. Keep the
+visible close X on modals. The placement standard is also recorded in
+`03 Software/Shared UI/UI Rules.md` and `How Works Standard.md`.
+
 This file defines the working rules that must always be followed when contributing to the RF-One repository.
 
 ---
