@@ -128,6 +128,8 @@ def install(app, *, SessionFactory, secret=None):
             if not source['email']:
                 return jsonify(status='skipped', message='No email on the application, so no invitation was sent. '
                                'Invite them from Training, Students, Invite student.'), 422
+            if enroll.is_forwarding_email(source['email']):
+                return jsonify(status='skipped', message=enroll.FORWARDING_EMAIL_MESSAGE), 422
             issuer = _issuer(db, hirer, selection_id)
             if not issuer:
                 return jsonify(status='skipped', message='No Training trainer is set to send automatic invitations. '

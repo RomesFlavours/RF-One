@@ -15,5 +15,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!row?.value) return;
     for (const key of ['name', 'email', 'phone']) form.elements[key].value = row.dataset[key] || '';
   });
+  // Indeed forwarding addresses may never reach the person: ask for the real email.
+  const email = form.elements.email;
+  const warning = document.createElement('p');
+  warning.className = 'error';
+  warning.setAttribute('role', 'alert');
+  warning.textContent = 'This is an Indeed forwarding address. Ask for their real email.';
+  warning.hidden = true;
+  email.closest('label').after(warning);
+  const checkEmail = () => {
+    const domain = (email.value.trim().toLowerCase().split('@')[1] || '');
+    const forwarding = domain === 'indeedemail.com' || domain.endsWith('.indeedemail.com');
+    warning.hidden = !forwarding;
+    email.setCustomValidity(forwarding ? warning.textContent : '');
+  };
+  email.addEventListener('input', checkEmail);
+  select.addEventListener('change', checkEmail);
+  checkEmail();
   update();
 });

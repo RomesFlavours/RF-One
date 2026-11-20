@@ -93,8 +93,21 @@ def account_for(db, invitation):
     return db.get(m.RFOneAccount, link.account_id) if link else None
 
 
+# Job boards hand out forwarding addresses instead of the applicant's own email.
+# They may never deliver a Training invitation, so an invitation needs the real one.
+FORWARDING_EMAIL_DOMAINS = ('indeedemail.com',)
+FORWARDING_EMAIL_MESSAGE = "This is an Indeed forwarding address. Ask for their real email."
+
+
+def is_forwarding_email(email):
+    domain = (email or '').strip().lower().rpartition('@')[2]
+    return any(domain == d or domain.endswith('.' + d) for d in FORWARDING_EMAIL_DOMAINS)
+
+
 def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmation=None):
     email = accounts._validate_email_format(email)
+    if is_forwarding_email(email):
+        raise ValueError(FORWARDING_EMAIL_MESSAGE)
     name, phone = name.strip(), phone.strip()
     if len(name) > 255 or len(phone) > 64 or (phone and len(phone_key(phone)) < 5):
         raise ValueError('Check the name and phone number (up to 64 characters).')
