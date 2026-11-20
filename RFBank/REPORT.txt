@@ -1,0 +1,29 @@
+REPORT — Modulo RFBank integrato
+
+1. Risultato
+Il modulo BankMerge confermato è stato trasferito nell'area RFBank, con le pagine Pannello, Carica e riconcilia, Riconcilio, Regole, WHO, WHY e Configurazioni. URL: http://127.0.0.1:5111/bank/work
+Regole: http://127.0.0.1:5111/bank/configuration/category-trial
+
+2. Codice e dipendenze
+Trasferiti 137 file Python e 48 template del modulo e delle dipendenze condivise; esclusi i punti di ingresso degli altri domini. Nessun database storico, segreto, strumento di deploy o backup trasferito. Il vecchio esperimento Categorie di transazione è conservato in parking/previous-rules e non è registrato nell'applicazione. La chat nuova è servita sotto /recognition, con sessione separata e API funzionanti dalla pagina Regole. Il codice originale BankMerge non è modificato. Le vecchie anteprime 5110/5112 sono ferme.
+
+3. Database
+Usato soltanto il database locale RF-One/RFBank/rfone.db: 3.299 movimenti, 308 WHO, 148 WHY, 137 WHAT. Aggiunte 10 tabelle Bank mancanti, tutte vuote, con preparazione esplicita una tantum. Ogni tabella già esistente è stata confrontata integralmente tramite hash: contenuti invariati. Le assegnazioni e le allocazioni restano zero. Nessuna migrazione automatica all'avvio.
+
+4. Funzionamento autorizzato
+Le pagine recuperate sono consultabili in sola lettura. I POST originali che potrebbero importare, riconciliare o salvare assegnazioni sono bloccati (405). Sono attive la conversazione AI e la simulazione, che scrivono solo conversazioni JSON locali. Il database è aperto con mode=ro e query_only. Nessuna assegnazione viene applicata. La shell non può accedere a servizi remoti; la chat usa il collegamento ChatGPT già verificato, in processo separato, senza AWS.
+
+5. Verifiche
+Dieci test unitari/integrati superati. Le sei pagine richieste, la guida, la chat incorporata e i suoi asset rispondono 200. Verificati prefisso API, token CSRF, coesistenza sessioni e blocco della simulazione senza procedimento aggiornato. Prova reale ChatGPT nella pagina integrata: 3.299 movimenti esaminati, 157 proposte, 656 dubbi, 2.486 non intercettati, zero conflitti. Integrità SQLite ok, nessuna violazione delle chiavi esterne; hash database invariato durante chat e simulazione. Verifiche HTTP e backend concluse; non è stato eseguito un nuovo collaudo visivo in browser.
+
+6. Riferimenti
+module-transfer.json: origine, file, hash e adattamenti.
+schema-compatibility.json: tabelle vuote aggiunte e impronte di tutte le tabelle originarie.
+module-http-verification.json: esiti delle richieste HTTP.
+module-verification.json: stato dati, hash attuale e prova AI integrata.
+live-ai-verification.json: conversazione e risultati della prova reale.
+Avvia RFBank.cmd: avvio locale.
+Nessun accesso AWS e nessun deploy.
+
+7. Correzione Filtra (Riconcilio)
+Causa osservata: la richiesta con anno selezionato caricava FinancialTransactionMatch, ma al database storico mancavano quattro colonne della versione corrente. La pagina senza filtri non eseguiva quella query, perciò la precedente verifica HTTP non rilevava il difetto. Aggiunte esplicitamente le sole quattro colonne nullable alla tabella vuota degli abbinamenti, con riferimenti alle tabelle esistenti. Contenuti di tutte le tabelle invariati. Nessun abbinamento, decisione o allocazione creato. Otto verifiche HTTP superate: anno, seconda pagina, mese, conto, filtri combinati, ricerca PAYPAL, ricerca senza risultati e scheda Con WHO. La ricerca restituisce righe coerenti con i filtri e la seconda pagina non ripete la prima. Hash database invariato durante le richieste. Integrità SQLite e riferimenti verificati. La guida dei filtri resta coerente: nessun cambiamento del flusso utente. Riferimenti: filter-schema-verification.json, review-filter-verification.json e _setup/fix_review_schema.py.

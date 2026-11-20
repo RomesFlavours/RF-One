@@ -554,7 +554,7 @@ def _fetch_reference_catalogs(
     )
     # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
     # empty list that would clear existing Employee links.
-    result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees")
+    result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees", extra_params={"expand": "role"})
     current_employees = require_complete(result, "Employees")
     current_ids = set()
     for raw in current_employees:
@@ -598,6 +598,10 @@ def _fetch_reference_catalogs(
         _mirror_source_record(session, ingestion_run_id=ingestion_run_id,
             source_system_id=source_system_id, entity_type=entity_type,
             source_id=source_id, retrieved_at=retrieved_at, raw=raw)
+
+    from ....employee_directory import import_snapshot
+    import_snapshot(session, location_id=location_id, merchant_id=client.merchant_id,
+                    records=current_employees, observed_at=retrieved_at, run_id=ingestion_run_id)
 
     if mode in FULL_SCOPE_MODES:
         tender_by_source_id: dict[str, int] = {}

@@ -1,0 +1,128 @@
+{
+  "chat": {
+    "busy": false,
+    "error": null,
+    "messages": [
+      {
+        "role": "user",
+        "text": "Voglio riconoscere solo il WHO nelle descrizioni ACH: quando la descrizione contiene ORIG CO NAME: e ORIG ID:, estrai il WHO tra questi due delimitatori. Escludi tutte le descrizioni contenenti PAYPAL. Conserva cifre e spazi interni. Non assegnare né dedurre WHY. Questo è il procedimento completo che voglio simulare; riepilogalo e preparalo.",
+        "time": "2026-11-13T19:27:10.560618+00:00"
+      },
+      {
+        "role": "assistant",
+        "text": "Procedimento completo pronto per Simula: estrai solo il WHO tra ORIG CO NAME: e ORIG ID:, escludendo qualsiasi descrizione contenente PAYPAL. Nessuna assegnazione o deduzione del WHY. Il clic Simula avvierà la prova, senza scrivere sui movimenti.",
+        "time": "2026-11-13T19:27:23.103835+00:00"
+      }
+    ],
+    "plan": {
+      "rules": [
+        {
+          "actions": [
+            {
+              "after": "ORIG CO NAME:",
+              "before": "ORIG ID:",
+              "op": "extract",
+              "target": "who"
+            }
+          ],
+          "label": "Estrai WHO tra i delimitatori, escludendo PAYPAL",
+          "when": {
+            "all": [
+              {
+                "field": "description",
+                "op": "contains",
+                "value": "ORIG CO NAME:"
+              },
+              {
+                "field": "description",
+                "op": "contains",
+                "value": "ORIG ID:"
+              },
+              {
+                "not": {
+                  "field": "description",
+                  "op": "contains",
+                  "value": "PAYPAL"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "summary": "Per le descrizioni contenenti entrambi i delimitatori ORIG CO NAME: e ORIG ID: e prive di PAYPAL in qualsiasi punto, estrarre come WHO il testo tra i due delimitatori. Conservare cifre, simboli e spazi interni, eliminare solo gli spazi iniziali e finali e rendere il risultato maiuscolo. I confronti ignorano maiuscole e minuscole. Nessun filtro per conto o direzione. Non assegnare né dedurre WHY. Le descrizioni contenenti PAYPAL o prive di uno dei delimitatori restano escluse dal riconoscimento. La simulazione deve ancora essere eseguita e non comporta scritture sui movimenti.",
+      "title": "Estrazione WHO dalle descrizioni ACH, escluso PAYPAL"
+    },
+    "previous_plan": null,
+    "revision": 1,
+    "sources": []
+  },
+  "simulation_summary": {
+    "conflicts": 0,
+    "doubtful": 656,
+    "matched": 157,
+    "plan_signature": "e468aa633b9daafabab3398a6c89c0808f0e847d5f1ca5ab4f5638ed7f442950",
+    "revision": 1,
+    "title": "Estrazione WHO dalle descrizioni ACH, escluso PAYPAL",
+    "total": 3299,
+    "unmatched": 2486
+  },
+  "first_results": [
+    {
+      "alternatives": [],
+      "amount_minor": -226473,
+      "description": "ORIG CO NAME:ADP Tax                ORIG ID:1223006057 DESC DATE:260930 CO ENTRY DESCR:ADP Tax   SEC:CCD    TRACE#:091000015738234 EED:260930   IND ID:LHUBX 093020A01              IND NAME:RF GELATI LLC                                                                                                LF TRN: 2735738234TC",
+      "id": 2574,
+      "issues": [
+        "WHO proposto non presente univocamente nel catalogo; non creato."
+      ],
+      "posting_date": "2026-09-30",
+      "source": "Checking RFCO ··3583",
+      "status": "DOUBT",
+      "steps": [
+        "Estrai WHO tra i delimitatori, escludendo PAYPAL",
+        "Estrai WHO: ADP TAX"
+      ],
+      "what": null,
+      "who": "ADP TAX",
+      "why": null
+    },
+    {
+      "alternatives": [],
+      "amount_minor": -348563,
+      "description": "ORIG CO NAME:ADP Tax                ORIG ID:1223006057 DESC DATE:260930 CO ENTRY DESCR:ADP Tax   SEC:CCD    TRACE#:091000014239281 EED:260930   IND ID:LHH5Z 093020A01              IND NAME:ANGELI E DEMONI LLC                                                                                          LF TRN: 2724239281TC",
+      "id": 1077,
+      "issues": [
+        "WHO proposto non presente univocamente nel catalogo; non creato."
+      ],
+      "posting_date": "2026-09-30",
+      "source": "Checking RFWP ··3376",
+      "status": "DOUBT",
+      "steps": [
+        "Estrai WHO tra i delimitatori, escludendo PAYPAL",
+        "Estrai WHO: ADP TAX"
+      ],
+      "what": null,
+      "who": "ADP TAX",
+      "why": null
+    },
+    {
+      "alternatives": [],
+      "amount_minor": -637665,
+      "description": "ORIG CO NAME:ADP WAGE PAY           ORIG ID:9333006057 DESC DATE:260929 CO ENTRY DESCR:WAGE PAY  SEC:CCD    TRACE#:021000029823602 EED:260929   IND ID:661074892743UBX              IND NAME:RF GELATI LLC RF GELAT                                                                                       323298036 TRN: 2729823602TC",
+      "id": 2575,
+      "issues": [
+        "WHO proposto non presente univocamente nel catalogo; non creato."
+      ],
+      "posting_date": "2026-09-29",
+      "source": "Checking RFCO ··3583",
+      "status": "DOUBT",
+      "steps": [
+        "Estrai WHO tra i delimitatori, escludendo PAYPAL",
+        "Estrai WHO: ADP WAGE PAY"
+      ],
+      "what": null,
+      "who": "ADP WAGE PAY",
+      "why": null
+    }
+  ]
+}

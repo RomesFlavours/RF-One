@@ -1,5 +1,28 @@
 # Selection — Resume Screening (MVP)
 
+## Indeed browser acquisition (2026-11-14)
+
+Applications now includes a position-bound Indeed import when its separate AWS
+browser service is configured. The manager supplies a job's candidate-list URL,
+completes sign-in/SMS in the remote browser, then starts/resumes downloads.
+CVs use the existing archive and PositionCandidate links. Completed checkpoints
+survive restarts; failed items can be retried. No note classification is included.
+The service is disabled by default and has not been deployed by this change.
+See [the acquisition contract](INDEED_IMPORT.md) and
+[AWS setup](../Infrastructure/deploy/selection-indeed/README.md).
+
+## Current local startup (2026-11-14)
+
+`Avvia Selection.cmd` uses the current `AWSSelection/Selection` source and the
+existing shared `%LOCALAPPDATA%/RF-One/RFBank/rfone.db`. It creates no database
+or account. The existing admin account has the explicitly authorized SELECTION
+grant. Local auto sign-in, Italian UI and loopback-only access are enforced;
+normal service authentication and other grants are unchanged. Earlier references
+below to a separate Selection database or first-login administrator describe the
+superseded launcher. See `AWSSelection/Selection/LOCAL_ENVIRONMENT.md` relative to
+`03 Software/` for setup, backup and validation details.
+
+
 ## Position management entry
 
 RF-One's Selection card opens `/selection/`, the staff-only **Open positions**

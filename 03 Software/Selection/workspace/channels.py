@@ -28,6 +28,6 @@ CHANNELS = (
             "English interview that they can save and resume. No access to internal functions."),
     Channel("INDEED", "Indeed", False,
             "Available: the public page includes JobPosting structured data and can be used as an "
-            "“Apply on company site” link. No automatic Indeed integration."),
+            "“Apply on company site” link. Position-bound résumé imports are available when the browser service is configured."),
 )
 CHANNEL_LABELS = {c.code: c.label for c in CHANNELS}

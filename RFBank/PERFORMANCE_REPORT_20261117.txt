@@ -1,0 +1,135 @@
+REPORT - RFBank performance corrections - 17 November 2026
+
+1. Scope and outcome
+Only RF One/RFBank was changed. All five requested performance corrections are
+implemented and the official local server was restarted on 127.0.0.1:5111.
+No commit, push, cloud deployment or real AI request was performed.
+No reconciliation was run against the working database for testing.
+All 304 working table contents match their pre-change SHA-256 fingerprints;
+3,299 financial transactions and all decisions, rules and protection records
+remain unchanged. The only intentional working database change is one index.
+
+2. Comparable unprofiled service measurements (same isolated snapshot/harness)
+WHO first call: 9.759 s / 560 SQL -> 4.448 s / 20 SQL.
+WHO unchanged repeat: 9.880 s / 560 SQL -> 0.060 s / 4 SQL.
+WHY editor: 0.159 s / 166 SQL -> 0.071 s / 3 SQL.
+WHO card-settlement reads: 444 -> 1 on the first call, zero on a cache hit.
+WHO rule-version reads: 102 -> 1 on the first call, zero on a cache hit.
+These are service measurements, not comparisons against profiler wall time.
+Times vary with host load. Full before/after WHO rows and WHY catalog are equal.
+
+3. Real local HTTP checks
+Original audit: WHO /data 13.787 s and 945,681 bytes; WHY editor 0.204 s.
+The new UI explicitly requests pages of 100 rows. Latest restarted-server check:
+/bank/who-search-text/data?page=1&per_page=100&show=null: 5.406 s, 52,772 bytes, HTTP 200.
+/bank/who-search-text/data?page=2&per_page=100&show=null: 0.170 s, 57,331 bytes, HTTP 200.
+/bank/why-signals/editor-data: 0.032 s, 23,211 bytes, HTTP 200.
+Earlier warm checks were 0.08-0.12 s; the latest page change was about 0.17 s.
+The initial page is 52,772 bytes. The legacy unpaginated API is retained and still
+returns 945,681 bytes; its 3,299 movement rows were compared and are identical.
+Cold page requests still recognise the complete dataset once, before filtering,
+so counts and filters cover all records. Results never depend on the visible page.
+
+4. Implemented changes
+- SQLite WHO snapshots use connection-local data_version, own-write total_changes
+  and schema_version. A pinned read transaction prevents mixed snapshots. A new
+  connection/revision hashes its full snapshot once, allowing unchanged results
+  to be shared across pooled connections. Bounds limit memory retention. Pending
+  edits/existing transactions bypass the cache. Concurrent unchanged calls share
+  one calculation. Returned dictionaries are copied, never shared with callers.
+- Text normalization uses a bounded pure-value cache and per-row normalized fields.
+- Rule versions and dated card settlement assignments are loaded in bulk. The
+  existing canonical settlement resolver still decides historical ownership and
+  its legacy fallback, with the same half-open date boundaries.
+- Active WHY picker data is read with a targeted catalog join instead of the full
+  configuration view and one get() per reason. Provisional exclusions are unchanged.
+- WHO search/filter/count/page operations now run on the server. Latest-response
+  ordering prevents an earlier search response from replacing a newer one.
+- Nested SELECT workspaces index predicate columns and reuse compatible snapshots
+  within one Sources execution only. SELECT authorization, allowed functions,
+  timeout, no LIMIT/OFFSET hiding and fetchmany(2) ambiguity handling remain.
+  Internal errors restore read-only authorization in finally. Fingerprints are
+  captured before index pages, preserving the original evidence image.
+- Amazon/PayPal projections use batched changed-row inserts/updates and targeted
+  obsolete-row deletion. Unchanged projections perform zero row changes. Source
+  reads and writes retain SQLite writer serialization without a destructive DELETE.
+- One persistent index: ix_ft_posting_date_id(posting_date,id). Existing card and
+  rule-version indices were not duplicated. A date range sorted by date/id changes
+  from SCAN plus temporary sort to indexed SEARCH. A 200-query isolated probe was
+  0.192 s before and 0.037 s after, with identical rows.
+
+5. Synthetic support/lookup probes (not working-database source volumes)
+The working Amazon/PayPal projections were empty; they did not cause the original
+WHO latency. With 1,500 synthetic rows, repeated unchanged projection:
+amazon: 0.373 -> 0.049 s; 1503 -> 3 SQL; 3000 -> 0 row changes.
+paypal: 0.711 -> 0.103 s; 3006 -> 6 SQL; 6000 -> 0 row changes.
+Nested lookup, 5,000 synthetic rows / 1,000 missing-match searches: 0.420 -> 0.009 s.
+Its plan changes from SCAN s1 to a composite indexed SEARCH. Two compatible
+lookups read/copy the source once instead of twice. Multiple matches still return
+two candidate rows and are never silently reduced to a winner.
+
+6. Validation and limits
+Eight new regressions passed: cache invalidation for own/external commits and
+rollback, existing snapshots, pooled-connection reuse, caller mutation isolation,
+all filters/pages/counts against original rows, all 3,299 dated ownership results,
+historical boundaries/fallback, indexed sandbox security/failure restoration,
+pre-index evidence fingerprint equivalence, Amazon/PayPal exact table equivalence
+including ids, duplicates, overlapping reports, statuses, multiple accounts,
+refunds/currencies, corrections/removal, unchanged writes, and startup writer lock.
+Existing suite: 23 passed, one optional real-source test skipped. One existing
+recognition test fails with matched=0 versus expected=3299. The identical failure
+was reproduced with unchanged baseline code on an isolated copy. It was not fixed
+by changing recognition/reconciliation semantics. Nested program/PayPal tests were
+rerun after the final changes: 14 passed, one optional source test skipped.
+Python/JavaScript syntax, HTTP page rendering, contextual help target and controls
+were checked. No full visual Edge or human-save end-to-end trial was performed.
+How Works was updated for pagination, with the WHO page help below its heading
+and right-aligned. Backend-only changes add no new user operation.
+First recognition after a database change is still several seconds. Cache
+invalidation is deliberately conservative (any committed database content change).
+Projection comparisons still read saved reports to detect corrections/deletions.
+A newer Amazon report may require batched renumber/update of earlier rows to keep
+exact historical rebuild ids; no alternate identity/classification is introduced.
+
+7. Files modified
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\rule_sources.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\bank_amazon.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\bank_trial_sources.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\bank_who_search_text.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\bank_why_signals.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\models.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\ai_rules.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\card_configuration.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\configuration.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\export.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\flow.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\paypal_reports.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\who_search_text.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\templates\bank_how_it_works.html
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\templates\bank_who_search_text.html
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\templates\_bank_macros.html
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Web\static\bank-assistant\who_search_text.js
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\.gitignore
+
+New implementation/test tools:
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\03 Software\RF-One Data Store\rfone_data_store\bank_reconciliation\evidence_projection.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\_setup\performance_probe.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\_setup\test_performance_regressions.py
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\_setup\add_performance_index.py
+
+8. Traceability / rollback
+Baseline source backup, isolated pre-change data, before/after JSON, query counts,
+HTTP measurements, table fingerprints, scoped changes.patch and final-verification:
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\backups\performance-20261117
+Pre-index SQLite backup:
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\backups\before-performance-index-20261117-212944.db
+Restore code selectively from baseline/ or reverse the reviewed changes.patch;
+preserve subsequent edits. Index-only rollback is DROP INDEX ix_ft_posting_date_id;
+restoring an old database would overwrite newer facts and is not needed to undo
+this index. No rollback was performed.
+
+The automatic approval review rejected the combined restart/disposable cleanup
+command with only "blocked by policy". Restart alone succeeded. This task's final
+isolated test runtime remains, excluded from Git and not used by the server:
+C:\Users\servi\OneDrive\AI-RF-ONE\RF One\RFBank\backups\performance-20261117\final-tests
+Previous-audit Temp copies were not touched.

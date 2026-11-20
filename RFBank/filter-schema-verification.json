@@ -1,0 +1,14 @@
+{
+  "database": "C:\\Users\\servi\\AppData\\Local\\RF-One\\RFBank\\rfone.db",
+  "cause": "Filtered review loaded ORM columns absent from historical matches schema",
+  "added_nullable_columns": [
+    "relationship",
+    "posting_transaction_id",
+    "first_engine_run_id",
+    "last_engine_run_id"
+  ],
+  "all_table_contents_unchanged": true,
+  "matches": 0,
+  "integrity": "ok",
+  "foreign_key_errors": []
+}

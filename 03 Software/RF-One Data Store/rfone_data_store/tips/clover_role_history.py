@@ -1,0 +1,123 @@
+"""Clover role observations used by the Tips engine."""
+from collections import defaultdict
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from .. import models as m
+from ..employee_directory import named_roles
+
+
+def utc(value):
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return value.replace(tzinfo=value.tzinfo or timezone.utc).astimezone(timezone.utc)
+
+
+class CloverRoleHistory:
+    def __init__(self, session, restaurant_id, locations):
+        self.observations = defaultdict(dict)
+        self.mappings = defaultdict(list)
+        self.confirmed = defaultdict(list)
+        links = session.scalars(select(m.EmployeeCloverLink).where(
+            m.EmployeeCloverLink.location_id.in_(locations),
+            m.EmployeeCloverLink.employee_id.is_not(None),
+        )).all()
+        if not links:
+            return
+        keys = {link.id: (link.employee_id, link.location_id) for link in links}
+        event = m.EmployeeDirectoryEvent
+        for row in session.scalars(select(event).where(
+            event.link_id.in_(keys),
+            event.action.in_(("IMPORT", "CLOVER_ROLE_CHANGE", "CLOVER_ROLE_OBSERVED")),
+        ).order_by(event.id)):
+            points = self.observations[keys[row.link_id]]
+            if row.action == "IMPORT":
+                roles = named_roles(row.details.get("snapshot"))
+                if roles:
+                    points.setdefault(utc(row.details.get("observed_at") or row.created_at), frozenset(roles))
+                continue
+            if row.details["previous_observed_at"] and row.details["before"]:
+                points[utc(row.details["previous_observed_at"])] = frozenset(row.details["before"])
+            points[utc(row.details["observed_at"])] = frozenset(row.details["after"])
+        for link in links:
+            roles = named_roles(link.snapshot)
+            last_seen = (link.snapshot or {}).get("roles_observed_at") or link.last_seen_at
+            if roles and last_seen:
+                self.observations[keys[link.id]][utc(last_seen)] = frozenset(roles)
+        self.observations = {key: sorted(points.items()) for key, points in self.observations.items() if points}
+        mapping, role = m.SourceRoleMapping, m.SourceRole
+        for source_id, entry in session.execute(
+            select(role.source_role_id, mapping).join(role, role.id == mapping.source_role_id)
+            .join(m.SourceSystem, m.SourceSystem.id == role.source_system_id)
+            .where(mapping.restaurant_id == restaurant_id, m.SourceSystem.code == "CLOVER")
+        ):
+            self.mappings[source_id].append(entry)
+
+        assignment = m.EmployeeAssignment
+        for row in session.scalars(select(assignment).where(
+            assignment.restaurant_id == restaurant_id,
+            assignment.employee_id.in_({employee for employee, _ in keys.values()}),
+            assignment.assignment_source == "MANUAL",
+        )):
+            self.confirmed[row.employee_id].append(row)
+
+    def map_roles(self, source_roles, instant):
+        mapped = set()
+        for source_id in source_roles:
+            active = {entry.restaurant_role_id for entry in self.mappings[source_id]
+                      if entry.mapping_status == "ACTIVE" and utc(entry.valid_from) <= instant
+                      and (entry.valid_to is None or instant < utc(entry.valid_to))}
+            if len(active) != 1:
+                return set()
+            mapped.update(active)
+        return mapped
+
+    def has_any_role(self, employee, location, roles):
+        return any(mapping.restaurant_role_id in roles
+                   for _, observed in self.observations.get((employee, location), ())
+                   for source_id in observed for mapping in self.mappings[source_id])
+
+    def roles_at(self, employee, location, instant):
+        """None means legacy assignment; empty means the tracked role is uncertain."""
+        points = self.observations.get((employee, location))
+        if not points:
+            return None
+        previous = next(((at, roles) for at, roles in reversed(points) if at <= instant), None)
+        if previous is None:
+            return set()
+        following = next(((at, roles) for at, roles in points if at > instant), previous)
+        if previous[0] != instant and previous[1] != following[1]:
+            before = self.map_roles(previous[1], previous[0])
+            after = self.map_roles(following[1], following[0])
+            # A dated manual handoff can provide the effective time independently
+            # of the poll timestamps. Require both sides of the transition.
+            if len(before) == len(after) == 1 and before != after:
+                assignments = [row for row in self.confirmed[employee]
+                               if row.location_id in (None, location)]
+                handoffs = {utc(new.valid_from) for new in assignments if new.restaurant_role_id in after
+                            and previous[0] < utc(new.valid_from) <= following[0]
+                            and any(old.restaurant_role_id in before and old.valid_to
+                                    and utc(old.valid_to) == utc(new.valid_from)
+                                    for old in assignments)}
+                if len(handoffs) == 1:
+                    return self.map_roles(previous[1] if instant < handoffs.pop() else following[1], instant)
+            return set()
+        return self.map_roles(previous[1], instant)
+
+    def uncertain_shift(self, employee, location, start, end):
+        points = self.observations.get((employee, location))
+        if not points:
+            return False
+        boundaries = {start, *(at for at, _ in points if start <= at < end)}
+        for _, roles in points:
+            for role in roles:
+                for entry in self.mappings[role]:
+                    for at in (entry.valid_from, entry.valid_to):
+                        if at and start <= utc(at) < end:
+                            boundaries.add(utc(at))
+        # Also check open intervals, including the time between two observations.
+        ordered = sorted(boundaries | {end})
+        return any(len(self.roles_at(employee, location, at) or ()) != 1
+                   for left, right in zip(ordered, ordered[1:])
+                   for at in (left, left + (right - left) / 2))

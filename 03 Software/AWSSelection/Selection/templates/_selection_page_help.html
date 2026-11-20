@@ -1,0 +1,32 @@
+<div class="selection-page-help-bar" style="display:flex;justify-content:flex-end;width:100%;margin:.5rem 0 1rem"><a class="selection-help-link" href="#selection-page-help" data-how-works="selection-page" onclick="document.getElementById('selection-page-help').showModal();return false">Come funziona questa pagina</a></div>
+<dialog id="selection-page-help" aria-labelledby="selection-help-title" style="max-width:48rem;width:90%;max-height:85vh;overflow:auto;border:1px solid #88985e;border-radius:12px">
+<div style="position:sticky;top:0;background:white;display:flex;align-items:center;justify-content:space-between"><h2 id="selection-help-title">Come funziona Selezione</h2><button type="button" aria-label="Chiudi" onclick="this.closest('dialog').close()">×</button></div>
+{% if request.endpoint in ('positions.selection_criteria','positions.selection_criteria_current','positions.default_selection_criteria') %}
+{% include 'help/selection_criteria.html' %}
+{% elif request.endpoint == 'positions.sp_upload' %}
+{% include 'help/resume_upload.html' %}
+{% elif request.endpoint == 'positions.dashboard' %}
+{% include 'help/selection_dashboard.html' %}
+{% elif request.endpoint == 'positions.requirements_priorities' %}
+{% include 'help/requirements_priorities.html' %}
+{% elif request.endpoint == 'positions.configuration' %}
+{% include 'help/configuration.html' %}
+{% elif request.endpoint == 'positions.interviews' %}
+{% include 'help/interviews.html' %}
+{% elif request.endpoint == 'positions.evaluation' %}
+{% if old_screening_enabled %}{% include 'help/selection_criteria.html' %}{% else %}
+<section id="selection-page"><h3>Valutazione dei CV</h3><p>La lista mostra tutti i CV della posizione corrente. Le regole attive della sua PDL si applicano ai dati già estratti: UnFit in fondo, poi priorità decrescente. A parità resta l’ordine precedente. Apri Esiti delle regole PDL per vedere condizioni verificate e informazioni da chiarire. I dati mancanti non vengono interpretati come un requisito non soddisfatto. Le decisioni umane restano distinte e invariate.</p></section>
+{% endif %}
+{% elif request.endpoint == 'positions.position_detail' and section == 'applications' %}
+{% if old_screening_enabled %}{% include 'help/selection_criteria.html' %}{% else %}
+{% include 'help/candidate_board.html' %}
+{% endif %}
+{% elif request.endpoint in ('positions.position_detail', 'positions.sp_page') %}
+<section id="selection-page"><h3>Candidature e percorso della posizione</h3><p>Questa pagina raccoglie candidature e curriculum della posizione corrente. Le regole attive della PDL ordinano i CV: UnFit in fondo, poi priorità decrescente, conservando l’ordine precedente a parità. Esiti delle regole PDL mostra le condizioni e i dati da chiarire; i dati mancanti non diventano esiti negativi. Applica Filtri e Regole in Candidature avvia la lettura AI con le regole effettive della PDL. Le decisioni umane non cambiano. Il collegamento pubblico e le istruzioni della Pagina di applicazione si trovano ora nel relativo blocco in Configurazioni, riferito alla stessa posizione.</p><p><a href="{{ url_for('positions.how_it_works', _anchor=section) }}">Apri la guida di questa fase</a></p></section>
+{% elif request.endpoint == 'positions.position_new' %}
+<section id="selection-page"><h3>Nuova posizione</h3><p>Scegli uno dei ruoli attivi definiti in Configurazioni, indica sede, numero di persone e responsabile. Il titolo può essere lasciato vuoto: verrà usato il nome del ruolo.</p><p>Continua salva una bozza e apre il modulo di dettaglio. I ruoli con uno standard predefinito ne ricevono una copia; per gli altri imposta i requisiti della posizione. Annulla chiude il modulo senza creare la posizione.</p></section>
+{% else %}
+<section id="selection-page"><h3>Il percorso di selezione</h3><p>Parti dall’elenco delle posizioni e seleziona quella su cui lavorare. Candidature, Colloqui e Decisioni restano riferiti a quella posizione. La barra Posizione corrente indica il contesto selezionato.</p><p>{% if old_screening_enabled %}Criteri di selezione gestisce il motore Old e la graduatoria per priorità della PDL corrente.{% else %}Requisiti &amp; Priorità gestisce le regole salvate per ciascuna PDL.{% endif %} Configurazioni gestisce i ruoli disponibili per aprire nuove posizioni. Selezione candidati mantiene l’interfaccia storica sugli stessi dati. Consulta la guida completa per i comandi della pagina e le conseguenze delle azioni.</p><p><a href="{{ url_for('positions.how_it_works') }}">Apri la guida completa di Selezione</a></p></section>
+{% endif %}
+</dialog>
+<script>document.getElementById('selection-page-help').addEventListener('keydown',function(event){if(event.key==='Escape')event.stopPropagation();});</script>

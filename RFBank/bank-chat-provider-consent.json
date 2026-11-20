@@ -1,0 +1,6 @@
+{
+  "provider": "OPENAI_CHATGPT_CODEX",
+  "allow_database_context": true,
+  "approved_at": "2026-11-18",
+  "approved_by": "Product Owner (explicit approval in session)"
+}

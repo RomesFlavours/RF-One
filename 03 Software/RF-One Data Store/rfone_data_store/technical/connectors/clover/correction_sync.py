@@ -596,6 +596,23 @@ class _CycleLockSummary:
     refunds_found: int = 0
 
 
+def _refresh_employee_roles(session, client, *, location_id, merchant_id, run_id):
+    from ....employee_directory import import_snapshot
+    from .source_guard import require_complete
+
+    try:
+        records = require_complete(paginate(
+            client, f"/v3/merchants/{merchant_id}/employees", extra_params={"expand": "role"},
+        ), "Employees")
+        with session.begin_nested():
+            import_snapshot(session, location_id=location_id, merchant_id=merchant_id,
+                            records=records, run_id=run_id)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        LOG.warning("Clover employee observation failed: %s", _safe_error_summary(exc))
+
+
 def run_correction_cycle(
     session: Session, *, location_id: int, client: CloverReadClient | None = None, now: datetime | None = None,
 ) -> CorrectionCycleSummary | None:
@@ -643,6 +660,8 @@ def run_correction_cycle(
     beat()
     session.commit()
     try:
+        _refresh_employee_roles(session, resolved_client, location_id=location_id,
+                                merchant_id=merchant_id, run_id=lock_run.id)
         summary.results.append(
             _correct_orders(
                 session, resolved_client, location_id=location_id, source_system_id=source_system_id,

@@ -532,6 +532,7 @@ def position_new(db, actor):
 @bp.route("/posizioni/<int:position_id>")
 @access_required
 def position_detail(db, actor, position_id):
+    from . import indeed
     position = _position(db, actor, position_id)
     tab = request.args.get("tab") or ("posizione" if position.status == ps.DRAFT else "valutazione")
     cards = _candidate_cards(db, position)
@@ -578,6 +579,7 @@ def position_detail(db, actor, position_id):
         hired=len(decided[ps.D_HIRED]), configuration=position_settings.get(position),
         configuration_features=position_settings.FEATURES, ai_checks=position_settings.context(position).get("ai_checks", {}),
         platform_policy=ai_adapter.POLICY,
+        indeed_panel=indeed.panel(position.id) if tab == 'candidature' and actor.can_edit(position) else None,
         company=_company_facts(db, position.location_label, position))
 
 

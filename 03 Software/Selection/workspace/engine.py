@@ -66,16 +66,25 @@ def import_cv(session, *, documents, restaurant_id: int, position: ps.Position, 
     ext = os.path.splitext(filename)[1].lower()
     if ext not in SUPPORTED_EXTENSIONS:
         return {"filename": filename, "status": "FAILED", "message": "Unsupported format (use PDF, DOCX or TXT)."}
+    staged = None
     try:
         staged = documents.stage(file_storage, filename)
         raw_text = extract_text(staged.local_path, ext)
     except Exception:
+        if staged:
+            documents.discard(staged.storage_path)
         return {"filename": filename, "status": "FAILED", "message": "Unable to read the file."}
+    finally:
+        if staged:
+            staged.cleanup()
 
     result = import_one_resume(
-        session, restaurant_id=restaurant_id, source_type=LOCAL_UPLOAD, original_filename=filename,
+        session, restaurant_id=restaurant_id, source_type='INDEED_BROWSER' if channel == 'INDEED' else LOCAL_UPLOAD,
+        source_provider='indeed' if channel == 'INDEED' else None, original_filename=filename,
         storage_path=staged.storage_path, raw_text=raw_text, content_hash=compute_content_hash(raw_text, filename),
     )
+    if result.status not in (COMPLETED, PARTIAL):
+        documents.discard(staged.storage_path)
     application, note = None, None
     if result.status == DUPLICATE and result.duplicate_of_raw_resume_id is not None:
         application, created = app_svc.application_for_known_resume(

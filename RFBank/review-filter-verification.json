@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "query": "view=to_reconcile&year=2026&month=&payment_instrument_id=",
+      "fragment": false,
+      "status": 200,
+      "rows": 100
+    },
+    {
+      "query": "view=to_reconcile&year=2026&page=2",
+      "fragment": true,
+      "status": 200,
+      "rows": 100
+    },
+    {
+      "query": "view=to_reconcile&year=2026&month=9",
+      "fragment": false,
+      "status": 200,
+      "rows": 69
+    },
+    {
+      "query": "view=to_reconcile&year=2026&payment_instrument_id=1",
+      "fragment": false,
+      "status": 200,
+      "rows": 1
+    },
+    {
+      "query": "view=to_reconcile&year=2026&month=9&payment_instrument_id=1",
+      "fragment": false,
+      "status": 200,
+      "rows": 1
+    },
+    {
+      "query": "view=to_reconcile&year=2026&q=PAYPAL",
+      "fragment": false,
+      "status": 200,
+      "rows": 34
+    },
+    {
+      "query": "view=to_reconcile&year=2026&q=RFBANK_NO_MATCH_57C308",
+      "fragment": false,
+      "status": 200,
+      "rows": 0
+    },
+    {
+      "query": "view=reconciled&year=2026",
+      "status": 200,
+      "rows": 100
+    }
+  ],
+  "database_hash_unchanged_during_requests": true,
+  "database_sha256": "4fb749757915d0733a2dc7d9ee91467e2480ed3eb679ec2a07f4b85b6a2367cb",
+  "assignments": 0,
+  "allocations": 0,
+  "aws_accessed": false
+}

@@ -49,6 +49,7 @@ from .. import models as m
 from ..ingestion.common import utc_now
 from ..technical.connectors.clover.acquisition import get_order_settlement_time
 from . import distribution_rule_service as rule_svc
+from .clover_role_history import CloverRoleHistory
 
 UTC_TZ = timezone.utc
 from .rounding import equal_split
@@ -157,6 +158,8 @@ class TipCalculationResult:
     voluntary_total_minor: int = 0
     gratuity_total_minor: int = 0
     blocked_reason: str | None = None
+    order_role_ids: dict[int, int] = field(default_factory=dict)
+    recipient_role_ids: dict[int, int] = field(default_factory=dict)
     # §5 — the period as the OPERATOR stated it. The UTC period_start/end
     # above are the retrieval window derived from these, not the truth.
     first_business_date: date | None = None
@@ -246,6 +249,7 @@ class EmployeeReviewRow:
     # owner, outbound source, or inbound recipient) in this run, sorted, so
     # the Review UI can link straight to each Order's drill-down.
     order_ids: list[int] = field(default_factory=list)
+    role_net_minor: dict[str, int] = field(default_factory=dict)
 
     @property
     def final_entitlement_minor(self) -> int:
@@ -383,6 +387,7 @@ class _PeriodEligibility:
     """Assignments and shifts overlapping the open/settlement instants in one calculation."""
 
     def __init__(self, session, restaurant_id, location_ids, first, end):
+        self.role_history = CloverRoleHistory(session, restaurant_id, location_ids)
         a, sh = m.EmployeeAssignment, m.Shift
         self.assignments = session.execute(
             select(a.employee_id, a.restaurant_role_id, a.location_id, a.valid_from, a.valid_to)
@@ -397,8 +402,12 @@ class _PeriodEligibility:
         ).all()
 
     def holders(self, role_id, location, at):
-        return {emp for emp, role, loc, start, end in self.assignments
-                if role == role_id and loc in (None, location) and _active_between(start, end, at)}
+        observed = {emp: self.role_history.roles_at(emp, location, at)
+                    for emp, loc in self.role_history.observations if loc == location}
+        return ({emp for emp, role, loc, start, end in self.assignments
+                 if role == role_id and loc in (None, location) and _active_between(start, end, at)
+                 and observed.get(emp) is None}
+                | {emp for emp, roles in observed.items() if roles and role_id in roles})
 
     def on_shift(self, candidates, location, at):
         return {emp for emp, loc, start, end in self.shifts
@@ -688,18 +697,40 @@ def calculate_tips(
         )
     )
 
-    if not settled:
-        return result
     # Orders can open before the requested period and settle inside it.
-    first = min(period_start, *(_aware_utc(order.created_at) for order, _ in settled))
+    first = min([period_start] + [_aware_utc(order.created_at) for order, _ in settled])
     eligibility = _PeriodEligibility(session, restaurant_id, location_ids, first, period_end)
-    role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name)).all())
     versions = {
-        rule.id: [v for v in rule_svc.list_versions(session, rule.id)
-                  if v.status != m.TIP_RULE_VERSION_STATUS_CANCELLED]
+        rule.id: [version for version in rule_svc.list_versions(session, rule.id)
+                  if version.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
+                  and _aware_utc(version.effective_from) < period_end
+                  and (version.effective_to is None or _aware_utc(version.effective_to) > first)]
         for rule in active_rules
     }
-
+    tip_roles = {role for entries in versions.values() for version in entries
+                 for role in (version.source_role_id, version.recipient_role_id) if role is not None}
+    order_owners = {(order.employee_id, order.location_id) for order, _ in settled
+                    if sum(amounts[order.id])}
+    uncertain_shifts = []
+    for employee, location, clock_in, clock_out in eligibility.shifts:
+        start = max(first, _aware_utc(clock_in))
+        end = min(period_end, _aware_utc(clock_out) if clock_out else period_end)
+        assigned_to_tips = any(emp == employee and role in tip_roles and loc in (None, location)
+                               for emp, role, loc, _, _ in eligibility.assignments)
+        relevant = ((employee, location) in order_owners or assigned_to_tips
+                    or eligibility.role_history.has_any_role(employee, location, tip_roles))
+        if relevant and start < end and eligibility.role_history.uncertain_shift(employee, location, start, end):
+            uncertain_shifts.append((employee, _aware_utc(clock_in)))
+    if uncertain_shifts:
+        names = dict(session.execute(select(m.Employee.id, m.Employee.display_name)
+                                     .where(m.Employee.id.in_({employee for employee, _ in uncertain_shifts}))).all())
+        shifts = ", ".join(f"{names.get(employee) or employee} ({start:%Y-%m-%d %H:%M} UTC)"
+                           for employee, start in sorted(set(uncertain_shifts), key=lambda row: (row[1], row[0])))
+        result.blocked_reason = f"Clover role uncertain for these shifts: {shifts}. Confirm the effective role before calculation."
+        return result
+    if not settled:
+        return result
+    role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name)).all())
     for order, settlement_time in settled:
         settlement_time = _aware_utc(settlement_time)
         summary.orders_considered += 1
@@ -717,6 +748,14 @@ def calculate_tips(
             summary.orders_skipped_no_employee += 1
             continue
 
+        observed = eligibility.role_history.roles_at(order.employee_id, order.location_id, settlement_time)
+        if observed is not None:
+            if len(observed) == 1:
+                result.order_role_ids[order.id] = next(iter(observed))
+            elif voluntary_minor or gratuity_minor:
+                result.blocked_reason = f"Clover role uncertain for Order {order.id}. Confirm the effective role before calculation."
+                return result
+
         for rule in active_rules:
             version = next((v for v in versions[rule.id]
                             if _active_between(v.effective_from, v.effective_to, settlement_time)), None)
@@ -732,6 +771,7 @@ def calculate_tips(
                     eligibility.holders(version.source_role_id, order.location_id, settlement_time)):
                 continue
             rule_version_ids.add(version.id)
+            result.recipient_role_ids[version.id] = version.recipient_role_id
             result.lines.extend(
                 _apply_rule_to_order(
                     eligibility, role_name=role_names.get(version.recipient_role_id, str(version.recipient_role_id)),
@@ -985,6 +1025,25 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
         if employee_ids else {}
     )
 
+    # Keep source and recipient money under their operational role until the
+    # individual role nets are ready. Legacy orders retain Service Owner semantics.
+    role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name)).all())
+    nets_by_employee: dict[int, dict[int | None, int]] = {}
+    for order in orders_in_scope:
+        if order.employee_id is not None and sum(amounts[order.id]):
+            nets = nets_by_employee.setdefault(order.employee_id, {})
+            role = result.order_role_ids.get(order.id)
+            nets[role] = nets.get(role, 0) + sum(amounts[order.id])
+    for line in allocations:
+        if not line.allocated_amount_minor:
+            continue
+        source = nets_by_employee.setdefault(line.source_employee_id, {})
+        source_role = result.order_role_ids.get(line.order_id)
+        source[source_role] = source.get(source_role, 0) - line.allocated_amount_minor
+        recipient = nets_by_employee.setdefault(line.recipient_employee_id, {})
+        recipient_role = result.recipient_role_ids.get(line.rule_version_id)
+        recipient[recipient_role] = recipient.get(recipient_role, 0) + line.allocated_amount_minor
+
     rows: list[EmployeeReviewRow] = []
     for emp_id in employee_ids:
         gross = gross_by_employee.get(emp_id, 0)
@@ -1010,7 +1069,9 @@ def build_employee_review(session: Session, result: TipCalculationResult) -> lis
                 employee_id=emp_id,
                 display_name=employees_by_id[emp_id].display_name if emp_id in employees_by_id else None,
                 gross_earned_tips_minor=gross, outbound_tip_out_minor=outbound, inbound_tip_out_minor=inbound,
-                net_before_adjustments_minor=gross - outbound + inbound,
+                net_before_adjustments_minor=sum(nets_by_employee.get(emp_id, {}).values()),
+                role_net_minor={role_names.get(role, "Service Owner"): amount
+                                for role, amount in nets_by_employee.get(emp_id, {}).items()},
                 has_warning=bool(warnings_by_employee.get(emp_id)),
                 voluntary_tips_minor=voluntary_by_employee.get(emp_id, 0),
                 gratuity_minor=gratuity_by_employee.get(emp_id, 0),

@@ -636,3 +636,61 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         "CloverClient" not in engine_source and "clover_explorer" not in engine_source
         and "requests." not in engine_source and "get_default_client" not in engine_source,
     )
+
+
+    # One Clover identity changes role while a shift is in progress.
+    from .employee_directory import import_snapshot
+
+    for restaurant_role in (role_host, role_server):
+        source_role = m.SourceRole(location_id=location.id, source_system_id=source_system.id,
+                                   source_role_id=restaurant_role.name, name=restaurant_role.name)
+        session.add(source_role)
+        session.flush()
+        session.add(m.SourceRoleMapping(
+            restaurant_id=restaurant.id, source_system_id=source_system.id,
+            source_role_id=source_role.id, restaurant_role_id=restaurant_role.id,
+            valid_from=_at(-300), mapping_status="ACTIVE", mapping_source="MANUAL",
+        ))
+    for shift in session.scalars(select(m.Shift).where(m.Shift.employee_id == host_b.id)):
+        shift.location_id = location.id
+
+    def observe_host_b(role, at):
+        raw = {"id": host_b.source_employee_id, "name": host_b.display_name, "role": "EMPLOYEE"}
+        if role:
+            raw["roles"] = {"elements": [{"id": role, "name": role}]}
+        import_snapshot(session, location_id=location.id, merchant_id=location.source_location_id,
+                        records=[raw], observed_at=at)
+
+    observe_host_b("Host", _at(7, 0))
+    observe_host_b("Host", _at(7, 13))
+    observe_host_b(None, _at(7, 14))
+    observe_host_b("Server", _at(7, 16))
+    observe_host_b("Server", _at(8, 8))
+    change = session.scalars(select(m.EmployeeDirectoryEvent).where(
+        m.EmployeeDirectoryEvent.action == "CLOVER_ROLE_CHANGE",
+    )).one()
+    result.check("Clover captures one change and preserves the last complete Host observation",
+                 change.details["before"] == {"Host": "Host"}
+                 and change.details["after"] == {"Server": "Server"}
+                 and datetime.fromisoformat(change.details["previous_observed_at"]) == _at(7, 13))
+    bounds = dict(restaurant_id=restaurant.id, period_start=_at(7, 0), period_end=_at(9, 0))
+    uncertain = engine.calculate_tips(session, **bounds)
+    result.check("An uncertain Clover change marks the affected shift and prevents calculation",
+                 bool(uncertain.blocked_reason and host_b.display_name in uncertain.blocked_reason))
+
+    prior = session.scalars(select(m.EmployeeAssignment).where(
+        m.EmployeeAssignment.employee_id == host_b.id,
+    )).one()
+    prior.valid_to = _at(7, 15)
+    make_assignment(host_b, role_server, _at(7, 15), None)
+    order = make_order(employee=host_b, created_at=_at(8, 11))
+    make_payment(order=order, employee=host_b, amount=2500, created_at=_at(8, 12), tip_amount=1000)
+    session.flush()
+    confirmed = engine.calculate_tips(session, **bounds)
+    result.check("A dated manual handoff resolves the role change", confirmed.blocked_reason is None)
+    if confirmed.blocked_reason is None:
+        row = next(row for row in engine.build_employee_review(session, confirmed) if row.employee_id == host_b.id)
+        result.check("One employee receives the sum of the independent Host and Server nets",
+                     set(row.role_net_minor) == {"Host", "Server"}
+                     and row.role_net_minor["Host"] > 0 and row.role_net_minor["Server"] > 0
+                     and row.final_entitlement_minor == sum(row.role_net_minor.values()))

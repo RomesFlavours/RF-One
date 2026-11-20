@@ -1,0 +1,88 @@
+{
+  "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff TEST\\snapshots\\rfone_g0002_MINIPC-KSYR1_20261021_204936.db",
+  "destination": "C:\\Users\\servi\\AppData\\Local\\RF-One\\RFBank\\rfone.db",
+  "selected_counts": {
+    "bank_transaction_reasons": 148,
+    "financial_transactions": 3299,
+    "bank_accounting_classifications": 137,
+    "bank_occurrences": 308
+  },
+  "candidates": 61,
+  "unreadable": [
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0035_MINIPC-KSYR1_20261103_092413.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0034_MINIPC-KSYR1_20261101_083800.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0033_MINIPC-KSYR1_20261026_124715.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0032_MINIPC-KSYR1_20261026_081630.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0031_MINIPC-KSYR1_20261026_012652.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0030_MINIPC-KSYR1_20261026_011631.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0029_MINIPC-KSYR1_20261026_005640.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0028_MINIPC-KSYR1_20261026_005427.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0027_MINIPC-KSYR1_20261026_004850.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0026_MINIPC-KSYR1_20261026_002808.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0025_MINIPC-KSYR1_20261026_001606.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0024_MINIPC-KSYR1_20261025_234937.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0023_MINIPC-KSYR1_20261025_231122.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0022_MINIPC-KSYR1_20261025_224926.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0021_MINIPC-KSYR1_20261025_223826.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0020_MINIPC-KSYR1_20261025_222308.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0019_MINIPC-KSYR1_20261025_220436.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0018_MINIPC-KSYR1_20261025_215749.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0017_MINIPC-KSYR1_20261025_214517.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0016_MINIPC-KSYR1_20261025_212310.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0015_MINIPC-KSYR1_20261025_211416.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0014_MINIPC-KSYR1_20261025_201007.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0013_MINIPC-KSYR1_20261018_090340.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0012_MINIPC-KSYR1_20261017_193617.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0011_MINIPC-KSYR1_20261017_185541.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\Bank Old\\RF-One Bank Handoff\\snapshots\\rfone_g0010_MINIPC-KSYR1_20261017_165642.db",
+    "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RF One\\03 Software\\RF-One Data Store\\data\\rfone.db"
+  ],
+  "cleared_tables": {
+    "bank_ai_rule_application_items": 0,
+    "bank_ai_rule_applications": 0,
+    "bank_ai_rule_batch_results": 0,
+    "bank_ai_rule_preview_items": 0,
+    "bank_ai_rule_previews": 0,
+    "bank_ai_test_results": 0,
+    "bank_ai_test_runs": 0,
+    "bank_evidence_bypass_authorizations": 0,
+    "bank_flow_artifacts": 0,
+    "bank_import_reconciliations": 0,
+    "bank_invoice_matches": 0,
+    "bank_transaction_allocations": 84,
+    "bank_transaction_explanations": 5343,
+    "bank_who_identifications": 3299,
+    "financial_transaction_matches": 0
+  },
+  "transaction_reset": {
+    "explanation_id": null,
+    "classification": "UNKNOWN",
+    "review_status": "REQUIRES_REVIEW",
+    "duplicate_status": "NONE",
+    "duplicate_of_transaction_id": null,
+    "accounting_status": "CANONICAL",
+    "accounting_canonical_transaction_id": null,
+    "accounting_dedup_reason": null
+  },
+  "preserved_catalogs": {
+    "bank_transaction_reasons": {
+      "rows": 148,
+      "sha256": "9cbfe5ff525f5cc44bd91d1c0f6b53fec5ba857e66fff3efb5d824d12eb8a84b"
+    },
+    "bank_accounting_classifications": {
+      "rows": 137,
+      "sha256": "a03d9244848892828b05150db7333e20d6813df2502d7c0936d0c2a3bb1f8982"
+    },
+    "bank_occurrences": {
+      "rows": 308,
+      "sha256": "cf532eb620184c3d5a3e6f463a0f4ae907e34fc24ae84516e171ac87bc723c91"
+    }
+  },
+  "all_other_tables_verified_unchanged": true,
+  "original_transaction_fields_verified_unchanged": true,
+  "integrity_check": "ok",
+  "foreign_key_check": [],
+  "database_sha256": "4f4eda6b38dd2abf74364c87860d6f8633bea6cab1192a2d045508a228a450ae",
+  "code_transferred": false,
+  "aws_accessed": false
+}

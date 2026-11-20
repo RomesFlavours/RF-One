@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'it' if config.get('RFONE_LOCAL_OPERATOR') else 'en' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,6 +14,7 @@
    fix to open/close, Escape, backdrop, focus restore or scroll locking
    applies everywhere at once instead of being re-implemented per page. #}
 <script defer src="{{ url_for('static', filename='js/rf-one-modal.js') }}?v=1"></script>
+{% block head_extra %}{% endblock %}
 </head>
 <body>
 <div class="wrap {% block wrap_class %}{% endblock %}">
@@ -33,6 +34,13 @@
     {% endif %}
   </header>
 
+  {% if profile_companies and request.endpoint != 'role_profiles_home' %}
+  <form class="home-company" method="post" action="{{ url_for('switch_access_company') }}" style="display:flex;align-items:center;gap:.6rem;justify-content:flex-end;flex-wrap:wrap;margin:.75rem 0">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0">Azienda <select aria-label="Azienda" name="company_id" style="display:inline;width:auto;margin:0">{% for company in profile_companies %}<option value="{{ company.id }}" {% if company.id==profile_company_id %}selected{% endif %}>{{ company.name }}</option>{% endfor %}</select></label>
+    <button type="submit" style="padding:.3rem .7rem">Cambia</button>
+  </form>
+  {% endif %}
   <p class="subtitle">{% block page_subtitle %}{% endblock %}</p>
 
   {% with messages = get_flashed_messages(with_categories=True) %}

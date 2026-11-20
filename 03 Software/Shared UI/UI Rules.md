@@ -1,5 +1,15 @@
 # RF-One UI Rules
 
+## Mandatory help placement update (2026-11-14)
+
+**Applies to all RF-One pages and modal windows.** The contextual help link
+is right-aligned immediately below the divider between the title/header
+and the content. This replaces the older placement above the navigation
+divider wherever that earlier placement is specified below. The help
+opens the explanation of the current page/modal and preserves the work
+in progress; modal close controls remain visible.
+
+
 **Status:** standing rules, approved by the Product Owner (UI_NAVIGATION_AND_LOCAL_TIME_001, 2026-09-27).
 **Applies to:** every screen of every RF-One app a person uses (RF-One Web, Tips, and any future app on the RF-One login), and every future UI refinement.
 **Authority:** these rules govern how things are *shown*. They never change what is stored, computed or decided.

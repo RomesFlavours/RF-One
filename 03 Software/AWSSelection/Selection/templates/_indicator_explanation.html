@@ -1,0 +1,33 @@
+{#- SELECTION_INDICATOR_EXPLANATIONS_001 — the one explanation of an
+    Indicator, used by the candidate page and by the comparison so both
+    always explain the same thing. The value and state stay visible next to
+    it; this only opens on demand. -#}
+{% macro explanation(e) -%}
+{% if e %}
+<details class="indicator-explanation" data-explanation="{{ e.name }}">
+  <summary>How this is worked out</summary>
+  <div style="font-size:.8rem; margin:.3rem 0 .5rem;">
+    {% if e.to_clarify %}<p><strong>To be clarified:</strong> {{ e.to_clarify }}</p>{% endif %}
+    {% if e.known_months_detail is not none %}<p class="muted">Known durations add up to {{ e.known_months_detail }} months — a detail only, not a complete total.</p>{% endif %}
+    <p style="margin:.2rem 0;"><strong>Rule applied</strong></p>
+    <ul style="margin:0; padding-left:1rem;">{% for c in e.criteria %}<li>{{ c }}</li>{% endfor %}</ul>
+    {% if e.used %}
+    <p style="margin:.4rem 0 .2rem;"><strong>Experiences used</strong></p>
+    <ul style="margin:0; padding-left:1rem;">
+      {% for u in e.used %}
+      <li data-used-line>&ldquo;{{ u.title or '(title not stated)' }}&rdquo;{% if u.employer %} &middot; {{ u.employer }}{% endif %}
+        &middot; {{ u.start or '?' }} &ndash; {{ u.end or '?' }}
+        &middot; {% if u.months is not none %}{{ u.months }} mo{% else %}duration unknown{% endif %}
+        &middot; <span class="muted">{{ u.reason }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted" style="margin:.4rem 0;">No experience counts for this value.</p>{% endif %}
+    {% if e.limitations %}
+    <p style="margin:.4rem 0 .2rem;"><strong>Excluded, missing or uncertain</strong></p>
+    <ul style="margin:0; padding-left:1rem;">{% for l in e.limitations %}<li>{{ l }}</li>{% endfor %}</ul>
+    {% endif %}
+    <p class="muted" style="margin:.4rem 0 0;">"Reading uncertain" describes how the CV was read, not the candidate.</p>
+  </div>
+</details>
+{% endif %}
+{%- endmacro %}

@@ -1,0 +1,17 @@
+{#- BANK_SPLIT_ALLOCATION_001 — the list of Ripartizioni (Amazon charges linked to bank movements, charges without a
+    movement, movements already split), filled by split.js from /bank/split/data. Included in section 3 of the WHY
+    page (BANK_LAYOUT_NAVIGATION_001) and, without JavaScript redirect, by the split page. -#}
+  <section class="card" aria-labelledby="sp-amz-h">
+    <div class="section-heading"><div><span class="eyebrow">AMAZON ORDERS · CHARGE IDENTIFIER</span><h2 id="sp-amz-h">Linked movements <span class="badge" id="sp-count">—</span></h2></div></div>
+    <div class="sp-tiles" id="sp-tiles"></div>
+    <div class="table-wrap sp-scroll"><table><thead><tr><th>Date</th><th>Movement</th><th>Source · owner</th><th class="num">Amount</th><th>Link</th><th>Split</th></tr></thead><tbody id="sp-rows"></tbody></table></div>
+  </section>
+  <section class="card" aria-labelledby="sp-free-h">
+    <div class="section-heading"><div><span class="eyebrow">NO MOVEMENT WITH THE CODE</span><h2 id="sp-free-h">Charges without a bank movement <span class="badge" id="sp-free-count">—</span></h2></div></div>
+    <p class="muted">Charge Identifiers of the reports that no bank description carries. A movement with the same amount and a compatible date is listed above only as a candidate.</p>
+    <div class="table-wrap sp-scroll"><table><thead><tr><th>Charge</th><th>Order(s)</th><th>Payment date</th><th class="num">Amount</th><th class="num">Rows</th></tr></thead><tbody id="sp-free"></tbody></table></div>
+  </section>
+  <section class="card" aria-labelledby="sp-done-h">
+    <div class="section-heading"><div><span class="eyebrow">CONFIRMED IN BANK</span><h2 id="sp-done-h">Movements already split <span class="badge" id="sp-done-count">—</span></h2></div></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Movement</th><th>Source</th><th class="num">Amount</th><th class="num">Lines</th></tr></thead><tbody id="sp-done"></tbody></table></div>
+  </section>

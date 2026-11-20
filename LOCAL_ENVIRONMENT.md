@@ -1,5 +1,12 @@
 # LOCAL_ENVIRONMENT.md — rebuilding the RF-One local environment on another PC
 
+> **Current continuation procedure (2026-11-14):** read
+> `07 Tasks/Reports/SESSION_HANDOFF_20261114.md` and
+> `03 Software/Infrastructure/Local Continuity/README.md` first.
+> The main-checkout local Home now uses port 5097 and PostgreSQL, with an explicit
+> OneDrive recovery/close/restore procedure. The October survey below is historical;
+> do not use its old Bank paths as the current launch configuration.
+
 **Survey date:** 2026-10-14, about 09:30 EDT (UTC−04:00), on PC **MINIPC-KSYR1**.
 **Method:** read-only inspection of this PC (processes, ports, files, registry, git, SQLite opened in
 read-only mode). Nothing was installed, configured, restarted, exported or sent to AWS.

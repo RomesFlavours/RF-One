@@ -1,0 +1,186 @@
+/* MyRF Project Management v1 — Plan and Gantt pages only, on top of
+   `rf-one.css` (same palette and conventions). Loaded by
+   `projects_plan.html` and `projects_gantt.html`, nowhere else, so the
+   print rules below never affect another page.
+
+   Print (Gantt and Plan): landscape; menu, path and commands hidden; every
+   row printed, also those collapsed on screen; headers repeated on each
+   page; a row is never split; bar colours kept also when the browser would
+   drop background graphics ("Save as PDF" included). The timeline is in
+   percentages of the whole plan, so a long period is compressed to the
+   page width, never cut. */
+
+.num { text-align: right; white-space: nowrap; }
+.pm-code { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: .2rem; }
+.pm-warn-text { color: #8a5a10; font-size: .78rem; }
+.pm-warning-summary {
+  background: #fdf3e2; border: 1px solid #ecd6a5; color: #8a5a10; border-radius: 6px;
+  padding: .5rem .8rem; font-size: .85rem;
+}
+.pm-hint { font-size: .78rem; color: var(--muted); margin: -.6rem 0 .8rem; }
+
+/* ------------------------------------------------------------ Plan (tree) */
+
+.pm-tree td { vertical-align: top; }
+.pm-tree td:nth-child(2), .pm-tree td:nth-child(3) { white-space: nowrap; }
+.pm-chapter-row > td { background: var(--olive-050); border-top: 2px solid var(--olive-300); }
+.pm-task-row .pm-title-cell { padding-left: 1.4rem; }
+.pm-child-row .pm-title-cell { padding-left: 2.8rem; }
+.pm-child-row .pm-title-cell::before { content: "↳ "; color: var(--muted); }
+.pm-description { font-size: .78rem; color: var(--muted); white-space: pre-line; margin-top: .15rem; }
+.pm-title-cell { min-width: 16rem; }
+
+.pm-meter {
+  display: inline-block; width: 70px; height: 8px; border-radius: 4px; background: var(--olive-150);
+  vertical-align: middle; overflow: hidden; border: 1px solid var(--olive-300);
+}
+.pm-meter-fill { display: block; height: 100%; background: var(--olive-600); }
+.pm-meter-value { font-size: .8rem; margin-left: .3rem; font-variant-numeric: tabular-nums; }
+.pm-percent-cell { white-space: nowrap; }
+
+.pm-pred-chip {
+  display: inline-block; font-size: .72rem; padding: .05rem .4rem; margin: 0 .2rem .2rem 0;
+  border: 1px solid var(--olive-300); border-radius: 10px; background: var(--paper); cursor: default;
+}
+.pm-pred-chip-warn { border-color: #d99a2b; background: #fdf3e2; color: #8a5a10; }
+
+.pm-actions { white-space: nowrap; text-align: right; }
+.pm-actions-head { text-align: right; }
+.pm-action {
+  background: var(--olive-150); color: var(--olive-900); padding: .2rem .55rem; font-size: .75rem;
+  border-radius: 5px; margin-left: .2rem;
+}
+.pm-action:hover { background: var(--olive-300); color: var(--olive-900); }
+.pm-action-danger { background: transparent; color: var(--bad); border: 1px solid #e3b9b2; }
+.pm-action-danger:hover { background: #f8e7e4; color: var(--bad); }
+.pm-inline-form { display: inline; }
+
+/* ------------------------------------------------------------ dialogs */
+
+.pm-dialog { max-width: 760px; }
+.pm-dialog h2 { margin-top: 0; }
+.pm-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 1rem; }
+.pm-form-grid-numbers { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.pm-form-grid-numbers input { max-width: 100%; }
+.pm-predecessors { border: 1px solid var(--olive-300); border-radius: 6px; padding: .5rem .8rem .7rem; margin: 0 0 .5rem; }
+.pm-predecessors legend { font-size: .82rem; color: var(--olive-900); padding: 0 .3rem; }
+.pm-pred-filter { max-width: 100%; margin-bottom: .5rem; }
+.pm-predecessor-list { max-height: 15rem; overflow-y: auto; }
+.pm-pred-chapter { font-size: .75rem; font-weight: 600; color: var(--olive-900); margin: .4rem 0 .1rem; }
+label.pm-pred-option {
+  display: flex; gap: .35rem; align-items: baseline; font-size: .82rem; color: var(--ink);
+  margin: 0; padding: .15rem 0; cursor: pointer;
+}
+label.pm-pred-option-child { padding-left: 1.2rem; }
+label.pm-pred-option input { margin: 0; flex: none; }
+
+/* ------------------------------------------------------------ Gantt */
+
+.pm-gantt-meta { font-size: .85rem; margin: 0 0 .5rem; }
+.pm-gantt-legend { font-size: .75rem; color: var(--muted); margin: .6rem 0; }
+.pm-legend-bar {
+  display: inline-block; width: 34px; height: 10px; vertical-align: middle; border: 1px solid var(--olive-600);
+  background: var(--olive-150); border-radius: 3px; overflow: hidden;
+}
+.pm-legend-fill { display: block; width: 45%; height: 100%; background: var(--olive-600); }
+.pm-legend-span { display: inline-block; width: 34px; height: 4px; vertical-align: middle; background: var(--olive-900); }
+
+.pm-gantt-scroll { overflow-x: auto; }
+.pm-gantt { table-layout: fixed; min-width: 980px; }
+.pm-gantt th, .pm-gantt td { padding: .3rem .35rem; font-size: .78rem; }
+.pm-gantt td { vertical-align: middle; }
+.pm-col-title { width: 25%; }
+.pm-col-date { width: 6.6%; }
+.pm-col-num { width: 4.2%; }
+.pm-gantt th.num, .pm-gantt td.num { text-align: right; }
+.pm-gantt th.num { white-space: normal; }
+.pm-g-title { overflow-wrap: anywhere; }
+.pm-g-chapter > td { background: var(--olive-050); border-top: 2px solid var(--olive-300); }
+.pm-g-task .pm-g-title { padding-left: 1.1rem; }
+.pm-g-child .pm-g-title { padding-left: 2.2rem; }
+.pm-g-sub { font-size: .7rem; color: var(--muted); margin-left: 1.3rem; }
+.pm-g-sub.pm-warn-text { color: #8a5a10; }
+
+.pm-toggle {
+  background: none; color: var(--olive-700); border: none; padding: 0; width: 1.1rem; font-size: .8rem;
+  line-height: 1; cursor: pointer; border-radius: 3px;
+}
+.pm-toggle:hover { background: var(--olive-150); color: var(--olive-900); }
+.pm-toggle-space { display: inline-block; width: 1.1rem; }
+
+.pm-scale-cell { padding: 0 !important; }
+.pm-scale { position: relative; height: 1.8rem; }
+.pm-scale-seg {
+  position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--olive-300); padding: .45rem .2rem 0;
+  overflow: hidden; white-space: nowrap; text-overflow: clip; font-size: .68rem; font-weight: 600;
+  text-transform: none; letter-spacing: 0;
+}
+
+.pm-track-cell { padding: 0 !important; }
+.pm-track { position: relative; height: 1.7rem; }
+.pm-grid { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--olive-150); }
+.pm-bar {
+  position: absolute; top: .45rem; height: .8rem; min-width: 3px; border: 1px solid var(--olive-600);
+  background: var(--olive-150); border-radius: 3px; overflow: hidden; box-sizing: border-box;
+}
+.pm-g-child .pm-bar { top: .5rem; height: .65rem; }
+.pm-g-warn .pm-bar { border-color: #c47f12; }
+.pm-bar-fill { height: 100%; background: var(--olive-600); }
+.pm-bar-label {
+  position: absolute; top: .35rem; padding: 0 .25rem; font-size: .66rem; color: var(--olive-900); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* A bar spanning almost the whole plan: no room before or after it. */
+.pm-bar-label-inside {
+  top: .47rem; line-height: .7rem; margin-right: 2px; padding: 0 .2rem; border-radius: 2px;
+  background: rgba(255, 255, 255, .85);
+}
+.pm-span { position: absolute; top: .7rem; height: .3rem; min-width: 3px; background: var(--olive-900); border-radius: 2px; }
+
+/* Collapsing is a screen-only view: the print shows every row. */
+@media screen {
+  .pm-gantt tr.pm-collapsed { display: none; }
+}
+
+/* ------------------------------------------------------------ print */
+
+@page { size: landscape; margin: 10mm; }
+
+@media print {
+  body { padding: 0; }
+  .wrap, .wrap-wide { max-width: none; margin: 0; }
+  .site-header, .local-env, .breadcrumb, .subtitle, .no-print, .pm-commands, .pm-actions, .pm-actions-head,
+  .wrap > .info, .wrap > .error, .org-modal-overlay { display: none !important; }
+  h1 { font-size: 14pt; margin: 0 0 2mm; }
+  .muted, .pm-gantt-meta, .pm-gantt-legend { font-size: 8pt; }
+
+  .table-scroll, .pm-gantt-scroll { overflow: visible; }
+  .pm-gantt, .pm-tree { min-width: 0; width: 100%; }
+  .pm-gantt th, .pm-gantt td { font-size: 7.5pt; padding: 1mm 1.2mm; }
+  .pm-tree th, .pm-tree td { font-size: 8pt; padding: 1mm 1.5mm; }
+  .pm-scale-seg { font-size: 6.5pt; }
+  .pm-bar-label { font-size: 6.5pt; }
+  .pm-g-sub, .pm-gantt .pm-warn-text { font-size: 6.5pt; }
+  .pm-tree .pm-description, .pm-tree .pm-warn-text { font-size: 7pt; }
+  /* The toggle keeps its room, so every row stays aligned. */
+  .pm-toggle { visibility: hidden; }
+  .pm-title-cell { min-width: 0; }
+
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  tbody tr:hover { background: none; }
+
+  /* Keep the bars, fills, shading and chips: without this, printing (and
+     "Save as PDF") drops background colours unless the person ticks
+     "Background graphics". */
+  .pm-gantt *, .pm-tree *, .pm-legend-bar, .pm-legend-fill, .pm-legend-span {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ------------------------------------------------------------ Projects list */
+
+.pm-project-link { font-weight: 600; }
+.pm-project-list td { vertical-align: middle; }
+a.btn.pm-action { display: inline-block; text-decoration: none; }

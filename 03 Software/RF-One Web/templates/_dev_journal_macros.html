@@ -1,0 +1,103 @@
+{# Development Journal — pieces shared by the card, the entry correction
+   page and the versions page. #}
+
+{# The editable fields of an entry: used to add one and to correct one. #}
+{% macro entry_fields(form, phase_labels, entry_type_labels, environment_labels, outcome_labels) %}
+  <div class="dj-form-grid">
+    <label>Reference phase
+      <select name="phase" required>
+        {% for code, label in phase_labels.items() %}
+          <option value="{{ code }}" {{ "selected" if form.get('phase') == code }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Type
+      <select name="entry_type" class="dj-entry-type" required>
+        {% for code, label in entry_type_labels.items() %}
+          <option value="{{ code }}" {{ "selected" if form.get('entry_type') == code }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <label>Text
+    <textarea name="body" class="dj-body" required placeholder="Free text; you can also paste a Claude or Codex report.">{{ form.get('body', '') }}</textarea>
+  </label>
+
+  <fieldset class="dj-release-fields">
+    <legend>Release</legend>
+    <div class="dj-form-grid">
+      <label>Environment
+        <select name="release_environment">
+          <option value="">— choose —</option>
+          {% for code, label in environment_labels.items() %}
+            <option value="{{ code }}" {{ "selected" if form.get('release_environment') == code }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>AWS service
+        <input type="text" name="release_aws_service" maxlength="200" value="{{ form.get('release_aws_service', '') }}" placeholder="e.g. App Runner rfone-web">
+      </label>
+      <label>Version or commit
+        <input type="text" name="release_version" maxlength="200" value="{{ form.get('release_version', '') }}">
+      </label>
+      <label>Outcome
+        <select name="release_outcome">
+          <option value="">— choose —</option>
+          {% for code, label in outcome_labels.items() %}
+            <option value="{{ code }}" {{ "selected" if form.get('release_outcome') == code }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>Post-deploy verification
+      <textarea name="release_post_deploy_check" rows="3">{{ form.get('release_post_deploy_check', '') }}</textarea>
+    </label>
+    <p class="muted">A failed release stays documented and changes neither the phase nor the status of the work.</p>
+  </fieldset>
+
+  <details {{ "open" if form.get('ref_link') or form.get('ref_branch') or form.get('ref_commit') or form.get('ref_command') }}>
+    <summary>References (optional): link, branch, commit, command/prompt</summary>
+    <div class="dj-form-grid">
+      <label>Link <input type="url" name="ref_link" maxlength="1000" value="{{ form.get('ref_link', '') }}" placeholder="https://"></label>
+      <label>Branch <input type="text" name="ref_branch" maxlength="200" value="{{ form.get('ref_branch', '') }}"></label>
+      <label>Commit <input type="text" name="ref_commit" maxlength="100" value="{{ form.get('ref_commit', '') }}"></label>
+    </div>
+    <label>Command / prompt <textarea name="ref_command" rows="3">{{ form.get('ref_command', '') }}</textarea></label>
+  </details>
+{% endmacro %}
+
+{# Shows the release fields only for the Release type. #}
+{% macro entry_type_script() %}
+<script>
+  document.querySelectorAll("form").forEach(function (form) {
+    var type = form.querySelector(".dj-entry-type");
+    var release = form.querySelector(".dj-release-fields");
+    if (!type || !release) return;
+    function sync() { release.style.display = type.value === "RELEASE" ? "" : "none"; }
+    type.addEventListener("change", sync);
+    sync();
+  });
+</script>
+{% endmacro %}
+
+{# The read-only content of an entry or of one of its kept versions. #}
+{% macro entry_content(item, environment_labels, outcome_labels) %}
+  {% if item.entry_type == 'RELEASE' %}
+    <dl class="dj-release">
+      <dt>Environment</dt><dd>{{ environment_labels[item.release_environment] }}</dd>
+      <dt>AWS service</dt><dd>{{ item.release_aws_service }}</dd>
+      <dt>Version or commit</dt><dd><code>{{ item.release_version }}</code></dd>
+      <dt>Outcome</dt><dd><span class="badge {{ 'ok' if item.release_outcome == 'SUCCEEDED' else 'bad' }}">{{ outcome_labels[item.release_outcome] }}</span></dd>
+      <dt>Post-deploy verification</dt><dd>{{ item.release_post_deploy_check or '—' }}</dd>
+    </dl>
+  {% endif %}
+  <pre class="dj-entry-body">{{ item.body }}</pre>
+  {% if item.ref_link or item.ref_branch or item.ref_commit or item.ref_command %}
+    <div class="dj-entry-refs">
+      {% if item.ref_link %}Link: <a href="{{ item.ref_link }}" target="_blank" rel="noopener noreferrer">{{ item.ref_link }}</a><br>{% endif %}
+      {% if item.ref_branch %}Branch: <code>{{ item.ref_branch }}</code> {% endif %}
+      {% if item.ref_commit %}Commit: <code>{{ item.ref_commit }}</code>{% endif %}
+      {% if item.ref_command %}<div>Command / prompt:<pre>{{ item.ref_command }}</pre></div>{% endif %}
+    </div>
+  {% endif %}
+{% endmacro %}

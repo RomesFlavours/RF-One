@@ -1,0 +1,1821 @@
+{
+  "origin": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge",
+  "files": [
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\__init__.py",
+      "source_sha256": "1de22cdc958e7c57fa9419688d1e57e48755d6f8b25affc5113e5b2c506bb387",
+      "destination_sha256": "1de22cdc958e7c57fa9419688d1e57e48755d6f8b25affc5113e5b2c506bb387",
+      "adapted": false,
+      "final_sha256": "1de22cdc958e7c57fa9419688d1e57e48755d6f8b25affc5113e5b2c506bb387"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\ai.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\ai.py",
+      "source_sha256": "f4afdd44b91b036be53954f9a501ec14eaace2f029cda43a0a9b0b2d3340f14b",
+      "destination_sha256": "f4afdd44b91b036be53954f9a501ec14eaace2f029cda43a0a9b0b2d3340f14b",
+      "adapted": false,
+      "final_sha256": "f4afdd44b91b036be53954f9a501ec14eaace2f029cda43a0a9b0b2d3340f14b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\config.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\config.py",
+      "source_sha256": "14aa8d4b5855814e2e8d2febe15714932a343740639a3bbb0cca290d749588dd",
+      "destination_sha256": "14aa8d4b5855814e2e8d2febe15714932a343740639a3bbb0cca290d749588dd",
+      "adapted": false,
+      "final_sha256": "14aa8d4b5855814e2e8d2febe15714932a343740639a3bbb0cca290d749588dd"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\engine.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\engine.py",
+      "source_sha256": "1bba8eca759c93655e698544470491c7407fdbe85ae6c4685dd69cc5ddae5479",
+      "destination_sha256": "1bba8eca759c93655e698544470491c7407fdbe85ae6c4685dd69cc5ddae5479",
+      "adapted": false,
+      "final_sha256": "1bba8eca759c93655e698544470491c7407fdbe85ae6c4685dd69cc5ddae5479"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\export.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\export.py",
+      "source_sha256": "b3945b17b3fc5b171e4578f8ddfa289173dcc9fa5785a5683ad867eb5d5d8db6",
+      "destination_sha256": "b3945b17b3fc5b171e4578f8ddfa289173dcc9fa5785a5683ad867eb5d5d8db6",
+      "adapted": false,
+      "final_sha256": "b3945b17b3fc5b171e4578f8ddfa289173dcc9fa5785a5683ad867eb5d5d8db6"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\group_analysis.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\group_analysis.py",
+      "source_sha256": "59aa44bf7c78668555f76f5789324395303f2411708eb1910e90f42736973a59",
+      "destination_sha256": "59aa44bf7c78668555f76f5789324395303f2411708eb1910e90f42736973a59",
+      "adapted": false,
+      "final_sha256": "59aa44bf7c78668555f76f5789324395303f2411708eb1910e90f42736973a59"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\legacy.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\legacy.py",
+      "source_sha256": "54028276914c7feced5942d5b54dfb49d9dee6e5b08c94c923327ed9cd5a9873",
+      "destination_sha256": "54028276914c7feced5942d5b54dfb49d9dee6e5b08c94c923327ed9cd5a9873",
+      "adapted": false,
+      "final_sha256": "54028276914c7feced5942d5b54dfb49d9dee6e5b08c94c923327ed9cd5a9873"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\matching.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\matching.py",
+      "source_sha256": "a20850ad714597f61ef682aff652b60297d72475cf5cbf4ca341d2eadc3b5bcc",
+      "destination_sha256": "a20850ad714597f61ef682aff652b60297d72475cf5cbf4ca341d2eadc3b5bcc",
+      "adapted": false,
+      "final_sha256": "a20850ad714597f61ef682aff652b60297d72475cf5cbf4ca341d2eadc3b5bcc"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\merge_engine.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\merge_engine.py",
+      "source_sha256": "e9b68333329dcc853cc3c86b76e29e0ec835c16503be1e8473399d9692ff9e2a",
+      "destination_sha256": "e9b68333329dcc853cc3c86b76e29e0ec835c16503be1e8473399d9692ff9e2a",
+      "adapted": false,
+      "final_sha256": "e9b68333329dcc853cc3c86b76e29e0ec835c16503be1e8473399d9692ff9e2a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\prior.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\prior.py",
+      "source_sha256": "62ef7a226e98224034ef53de4c5ed4f5d66a1a63b0c32ff2256d324012b59ecf",
+      "destination_sha256": "62ef7a226e98224034ef53de4c5ed4f5d66a1a63b0c32ff2256d324012b59ecf",
+      "adapted": false,
+      "final_sha256": "62ef7a226e98224034ef53de4c5ed4f5d66a1a63b0c32ff2256d324012b59ecf"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\rule_scopes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\rule_scopes.py",
+      "source_sha256": "d360c8660e1c7e92dc079f730b20dba3a422f60a3549e302e6066bab35d78534",
+      "destination_sha256": "d360c8660e1c7e92dc079f730b20dba3a422f60a3549e302e6066bab35d78534",
+      "adapted": false,
+      "final_sha256": "d360c8660e1c7e92dc079f730b20dba3a422f60a3549e302e6066bab35d78534"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\sample.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\sample.py",
+      "source_sha256": "06a1a105a053a7ec48f6479331f300201b3a349198f7f73c896a8797e476be16",
+      "destination_sha256": "06a1a105a053a7ec48f6479331f300201b3a349198f7f73c896a8797e476be16",
+      "adapted": false,
+      "final_sha256": "06a1a105a053a7ec48f6479331f300201b3a349198f7f73c896a8797e476be16"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\service.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\service.py",
+      "source_sha256": "25e505d76f15e7e3539543fd2e0a4035ade280604ce9f9ffc92ed584297c417d",
+      "destination_sha256": "25e505d76f15e7e3539543fd2e0a4035ade280604ce9f9ffc92ed584297c417d",
+      "adapted": false,
+      "final_sha256": "25e505d76f15e7e3539543fd2e0a4035ade280604ce9f9ffc92ed584297c417d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\statement_purpose.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\statement_purpose.py",
+      "source_sha256": "e65a654e84cb3d75cc4f2383fc50926f92fb5ca4da89045438a93c078dc64d47",
+      "destination_sha256": "e65a654e84cb3d75cc4f2383fc50926f92fb5ca4da89045438a93c078dc64d47",
+      "adapted": false,
+      "final_sha256": "e65a654e84cb3d75cc4f2383fc50926f92fb5ca4da89045438a93c078dc64d47"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\store.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\store.py",
+      "source_sha256": "06729fe8ecb05033ad3445886e63487763dc372af359a1e5c1dd25e34e1f1d7d",
+      "destination_sha256": "06729fe8ecb05033ad3445886e63487763dc372af359a1e5c1dd25e34e1f1d7d",
+      "adapted": false,
+      "final_sha256": "06729fe8ecb05033ad3445886e63487763dc372af359a1e5c1dd25e34e1f1d7d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\three_stages.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\three_stages.py",
+      "source_sha256": "730a66297882129f8f583c29c388e840bc399cad05bdffd5f9ddc7c7297662a5",
+      "destination_sha256": "730a66297882129f8f583c29c388e840bc399cad05bdffd5f9ddc7c7297662a5",
+      "adapted": false,
+      "final_sha256": "730a66297882129f8f583c29c388e840bc399cad05bdffd5f9ddc7c7297662a5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\ui_language.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\ui_language.py",
+      "source_sha256": "61015a9677a82fb609147527e83c1a96487deeffe1dc8efd6b4eea18ab525786",
+      "destination_sha256": "61015a9677a82fb609147527e83c1a96487deeffe1dc8efd6b4eea18ab525786",
+      "adapted": false,
+      "final_sha256": "61015a9677a82fb609147527e83c1a96487deeffe1dc8efd6b4eea18ab525786"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\web.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\web.py",
+      "source_sha256": "0cc736a2710402081717b387c0cf250700e29d76db21952aef488da53afd0f3d",
+      "destination_sha256": "0cc736a2710402081717b387c0cf250700e29d76db21952aef488da53afd0f3d",
+      "adapted": false,
+      "final_sha256": "15ed191b6dca4fd072716340d8df704195b6db6c95a4ea5b1bc90bcd426c238f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\why_signals.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\why_signals.py",
+      "source_sha256": "f31f23a1af7f1c5abb98f31d367aff8c0c2c57252b77a0860dd23c05e666f826",
+      "destination_sha256": "f31f23a1af7f1c5abb98f31d367aff8c0c2c57252b77a0860dd23c05e666f826",
+      "adapted": false,
+      "final_sha256": "f31f23a1af7f1c5abb98f31d367aff8c0c2c57252b77a0860dd23c05e666f826"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\__init__.py",
+      "source_sha256": "5682ddd5feb7ca337ce80e1d537776c32265e2244db34b5b4121d2219871a156",
+      "destination_sha256": "5682ddd5feb7ca337ce80e1d537776c32265e2244db34b5b4121d2219871a156",
+      "adapted": false,
+      "final_sha256": "5682ddd5feb7ca337ce80e1d537776c32265e2244db34b5b4121d2219871a156"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\__init__.py",
+      "source_sha256": "e8060e34ed979dd2b6f49c670df01af335feb4f26b74933edbb98d7f11d5b20d",
+      "destination_sha256": "e8060e34ed979dd2b6f49c670df01af335feb4f26b74933edbb98d7f11d5b20d",
+      "adapted": false,
+      "final_sha256": "e8060e34ed979dd2b6f49c670df01af335feb4f26b74933edbb98d7f11d5b20d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\accounting_dedup.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\accounting_dedup.py",
+      "source_sha256": "86a8734b03e3785dd2b431c7b1c0adeda07b261e47692363bcafff9d27a9156b",
+      "destination_sha256": "86a8734b03e3785dd2b431c7b1c0adeda07b261e47692363bcafff9d27a9156b",
+      "adapted": false,
+      "final_sha256": "86a8734b03e3785dd2b431c7b1c0adeda07b261e47692363bcafff9d27a9156b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\adp_reports.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\adp_reports.py",
+      "source_sha256": "6026d22f6e60c962e9f6f51a6e25c5a6309852a6322fcb9db5873906ac88ffb9",
+      "destination_sha256": "6026d22f6e60c962e9f6f51a6e25c5a6309852a6322fcb9db5873906ac88ffb9",
+      "adapted": false,
+      "final_sha256": "6026d22f6e60c962e9f6f51a6e25c5a6309852a6322fcb9db5873906ac88ffb9"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\ai_rule_operations.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\ai_rule_operations.py",
+      "source_sha256": "6e6c66fff992a33c9f10388d8c641e2b74efa67b3e57c129af6dec6e83705164",
+      "destination_sha256": "6e6c66fff992a33c9f10388d8c641e2b74efa67b3e57c129af6dec6e83705164",
+      "adapted": false,
+      "final_sha256": "6e6c66fff992a33c9f10388d8c641e2b74efa67b3e57c129af6dec6e83705164"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\ai_rule_rewrite.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\ai_rule_rewrite.py",
+      "source_sha256": "f305a0ab8eebf1c141a34262b2f62b119ff5caee9426b26489b1dc99addb1925",
+      "destination_sha256": "f305a0ab8eebf1c141a34262b2f62b119ff5caee9426b26489b1dc99addb1925",
+      "adapted": false,
+      "final_sha256": "f305a0ab8eebf1c141a34262b2f62b119ff5caee9426b26489b1dc99addb1925"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\ai_rules.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\ai_rules.py",
+      "source_sha256": "0388f1c264e0ba4f7fa8d95d227500ea1f122d32ad9c12f872273686fa083447",
+      "destination_sha256": "0388f1c264e0ba4f7fa8d95d227500ea1f122d32ad9c12f872273686fa083447",
+      "adapted": false,
+      "final_sha256": "0388f1c264e0ba4f7fa8d95d227500ea1f122d32ad9c12f872273686fa083447"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\canonical_catalog.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\canonical_catalog.py",
+      "source_sha256": "7bcf8f032e46ea6a9ae65309244101396f2e0fcd11f6cacca3a9f9e97756a598",
+      "destination_sha256": "7bcf8f032e46ea6a9ae65309244101396f2e0fcd11f6cacca3a9f9e97756a598",
+      "adapted": false,
+      "final_sha256": "7bcf8f032e46ea6a9ae65309244101396f2e0fcd11f6cacca3a9f9e97756a598"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\card_configuration.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\card_configuration.py",
+      "source_sha256": "9484396ef5483b9714b61267876c2f43ca1d2988d03b07cf0b98a092b9340d82",
+      "destination_sha256": "9484396ef5483b9714b61267876c2f43ca1d2988d03b07cf0b98a092b9340d82",
+      "adapted": false,
+      "final_sha256": "9484396ef5483b9714b61267876c2f43ca1d2988d03b07cf0b98a092b9340d82"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\classification.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\classification.py",
+      "source_sha256": "cbe653b5b811c0bde7ec9851e2e3ee0e4192261f8dbaaea9cd17d7039033b0b0",
+      "destination_sha256": "cbe653b5b811c0bde7ec9851e2e3ee0e4192261f8dbaaea9cd17d7039033b0b0",
+      "adapted": false,
+      "final_sha256": "cbe653b5b811c0bde7ec9851e2e3ee0e4192261f8dbaaea9cd17d7039033b0b0"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\claude_code_cli.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\claude_code_cli.py",
+      "source_sha256": "4b8ac79836e74323a82cc9cf81e5ff2a888cce76512a0e894a2cff268cd11521",
+      "destination_sha256": "4b8ac79836e74323a82cc9cf81e5ff2a888cce76512a0e894a2cff268cd11521",
+      "adapted": false,
+      "final_sha256": "4b8ac79836e74323a82cc9cf81e5ff2a888cce76512a0e894a2cff268cd11521"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\configuration.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\configuration.py",
+      "source_sha256": "8f9aba7d0d5bd9ef5ebbee49886e4d293855387f59aed8a33911ea9540954ea8",
+      "destination_sha256": "8f9aba7d0d5bd9ef5ebbee49886e4d293855387f59aed8a33911ea9540954ea8",
+      "adapted": false,
+      "final_sha256": "8f9aba7d0d5bd9ef5ebbee49886e4d293855387f59aed8a33911ea9540954ea8"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\destination_evidence.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\destination_evidence.py",
+      "source_sha256": "43d042b06987611e7c3199da4427cd9701a461e6210149594078a5996d7a3469",
+      "destination_sha256": "43d042b06987611e7c3199da4427cd9701a461e6210149594078a5996d7a3469",
+      "adapted": false,
+      "final_sha256": "43d042b06987611e7c3199da4427cd9701a461e6210149594078a5996d7a3469"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\economic_allocation.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\economic_allocation.py",
+      "source_sha256": "e32d2d52ccf44509a637dcc2ed69dda3e39d37f29d5e5c09f199191562a130ac",
+      "destination_sha256": "e32d2d52ccf44509a637dcc2ed69dda3e39d37f29d5e5c09f199191562a130ac",
+      "adapted": false,
+      "final_sha256": "e32d2d52ccf44509a637dcc2ed69dda3e39d37f29d5e5c09f199191562a130ac"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\engine_view.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\engine_view.py",
+      "source_sha256": "8b9ad59397a0e0b5d000b0e2a9a7b3cbaa13ac08bdc9bac0521da11ec1a8262d",
+      "destination_sha256": "8b9ad59397a0e0b5d000b0e2a9a7b3cbaa13ac08bdc9bac0521da11ec1a8262d",
+      "adapted": false,
+      "final_sha256": "8b9ad59397a0e0b5d000b0e2a9a7b3cbaa13ac08bdc9bac0521da11ec1a8262d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\export.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\export.py",
+      "source_sha256": "a7f907de57c5460205251ea15a06d0de7f139332f006790e5653f94026aa5f69",
+      "destination_sha256": "a7f907de57c5460205251ea15a06d0de7f139332f006790e5653f94026aa5f69",
+      "adapted": false,
+      "final_sha256": "a7f907de57c5460205251ea15a06d0de7f139332f006790e5653f94026aa5f69"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\export_readiness.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\export_readiness.py",
+      "source_sha256": "2910eb1336d144057d673ffcd6feb1b551e47d3b9cc45d6fe6538ffd3cedfd7e",
+      "destination_sha256": "2910eb1336d144057d673ffcd6feb1b551e47d3b9cc45d6fe6538ffd3cedfd7e",
+      "adapted": false,
+      "final_sha256": "2910eb1336d144057d673ffcd6feb1b551e47d3b9cc45d6fe6538ffd3cedfd7e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\flow.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\flow.py",
+      "source_sha256": "5ff4bd89b479f840f217e97a13f4e3393d4b1e327370cc685f4bb1afc5590ca5",
+      "destination_sha256": "5ff4bd89b479f840f217e97a13f4e3393d4b1e327370cc685f4bb1afc5590ca5",
+      "adapted": false,
+      "final_sha256": "5ff4bd89b479f840f217e97a13f4e3393d4b1e327370cc685f4bb1afc5590ca5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\import_pipeline.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\import_pipeline.py",
+      "source_sha256": "0d11bec74f629a88c5e28459b89213d66c935b9f3a2fc00c235dc684c0b8baa5",
+      "destination_sha256": "0d11bec74f629a88c5e28459b89213d66c935b9f3a2fc00c235dc684c0b8baa5",
+      "adapted": false,
+      "final_sha256": "0d11bec74f629a88c5e28459b89213d66c935b9f3a2fc00c235dc684c0b8baa5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\import_preview.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\import_preview.py",
+      "source_sha256": "f72044cb460ba6dbbd927743997788e5e3cb762a58e3c8381abbe61360091c1e",
+      "destination_sha256": "f72044cb460ba6dbbd927743997788e5e3cb762a58e3c8381abbe61360091c1e",
+      "adapted": false,
+      "final_sha256": "f72044cb460ba6dbbd927743997788e5e3cb762a58e3c8381abbe61360091c1e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\import_session.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\import_session.py",
+      "source_sha256": "eb41e36d3754866e0d5c66a7a1dcd70c0a57ebbb35363e99bc5649f6f9acf2bf",
+      "destination_sha256": "eb41e36d3754866e0d5c66a7a1dcd70c0a57ebbb35363e99bc5649f6f9acf2bf",
+      "adapted": false,
+      "final_sha256": "eb41e36d3754866e0d5c66a7a1dcd70c0a57ebbb35363e99bc5649f6f9acf2bf"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\intake.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\intake.py",
+      "source_sha256": "d63e8e4c7b82023651ac88f0e28e1d84697e79a64e485a764a3a32f50e57c17a",
+      "destination_sha256": "d63e8e4c7b82023651ac88f0e28e1d84697e79a64e485a764a3a32f50e57c17a",
+      "adapted": false,
+      "final_sha256": "d63e8e4c7b82023651ac88f0e28e1d84697e79a64e485a764a3a32f50e57c17a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\invoice_allocation_bridge.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\invoice_allocation_bridge.py",
+      "source_sha256": "25a2c7be8e78fe128c91d55363e7a51b0e872f00f3ec9dac2c2bc5ae8a592b37",
+      "destination_sha256": "25a2c7be8e78fe128c91d55363e7a51b0e872f00f3ec9dac2c2bc5ae8a592b37",
+      "adapted": false,
+      "final_sha256": "25a2c7be8e78fe128c91d55363e7a51b0e872f00f3ec9dac2c2bc5ae8a592b37"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\invoice_evidence.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\invoice_evidence.py",
+      "source_sha256": "888519756957d55f02837a569a6a9078685753fd2e545816a247387232a09aaf",
+      "destination_sha256": "888519756957d55f02837a569a6a9078685753fd2e545816a247387232a09aaf",
+      "adapted": false,
+      "final_sha256": "888519756957d55f02837a569a6a9078685753fd2e545816a247387232a09aaf"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\invoice_matching.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\invoice_matching.py",
+      "source_sha256": "447fcc793d33245b0f3cf472502d38454651b075f1f1cb5186f32943cd8641a7",
+      "destination_sha256": "447fcc793d33245b0f3cf472502d38454651b075f1f1cb5186f32943cd8641a7",
+      "adapted": false,
+      "final_sha256": "447fcc793d33245b0f3cf472502d38454651b075f1f1cb5186f32943cd8641a7"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\manual_reconciliation.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\manual_reconciliation.py",
+      "source_sha256": "1759b57b86786ab368605cd259d25881e5c1fd9c33a64621a77f8431f95bd77a",
+      "destination_sha256": "1759b57b86786ab368605cd259d25881e5c1fd9c33a64621a77f8431f95bd77a",
+      "adapted": false,
+      "final_sha256": "1759b57b86786ab368605cd259d25881e5c1fd9c33a64621a77f8431f95bd77a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\matching.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\matching.py",
+      "source_sha256": "9e080f6c0a2c669a2431584e61cb7b5134275a502c3ebf33b968e9fe272b5633",
+      "destination_sha256": "9e080f6c0a2c669a2431584e61cb7b5134275a502c3ebf33b968e9fe272b5633",
+      "adapted": false,
+      "final_sha256": "9e080f6c0a2c669a2431584e61cb7b5134275a502c3ebf33b968e9fe272b5633"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\monthly_source.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\monthly_source.py",
+      "source_sha256": "209f4855b1e398648f7def40d955c9966bbfb8f6fd400b796c6feeb639369d2b",
+      "destination_sha256": "209f4855b1e398648f7def40d955c9966bbfb8f6fd400b796c6feeb639369d2b",
+      "adapted": false,
+      "final_sha256": "209f4855b1e398648f7def40d955c9966bbfb8f6fd400b796c6feeb639369d2b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\parsers.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\parsers.py",
+      "source_sha256": "e6e3275735430c7ca50914bab8a190d3b20626e2166744fda6a293bf860bb593",
+      "destination_sha256": "e6e3275735430c7ca50914bab8a190d3b20626e2166744fda6a293bf860bb593",
+      "adapted": false,
+      "final_sha256": "e6e3275735430c7ca50914bab8a190d3b20626e2166744fda6a293bf860bb593"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\purpose_evidence.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\purpose_evidence.py",
+      "source_sha256": "1358a5ee772ec94cedabe73e78ef1d7cfc4c1f418b56b1dfea27d7f866915e82",
+      "destination_sha256": "1358a5ee772ec94cedabe73e78ef1d7cfc4c1f418b56b1dfea27d7f866915e82",
+      "adapted": false,
+      "final_sha256": "1358a5ee772ec94cedabe73e78ef1d7cfc4c1f418b56b1dfea27d7f866915e82"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\qbo_books.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\qbo_books.py",
+      "source_sha256": "5ff4b7b9f44118a62495a60f7ba0145d9a6e4d0d93715b12455a09e6553a0c48",
+      "destination_sha256": "5ff4b7b9f44118a62495a60f7ba0145d9a6e4d0d93715b12455a09e6553a0c48",
+      "adapted": false,
+      "final_sha256": "5ff4b7b9f44118a62495a60f7ba0145d9a6e4d0d93715b12455a09e6553a0c48"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\qbo_export.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\qbo_export.py",
+      "source_sha256": "e097ad2b82e9dc7ea938b88583eb60b28cd0d255b834f5212dec4b42ae0af2b0",
+      "destination_sha256": "e097ad2b82e9dc7ea938b88583eb60b28cd0d255b834f5212dec4b42ae0af2b0",
+      "adapted": false,
+      "final_sha256": "e097ad2b82e9dc7ea938b88583eb60b28cd0d255b834f5212dec4b42ae0af2b0"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\recognition.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\recognition.py",
+      "source_sha256": "49caccacda6452783f9c74cc52fd019b190cadf1e0ab8cf3504c3dd16256e3b4",
+      "destination_sha256": "49caccacda6452783f9c74cc52fd019b190cadf1e0ab8cf3504c3dd16256e3b4",
+      "adapted": false,
+      "final_sha256": "49caccacda6452783f9c74cc52fd019b190cadf1e0ab8cf3504c3dd16256e3b4"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\reconciliation_runner.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\reconciliation_runner.py",
+      "source_sha256": "cd2e692d5cb513e7eca884c3cf0a7d0b45648127ef610eff5e8062e4064ec093",
+      "destination_sha256": "cd2e692d5cb513e7eca884c3cf0a7d0b45648127ef610eff5e8062e4064ec093",
+      "adapted": false,
+      "final_sha256": "cd2e692d5cb513e7eca884c3cf0a7d0b45648127ef610eff5e8062e4064ec093"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\reconciliation_status.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\reconciliation_status.py",
+      "source_sha256": "8945dbcb5e9ba97dd1bc15e3aaba56c2416ab1ab27c2fbae0b813f9b7e08587c",
+      "destination_sha256": "8945dbcb5e9ba97dd1bc15e3aaba56c2416ab1ab27c2fbae0b813f9b7e08587c",
+      "adapted": false,
+      "final_sha256": "8945dbcb5e9ba97dd1bc15e3aaba56c2416ab1ab27c2fbae0b813f9b7e08587c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\reporting_entity.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\reporting_entity.py",
+      "source_sha256": "935f8e4a27fce37a780cd872f81eef5012851ad80ff34136acf9e796eb1801ae",
+      "destination_sha256": "935f8e4a27fce37a780cd872f81eef5012851ad80ff34136acf9e796eb1801ae",
+      "adapted": false,
+      "final_sha256": "935f8e4a27fce37a780cd872f81eef5012851ad80ff34136acf9e796eb1801ae"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\review_queues.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\review_queues.py",
+      "source_sha256": "fb66c4eb2166ec686ee5e48d499bced1f16482f5dcace6379b77ed3254e1aa34",
+      "destination_sha256": "fb66c4eb2166ec686ee5e48d499bced1f16482f5dcace6379b77ed3254e1aa34",
+      "adapted": false,
+      "final_sha256": "fb66c4eb2166ec686ee5e48d499bced1f16482f5dcace6379b77ed3254e1aa34"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\review_who.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\review_who.py",
+      "source_sha256": "efb4573862de5d33c0ff96dfe51567ad02d6fc7095481e85c2718df9d2572a15",
+      "destination_sha256": "efb4573862de5d33c0ff96dfe51567ad02d6fc7095481e85c2718df9d2572a15",
+      "adapted": false,
+      "final_sha256": "efb4573862de5d33c0ff96dfe51567ad02d6fc7095481e85c2718df9d2572a15"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\row_reconciliation.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\row_reconciliation.py",
+      "source_sha256": "3d04bdbf372f2f289b8cd406d079fd91a6c9ab738dbeac370101dad9d90f61c9",
+      "destination_sha256": "3d04bdbf372f2f289b8cd406d079fd91a6c9ab738dbeac370101dad9d90f61c9",
+      "adapted": false,
+      "final_sha256": "3d04bdbf372f2f289b8cd406d079fd91a6c9ab738dbeac370101dad9d90f61c9"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\rule_application_safety.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\rule_application_safety.py",
+      "source_sha256": "f8574785972dcdc94284e7f1830c2d0321e6904bb13f937a575a979fe879538d",
+      "destination_sha256": "f8574785972dcdc94284e7f1830c2d0321e6904bb13f937a575a979fe879538d",
+      "adapted": false,
+      "final_sha256": "f8574785972dcdc94284e7f1830c2d0321e6904bb13f937a575a979fe879538d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\rule_organization.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\rule_organization.py",
+      "source_sha256": "6be990d01203261c3c9f24974274799edb96a4e571d340d96167a62ef6fd7095",
+      "destination_sha256": "6be990d01203261c3c9f24974274799edb96a4e571d340d96167a62ef6fd7095",
+      "adapted": false,
+      "final_sha256": "6be990d01203261c3c9f24974274799edb96a4e571d340d96167a62ef6fd7095"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\service.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\service.py",
+      "source_sha256": "1b9c9067a254cef5d77ba4607a6a8c3fed35118ad6492e1652360ba4eafe61ef",
+      "destination_sha256": "1b9c9067a254cef5d77ba4607a6a8c3fed35118ad6492e1652360ba4eafe61ef",
+      "adapted": false,
+      "final_sha256": "1b9c9067a254cef5d77ba4607a6a8c3fed35118ad6492e1652360ba4eafe61ef"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\single_engine.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\single_engine.py",
+      "source_sha256": "a52595ea7850b07294e6c64d7fa1a57618452d0ea36352e9b974af8710c415f2",
+      "destination_sha256": "a52595ea7850b07294e6c64d7fa1a57618452d0ea36352e9b974af8710c415f2",
+      "adapted": false,
+      "final_sha256": "a52595ea7850b07294e6c64d7fa1a57618452d0ea36352e9b974af8710c415f2"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\source_classification.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\source_classification.py",
+      "source_sha256": "e69206fdb7f5d34f653dad14fda43ea457843bd317e2847562ea27ba6867ec9e",
+      "destination_sha256": "e69206fdb7f5d34f653dad14fda43ea457843bd317e2847562ea27ba6867ec9e",
+      "adapted": false,
+      "final_sha256": "e69206fdb7f5d34f653dad14fda43ea457843bd317e2847562ea27ba6867ec9e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\split_allocation.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\split_allocation.py",
+      "source_sha256": "298c24934f4a1be577414b7db1c234bdecd176a6f4db9cb14662b44717896d34",
+      "destination_sha256": "298c24934f4a1be577414b7db1c234bdecd176a6f4db9cb14662b44717896d34",
+      "adapted": false,
+      "final_sha256": "298c24934f4a1be577414b7db1c234bdecd176a6f4db9cb14662b44717896d34"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\what_catalog_import.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\what_catalog_import.py",
+      "source_sha256": "d694f349106e3c716aa3e4a2fb03be87d8933fefd98773532b76254ba3105c18",
+      "destination_sha256": "d694f349106e3c716aa3e4a2fb03be87d8933fefd98773532b76254ba3105c18",
+      "adapted": false,
+      "final_sha256": "d694f349106e3c716aa3e4a2fb03be87d8933fefd98773532b76254ba3105c18"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_categories.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_categories.py",
+      "source_sha256": "7c2822709571ea4318f30db64a5154dcbe2db06bdc2ddb0e4918750cc291a5eb",
+      "destination_sha256": "7c2822709571ea4318f30db64a5154dcbe2db06bdc2ddb0e4918750cc291a5eb",
+      "adapted": false,
+      "final_sha256": "7c2822709571ea4318f30db64a5154dcbe2db06bdc2ddb0e4918750cc291a5eb"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_merge.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_merge.py",
+      "source_sha256": "c5466e08c1d2e92e34fef7ba268dc9cfa4b2aeedb78f043e9c78048f1debee16",
+      "destination_sha256": "c5466e08c1d2e92e34fef7ba268dc9cfa4b2aeedb78f043e9c78048f1debee16",
+      "adapted": false,
+      "final_sha256": "c5466e08c1d2e92e34fef7ba268dc9cfa4b2aeedb78f043e9c78048f1debee16"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_recognition.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_recognition.py",
+      "source_sha256": "2e819f53fe50d482ccb381e5b6ffc39be0e97fdfc7cff2647c4475c3287a242c",
+      "destination_sha256": "2e819f53fe50d482ccb381e5b6ffc39be0e97fdfc7cff2647c4475c3287a242c",
+      "adapted": false,
+      "final_sha256": "2e819f53fe50d482ccb381e5b6ffc39be0e97fdfc7cff2647c4475c3287a242c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_registration.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_registration.py",
+      "source_sha256": "6e3ab3a0532e3b2cc183379f8c021e581cd824c103c6e6e9b695e452794a1aad",
+      "destination_sha256": "6e3ab3a0532e3b2cc183379f8c021e581cd824c103c6e6e9b695e452794a1aad",
+      "adapted": false,
+      "final_sha256": "6e3ab3a0532e3b2cc183379f8c021e581cd824c103c6e6e9b695e452794a1aad"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_rules.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_rules.py",
+      "source_sha256": "b2fdda170d09ac975bf2e2d92943a69cada61e94a896060b271c79c1fd1fda8f",
+      "destination_sha256": "b2fdda170d09ac975bf2e2d92943a69cada61e94a896060b271c79c1fd1fda8f",
+      "adapted": false,
+      "final_sha256": "b2fdda170d09ac975bf2e2d92943a69cada61e94a896060b271c79c1fd1fda8f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_save_conflicts.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_save_conflicts.py",
+      "source_sha256": "114012ce8aaa30b34e7041a86fdc906a207fa0a010a07229abd4b5a577158716",
+      "destination_sha256": "114012ce8aaa30b34e7041a86fdc906a207fa0a010a07229abd4b5a577158716",
+      "adapted": false,
+      "final_sha256": "114012ce8aaa30b34e7041a86fdc906a207fa0a010a07229abd4b5a577158716"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_search_text.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_search_text.py",
+      "source_sha256": "f28c30b2b2c0856bbee32c14415f3fa7c439b277151b1a5bea223fa7ce6b9235",
+      "destination_sha256": "f28c30b2b2c0856bbee32c14415f3fa7c439b277151b1a5bea223fa7ce6b9235",
+      "adapted": false,
+      "final_sha256": "f28c30b2b2c0856bbee32c14415f3fa7c439b277151b1a5bea223fa7ce6b9235"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_why_config.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_why_config.py",
+      "source_sha256": "676c4c1c32c384ad42bcf5dd016d34d8ea8695f0fb5e4455a7e69c04c29659a2",
+      "destination_sha256": "676c4c1c32c384ad42bcf5dd016d34d8ea8695f0fb5e4455a7e69c04c29659a2",
+      "adapted": false,
+      "final_sha256": "676c4c1c32c384ad42bcf5dd016d34d8ea8695f0fb5e4455a7e69c04c29659a2"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_why_rules.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\who_why_rules.py",
+      "source_sha256": "5f6b9aa1925adcd9ed58c39be2fb2ce02641578401c4915de73f7f88c957df56",
+      "destination_sha256": "5f6b9aa1925adcd9ed58c39be2fb2ce02641578401c4915de73f7f88c957df56",
+      "adapted": false,
+      "final_sha256": "5f6b9aa1925adcd9ed58c39be2fb2ce02641578401c4915de73f7f88c957df56"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\why_catalog.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\why_catalog.py",
+      "source_sha256": "d025d91b63eeab6569ab7fb77bdf4a50c95ed1b6d299570d2529b90fbfe492a7",
+      "destination_sha256": "d025d91b63eeab6569ab7fb77bdf4a50c95ed1b6d299570d2529b90fbfe492a7",
+      "adapted": false,
+      "final_sha256": "d025d91b63eeab6569ab7fb77bdf4a50c95ed1b6d299570d2529b90fbfe492a7"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\why_patterns.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\why_patterns.py",
+      "source_sha256": "0687e473619702aea22440e2a5cbaadea21d805414990fdac0b8357fc5809f45",
+      "destination_sha256": "0687e473619702aea22440e2a5cbaadea21d805414990fdac0b8357fc5809f45",
+      "adapted": false,
+      "final_sha256": "0687e473619702aea22440e2a5cbaadea21d805414990fdac0b8357fc5809f45"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\why_what.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\bank_reconciliation\\why_what.py",
+      "source_sha256": "10aad950fa76e1ac9ea51dc416041404f8430891307f3e28428c10c45714b1a6",
+      "destination_sha256": "10aad950fa76e1ac9ea51dc416041404f8430891307f3e28428c10c45714b1a6",
+      "adapted": false,
+      "final_sha256": "10aad950fa76e1ac9ea51dc416041404f8430891307f3e28428c10c45714b1a6"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\database.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\database.py",
+      "source_sha256": "28efcc3381ba5c01e17b78b5e12f98129f29ed75a37d422f7fb000ebc6e2e8ee",
+      "destination_sha256": "28efcc3381ba5c01e17b78b5e12f98129f29ed75a37d422f7fb000ebc6e2e8ee",
+      "adapted": false,
+      "final_sha256": "28efcc3381ba5c01e17b78b5e12f98129f29ed75a37d422f7fb000ebc6e2e8ee"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\display_format.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\display_format.py",
+      "source_sha256": "8cd8030c4768f6a9adec8d42269b8ff5eb1ebcb20279093557265ef8f4ad3dd5",
+      "destination_sha256": "8cd8030c4768f6a9adec8d42269b8ff5eb1ebcb20279093557265ef8f4ad3dd5",
+      "adapted": false,
+      "final_sha256": "8cd8030c4768f6a9adec8d42269b8ff5eb1ebcb20279093557265ef8f4ad3dd5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\legal_entity_service.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\legal_entity_service.py",
+      "source_sha256": "2c2d0bf6b01420f62945b6da1675dcda9d3afa9e6470ff7a4cd38407f0a4b81e",
+      "destination_sha256": "2c2d0bf6b01420f62945b6da1675dcda9d3afa9e6470ff7a4cd38407f0a4b81e",
+      "adapted": false,
+      "final_sha256": "2c2d0bf6b01420f62945b6da1675dcda9d3afa9e6470ff7a4cd38407f0a4b81e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\models.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\models.py",
+      "source_sha256": "2ad6a7f46c64f9bb06fa2f6cf87fa46954ef490cfa19b51a3090ff946711a226",
+      "destination_sha256": "2ad6a7f46c64f9bb06fa2f6cf87fa46954ef490cfa19b51a3090ff946711a226",
+      "adapted": false,
+      "final_sha256": "2ad6a7f46c64f9bb06fa2f6cf87fa46954ef490cfa19b51a3090ff946711a226"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\public_entry.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\public_entry.py",
+      "source_sha256": "a1d4a6405b383e88d85f9d0d51787934181a5d230b7de97edc413a55e7be464c",
+      "destination_sha256": "a1d4a6405b383e88d85f9d0d51787934181a5d230b7de97edc413a55e7be464c",
+      "adapted": false,
+      "final_sha256": "a1d4a6405b383e88d85f9d0d51787934181a5d230b7de97edc413a55e7be464c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\purchasing\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\purchasing\\__init__.py",
+      "source_sha256": "cba01de74acb14fdbb8e499c797521bd97e01a3c47ad295d847ca30c94a4cb79",
+      "destination_sha256": "cba01de74acb14fdbb8e499c797521bd97e01a3c47ad295d847ca30c94a4cb79",
+      "adapted": false,
+      "final_sha256": "cba01de74acb14fdbb8e499c797521bd97e01a3c47ad295d847ca30c94a4cb79"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\purchasing\\reconciliation.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\purchasing\\reconciliation.py",
+      "source_sha256": "b55b2ee150cb7c45f5747e96041bcbc1774404bc79d331fdda18c42b743ed80b",
+      "destination_sha256": "b55b2ee150cb7c45f5747e96041bcbc1774404bc79d331fdda18c42b743ed80b",
+      "adapted": false,
+      "final_sha256": "b55b2ee150cb7c45f5747e96041bcbc1774404bc79d331fdda18c42b743ed80b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\purchasing\\repository.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\purchasing\\repository.py",
+      "source_sha256": "edb55a7a2dd3a2c22eb96cf3d29c3018c8901900a8320f59685a9a76c08301eb",
+      "destination_sha256": "edb55a7a2dd3a2c22eb96cf3d29c3018c8901900a8320f59685a9a76c08301eb",
+      "adapted": false,
+      "final_sha256": "edb55a7a2dd3a2c22eb96cf3d29c3018c8901900a8320f59685a9a76c08301eb"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\rfone_account_service.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\rfone_account_service.py",
+      "source_sha256": "eb25e1e3fd644da2ece5945678a181386fca4a31b00cca0376dc3fa9bcab2f24",
+      "destination_sha256": "eb25e1e3fd644da2ece5945678a181386fca4a31b00cca0376dc3fa9bcab2f24",
+      "adapted": false,
+      "final_sha256": "eb25e1e3fd644da2ece5945678a181386fca4a31b00cca0376dc3fa9bcab2f24"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\rfone_recovery_service.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\rfone_recovery_service.py",
+      "source_sha256": "650ec095e86be40f5fc9d78b229cf652fa2f5ce68e45549182c032dff9c9d68f",
+      "destination_sha256": "650ec095e86be40f5fc9d78b229cf652fa2f5ce68e45549182c032dff9c9d68f",
+      "adapted": false,
+      "final_sha256": "650ec095e86be40f5fc9d78b229cf652fa2f5ce68e45549182c032dff9c9d68f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\rfone_web_session.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\rfone_web_session.py",
+      "source_sha256": "8f7ac2d0fc6cd36251f538047424039b3ddd8e09bb58868e7b1d3361fa6adfb0",
+      "destination_sha256": "8f7ac2d0fc6cd36251f538047424039b3ddd8e09bb58868e7b1d3361fa6adfb0",
+      "adapted": false,
+      "final_sha256": "8f7ac2d0fc6cd36251f538047424039b3ddd8e09bb58868e7b1d3361fa6adfb0"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\selection\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\selection\\__init__.py",
+      "source_sha256": "a5c6273b8ee168d9178f09ab8cd2d9fb29df9689fabf0a923ac5a2a52a41706b",
+      "destination_sha256": "a5c6273b8ee168d9178f09ab8cd2d9fb29df9689fabf0a923ac5a2a52a41706b",
+      "adapted": false,
+      "final_sha256": "a5c6273b8ee168d9178f09ab8cd2d9fb29df9689fabf0a923ac5a2a52a41706b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\selection\\parsing\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\selection\\parsing\\__init__.py",
+      "source_sha256": "d8b3eab9bc84622f21330571d326fcb9623d86343f4927c09ad8b48cb9d2cc11",
+      "destination_sha256": "d8b3eab9bc84622f21330571d326fcb9623d86343f4927c09ad8b48cb9d2cc11",
+      "adapted": false,
+      "final_sha256": "d8b3eab9bc84622f21330571d326fcb9623d86343f4927c09ad8b48cb9d2cc11"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\selection\\parsing\\ai_client.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\selection\\parsing\\ai_client.py",
+      "source_sha256": "89b39f717bd07784124fc34e9719ee26021d6ef7601f4396782f78fe431b9132",
+      "destination_sha256": "89b39f717bd07784124fc34e9719ee26021d6ef7601f4396782f78fe431b9132",
+      "adapted": false,
+      "final_sha256": "89b39f717bd07784124fc34e9719ee26021d6ef7601f4396782f78fe431b9132"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\technical\\__init__.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\technical\\__init__.py",
+      "source_sha256": "94299a8378dcfd29faea91fc5f5bd544267ea59b5f1224c7a255a59e9aaa8ca4",
+      "destination_sha256": "94299a8378dcfd29faea91fc5f5bd544267ea59b5f1224c7a255a59e9aaa8ca4",
+      "adapted": false,
+      "final_sha256": "94299a8378dcfd29faea91fc5f5bd544267ea59b5f1224c7a255a59e9aaa8ca4"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Data Store\\rfone_data_store\\technical\\ses_email.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Data Store\\rfone_data_store\\technical\\ses_email.py",
+      "source_sha256": "9cde521ab512bbba0c7c2b6d7ba7ea6a5d1266f76576845c6f4b5069fbf6fe40",
+      "destination_sha256": "9cde521ab512bbba0c7c2b6d7ba7ea6a5d1266f76576845c6f4b5069fbf6fe40",
+      "adapted": false,
+      "final_sha256": "9cde521ab512bbba0c7c2b6d7ba7ea6a5d1266f76576845c6f4b5069fbf6fe40"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\app.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\app.py",
+      "source_sha256": "296bf8cfee0ffaa2f6456e9beeaf80a8d4be64a9d78ee710bbcdef6bf14db1d3",
+      "destination_sha256": "6b8fdc89a172e39da040bd889c4f10431dc17f45ba5c5db3349b9c685ea7d366",
+      "adapted": true,
+      "final_sha256": "6b8fdc89a172e39da040bd889c4f10431dc17f45ba5c5db3349b9c685ea7d366"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\auth.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\auth.py",
+      "source_sha256": "cdfc6c60644d8f8b62898932db55ecff0df4d8e9dd2a8cc6a1e9343a5434076f",
+      "destination_sha256": "cdfc6c60644d8f8b62898932db55ecff0df4d8e9dd2a8cc6a1e9343a5434076f",
+      "adapted": false,
+      "final_sha256": "cdfc6c60644d8f8b62898932db55ecff0df4d8e9dd2a8cc6a1e9343a5434076f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_ai_rule_check.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_ai_rule_check.py",
+      "source_sha256": "a139675f3d6cc67e7599f632adb9e973f7797f328ad54d370ad1b7f9f6f32557",
+      "destination_sha256": "a139675f3d6cc67e7599f632adb9e973f7797f328ad54d370ad1b7f9f6f32557",
+      "adapted": false,
+      "final_sha256": "a139675f3d6cc67e7599f632adb9e973f7797f328ad54d370ad1b7f9f6f32557"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_ai_rule_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_ai_rule_routes.py",
+      "source_sha256": "043cf2c73dab91b6325ec3bc9357ba1a53b3cbf7c3282ee2d69995fad3ce96a0",
+      "destination_sha256": "043cf2c73dab91b6325ec3bc9357ba1a53b3cbf7c3282ee2d69995fad3ce96a0",
+      "adapted": false,
+      "final_sha256": "043cf2c73dab91b6325ec3bc9357ba1a53b3cbf7c3282ee2d69995fad3ce96a0"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_amazon.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_amazon.py",
+      "source_sha256": "9b3861b04a19e7f32b296d9ecfb281f2b073f6b158316d2666ae7ad87d015d77",
+      "destination_sha256": "9b3861b04a19e7f32b296d9ecfb281f2b073f6b158316d2666ae7ad87d015d77",
+      "adapted": false,
+      "final_sha256": "9b3861b04a19e7f32b296d9ecfb281f2b073f6b158316d2666ae7ad87d015d77"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_assistant_preview_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_assistant_preview_routes.py",
+      "source_sha256": "3e3b7037dccaed1a229fa4497d5b9355d9866718a52c8b571458c2f236535923",
+      "destination_sha256": "3e3b7037dccaed1a229fa4497d5b9355d9866718a52c8b571458c2f236535923",
+      "adapted": false,
+      "final_sha256": "3e3b7037dccaed1a229fa4497d5b9355d9866718a52c8b571458c2f236535923"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_chatgpt.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_chatgpt.py",
+      "source_sha256": "8fd1b8f2dd26cf76d011e5f7afc0a97451cfd910092b16cb6c8df629f5eefc47",
+      "destination_sha256": "8fd1b8f2dd26cf76d011e5f7afc0a97451cfd910092b16cb6c8df629f5eefc47",
+      "adapted": false,
+      "final_sha256": "8fd1b8f2dd26cf76d011e5f7afc0a97451cfd910092b16cb6c8df629f5eefc47"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_complete.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_complete.py",
+      "source_sha256": "26415e1a90d6eb1945f865158f9bdc32634bf73264e4b854a089ac285ccf81df",
+      "destination_sha256": "26415e1a90d6eb1945f865158f9bdc32634bf73264e4b854a089ac285ccf81df",
+      "adapted": false,
+      "final_sha256": "26415e1a90d6eb1945f865158f9bdc32634bf73264e4b854a089ac285ccf81df"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_configuration_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_configuration_routes.py",
+      "source_sha256": "7fd6b95bb5b30d7de303a6dfae187eb9da8e58869263e8cc03dabf2146a0fbbd",
+      "destination_sha256": "fdafb6091f468cf3646f85b9ee10dcbba3c523c6e546fa654bab285f470e5c6b",
+      "adapted": true,
+      "final_sha256": "fdafb6091f468cf3646f85b9ee10dcbba3c523c6e546fa654bab285f470e5c6b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_conversation_intent.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_conversation_intent.py",
+      "source_sha256": "7b8416b49ecabd4e42448adfb02d125f4e51d12f4ef026222fa7b684fe25c3e2",
+      "destination_sha256": "7b8416b49ecabd4e42448adfb02d125f4e51d12f4ef026222fa7b684fe25c3e2",
+      "adapted": false,
+      "final_sha256": "7b8416b49ecabd4e42448adfb02d125f4e51d12f4ef026222fa7b684fe25c3e2"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_flow_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_flow_routes.py",
+      "source_sha256": "38a31f789fdc010347f0be43ab585b01c9bd109196db6ca7c79794be8f1f5c9a",
+      "destination_sha256": "38a31f789fdc010347f0be43ab585b01c9bd109196db6ca7c79794be8f1f5c9a",
+      "adapted": false,
+      "final_sha256": "38a31f789fdc010347f0be43ab585b01c9bd109196db6ca7c79794be8f1f5c9a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_flow_worker.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_flow_worker.py",
+      "source_sha256": "f4946a7562b5fdee8c17f7fc57b00a8d0da62ab6f6311460db577a20a8c4c390",
+      "destination_sha256": "f4946a7562b5fdee8c17f7fc57b00a8d0da62ab6f6311460db577a20a8c4c390",
+      "adapted": false,
+      "final_sha256": "f4946a7562b5fdee8c17f7fc57b00a8d0da62ab6f6311460db577a20a8c4c390"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_guided_reconciliation.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_guided_reconciliation.py",
+      "source_sha256": "a613156af8fb09ed997ba6fb902ec5957b9b43695426e429b24be84867b2e971",
+      "destination_sha256": "a613156af8fb09ed997ba6fb902ec5957b9b43695426e429b24be84867b2e971",
+      "adapted": false,
+      "final_sha256": "a613156af8fb09ed997ba6fb902ec5957b9b43695426e429b24be84867b2e971"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_import_session_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_import_session_routes.py",
+      "source_sha256": "d313088061b07be3b14d25130b02980e18a512b153358c1986e31d23b05afbd9",
+      "destination_sha256": "d313088061b07be3b14d25130b02980e18a512b153358c1986e31d23b05afbd9",
+      "adapted": false,
+      "final_sha256": "d313088061b07be3b14d25130b02980e18a512b153358c1986e31d23b05afbd9"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_import_staging.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_import_staging.py",
+      "source_sha256": "74623fe98a57ea37b8404cd1c2b11e28d34aa6bed2de2291ec17d930219cd3da",
+      "destination_sha256": "74623fe98a57ea37b8404cd1c2b11e28d34aa6bed2de2291ec17d930219cd3da",
+      "adapted": false,
+      "final_sha256": "74623fe98a57ea37b8404cd1c2b11e28d34aa6bed2de2291ec17d930219cd3da"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_import_worker.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_import_worker.py",
+      "source_sha256": "4212b493827a602de6cbbb732427feae71033750ce2273e4b614c6e14a8997a9",
+      "destination_sha256": "4212b493827a602de6cbbb732427feae71033750ce2273e4b614c6e14a8997a9",
+      "adapted": false,
+      "final_sha256": "4212b493827a602de6cbbb732427feae71033750ce2273e4b614c6e14a8997a9"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_manual_reconciliation_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_manual_reconciliation_routes.py",
+      "source_sha256": "4ecb6dc6a72d2cdc1c40deaa5992b7de201977333c71a6a4ebbc169cb551d92c",
+      "destination_sha256": "4ecb6dc6a72d2cdc1c40deaa5992b7de201977333c71a6a4ebbc169cb551d92c",
+      "adapted": false,
+      "final_sha256": "4ecb6dc6a72d2cdc1c40deaa5992b7de201977333c71a6a4ebbc169cb551d92c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_movement_research.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_movement_research.py",
+      "source_sha256": "92343f836a253f803ac5c116f64970fb243084a526242fa76e2386ff61f5486e",
+      "destination_sha256": "92343f836a253f803ac5c116f64970fb243084a526242fa76e2386ff61f5486e",
+      "adapted": false,
+      "final_sha256": "92343f836a253f803ac5c116f64970fb243084a526242fa76e2386ff61f5486e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_photo_capture.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_photo_capture.py",
+      "source_sha256": "44e00ef00b3f748246519c7fa9f9fd930823f63a48649732e001ac1363b96210",
+      "destination_sha256": "44e00ef00b3f748246519c7fa9f9fd930823f63a48649732e001ac1363b96210",
+      "adapted": false,
+      "final_sha256": "44e00ef00b3f748246519c7fa9f9fd930823f63a48649732e001ac1363b96210"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_photo_evidence.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_photo_evidence.py",
+      "source_sha256": "c46ad885bcf7f0d5a0a87666215e270b24cc4d09ecfd2a3af7ce5c468c78fd2b",
+      "destination_sha256": "c46ad885bcf7f0d5a0a87666215e270b24cc4d09ecfd2a3af7ce5c468c78fd2b",
+      "adapted": false,
+      "final_sha256": "c46ad885bcf7f0d5a0a87666215e270b24cc4d09ecfd2a3af7ce5c468c78fd2b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_pipeline_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_pipeline_routes.py",
+      "source_sha256": "c0de4785de8c67a33cac38ab4c05c000c828568340f5ae3a792c47c4195a5f67",
+      "destination_sha256": "c0de4785de8c67a33cac38ab4c05c000c828568340f5ae3a792c47c4195a5f67",
+      "adapted": false,
+      "final_sha256": "c0de4785de8c67a33cac38ab4c05c000c828568340f5ae3a792c47c4195a5f67"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_profile_research.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_profile_research.py",
+      "source_sha256": "2c6b10138d95c041af9d570a4d7c403609829c7d96d10eb87e8045508ec3b591",
+      "destination_sha256": "2c6b10138d95c041af9d570a4d7c403609829c7d96d10eb87e8045508ec3b591",
+      "adapted": false,
+      "final_sha256": "2c6b10138d95c041af9d570a4d7c403609829c7d96d10eb87e8045508ec3b591"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_reconcile_run_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_reconcile_run_routes.py",
+      "source_sha256": "550566cdb5f0779b596582282625e2dd5201aacc80e55d37564a71dfbe793c51",
+      "destination_sha256": "550566cdb5f0779b596582282625e2dd5201aacc80e55d37564a71dfbe793c51",
+      "adapted": false,
+      "final_sha256": "550566cdb5f0779b596582282625e2dd5201aacc80e55d37564a71dfbe793c51"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_reconciliation_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_reconciliation_routes.py",
+      "source_sha256": "dfc860ed00ab7f451c93b5d216a8c15f3de08af8a334d3517ec1bddd92944c65",
+      "destination_sha256": "dfc860ed00ab7f451c93b5d216a8c15f3de08af8a334d3517ec1bddd92944c65",
+      "adapted": false,
+      "final_sha256": "dfc860ed00ab7f451c93b5d216a8c15f3de08af8a334d3517ec1bddd92944c65"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_routes.py",
+      "source_sha256": "6d6eff2f14e61901641089ad8f286dbb1017544709bc69f1938225d48790f7d5",
+      "destination_sha256": "6d6eff2f14e61901641089ad8f286dbb1017544709bc69f1938225d48790f7d5",
+      "adapted": false,
+      "final_sha256": "6d6eff2f14e61901641089ad8f286dbb1017544709bc69f1938225d48790f7d5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_rule_workflow.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_rule_workflow.py",
+      "source_sha256": "3dd6a7ea5f932688845ede7fa98d4b48ba853528e9667ddb2e5c0c8aeaf72b07",
+      "destination_sha256": "3dd6a7ea5f932688845ede7fa98d4b48ba853528e9667ddb2e5c0c8aeaf72b07",
+      "adapted": false,
+      "final_sha256": "3dd6a7ea5f932688845ede7fa98d4b48ba853528e9667ddb2e5c0c8aeaf72b07"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_split.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_split.py",
+      "source_sha256": "2dae51379a1abfc7e359a7c26697ace5dd7bd5f22cc628c13346a7f3db9b26e5",
+      "destination_sha256": "2dae51379a1abfc7e359a7c26697ace5dd7bd5f22cc628c13346a7f3db9b26e5",
+      "adapted": false,
+      "final_sha256": "2dae51379a1abfc7e359a7c26697ace5dd7bd5f22cc628c13346a7f3db9b26e5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_trial_sources.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_trial_sources.py",
+      "source_sha256": "35e9d449027ec01bead119b3bf410e29b543da7d8c9b4308e90fbfbfcb18ae00",
+      "destination_sha256": "35e9d449027ec01bead119b3bf410e29b543da7d8c9b4308e90fbfbfcb18ae00",
+      "adapted": false,
+      "final_sha256": "35e9d449027ec01bead119b3bf410e29b543da7d8c9b4308e90fbfbfcb18ae00"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_ui_it.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_ui_it.py",
+      "source_sha256": "f7c3e62c7a504043d16859ef59259540af01ac106bcb11d4ee98fe4435999645",
+      "destination_sha256": "f7c3e62c7a504043d16859ef59259540af01ac106bcb11d4ee98fe4435999645",
+      "adapted": false,
+      "final_sha256": "f7c3e62c7a504043d16859ef59259540af01ac106bcb11d4ee98fe4435999645"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_format_review.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_format_review.py",
+      "source_sha256": "de4b64b5d35e0b703e818f61de9a4ffb85d5b90c2c59b7eed888dee48f2bfe26",
+      "destination_sha256": "de4b64b5d35e0b703e818f61de9a4ffb85d5b90c2c59b7eed888dee48f2bfe26",
+      "adapted": false,
+      "final_sha256": "de4b64b5d35e0b703e818f61de9a4ffb85d5b90c2c59b7eed888dee48f2bfe26"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_identification_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_identification_routes.py",
+      "source_sha256": "b4aa459afcc27c4284ec93f718ca52d66e4a455e7eccd4e3c4588411a6366f33",
+      "destination_sha256": "b4aa459afcc27c4284ec93f718ca52d66e4a455e7eccd4e3c4588411a6366f33",
+      "adapted": false,
+      "final_sha256": "b4aa459afcc27c4284ec93f718ca52d66e4a455e7eccd4e3c4588411a6366f33"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_pattern_analysis.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_pattern_analysis.py",
+      "source_sha256": "e7461389d0ae1253761992fa89fc115ac4fcf8787dd803a10e7f5442d639042f",
+      "destination_sha256": "e7461389d0ae1253761992fa89fc115ac4fcf8787dd803a10e7f5442d639042f",
+      "adapted": false,
+      "final_sha256": "e7461389d0ae1253761992fa89fc115ac4fcf8787dd803a10e7f5442d639042f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_patterns.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_patterns.py",
+      "source_sha256": "4355818aea3905352e6e7e8dafb4f8a4caad1f00f6aa83b80dec7ded7b8a539c",
+      "destination_sha256": "4355818aea3905352e6e7e8dafb4f8a4caad1f00f6aa83b80dec7ded7b8a539c",
+      "adapted": false,
+      "final_sha256": "4355818aea3905352e6e7e8dafb4f8a4caad1f00f6aa83b80dec7ded7b8a539c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_recognise.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_recognise.py",
+      "source_sha256": "a2892d252526ef5a103c3644c154d7891d62354ccb27e0b27f21e490077e29a2",
+      "destination_sha256": "a2892d252526ef5a103c3644c154d7891d62354ccb27e0b27f21e490077e29a2",
+      "adapted": false,
+      "final_sha256": "a2892d252526ef5a103c3644c154d7891d62354ccb27e0b27f21e490077e29a2"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_rule_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_rule_routes.py",
+      "source_sha256": "01d068c07ac2df3f86e1fe47678e10687d94be0c14a75dc553a8789745e471c2",
+      "destination_sha256": "01d068c07ac2df3f86e1fe47678e10687d94be0c14a75dc553a8789745e471c2",
+      "adapted": false,
+      "final_sha256": "01d068c07ac2df3f86e1fe47678e10687d94be0c14a75dc553a8789745e471c2"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_search_text.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_search_text.py",
+      "source_sha256": "4560430d71645a991c7c6667aeeb8eef460fc885e45f0bdd95697150347f7e93",
+      "destination_sha256": "4560430d71645a991c7c6667aeeb8eef460fc885e45f0bdd95697150347f7e93",
+      "adapted": false,
+      "final_sha256": "4560430d71645a991c7c6667aeeb8eef460fc885e45f0bdd95697150347f7e93"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_who_training.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_who_training.py",
+      "source_sha256": "36b3c145a591208586e7a3f108f441f5b71bd1f4740ac35b828444a024616d52",
+      "destination_sha256": "36b3c145a591208586e7a3f108f441f5b71bd1f4740ac35b828444a024616d52",
+      "adapted": false,
+      "final_sha256": "36b3c145a591208586e7a3f108f441f5b71bd1f4740ac35b828444a024616d52"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_why_pattern_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_why_pattern_routes.py",
+      "source_sha256": "a1d19a254f31b9960096c0d03856ebd82806aee5015d72908867896ba59d9005",
+      "destination_sha256": "a1d19a254f31b9960096c0d03856ebd82806aee5015d72908867896ba59d9005",
+      "adapted": false,
+      "final_sha256": "a1d19a254f31b9960096c0d03856ebd82806aee5015d72908867896ba59d9005"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_why_signals.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_why_signals.py",
+      "source_sha256": "17615c5f6ab4bd2274193fd313384475218b8931768c3c231265c941169785c4",
+      "destination_sha256": "17615c5f6ab4bd2274193fd313384475218b8931768c3c231265c941169785c4",
+      "adapted": false,
+      "final_sha256": "17615c5f6ab4bd2274193fd313384475218b8931768c3c231265c941169785c4"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_work_gate.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_work_gate.py",
+      "source_sha256": "38d1024a6f9d192359f1699d94200bf7f25d3b381858f8cf8ba963c5afb9b458",
+      "destination_sha256": "38d1024a6f9d192359f1699d94200bf7f25d3b381858f8cf8ba963c5afb9b458",
+      "adapted": false,
+      "final_sha256": "38d1024a6f9d192359f1699d94200bf7f25d3b381858f8cf8ba963c5afb9b458"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_work_research.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_work_research.py",
+      "source_sha256": "ac2b871f8aa53885a0a849a3a9030b9bdba88ab5224c4d2b641fc8f7cea3a74a",
+      "destination_sha256": "ac2b871f8aa53885a0a849a3a9030b9bdba88ab5224c4d2b641fc8f7cea3a74a",
+      "adapted": false,
+      "final_sha256": "ac2b871f8aa53885a0a849a3a9030b9bdba88ab5224c4d2b641fc8f7cea3a74a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\bank_work_routes.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\bank_work_routes.py",
+      "source_sha256": "9ae6e745fd5180e1e19deed1470999619c350ad4ab970e4d306f26f2ded9e73d",
+      "destination_sha256": "9ae6e745fd5180e1e19deed1470999619c350ad4ab970e4d306f26f2ded9e73d",
+      "adapted": false,
+      "final_sha256": "9ae6e745fd5180e1e19deed1470999619c350ad4ab970e4d306f26f2ded9e73d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\db.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\db.py",
+      "source_sha256": "9ffb7021002aeff62d1817bab5056d8eba67694475defa0fce366740ed172eb5",
+      "destination_sha256": "9ffb7021002aeff62d1817bab5056d8eba67694475defa0fce366740ed172eb5",
+      "adapted": false,
+      "final_sha256": "9ffb7021002aeff62d1817bab5056d8eba67694475defa0fce366740ed172eb5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\domain_registry.py",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\domain_registry.py",
+      "source_sha256": "063336f5532291ea02ddc174c432d063a61f0021257bb1b68db573706b9c5502",
+      "destination_sha256": "063336f5532291ea02ddc174c432d063a61f0021257bb1b68db573706b9c5502",
+      "adapted": false,
+      "final_sha256": "063336f5532291ea02ddc174c432d063a61f0021257bb1b68db573706b9c5502"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_complete_modal.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_complete_modal.html",
+      "source_sha256": "699e88ae626c39a263ecb799c46e442e71ab8fe460ffcca0525112d12043619f",
+      "destination_sha256": "699e88ae626c39a263ecb799c46e442e71ab8fe460ffcca0525112d12043619f",
+      "adapted": false,
+      "final_sha256": "699e88ae626c39a263ecb799c46e442e71ab8fe460ffcca0525112d12043619f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_completeness_control.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_completeness_control.html",
+      "source_sha256": "d27f38789960d0a03c8ca1dd39344662ef38cc836cb3dd43cd1a2b96e0ddcfad",
+      "destination_sha256": "d27f38789960d0a03c8ca1dd39344662ef38cc836cb3dd43cd1a2b96e0ddcfad",
+      "adapted": false,
+      "final_sha256": "d27f38789960d0a03c8ca1dd39344662ef38cc836cb3dd43cd1a2b96e0ddcfad"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_example_choice.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_example_choice.html",
+      "source_sha256": "3e67654e6f65097de1cfa84a9d17423ac1faf6e0b2831dff3ca4218baca215be",
+      "destination_sha256": "3e67654e6f65097de1cfa84a9d17423ac1faf6e0b2831dff3ca4218baca215be",
+      "adapted": false,
+      "final_sha256": "3e67654e6f65097de1cfa84a9d17423ac1faf6e0b2831dff3ca4218baca215be"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_flow_rule_dialogs.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_flow_rule_dialogs.html",
+      "source_sha256": "f68ab94215681b667200dcc4b98bc31a2c9dc27c75cd29df0b8746e9d56febc3",
+      "destination_sha256": "f68ab94215681b667200dcc4b98bc31a2c9dc27c75cd29df0b8746e9d56febc3",
+      "adapted": false,
+      "final_sha256": "f68ab94215681b667200dcc4b98bc31a2c9dc27c75cd29df0b8746e9d56febc3"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_import_review_modal.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_import_review_modal.html",
+      "source_sha256": "fa5120569684222d98cfb0dbb55a99699f867a5de924e38978521325bcca8233",
+      "destination_sha256": "fa5120569684222d98cfb0dbb55a99699f867a5de924e38978521325bcca8233",
+      "adapted": false,
+      "final_sha256": "fa5120569684222d98cfb0dbb55a99699f867a5de924e38978521325bcca8233"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_macros.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_macros.html",
+      "source_sha256": "4b9c8d6eda2c7513aa34c19386d769de8695bfa83862ab4858cb02b17267a3c7",
+      "destination_sha256": "4b9c8d6eda2c7513aa34c19386d769de8695bfa83862ab4858cb02b17267a3c7",
+      "adapted": false,
+      "final_sha256": "4b9c8d6eda2c7513aa34c19386d769de8695bfa83862ab4858cb02b17267a3c7"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_monthly_sources.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_monthly_sources.html",
+      "source_sha256": "a63c5eae025079f519ed5273f3de7a06d290d21381f0a3c181bbc6d865c366d1",
+      "destination_sha256": "a63c5eae025079f519ed5273f3de7a06d290d21381f0a3c181bbc6d865c366d1",
+      "adapted": false,
+      "final_sha256": "a63c5eae025079f519ed5273f3de7a06d290d21381f0a3c181bbc6d865c366d1"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_movement_research.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_movement_research.html",
+      "source_sha256": "79fac53a90ebe4ac111c66c74bbce5411004b513c5f499583412b474d07c5049",
+      "destination_sha256": "79fac53a90ebe4ac111c66c74bbce5411004b513c5f499583412b474d07c5049",
+      "adapted": false,
+      "final_sha256": "79fac53a90ebe4ac111c66c74bbce5411004b513c5f499583412b474d07c5049"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_reconciled_rows.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_reconciled_rows.html",
+      "source_sha256": "f75ab0ce648dafe9487a79145d9f976a42d1ec933d73bc4855ebdfbf6f1be19e",
+      "destination_sha256": "f75ab0ce648dafe9487a79145d9f976a42d1ec933d73bc4855ebdfbf6f1be19e",
+      "adapted": false,
+      "final_sha256": "f75ab0ce648dafe9487a79145d9f976a42d1ec933d73bc4855ebdfbf6f1be19e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_review_header.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_review_header.html",
+      "source_sha256": "9fe0644433c827b61cbb7b0fa9b491689b21f38d003d190d5d919f4028136586",
+      "destination_sha256": "9fe0644433c827b61cbb7b0fa9b491689b21f38d003d190d5d919f4028136586",
+      "adapted": false,
+      "final_sha256": "9fe0644433c827b61cbb7b0fa9b491689b21f38d003d190d5d919f4028136586"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_review_more.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_review_more.html",
+      "source_sha256": "517d9f54be6a6d791d609bc5480ad6080e0a069cb20ce5328a65bffb8385ee62",
+      "destination_sha256": "517d9f54be6a6d791d609bc5480ad6080e0a069cb20ce5328a65bffb8385ee62",
+      "adapted": false,
+      "final_sha256": "517d9f54be6a6d791d609bc5480ad6080e0a069cb20ce5328a65bffb8385ee62"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_review_sort.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_review_sort.html",
+      "source_sha256": "1d6fb699bfcbb3bedbba56427d174c20b0c2b569b3a7fbb874bc057003d62e4d",
+      "destination_sha256": "1d6fb699bfcbb3bedbba56427d174c20b0c2b569b3a7fbb874bc057003d62e4d",
+      "adapted": false,
+      "final_sha256": "1d6fb699bfcbb3bedbba56427d174c20b0c2b569b3a7fbb874bc057003d62e4d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_source_modal.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_source_modal.html",
+      "source_sha256": "c2de0ac511d21238c8d5dc60e873feb9b8eef112b3cf7a768024d97321b9bdc3",
+      "destination_sha256": "c2de0ac511d21238c8d5dc60e873feb9b8eef112b3cf7a768024d97321b9bdc3",
+      "adapted": false,
+      "final_sha256": "c2de0ac511d21238c8d5dc60e873feb9b8eef112b3cf7a768024d97321b9bdc3"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_sources_section.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_sources_section.html",
+      "source_sha256": "24302ac03dc70bb3a744136337b64c2fb00ba0846a60a04e4925b4f953eb02cd",
+      "destination_sha256": "24302ac03dc70bb3a744136337b64c2fb00ba0846a60a04e4925b4f953eb02cd",
+      "adapted": false,
+      "final_sha256": "24302ac03dc70bb3a744136337b64c2fb00ba0846a60a04e4925b4f953eb02cd"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_split_overview.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_split_overview.html",
+      "source_sha256": "576feed3aa4d904ae2be0ac33fa69ac474a2a18cbe31ae88cc6f519c4b616295",
+      "destination_sha256": "576feed3aa4d904ae2be0ac33fa69ac474a2a18cbe31ae88cc6f519c4b616295",
+      "adapted": false,
+      "final_sha256": "576feed3aa4d904ae2be0ac33fa69ac474a2a18cbe31ae88cc6f519c4b616295"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_statement_reasons.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_statement_reasons.html",
+      "source_sha256": "30ea25cb1f556ca9f668852330bfa69644ce8518e8603595a1b465751d0ec615",
+      "destination_sha256": "30ea25cb1f556ca9f668852330bfa69644ce8518e8603595a1b465751d0ec615",
+      "adapted": false,
+      "final_sha256": "30ea25cb1f556ca9f668852330bfa69644ce8518e8603595a1b465751d0ec615"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_unresolved_rows.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_unresolved_rows.html",
+      "source_sha256": "53d8cddb77c6a783db60761b1881175e6b790eda6b502479330749fcfff7bdde",
+      "destination_sha256": "53d8cddb77c6a783db60761b1881175e6b790eda6b502479330749fcfff7bdde",
+      "adapted": false,
+      "final_sha256": "53d8cddb77c6a783db60761b1881175e6b790eda6b502479330749fcfff7bdde"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_who_create_dialog.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_who_create_dialog.html",
+      "source_sha256": "76be7fee7f755fb72101677670537b8ddc9d04fb2c5d0eaf3a3beff05efe2383",
+      "destination_sha256": "76be7fee7f755fb72101677670537b8ddc9d04fb2c5d0eaf3a3beff05efe2383",
+      "adapted": false,
+      "final_sha256": "76be7fee7f755fb72101677670537b8ddc9d04fb2c5d0eaf3a3beff05efe2383"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_who_why_dialog.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_who_why_dialog.html",
+      "source_sha256": "f45dbbcc74c4dbc8aacd272eae66fe55f140649b121a7314bbca11578abc912a",
+      "destination_sha256": "f45dbbcc74c4dbc8aacd272eae66fe55f140649b121a7314bbca11578abc912a",
+      "adapted": false,
+      "final_sha256": "f45dbbcc74c4dbc8aacd272eae66fe55f140649b121a7314bbca11578abc912a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_who_why_modal.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_who_why_modal.html",
+      "source_sha256": "a70925a441f6e758be8630b95783c585afc245ba54eb2d17c80a4b2396448392",
+      "destination_sha256": "a70925a441f6e758be8630b95783c585afc245ba54eb2d17c80a4b2396448392",
+      "adapted": false,
+      "final_sha256": "a70925a441f6e758be8630b95783c585afc245ba54eb2d17c80a4b2396448392"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_why_create_dialog.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_why_create_dialog.html",
+      "source_sha256": "c66679011a078d4d57aa50735ae3880f43aa2e238b9f6b8560d45aea57a8551c",
+      "destination_sha256": "c66679011a078d4d57aa50735ae3880f43aa2e238b9f6b8560d45aea57a8551c",
+      "adapted": false,
+      "final_sha256": "c66679011a078d4d57aa50735ae3880f43aa2e238b9f6b8560d45aea57a8551c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_bank_why_rule_dialog.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_bank_why_rule_dialog.html",
+      "source_sha256": "f60c237fb3593f47ad1f138a4807e1e7b7f2bce97250854d1d96e194361f6c39",
+      "destination_sha256": "f60c237fb3593f47ad1f138a4807e1e7b7f2bce97250854d1d96e194361f6c39",
+      "adapted": false,
+      "final_sha256": "f60c237fb3593f47ad1f138a4807e1e7b7f2bce97250854d1d96e194361f6c39"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_nav_macros.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_nav_macros.html",
+      "source_sha256": "3d9a62ebc2d881d75e3289375eeb7d5489579b5267cc1c14f9413e8974254335",
+      "destination_sha256": "3d9a62ebc2d881d75e3289375eeb7d5489579b5267cc1c14f9413e8974254335",
+      "adapted": false,
+      "final_sha256": "3d9a62ebc2d881d75e3289375eeb7d5489579b5267cc1c14f9413e8974254335"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\_site_header.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\_site_header.html",
+      "source_sha256": "a82b376aa7b3a3fef86a7c92a72c6d67abfea4aa40c1f7499a8760eee339d95a",
+      "destination_sha256": "a82b376aa7b3a3fef86a7c92a72c6d67abfea4aa40c1f7499a8760eee339d95a",
+      "adapted": false,
+      "final_sha256": "a82b376aa7b3a3fef86a7c92a72c6d67abfea4aa40c1f7499a8760eee339d95a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_ai_rule_check.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_ai_rule_check.html",
+      "source_sha256": "0f9a1f6cd5937f42b1cb60e97b45189f80cb2c092c8e3ee38f85208c44843225",
+      "destination_sha256": "0f9a1f6cd5937f42b1cb60e97b45189f80cb2c092c8e3ee38f85208c44843225",
+      "adapted": false,
+      "final_sha256": "0f9a1f6cd5937f42b1cb60e97b45189f80cb2c092c8e3ee38f85208c44843225"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_ai_rules.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_ai_rules.html",
+      "source_sha256": "be49d3820dfc81daf7fb3100ad2dae94ff8655a98f4f0fe4317630bda77fa145",
+      "destination_sha256": "be49d3820dfc81daf7fb3100ad2dae94ff8655a98f4f0fe4317630bda77fa145",
+      "adapted": false,
+      "final_sha256": "be49d3820dfc81daf7fb3100ad2dae94ff8655a98f4f0fe4317630bda77fa145"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_amazon.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_amazon.html",
+      "source_sha256": "920016cd983904f12948c999750f834af93c3a594907b723a99ecc7517f9f852",
+      "destination_sha256": "920016cd983904f12948c999750f834af93c3a594907b723a99ecc7517f9f852",
+      "adapted": false,
+      "final_sha256": "920016cd983904f12948c999750f834af93c3a594907b723a99ecc7517f9f852"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_assistant_preview.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_assistant_preview.html",
+      "source_sha256": "539e3f4a3a7b3bdfe7d7acc0dca41cf7efb3e47d61c544e9de2b923b0a056c62",
+      "destination_sha256": "539e3f4a3a7b3bdfe7d7acc0dca41cf7efb3e47d61c544e9de2b923b0a056c62",
+      "adapted": false,
+      "final_sha256": "539e3f4a3a7b3bdfe7d7acc0dca41cf7efb3e47d61c544e9de2b923b0a056c62"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_configuration.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_configuration.html",
+      "source_sha256": "92b7ec8dc209643cf90b6bedb4471db94e797d3460bacdbdf1c599e9952abeab",
+      "destination_sha256": "92b7ec8dc209643cf90b6bedb4471db94e797d3460bacdbdf1c599e9952abeab",
+      "adapted": false,
+      "final_sha256": "92b7ec8dc209643cf90b6bedb4471db94e797d3460bacdbdf1c599e9952abeab"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_export.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_export.html",
+      "source_sha256": "e9259a5901c13d2a50fac3d3cf53a337676d8f226473c98537ad4abb7fc52202",
+      "destination_sha256": "e9259a5901c13d2a50fac3d3cf53a337676d8f226473c98537ad4abb7fc52202",
+      "adapted": false,
+      "final_sha256": "e9259a5901c13d2a50fac3d3cf53a337676d8f226473c98537ad4abb7fc52202"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_flow.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_flow.html",
+      "source_sha256": "e2e5153d169cb014ec66d1629637a71e7a689e4d5e54f549de1a2ef19b303db8",
+      "destination_sha256": "e2e5153d169cb014ec66d1629637a71e7a689e4d5e54f549de1a2ef19b303db8",
+      "adapted": false,
+      "final_sha256": "e2e5153d169cb014ec66d1629637a71e7a689e4d5e54f549de1a2ef19b303db8"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_guided_shell.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_guided_shell.html",
+      "source_sha256": "81be7f8d07a1863cd984cc4bafe1687593ccccb71614aab5131ed2ade0751928",
+      "destination_sha256": "81be7f8d07a1863cd984cc4bafe1687593ccccb71614aab5131ed2ade0751928",
+      "adapted": false,
+      "final_sha256": "81be7f8d07a1863cd984cc4bafe1687593ccccb71614aab5131ed2ade0751928"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_home.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_home.html",
+      "source_sha256": "3c8e08fce515965c4a751194f25c19736e14d6f398674fc313b59df7b7c118fc",
+      "destination_sha256": "3c8e08fce515965c4a751194f25c19736e14d6f398674fc313b59df7b7c118fc",
+      "adapted": false,
+      "final_sha256": "3c8e08fce515965c4a751194f25c19736e14d6f398674fc313b59df7b7c118fc"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_how_it_works.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_how_it_works.html",
+      "source_sha256": "60c141122fdc9b2e9e903019b1e6d33570b148eea2e465a0206ddd22a369ae9b",
+      "destination_sha256": "60c141122fdc9b2e9e903019b1e6d33570b148eea2e465a0206ddd22a369ae9b",
+      "adapted": false,
+      "final_sha256": "f5d92f5a1ebe46b0d9f1f116d6ddd42eeb27cced62ea9c686db59f184bbe59e4"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_import_session.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_import_session.html",
+      "source_sha256": "99bfa9c8031018c396ebd5c24bf5f8f920b28f1b51c7ddbc4c21c5e7efa4081d",
+      "destination_sha256": "99bfa9c8031018c396ebd5c24bf5f8f920b28f1b51c7ddbc4c21c5e7efa4081d",
+      "adapted": false,
+      "final_sha256": "99bfa9c8031018c396ebd5c24bf5f8f920b28f1b51c7ddbc4c21c5e7efa4081d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_instructions.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_instructions.html",
+      "source_sha256": "497f26818b78800be37e67b3475ddf684d03bd5ebb7b3f5f03b9577bd6a6b3d7",
+      "destination_sha256": "497f26818b78800be37e67b3475ddf684d03bd5ebb7b3f5f03b9577bd6a6b3d7",
+      "adapted": false,
+      "final_sha256": "497f26818b78800be37e67b3475ddf684d03bd5ebb7b3f5f03b9577bd6a6b3d7"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_panel.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_panel.html",
+      "source_sha256": "417e846b839459175bf40cb34532160795df64d1f21cd60dabce73adf3d76a32",
+      "destination_sha256": "417e846b839459175bf40cb34532160795df64d1f21cd60dabce73adf3d76a32",
+      "adapted": false,
+      "final_sha256": "417e846b839459175bf40cb34532160795df64d1f21cd60dabce73adf3d76a32"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_reconciliation.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_reconciliation.html",
+      "source_sha256": "12454bdab4f9a6d750461747706c32ba45ce8239a8d4784eb9b8af04475a272a",
+      "destination_sha256": "12454bdab4f9a6d750461747706c32ba45ce8239a8d4784eb9b8af04475a272a",
+      "adapted": false,
+      "final_sha256": "12454bdab4f9a6d750461747706c32ba45ce8239a8d4784eb9b8af04475a272a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_review.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_review.html",
+      "source_sha256": "63ffd7199be3a969961fb8cf1e08df571fa1fc7fee97647f82200b4c7691e4f9",
+      "destination_sha256": "63ffd7199be3a969961fb8cf1e08df571fa1fc7fee97647f82200b4c7691e4f9",
+      "adapted": false,
+      "final_sha256": "63ffd7199be3a969961fb8cf1e08df571fa1fc7fee97647f82200b4c7691e4f9"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_rule_applications.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_rule_applications.html",
+      "source_sha256": "4a9cec92cd644499571c9bf77fdf4f14e8219b614b4b0bef3509c4c69e38613d",
+      "destination_sha256": "4a9cec92cd644499571c9bf77fdf4f14e8219b614b4b0bef3509c4c69e38613d",
+      "adapted": false,
+      "final_sha256": "4a9cec92cd644499571c9bf77fdf4f14e8219b614b4b0bef3509c4c69e38613d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_sources.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_sources.html",
+      "source_sha256": "474bd6ad8cf66701291f0acf6b6cc949cd5a21d0a8346e63a2ab034577129849",
+      "destination_sha256": "474bd6ad8cf66701291f0acf6b6cc949cd5a21d0a8346e63a2ab034577129849",
+      "adapted": false,
+      "final_sha256": "474bd6ad8cf66701291f0acf6b6cc949cd5a21d0a8346e63a2ab034577129849"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_split.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_split.html",
+      "source_sha256": "fd06eec6bcffc2ca8148e1b59a79c4c0b75721f59fc697dba62f752c39e3f383",
+      "destination_sha256": "fd06eec6bcffc2ca8148e1b59a79c4c0b75721f59fc697dba62f752c39e3f383",
+      "adapted": false,
+      "final_sha256": "fd06eec6bcffc2ca8148e1b59a79c4c0b75721f59fc697dba62f752c39e3f383"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_who_search_text.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_who_search_text.html",
+      "source_sha256": "87aa75d2f01b850f00c3c35a3db1218e08c4aea7d4448d841ca1252271a56b97",
+      "destination_sha256": "87aa75d2f01b850f00c3c35a3db1218e08c4aea7d4448d841ca1252271a56b97",
+      "adapted": false,
+      "final_sha256": "87aa75d2f01b850f00c3c35a3db1218e08c4aea7d4448d841ca1252271a56b97"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_who_training.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_who_training.html",
+      "source_sha256": "c4f269a74e944ad3e5a2cbdc42fcf1e63db0c8ffb9aed3e03506dc1b25f368f2",
+      "destination_sha256": "c4f269a74e944ad3e5a2cbdc42fcf1e63db0c8ffb9aed3e03506dc1b25f368f2",
+      "adapted": false,
+      "final_sha256": "c4f269a74e944ad3e5a2cbdc42fcf1e63db0c8ffb9aed3e03506dc1b25f368f2"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_why_signals.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_why_signals.html",
+      "source_sha256": "7168a0d8d02747418d39e50bba9594f41adfb1da02edc8bccd31a85fbfa0351b",
+      "destination_sha256": "7168a0d8d02747418d39e50bba9594f41adfb1da02edc8bccd31a85fbfa0351b",
+      "adapted": false,
+      "final_sha256": "7168a0d8d02747418d39e50bba9594f41adfb1da02edc8bccd31a85fbfa0351b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_work.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_work.html",
+      "source_sha256": "4b89926f1b21302c1bf38839f89fb24fce9ac698f17cdf77c78e93d831e55a88",
+      "destination_sha256": "4b89926f1b21302c1bf38839f89fb24fce9ac698f17cdf77c78e93d831e55a88",
+      "adapted": false,
+      "final_sha256": "4b89926f1b21302c1bf38839f89fb24fce9ac698f17cdf77c78e93d831e55a88"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\bank_work_qbo.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\bank_work_qbo.html",
+      "source_sha256": "0b7ca24029118559045c0e5adca095471740521842a91669b19f691edd85f8ca",
+      "destination_sha256": "0b7ca24029118559045c0e5adca095471740521842a91669b19f691edd85f8ca",
+      "adapted": false,
+      "final_sha256": "0b7ca24029118559045c0e5adca095471740521842a91669b19f691edd85f8ca"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\templates\\base.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\templates\\base.html",
+      "source_sha256": "8267d65d3b1829f40679884acf7b0cb300c415536dd303a4bc5587b6dc7b88b7",
+      "destination_sha256": "8267d65d3b1829f40679884acf7b0cb300c415536dd303a4bc5587b6dc7b88b7",
+      "adapted": false,
+      "final_sha256": "582c5ca87080123b89057546a0df43c783746e773bd5a324a2b3289588050a32"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\app.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\app.js",
+      "source_sha256": "513bf8bdcba4c7729bec82c92c9ebdcc8885683e9bb0aa4b0ea4bae475f1a51c",
+      "destination_sha256": "513bf8bdcba4c7729bec82c92c9ebdcc8885683e9bb0aa4b0ea4bae475f1a51c",
+      "adapted": false,
+      "final_sha256": "513bf8bdcba4c7729bec82c92c9ebdcc8885683e9bb0aa4b0ea4bae475f1a51c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\flow.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\flow.js",
+      "source_sha256": "99737b61ed2245aae18df4d13f42fca1253af3ea19326ee651d038ae2e78ec1f",
+      "destination_sha256": "99737b61ed2245aae18df4d13f42fca1253af3ea19326ee651d038ae2e78ec1f",
+      "adapted": false,
+      "final_sha256": "99737b61ed2245aae18df4d13f42fca1253af3ea19326ee651d038ae2e78ec1f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\flow_i18n.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\flow_i18n.js",
+      "source_sha256": "37fd3edcc981ecf0c492b4cf5ff8b7b41976de25d3320be81763233543808d6e",
+      "destination_sha256": "37fd3edcc981ecf0c492b4cf5ff8b7b41976de25d3320be81763233543808d6e",
+      "adapted": false,
+      "final_sha256": "37fd3edcc981ecf0c492b4cf5ff8b7b41976de25d3320be81763233543808d6e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\preview.css",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\preview.css",
+      "source_sha256": "11dd53958aff58a607ddcd8c7ede73fda355199ae94d96bdc4d7f64534f7b2ce",
+      "destination_sha256": "11dd53958aff58a607ddcd8c7ede73fda355199ae94d96bdc4d7f64534f7b2ce",
+      "adapted": false,
+      "final_sha256": "11dd53958aff58a607ddcd8c7ede73fda355199ae94d96bdc4d7f64534f7b2ce"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\rf-one.png",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\rf-one.png",
+      "source_sha256": "20d06561dba56ce4b78caaafbdf1300d4ca5ba22f7debb051360fc5c3d4f47e7",
+      "destination_sha256": "20d06561dba56ce4b78caaafbdf1300d4ca5ba22f7debb051360fc5c3d4f47e7",
+      "adapted": false,
+      "final_sha256": "20d06561dba56ce4b78caaafbdf1300d4ca5ba22f7debb051360fc5c3d4f47e7"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\rule_check.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\rule_check.js",
+      "source_sha256": "4a40b3253dc6e1105298aba7c3dddff43e1844def13c9fdb86d8b75c0285e1da",
+      "destination_sha256": "4a40b3253dc6e1105298aba7c3dddff43e1844def13c9fdb86d8b75c0285e1da",
+      "adapted": false,
+      "final_sha256": "4a40b3253dc6e1105298aba7c3dddff43e1844def13c9fdb86d8b75c0285e1da"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\split.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\split.js",
+      "source_sha256": "501c73e87ff0cfc878e465a471940b6aad9902ff010d88fe01e6047b52aadd1f",
+      "destination_sha256": "501c73e87ff0cfc878e465a471940b6aad9902ff010d88fe01e6047b52aadd1f",
+      "adapted": false,
+      "final_sha256": "501c73e87ff0cfc878e465a471940b6aad9902ff010d88fe01e6047b52aadd1f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\who_patterns.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\who_patterns.js",
+      "source_sha256": "b72599501178025ee237767ab8f8244b1b2cd2fc0954851625e027fd571f1520",
+      "destination_sha256": "b72599501178025ee237767ab8f8244b1b2cd2fc0954851625e027fd571f1520",
+      "adapted": false,
+      "final_sha256": "b72599501178025ee237767ab8f8244b1b2cd2fc0954851625e027fd571f1520"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\who_review.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\who_review.js",
+      "source_sha256": "a155f67f771fbc334fb01c5d0e16c643c9fa81b7b0d3b7765f55994bf637fdb8",
+      "destination_sha256": "a155f67f771fbc334fb01c5d0e16c643c9fa81b7b0d3b7765f55994bf637fdb8",
+      "adapted": false,
+      "final_sha256": "a155f67f771fbc334fb01c5d0e16c643c9fa81b7b0d3b7765f55994bf637fdb8"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\who_search_text.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\who_search_text.js",
+      "source_sha256": "a6c327a05f5f68f8693429efbf8382b1a9d9695f0022706e732fd14b6c9aaed8",
+      "destination_sha256": "a6c327a05f5f68f8693429efbf8382b1a9d9695f0022706e732fd14b6c9aaed8",
+      "adapted": false,
+      "final_sha256": "a6c327a05f5f68f8693429efbf8382b1a9d9695f0022706e732fd14b6c9aaed8"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\who_training.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\who_training.js",
+      "source_sha256": "de0fbc1c0af31693a2f0bdea6e59a227a7ceb243b46b35730da9f1d30b87370d",
+      "destination_sha256": "de0fbc1c0af31693a2f0bdea6e59a227a7ceb243b46b35730da9f1d30b87370d",
+      "adapted": false,
+      "final_sha256": "de0fbc1c0af31693a2f0bdea6e59a227a7ceb243b46b35730da9f1d30b87370d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\who_why_check.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\who_why_check.js",
+      "source_sha256": "f2d5da902570d89ccebb46afed9edce7448b03af7aad300087baebabe274ec67",
+      "destination_sha256": "f2d5da902570d89ccebb46afed9edce7448b03af7aad300087baebabe274ec67",
+      "adapted": false,
+      "final_sha256": "f2d5da902570d89ccebb46afed9edce7448b03af7aad300087baebabe274ec67"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\why_patterns.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\why_patterns.js",
+      "source_sha256": "19186d47b4dcf8b90a2030bc35b5475ee023b78b17f8c316989d040d206781bd",
+      "destination_sha256": "19186d47b4dcf8b90a2030bc35b5475ee023b78b17f8c316989d040d206781bd",
+      "adapted": false,
+      "final_sha256": "19186d47b4dcf8b90a2030bc35b5475ee023b78b17f8c316989d040d206781bd"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\bank-assistant\\why_signals.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\bank-assistant\\why_signals.js",
+      "source_sha256": "34f5fed5e111db304abece52376c7e336dfe5e7c484aad0b0363e08fdcc241c5",
+      "destination_sha256": "34f5fed5e111db304abece52376c7e336dfe5e7c484aad0b0363e08fdcc241c5",
+      "adapted": false,
+      "final_sha256": "34f5fed5e111db304abece52376c7e336dfe5e7c484aad0b0363e08fdcc241c5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\css\\interviews.css",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\css\\interviews.css",
+      "source_sha256": "2214da49c47402430992149653d89666b167368b7a013644b4a254a8af9ad17f",
+      "destination_sha256": "2214da49c47402430992149653d89666b167368b7a013644b4a254a8af9ad17f",
+      "adapted": false,
+      "final_sha256": "2214da49c47402430992149653d89666b167368b7a013644b4a254a8af9ad17f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\css\\rf-one-dev-journal.css",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\css\\rf-one-dev-journal.css",
+      "source_sha256": "47d7efba5b6d6ed9f4e081e33242f40426aa8110b1862a6962f81abab37bafca",
+      "destination_sha256": "47d7efba5b6d6ed9f4e081e33242f40426aa8110b1862a6962f81abab37bafca",
+      "adapted": false,
+      "final_sha256": "47d7efba5b6d6ed9f4e081e33242f40426aa8110b1862a6962f81abab37bafca"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\css\\rf-one-projects.css",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\css\\rf-one-projects.css",
+      "source_sha256": "0e0eb0f3cd43964480705df59bd5d06646edb52a435ca67046fbda207639d0c3",
+      "destination_sha256": "0e0eb0f3cd43964480705df59bd5d06646edb52a435ca67046fbda207639d0c3",
+      "adapted": false,
+      "final_sha256": "0e0eb0f3cd43964480705df59bd5d06646edb52a435ca67046fbda207639d0c3"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\css\\rf-one.css",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\css\\rf-one.css",
+      "source_sha256": "b5094d607daa8d2e79c9a2e3000f445f83e1044522d8053658a9a05f862bed9d",
+      "destination_sha256": "b5094d607daa8d2e79c9a2e3000f445f83e1044522d8053658a9a05f862bed9d",
+      "adapted": false,
+      "final_sha256": "b5094d607daa8d2e79c9a2e3000f445f83e1044522d8053658a9a05f862bed9d"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-ai-rules.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-ai-rules.js",
+      "source_sha256": "f1e2a252dae6f85245963f801a12987be2e16db127443589a0ef750edde634e5",
+      "destination_sha256": "f1e2a252dae6f85245963f801a12987be2e16db127443589a0ef750edde634e5",
+      "adapted": false,
+      "final_sha256": "f1e2a252dae6f85245963f801a12987be2e16db127443589a0ef750edde634e5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-complete.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-complete.js",
+      "source_sha256": "9a65620b6bee217c009b236def68ef09e1f0e4878b9e83e73fc724be7a4073bd",
+      "destination_sha256": "9a65620b6bee217c009b236def68ef09e1f0e4878b9e83e73fc724be7a4073bd",
+      "adapted": false,
+      "final_sha256": "9a65620b6bee217c009b236def68ef09e1f0e4878b9e83e73fc724be7a4073bd"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-example-choice.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-example-choice.js",
+      "source_sha256": "a5ca15956e6e54b3dd740edf971dfa94eb1e0e22edfc021698b622fbb2819f5b",
+      "destination_sha256": "a5ca15956e6e54b3dd740edf971dfa94eb1e0e22edfc021698b622fbb2819f5b",
+      "adapted": false,
+      "final_sha256": "a5ca15956e6e54b3dd740edf971dfa94eb1e0e22edfc021698b622fbb2819f5b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-import-pipeline.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-import-pipeline.js",
+      "source_sha256": "021acc15682d32b785d96bed78491f171b5f389010efa068841e51be2f5ed494",
+      "destination_sha256": "021acc15682d32b785d96bed78491f171b5f389010efa068841e51be2f5ed494",
+      "adapted": false,
+      "final_sha256": "021acc15682d32b785d96bed78491f171b5f389010efa068841e51be2f5ed494"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-movement-research.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-movement-research.js",
+      "source_sha256": "24f5b1f943588c4ad589def5f02a24bfb75c25ba41aadd0aa65404e9ab84955c",
+      "destination_sha256": "24f5b1f943588c4ad589def5f02a24bfb75c25ba41aadd0aa65404e9ab84955c",
+      "adapted": false,
+      "final_sha256": "24f5b1f943588c4ad589def5f02a24bfb75c25ba41aadd0aa65404e9ab84955c"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-profile-research.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-profile-research.js",
+      "source_sha256": "0aa56bef9897499396dc57c8c760b07a5ecf5539a52bf544104c92ab4b6f8d7f",
+      "destination_sha256": "0aa56bef9897499396dc57c8c760b07a5ecf5539a52bf544104c92ab4b6f8d7f",
+      "adapted": false,
+      "final_sha256": "0aa56bef9897499396dc57c8c760b07a5ecf5539a52bf544104c92ab4b6f8d7f"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-review-column-filters.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-review-column-filters.js",
+      "source_sha256": "57d03f1cc9c86e5c87914dcab007249be351f1b88cfe50a707484e61ac45c0cb",
+      "destination_sha256": "57d03f1cc9c86e5c87914dcab007249be351f1b88cfe50a707484e61ac45c0cb",
+      "adapted": false,
+      "final_sha256": "57d03f1cc9c86e5c87914dcab007249be351f1b88cfe50a707484e61ac45c0cb"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-review-more.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-review-more.js",
+      "source_sha256": "1d1b42016d51f957779f57e72093148d2805e0ae8fd84fe945b59b70c4e92636",
+      "destination_sha256": "1d1b42016d51f957779f57e72093148d2805e0ae8fd84fe945b59b70c4e92636",
+      "adapted": false,
+      "final_sha256": "1d1b42016d51f957779f57e72093148d2805e0ae8fd84fe945b59b70c4e92636"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-rule-applications.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-rule-applications.js",
+      "source_sha256": "36dba0714d083eea1a9ea218e062f57b41460ad282b2201813c346b281e29616",
+      "destination_sha256": "36dba0714d083eea1a9ea218e062f57b41460ad282b2201813c346b281e29616",
+      "adapted": false,
+      "final_sha256": "36dba0714d083eea1a9ea218e062f57b41460ad282b2201813c346b281e29616"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-source.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-source.js",
+      "source_sha256": "267603c729219c39991b9d488187b763a3b91497700291240fbadce96af3ac76",
+      "destination_sha256": "267603c729219c39991b9d488187b763a3b91497700291240fbadce96af3ac76",
+      "adapted": false,
+      "final_sha256": "267603c729219c39991b9d488187b763a3b91497700291240fbadce96af3ac76"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-who-create.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-who-create.js",
+      "source_sha256": "c3cf07ae6a2ed253df613cf9eb694d2fbeb0fb156b1bc8d82d6766312933899e",
+      "destination_sha256": "c3cf07ae6a2ed253df613cf9eb694d2fbeb0fb156b1bc8d82d6766312933899e",
+      "adapted": false,
+      "final_sha256": "c3cf07ae6a2ed253df613cf9eb694d2fbeb0fb156b1bc8d82d6766312933899e"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-who-why.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-who-why.js",
+      "source_sha256": "933e9b8cdad53450cead5ec48d630fb1e0d842d5d00ba60c8b66b895dd69882b",
+      "destination_sha256": "933e9b8cdad53450cead5ec48d630fb1e0d842d5d00ba60c8b66b895dd69882b",
+      "adapted": false,
+      "final_sha256": "933e9b8cdad53450cead5ec48d630fb1e0d842d5d00ba60c8b66b895dd69882b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\bank-why-create.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\bank-why-create.js",
+      "source_sha256": "b9838a4db3a8bdc48644bd926397e18ec473268d4bba81dd3e27d315dd19e9a5",
+      "destination_sha256": "b9838a4db3a8bdc48644bd926397e18ec473268d4bba81dd3e27d315dd19e9a5",
+      "adapted": false,
+      "final_sha256": "b9838a4db3a8bdc48644bd926397e18ec473268d4bba81dd3e27d315dd19e9a5"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\rf-one-busy.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\rf-one-busy.js",
+      "source_sha256": "5b7215b6d1b3d80d2049670e9cfdcfa6fead615c0eb87df64bbd84012034ab68",
+      "destination_sha256": "5b7215b6d1b3d80d2049670e9cfdcfa6fead615c0eb87df64bbd84012034ab68",
+      "adapted": false,
+      "final_sha256": "5b7215b6d1b3d80d2049670e9cfdcfa6fead615c0eb87df64bbd84012034ab68"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\rf-one-modal.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\rf-one-modal.js",
+      "source_sha256": "983814563f412f340a6cb33934b5fec49edb34fa357492a9a1b3ac07e5dd0431",
+      "destination_sha256": "983814563f412f340a6cb33934b5fec49edb34fa357492a9a1b3ac07e5dd0431",
+      "adapted": false,
+      "final_sha256": "983814563f412f340a6cb33934b5fec49edb34fa357492a9a1b3ac07e5dd0431"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\rf-one-projects.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\rf-one-projects.js",
+      "source_sha256": "33078138cdbd6ece770cac2d4ccd1a1f3d18a8e5c17d902e078842985261fb01",
+      "destination_sha256": "33078138cdbd6ece770cac2d4ccd1a1f3d18a8e5c17d902e078842985261fb01",
+      "adapted": false,
+      "final_sha256": "33078138cdbd6ece770cac2d4ccd1a1f3d18a8e5c17d902e078842985261fb01"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\rf-one-row-return.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\rf-one-row-return.js",
+      "source_sha256": "707d681d46f471f464823895b793f2c65b8109eff17cc14853c2b41f4ab9a008",
+      "destination_sha256": "707d681d46f471f464823895b793f2c65b8109eff17cc14853c2b41f4ab9a008",
+      "adapted": false,
+      "final_sha256": "707d681d46f471f464823895b793f2c65b8109eff17cc14853c2b41f4ab9a008"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\RF-One Web\\static\\js\\rf-one-wines.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\RF-One Web\\static\\js\\rf-one-wines.js",
+      "source_sha256": "c08c6b2149266853e1e3f018961a6ddb9beb1ddf7bdb00abd808eacb74b91932",
+      "destination_sha256": "c08c6b2149266853e1e3f018961a6ddb9beb1ddf7bdb00abd808eacb74b91932",
+      "adapted": false,
+      "final_sha256": "c08c6b2149266853e1e3f018961a6ddb9beb1ddf7bdb00abd808eacb74b91932"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\templates\\index.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\templates\\index.html",
+      "source_sha256": "abb6997bdc7d006e71b669ce7aa79e03f62f2ce8345ecf81c994ff5a98b2e4b7",
+      "destination_sha256": "abb6997bdc7d006e71b669ce7aa79e03f62f2ce8345ecf81c994ff5a98b2e4b7",
+      "adapted": false,
+      "final_sha256": "abb6997bdc7d006e71b669ce7aa79e03f62f2ce8345ecf81c994ff5a98b2e4b7"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\templates\\index.it.html",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\templates\\index.it.html",
+      "source_sha256": "0b1850380eefea451642ef0fb485c01b415759d64f5b0db81a9b1ee37faf816b",
+      "destination_sha256": "0b1850380eefea451642ef0fb485c01b415759d64f5b0db81a9b1ee37faf816b",
+      "adapted": false,
+      "final_sha256": "0b1850380eefea451642ef0fb485c01b415759d64f5b0db81a9b1ee37faf816b"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\C-Bank Prototype\\cbank\\templates\\_rules_panel.js",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\C-Bank Prototype\\cbank\\templates\\_rules_panel.js",
+      "source_sha256": "e698f0c6cddd1a1a9522db5d52bc89fab9153123df20b5ba333579de7d6f3f9a",
+      "destination_sha256": "e698f0c6cddd1a1a9522db5d52bc89fab9153123df20b5ba333579de7d6f3f9a",
+      "adapted": false,
+      "final_sha256": "e698f0c6cddd1a1a9522db5d52bc89fab9153123df20b5ba333579de7d6f3f9a"
+    },
+    {
+      "source": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\BankMerge\\03 Software\\Shared UI\\brand\\logos\\rf-one.png",
+      "destination": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\03 Software\\Shared UI\\brand\\logos\\rf-one.png",
+      "source_sha256": "20d06561dba56ce4b78caaafbdf1300d4ca5ba22f7debb051360fc5c3d4f47e7",
+      "destination_sha256": "20d06561dba56ce4b78caaafbdf1300d4ca5ba22f7debb051360fc5c3d4f47e7",
+      "adapted": false,
+      "final_sha256": "20d06561dba56ce4b78caaafbdf1300d4ca5ba22f7debb051360fc5c3d4f47e7"
+    }
+  ],
+  "parked": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank\\parking\\previous-rules",
+  "excluded_domains": [
+    "clover_acquisition_routes",
+    "compensation_routes",
+    "organizational_responsibility_routes",
+    "projects_routes",
+    "tips_validation_routes",
+    "training_integration",
+    "workweek_settings_routes"
+  ],
+  "integration_changes": [
+    "New Rules route and isolated chat mount",
+    "Bank-only shell (other domain registration removed)",
+    "Original category experiment parked",
+    "Bank guide and title updated"
+  ]
+}

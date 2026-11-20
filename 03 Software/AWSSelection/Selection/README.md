@@ -1,0 +1,425 @@
+# Selection — Resume Screening (MVP)
+
+## Current local startup (2026-11-14)
+
+`Avvia Selection.cmd` uses the current `AWSSelection/Selection` source and the
+existing shared `%LOCALAPPDATA%/RF-One/RFBank/rfone.db`. It creates no database
+or account. The existing admin account has the explicitly authorized SELECTION
+grant. Local auto sign-in, Italian UI and loopback-only access are enforced;
+normal service authentication and other grants are unchanged. Earlier references
+below to a separate Selection database or first-login administrator describe the
+superseded launcher. See `AWSSelection/Selection/LOCAL_ENVIRONMENT.md` relative to
+`03 Software/` for setup, backup and validation details.
+
+
+## Original PDF and persisted CV observations (2026-11-15)
+
+Resumee opens the saved original PDF directly in a modal, with a new-window
+fallback, using the existing authorized original-document endpoint. Missing
+files and non-PDF originals are explicit; no PDF is fabricated from CV text.
+
+The review's CV observations link opens five saved narrative sections with
+readable bullets: professional profile/trajectory, strengths for the research,
+evidence limitations, clarifications and overall conclusion. Generation is part
+of the explicit AI reading worker, never a GET/modal-open side effect. Narrative
+is stored separately in the research's per-candidate cache. Citations are checked
+against the CV; unsupported certainty is refused. Missing CV text stays unknown.
+
+Narrative validity includes CV/role, effective rule snapshots, validated outcomes
+and research context. Rule-only changes revise the saved narrative from cached
+observations/outcomes without sending the CV again. Missing/failed narrative
+generation retries separately, preserving valid rule judgments and ranking.
+Existing results without a narrative need one explicit Apply to prepare it.
+No-op repeated Apply and repeated modal opens make no provider calls.
+
+## Review layout, extracted CV and question channels (2026-11-15)
+
+The compact priority select is immediately below modal help; its AI option
+confirms acceptance on Save, replacing the separate acceptance action.
+CV observations reuse the secondary modal to display saved narrative, preserving
+the parent review draft. Resumee independently opens the original PDF. Manual question rows
+are persisted and sent alongside selected unknown-item questions.
+
+Email/Text radio choices display both authoritative contacts. Email uses the
+existing local SMTP path. Per the user's clarification, Text uses RF-One's
+existing technical/sms_text.py AWS End User Messaging SMS transport, not a new
+local provider. RFONE_SMS_ORIGINATION_IDENTITY must name the registered sender;
+AWS_REGION defaults to us-east-1. RFONE_SMS_AWS_PROFILE/AWS_PROFILE selects the
+local profile (default rfone-dev-login). No deployment or AWS resource changes
+are performed by this code. Local AWS calls occur only on explicit Text Send.
+
+Review SMS batches are committed as SENDING in the research's existing context
+before calling AWS, keyed by analysis, channel, actual recipient and full body.
+Confirmed MessageId yields SENT (AWS acceptance, not handset delivery). Missing
+confirmation/error is UNKNOWN; duplicate/in-flight/uncertain batches never
+send again automatically. Provider retries are disabled for the explicit local
+profile. Final status merges into the latest context without losing concurrent
+reviews. US numbers use the existing normalizer; bodies over 1600 characters
+are rejected intact. No schema migration and no real SMS in the tests.
+
+Read-only AWS verification on 2026-11-15: Selection's service has no sender
+environment/secret configuration and us-east-1 lists no owned SMS numbers.
+Live Text therefore remains disabled until a registered sender is configured.
+
+## Candidate analysis review (2026-11-15)
+
+The candidate name opens a review modal with conclusion-only analysis (up to five
+lines on the board), acceptance and independent qualitative manual priority.
+Unknown rule items support direct answer, ignore, keep open, or selected question.
+Human dispositions are stored separately in the research context and do not
+rewrite AI evidence or human hiring decisions. Item resolutions match CV/role/
+rule input; priority/acceptance match the complete reviewed analysis. Changes
+invalidate stale drafts. Effective ranking applies valid human dispositions.
+
+Save never sends email. Explicit Send questions validates the selected
+ASK items only, shows their recipient and editable exact text, and uses the
+existing outbox plus the central SMTP transport, restricted to local runtime.
+A batch content key prevents repeat sends. SMTP acceptance is reported as SENT;
+unconfirmed attempts remain UNKNOWN and are never automatically resent. No
+real email is sent by the tests. See test_candidate_review.py.
+
+## Incremental CV/rule evaluation (2026-11-15)
+
+Explicit Apply compares a hash of the actual CV text and candidate identity,
+the role, and each effective natural-language rule snapshot. A research-owned
+cache in its existing context JSON retains validated per-rule judgments.
+Completed unchanged inputs make no provider calls; a new/changed CV evaluates
+all current rules, while a new/edited rule evaluates only that rule for unchanged
+CVs. Deactivated/replaced rules are excluded from the aggregate; unchanged
+reactivated/restored rules may reuse their cached judgments. No schema change.
+
+Validated deltas are committed before aggregate synthesis, so failed synthesis
+retries never reread successful pairs. Priority/motivation synthesis receives
+only current rule judgments, not the CV, and cannot replace those judgments.
+Full fresh evaluations retain the existing combined AI result; mixed results
+use qualitative synthesis without inventing weights. Empty rule sets require
+no AI. Existing ranking and human decisions remain unchanged in mechanism.
+
+Inputs changed during a call are rejected. Explicit Apply during a running job
+can replace its input snapshot; the single worker drains the replacement after
+the old call returns. Unchanged clicks reuse the same running job. Cache-less
+legacy results require a one-time refresh because their CV identity is unproven.
+Verification: test_incremental_rules.py and test_conversational_rules_http.py.
+
+## General rules and explicit PDL overrides
+
+A null PDL scope identifies a general natural-language rule. Local additions keep
+their PDL code; local replacements link `overrides_rule_id` to an active general
+rule. The effective set replaces the general row in place, then adds local rules.
+Only one active override per PDL/general pair is allowed. Saving a replacement
+supersedes the previous local override atomically and keeps it inactive. General
+changes never overwrite a different PDL's override or its candidate decisions.
+Inactive generals suspend their overrides; disabling an override restores the
+active general. Chat proposals show scope and replacement target, freeze target
+fingerprints and reject stale saves. Candidate AI snapshots and clarification
+procedures consume the same effective set and signature. Existing rules/data
+are preserved by the additive, guarded local schema upgrade.
+
+
+## Conversational needs and AI reading (current flow)
+
+Requirements & Priorities now puts a chat above the saved prose rules. The
+assistant starts from the business need, asks essential clarifications, and
+proposes a natural-language instruction for explicit save to the selected PDL.
+Legacy structured rules remain stored but do not drive this flow. No 0–4 score
+or field-expression builder is used. Current local launcher selects conversation
+mode rather than Old screening.
+
+`workspace/conversational_rules.py` reads each original extracted CV text through
+the same ChatGPT transport as Bank. Conclusions require exact source quotes;
+unknown evidence remains unclear. An explicit Apply starts a resumable background
+reader, snapshots rule text, saves each outcome, and reports progress. Failed
+CVs can be retried without discarding successful results for the same rule set.
+The board orders In line, Unclear, then UnFit, using qualitative AI priority
+inside groups. It retains human decisions, actions and their execution history.
+
+Validation: `python test_conversational_rules_http.py` (disposable synthetic data).
+Set `RF1_TEST_REAL_AI=1` for an explicit real-provider run against the same
+synthetic CVs. No rule or candidate is added to the canonical working database.
+
+
+## Local contextual Old screening (2026-11-14)
+
+The local Old adapter groups criteria into PERSON and ROLE_RESEARCH. The group
+is versioned with the definition and immutable snapshot. Both groups remain in
+the PDL default catalogue and are deep-copied exactly once to each research.
+Editing defaults, copies or research context never updates another scope.
+
+Person criteria receive persisted CV professional facts (including raw dates,
+extraction uncertainty and declared reasons), application history, reviewer
+notes and candidate answers. They exclude role-fit assessments and signals.
+Role/research criteria additionally receive that research's approved requirement
+snapshot, description/ad, tasks, responsibilities, required skills/education,
+autonomy, location, schedule and conditions. The existing criteria page owns a
+small research-only context form for information not already present. Missing
+context must remain insufficient evidence, never an invented requirement.
+
+Explicit Apply invokes the existing local ChatGPT transport for contextual
+interpretation of every criterion, including those linked to a legacy signal.
+Signal observations remain evidence; status-to-level shortcuts cannot bypass
+research context. The Old coefficient/direction/blocking/ranking calculations
+are unchanged. Outputs include level, explanation, exact persisted citations
+and missing information. Invented citations fail closed. Context is frozen per
+run, historical runs remain intact, and context edits invalidate the displayed
+ranking until reapplied. GETs never call AI. No AWS operations are part of this
+local implementation. Additive local schema initialization is guarded to the
+canonical local PostgreSQL endpoint (or disposable SQLite tests).
+
+## Configurable actions and automatic procedures
+
+Configuration owns current action/procedure definitions; editing replaces the
+current record and does not retain configuration history. AI authoring uses the
+existing Bank ChatGPT transport and returns an allowlisted sequence of status,
+note, email or missing-data email steps. Explicit save replaces the current
+configuration; actions refer to a procedure identity. Executions snapshot both
+versions, preserve attempts and per-step progress, and do not change when a
+label or procedure is edited. Existing successful status actions are imported
+without repeating their effects.
+
+Email uses Selection's existing outbox and relay acknowledgement. A queued
+email is WAITING, never SUCCEEDED. SMTP acceptance resumes subsequent steps;
+unknown acceptance blocks automatic resend. Failed runs retain progress and
+retry the same outbox identity, skipping completed steps. Candidate actions are
+serialized by the Job row lock; configuration saves use optimistic versions.
+Only successful runs drive Eseguita. Execution progress remains available for inactive items.
+Local initialization creates additive workspace tables only on the guarded
+canonical local database; no production or AWS schema operation is performed.
+
+
+## Candidate board: PDL filters and actions
+
+Applications now uses `workspace/candidate_board.py` for every Job, including
+legacy SP bookmarks. Apply Filters and Rules snapshots active PDL rules against
+stored CV facts, without `engine.analyze`, provider calls or old assessments.
+Results and an active-rule signature are saved in the Job context document;
+UnFit sorts last, priority sorts descending, ties remain stable. Human decisions
+are untouched by applying filters. New CVs and changed rules are identified.
+The Evaluation tab is hidden.
+
+Each row provides a three-line reason, clarification/contact/status information,
+a Resumee modal (persisted facts followed by the original CV), and a decision
+action selector. Existing interview/clarify/on-hold decisions are real actions;
+completion is stored per Job/candidate/action and duplicate execution is ignored.
+A row lock serializes apply/action context updates. No email or training invite
+is sent. Missing local originals and non-inline document formats are explicit.
+
+
+UI terminology: PDL means **Job Position** in English. The row action is
+“Select and set the Job Position” (Italian: “Seleziona e valorizza la PDL”).
+
+
+The Resume upload list shows candidate name, original CV link (or an explicit
+unavailable state), upload date descending with ID as a tie-breaker, and a
+per-candidate persisted-data modal. Opening original documents or extracted
+facts preserves the current Job; the modal performs no extraction/evaluation.
+Contextual help is right-aligned immediately below the header divider.
+
+
+## Resume upload from the PDL row
+
+Each editable Job row provides Carica Resume and Modifica modals; Seleziona
+sets the current Job. Opening an upload or edit modal preserves the current
+Job and closing it returns to the same row. Upload accepts multiple PDF,
+DOCX and TXT files, retains source documents and extracted facts, handles
+duplicates, and reports each batch without triggering evaluations, proposals,
+UnFit assignment, ranking, or SP queue jobs. This separation also applies to
+the historical manual-upload endpoint, even with approved requirements and
+AI evaluation enabled. Public candidate intake is unchanged.
+
+Validation: `python test_resume_upload_only_http.py` uses synthetic CVs and a
+disposable database, asserting extracted data and the absence of evaluation,
+provider calls and queue jobs for both standard and SP roles.
+
+
+## Local PDL requirements and priorities
+
+The current Selection workspace links to `/selection/requisiti-priorita`
+before Configurazioni. The selector reads active `selection_workspace_job_roles`
+(the PDL catalog managed by Configurazioni), without a default selection.
+`workspace/pdl_rule_store.py` persists confirmed rules with a PDL foreign key,
+section, conversation and unique proposal key. Only Selection owners/admins
+can change this shared PDL configuration; normal Selection access and CSRF
+checks remain in force.
+
+Each section opens the same contextual chat modal. `workspace/rule_ai.py`
+loads and calls the existing `RFBank/ai.py` ChatGPT transport, including its
+Codex/OpenAI session and execution settings; no alternative AWS provider or
+mock is selected for this flow. Rule authoring sends the operator's synthetic
+criteria and PDL name, not CV contents. Signed proposals fix the actor, PDL
+and section; explicit save is idempotent. Missing evidence remains unknown.
+The evaluator supports nested AND/OR/NOT over the documented experience,
+stability and coordination facts, rejecting unsupported fields.
+
+Local initialization is explicitly guarded to the canonical loopback database.
+Live verification created three temporary rules through ChatGPT, including an
+Edge modal save, checked the actual database foreign-key/section values and
+cross-PDL isolation, and removed the synthetic records afterwards. No AWS or
+production data was modified. Page-specific help documents the implemented
+creation and save workflow.
+
+
+## Position management entry
+
+RF-One's Selection card opens `/selection/`, the staff-only **Open positions**
+page. It uses RF-One's shared header, official logo, breadcrumb, stylesheet
+and navigation pattern. Navigation: Open positions, Drafts, Closed,
+Configuration (last). Search matches title, role, location or manager.
+
+Create a position with **New position**, complete requirements, advertisement
+and interview questions, then **Approve and open**. Published positions
+become available to verified candidates arriving from RMAED.it. Closing a
+position stops new applications and keeps its history; an approved closed
+position can be reopened. Drafts stay out of the public position list.
+Company facts and AI settings are on Configuration. Existing Selection role
+and ownership rules apply to every view and action.
+
+**Task:** TASK_SELECTION_001, extended by TASK_SELECTION_002 (multi-résumé batch import)
+**Canonical documentation:** `01 Domains/Shared Domains/Selection/ResumeScreening/` (Selection Core) and `01 Domains/Business Domain/Restaurant/Selection/` (Restaurant Industry Extension).
+
+## Current interface — position workspace (SELECTION_AI_INTEGRATION_001, 2026-10-21)
+
+Selection's entry page (`/`, i.e. `/selection/` on RF-One) is now the interface approved from the Selection AI
+prototype (`03 Software/Selection Prototype/`): one page per open position with the five functions **Position,
+Applications, Evaluation, Interviews, Decisions** (`workspace/routes.py`, templates in `templates/workspace/`).
+
+- **Access:** RF-One's account system only — the shared RF-One session, the SELECTION Domain, and the Domain role
+  set in RF-One's account administration: administrator or role `OWNER` manages every position, `SUPERVISOR` sees
+  every position read-only, any other enabled account manages only the positions assigned to it. Checked on every
+  request, not only in the navigation. There is no Selection login, account or invitation of its own.
+- **Candidates** (`workspace/careers.py`, templates in `templates/careers/`): the public position page
+  (`/jobs/<token>`) requires an external candidate identity — Full Name, Email, Password, **Receive Code**, then the
+  emailed code (Confirm/Cancel on the same page) — or a sign-in with email and password. Identities live in
+  `selection_candidate_accounts`, separate from RF-One accounts (`rfone_data_store/selection/candidate_identity_service.py`:
+  10-minute 6-digit code stored only as an HMAC, 5 attempts, 60-second cooldown, hourly caps, Werkzeug password
+  hash, lock after 5 wrong passwords). Codes are emailed by authenticated SMTP through the company mailbox on Aruba
+  (`rfone_data_store/technical/smtp_email.py`: `smtps.aruba.it:465`, implicit TLS ≥ 1.2, one recipient per message,
+  20-second timeout, at most 200 messages per 20 minutes per process — Aruba recommends ≤ 250), configured by
+  `RFONE_SMTP_HOST`/`_PORT`/`_USERNAME`/`_PASSWORD` (sender `RFONE_EMAIL_FROM_ADDRESS`, default the SMTP user name);
+  Amazon SES is not used by Selection. Password: production from AWS Secrets Manager (`rfone-selection/smtp-password`),
+  locally from `%LOCALAPPDATA%\RF-One\Selection\smtp.json`, protected with Windows DPAPI — both written in one step by
+  `Configura Email Selection.cmd` (`configure_smtp.py setup`: hidden prompt, proven by one real test message first); `python configure_smtp.py test` sends one real message, only
+  to `rfone@romesflavours.com`. Without a working sender the page shows an explicit error and nobody can apply. The verified candidate uploads the
+  résumé and answers the English interview (`/my-application/<token>`, resumable after signing in again); the same
+  identity applies to any number of positions.
+- **Data:** the workspace tables (`selection_workspace_*`, `rfone_data_store/selection/workspace_models.py`, migration
+  `a7d520261021`, additive only) sit on top of the existing Selection entities (candidates, persons, applications,
+  requirement sets and snapshots, Fit Assessments), which they reference and never copy.
+- **AI:** Selection's existing AI client only, through `workspace/ai_adapter.py`. `RFONE_SELECTION_AI=1` lets AI draft
+  positions and messages; `RFONE_SELECTION_AI_CV=1` also lets it read résumés and answers. Both off by default.
+- **Historical pages:** every earlier route and service stays available (the candidate list moved from `/` to
+  `/candidates`) but none is in the navigation any more; their menu was replaced by a link back to the positions.
+- **Local run:** `Avvia Selection.cmd` (`local_server.py`) serves RF-One Web at `/` and Selection at `/selection` on
+  http://127.0.0.1:5096 in one process, with data in `%LOCALAPPDATA%\RF-One\Selection` (outside OneDrive and Git).
+- **Test:** `python test_selection_workspace_http.py` (synthetic data, throwaway database, no email or AI call).
+
+## CV analysis and ranking — CV Selection SP (SELECTION_SP_INTEGRATION_001, 2026-11-01)
+
+Shelbi's and Pino's CV engines consolidated into one analysis component, for positions whose role has a profile
+(Server, Line Cook — `workspace/position_profiles.py`, from Shelbi's branch, unchanged).
+
+- **Upload:** the **Upload CVs** button on the position's row of the positions page (one place only). Every upload
+  adds only new CVs to the same position: Selection's own import (`engine.import_cv`) skips an **exact duplicate**
+  (same content hash already linked to the position), imports a **possible duplicate** (same email or phone, or a
+  similar name — `engine.duplicate_notes`) and flags it for the manager without merging anyone, and imports new
+  candidates. Earlier candidates are never removed or replaced. The summary (received, new, exact duplicates,
+  possible duplicates) is shown after each upload and kept in the upload history.
+- **One AI reading per CV:** for profile roles the import uses the rule-based reading only and does not run this
+  workspace's analysis (`import_cv(..., ai_reading=False, analyze_after=False)`); SP's single reading
+  (`workspace/sp/analysis.py`, through `ai_adapter._transport` and only when the position allows "AI résumé and
+  answer evaluation") is the only Bedrock call. New uploads are analyzed automatically; a CV already analyzed with
+  the approved requirement version is never sent again. Code verifies quotes and dates and computes durations,
+  gaps and stability (`workspace/sp/timeline.py`).
+- **Ranking** (`/selection/posizioni/<id>/sp`, `workspace/sp/ranking.py`): groups A–D from the approved must-haves,
+  then documented evidence weighted by the approved weights; a motivated preselection priority, not a prediction;
+  nobody excluded; manual order (▲▼). **NEW** marks the candidates of the last upload that added candidates;
+  filter **All Candidates | Last Upload**. When the requirements are approved again, earlier analyses stay in the
+  ranking marked "update recommended" until Analyze refreshes them.
+- **Applications from the application page / RMAED** enter SP automatically when the candidate **completes** the
+  application (`careers.candidate_interview` → `sp_queue.on_application_completed`); an application in progress is
+  never analyzed (status "IN_PROGRESS"). Identification, OTP, the interview questions, the saved answers and this
+  workspace's evaluation on completion are unchanged.
+- **Durable queue** (`workspace/sp_queue.py`): jobs are `selection_workspace_proposals` rows with source `SP_JOB`,
+  claimed by a conditional UPDATE with a 5-minute lease (at most 3 attempts). Workers are threads started by any
+  request to Selection, including the per-minute mail-outbox claim of the existing RMAED mail worker
+  (EventBridge `rate(1 minute)`), so analysis continues or resumes with every page closed and after a restart. A
+  job is skipped when its candidate is already analyzed with that version or an older job for the same candidate
+  exists; the result and the job's closing are one transaction — no duplicate Bedrock call.
+- **Storage, no new table:** SP's requirement versions, manual order and upload batches in the position's context
+  document (`organization_context_json`, key `sp`); each analysis is a `selection_workspace_proposals` row with
+  source `SP` (newest per candidate current). Interviews, appointments, decisions and RMAED are unchanged; the
+  Applications tab no longer has its own upload form (the import service behind it is unchanged).
+- **Routes:** `workspace/sp_routes.py`, on the `positions` blueprint (RF-One login, permissions and CSRF).
+- **Tests:** `python test_sp_integration_http.py` (successive uploads, duplicates, NEW / Last Upload, no repeated
+  AI calls, requirement change; fake AI) and `python test_sp_engine.py` (dates, quotes, claims, flags, ranking).
+
+---
+
+A small local web app to screen résumés for Rome's Flavours' Server role: upload one or many PDFs at once, each résumé is parsed independently into a structured Candidate CV Profile, and the candidate detail page shows Facts, Derived Information, Flags/Questions and Indicators as four clearly separate areas — never one combined score.
+
+## How it works
+
+- **Batch upload.** The candidate list page's import form accepts multiple PDF files at once (native multi-file picker, plus drag & drop). Each file is uploaded and processed independently via `/api/upload` (one JSON call per file) — the page shows a live WAITING → PROCESSING → COMPLETED/FAILED/DUPLICATE state per file and an aggregate "x / y processed" count while the batch runs. One file failing (wrong format, unreadable PDF, parsing error) never stops the rest. If JavaScript is unavailable, the same multi-file input still works via a classic form POST to `/upload`, which processes every selected file server-side and shows a results summary inline.
+- **Duplicate detection.** Each résumé's extracted text (or, failing that, its filename) is hashed and checked against previously imported résumés for the same client before a new Candidate is created — an exact re-upload **for the same target role** is reported as `DUPLICATE` and creates nothing; for a target role the document has no application for yet, it creates a new application reusing the document and its extracted facts (SELECTION_FOH_TEAM_LEADER_001, verified in `test_target_role_http.py`). See `rfone_data_store/selection/parsing/dedup.py`.
+- **Source metadata.** Every candidate records where its résumé came from: `source` (`LOCAL_UPLOAD` today), `source_provider` (`manual` today), `source_file` (original filename) and `created_at` (import timestamp) — shown on the candidate list and on each candidate's "Source & Extraction Information" section. The shape already supports a future non-file `ResumeSource` (e.g. an API integration) without changing `CandidateCVProfile` or the parsing pipeline.
+- **Parsing.** Every upload's raw text is extracted for real (pdfplumber, same approach as `03 Software/InvoiceIntake/`). Structured extraction then tries a real AI provider first (Anthropic, if `ANTHROPIC_API_KEY` is configured — see `rfone_data_store/selection/parsing/ai_client.py`); with no credentials configured in this environment, it automatically falls back to a **DEMO/MOCK** parser that deterministically selects one of three realistic fixture candidates. The candidate list and detail page always show a clear `DEMO / MOCK` vs `REAL AI` badge — never disguised. `source`/`source_provider` always reflect the true acquisition channel (e.g. `LOCAL_UPLOAD`/`manual`) regardless of which parser ultimately produced the structured content.
+- **Reading the Experience section (rule-based reader, SELECTION_CV_STRUCTURE_READING_001).** Verified with synthetic résumés in `03 Software/RF-One Data Store/test_selection_cv_structure.py`:
+  - The same experience gives the same title, employer, location, dates and duties whether it is written as `Title, Employer, City, ST | Mar 2022 - Present`, as `Title, Employer` with the dates on the next line, or as title, employer and dates on separate lines, also when entries are not separated by blank lines (each date range then starts an entry, and the up to two title/employer lines above it move with it).
+  - With title and employer on separate lines, the line carrying the location (`City, ST`, on the same line or on its own line below) is the employer. With one line, `Title at Employer` is explicit; `Title, Employer` (or `-`, `|`) is read with that long-standing convention and labelled as such.
+  - When nothing shows which line is the job title and which the employer (or there is no title/employer line, or one entry contains several date ranges), neither is recorded: the experience is marked **Reading uncertain — verify** on the candidate page, quoting the original lines; an `EXTRACTION_UNCERTAIN` VERIFY flag asks a person to check the résumé; and the import is reported as `PARTIAL`, never `COMPLETED`.
+  - A missing fact (no employer, no dates, no contacts) stays empty and is not, by itself, an uncertain reading.
+  - The original file, the full extracted text and each experience's own text (`evidence_snippet`) are kept unchanged.
+- **Career transitions need positive evidence (SELECTION_TRANSITION_EVIDENCE_001).** Verified in `03 Software/RF-One Data Store/test_selection_transition_evidence.py`: a missing job title (a "to be clarified" question), an unrecognized one (a question on what the role involved) or an uncertain reading (only "Reading uncertain — verify") never produces "Transition from Non Hospitality". A transition is read only from a role the Restaurant extension positively classifies; no role is classified as outside hospitality yet, so that question does not appear on real résumés today. The rule itself was checked with a synthetic classification inside the test, which is not evidence that other sectors are recognized.
+- **Target role per application (SELECTION_FOH_TEAM_LEADER_001).** Verified in `test_target_role_http.py` and `03 Software/RF-One Data Store/test_selection_foh_team_leader.py`: importing (single or batch) requires choosing the target role — Server or FOH Team Leader, no preselection; without it nothing is imported. The choice is saved on each application of the batch; the same person can hold applications for different roles. The candidate list and page analyse each résumé for its application's target role; with none or an unsupported one, the page says the target role is to be clarified and computes only the role-independent part — never Server by default. FOH Team Leader titles (explicit, or generic ones — Team Leader, Shift Lead, any "Supervisor" — with a dining-room context), Chef de rang as Server, and the "declared role, duties not verified" wording are described in `01 Domains/Business Domain/Restaurant/Selection/README.md`.
+- **Declared coordination responsibilities (SELECTION_COORDINATION_EVIDENCE_001).** Verified in `03 Software/RF-One Data Store/test_selection_coordination_evidence.py`: the candidate page lists, in a compact section, each duty that declares coordinating, assigning, training, supervising or liaising for other people, with its experience, area, declared number of people and original sentence, plus one neutral interview question per item (or one general question when there is none). It never changes the role, adds months or scores; an uncertain reading asks to verify which experience the duty belongs to. The rule is rule-based wording, mainly English with a few Italian verbs.
+- **Preselection filters and comparison (SELECTION_PRESELECTION_COMPARE_001).** Verified in `test_preselection_http.py`. The Review Queue (`/applications`) adds combinable filters — stage, outcome, direct and propedeutic months (optional min/max), stability, declared coordination (any, a category, or not documented), missing or uncertain information, and "Include data to be clarified" — with the result count and "Clear all filters"; none is preselected. Unknown values are shown as "to be clarified", never 0, and match numeric or stability filters only with the explicit choice. Ticking 2 to 4 applications of the same target role opens `/applications/compare`: name and target role, stage and outcome, experience, stability, essential work history, declared coordination (quoted), missing or uncertain information and questions to explore, with links to each application (notes, stage, outcome via the existing functions), its candidate page and the original CV; two columns of the same person are marked. Different or missing target roles are refused with an explanation. No score, ranking, weight or recommendation.
+- **Indicator explanations (SELECTION_INDICATOR_EXPLANATIONS_001).** Verified in `03 Software/RF-One Data Store/test_selection_indicator_explanations.py` and `test_preselection_http.py`: under Direct and Propedeutic Experience, Stability and Career Progression, a "How this is worked out" panel (closed by default; value and state stay visible) lists the experiences used with the reason they count for the target role, the existing rule and thresholds, and what is excluded, missing or uncertain; "to be clarified" states which information is missing, with known durations as detail only. One macro (`templates/_indicator_explanation.html`) serves both the candidate page and the comparison.
+- **Published on AWS (SELECTION_AWS_PUBLISH_001, 2026-10-03).** `https://rfone.romesflavours.com/selection/`, from the Selection card on RF-One's Home. With `RFONE_SELECTION_REQUIRE_RFONE_LOGIN=1` every page, upload and original document requires RF-One's login and the SELECTION Domain; the acting identity is the account's; résumés go to a private S3 bucket (`RFONE_SELECTION_DOCUMENT_BUCKET`, `rfone_data_store/selection/document_store.py`) and the data to the shared RDS. Verified in `test_rfone_login_mode_http.py` and on the live site with synthetic data (since removed). Deployment, resources and rollback: `03 Software/Infrastructure/README.md`, "Selection su AWS".
+- **Business logic.** Lives entirely in `03 Software/RF-One Data Store/rfone_data_store/selection/` (`core/` = industry-agnostic Selection Core, `industry/restaurant.py` = the Restaurant Industry Extension, `parsing/` = the ResumeSource → RawResume → ResumeParser → CandidateCVProfile pipeline, `import_pipeline.py` = the duplicate-checked per-file import orchestration used by both the batch UI and the tests). This app is routing/templates only.
+- **Persistence.** Reuses the existing RF-One Data Store mechanism (SQLAlchemy + Alembic) — see `migrations/versions/b8f1c4a2e6d9_add_selection_resume_screening_schema.py` and `migrations/versions/2e9125cf954b_add_selection_batch_import_metadata.py`. By default this app uses its **own** local database, `data/selection.db`, deliberately kept separate from the shared production `data/rfone.db` so demo/mock candidate data never mixes into real Rome's Flavours operational data. Point `RFONE_DATABASE_URL` at the shared store instead if the Product Owner wants Selection unified into it later — the schema is fully compatible. At start Selection never migrates an existing database: it creates only a brand-new private SQLite file at head, then checks read-only that the tables in `workspace/schema.py` (`REQUIRED_TABLES` plus the workspace tables) exist with their columns. An unknown newer revision only warns; a missing table or column stops the start (`RF-One Data Store/MIGRATIONS.md`).
+
+## Requirements
+
+- Python 3.10+
+- The `03 Software/RF-One Data Store/` dependencies (SQLAlchemy, Alembic — see its own `requirements.txt`), since `app.py` imports `rfone_data_store` from there.
+- Optional, for real AI parsing instead of the demo fallback: `pip install anthropic` and set `ANTHROPIC_API_KEY` (env var or repo-root `.env`, same convention `rfone_data_store/database.py` uses for `RFONE_DATABASE_URL`).
+
+## Install & run
+
+```
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r "../RF-One Data Store/requirements.txt"
+python app.py
+```
+
+Then open **http://127.0.0.1:5050**.
+
+## Testing
+
+- `03 Software/RF-One Data Store/test_selection_engine.py` — Selection Core/persistence validation suite (`rfone_data_store/selection_validation.py`), including duplicate detection and source-metadata persistence at the `import_pipeline`/persistence layer.
+- `03 Software/Selection/test_batch_upload.py` — exercises the actual Flask routes (`/upload`, `/api/upload`) with Werkzeug's test client: multi-file batch upload, one unsupported file not blocking the rest, duplicate detection over HTTP, and that imported candidates are visible on revisit. Run with `python test_batch_upload.py`; it always runs against a throwaway temporary SQLite database and cleans up every file it writes into `uploads/`, never touching `data/selection.db`.
+
+## Known limitations of this MVP
+
+- Real AI parsing is implemented (`parsing/llm_parser.py`) but has not been exercised against a live API in this environment — no AI provider credential is configured anywhere in this repository today. The DEMO/MOCK fallback is what actually powers the working flow.
+- Only PDF upload is supported (task's stated minimum); DOCX/text are not wired up.
+- Two Role Configurations exist: Server and FOH Team Leader (`FOH_SUPERVISOR`); other Restaurant roles have none yet (`01 Domains/Business Domain/Restaurant/Selection/README.md`, "Not decided here").
+- Single-client only — `app.py` bootstraps one `Restaurant` row ("Rome's Flavours") in its own local database; no client-selection UI exists.
+- Uploaded résumés are real files (once real uploads happen) and are Git-ignored (`uploads/`, `.gitignore`), consistent with InvoiceIntake's handling of supplier documents.
+- Duplicate detection is a best-effort content/filename hash, not candidate identity resolution — it catches "the same résumé file uploaded twice," not "this candidate applied before under a different résumé."
+- The batch UI processes files sequentially, one HTTP request at a time (not in parallel), to stay safe with this deployment's SQLite database, which does not support concurrent writers.
+
+## Position configuration
+
+Open a position from **Open positions**, then select its **Configuration** tab. Each position stores its own context and independent preferences for AI position drafts, AI message drafts, résumé-based questions and AI evaluation. Editing one position does not update another. The assigned manager or an owner can save; supervisors remain read-only.
+
+Preferences are bounded by the installation's AI capabilities. Provider credentials and RMAED mail transport remain installation services. Existing position context and settings share the position's JSON document, so this change requires no shared database migration. The former global configuration bookmark redirects to the positions list; its global profile write is retired.
+
+## Active AI connection
+
+Selection uses AWS Bedrock with `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Its App Runner instance role and private Bedrock Runtime endpoint already provide the required access. Only Selection's provider and feature-capability environment variables are enabled; individual position preferences remain independent and unconfigured positions stay disabled.
+
+Local Selection reads its provider settings from `%LOCALAPPDATA%/RF-One/Selection/ai.json` and uses the existing `rfone-dev-login` AWS profile. The normal local launcher starts both RF-One and Selection at `http://127.0.0.1:5096/`. Candidate records are not copied from AWS.
+
+Each position's Configuration includes **Test selected AI features**. Each button makes a real provider call with synthetic content and saves its result, elapsed time and output. It never sends email or changes approved requirements or candidate records. The General, Menu Study and Cancellation message purposes are supported in addition to interview and outcome templates.

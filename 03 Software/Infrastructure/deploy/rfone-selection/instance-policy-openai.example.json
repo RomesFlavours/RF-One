@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSelectionOpenAIApplicationCredential",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "<exact ARN of the Selection OpenAI secret; replace before applying>"
+    }
+  ]
+}

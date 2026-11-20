@@ -1,0 +1,58 @@
+[
+  {
+    "path": "/",
+    "status": 200
+  },
+  {
+    "path": "/bank/work",
+    "status": 200
+  },
+  {
+    "path": "/bank/review",
+    "status": 200
+  },
+  {
+    "path": "/bank/configuration/category-trial",
+    "status": 200
+  },
+  {
+    "path": "/bank/who-search-text",
+    "status": 200
+  },
+  {
+    "path": "/bank/why-signals",
+    "status": 200
+  },
+  {
+    "path": "/bank/configuration",
+    "status": 200
+  },
+  {
+    "path": "/bank/how-it-works",
+    "status": 200
+  },
+  {
+    "path": "/recognition/?embed=1",
+    "status": 200
+  },
+  {
+    "path": "/recognition/static/app.js",
+    "status": 200
+  },
+  {
+    "path": "/recognition/static/style.css",
+    "status": 200
+  },
+  {
+    "path": "/bank/work",
+    "post_status": 405
+  },
+  {
+    "path": "/bank/manual-reconciliation/1",
+    "post_status": 405
+  },
+  {
+    "path": "/bank/configuration/category-trial/simulate",
+    "post_status": 405
+  }
+]

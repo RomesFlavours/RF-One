@@ -1,0 +1,41 @@
+#!/usr/local/bin/python
+"""Drop browser privileges while the transport/secret stays in the service uid.
+
+Playwright creates its temporary profile/artifact directories before launch.
+Only fresh root-owned directories below /tmp are handed to the browser uid;
+the root service can subsequently read downloaded artifacts. No service secrets
+are passed to this executable (the runner supplies a minimal environment).
+"""
+import os
+import stat
+import sys
+from pathlib import Path
+
+if os.geteuid() != 0:
+    raise SystemExit('Browser launcher must be called by the container service.')
+binary = Path(os.environ.pop('RFONE_CHROMIUM_BINARY')).resolve(strict=True)
+if not binary.is_relative_to('/opt/browsers') or not binary.is_file():
+    raise SystemExit('Unexpected Chromium executable.')
+profiles = [a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--user-data-dir=')]
+if len(profiles) != 1:
+    raise SystemExit('Expected a single temporary Chromium profile.')
+profile = Path(profiles[0])
+if profile.parent != Path('/tmp') or not profile.name.startswith('playwright_chromiumdev_profile-'):
+    raise SystemExit('Unexpected browser profile path.')
+for path in [profile, *Path('/tmp').glob('playwright-artifacts-*')]:
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or path.is_symlink():
+        raise SystemExit('Unexpected browser temporary directory.')
+    if info.st_uid == 0:
+        # Keep the root directory private until every pre-created preference
+        # file has been handed over, avoiding a partially writable profile.
+        for child in sorted(path.rglob('*'), key=lambda p: len(p.parts), reverse=True):
+            if child.is_symlink():
+                raise SystemExit('Unexpected symlink in browser temporary files.')
+            os.chown(child, 10001, 10001)
+        os.chown(path, 10001, 10001)
+        os.chmod(path, 0o700)
+os.setgroups([])
+os.setgid(10001)
+os.setuid(10001)
+os.execv(str(binary), [str(binary), *sys.argv[1:]])

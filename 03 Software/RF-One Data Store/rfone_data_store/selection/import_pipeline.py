@@ -81,7 +81,7 @@ def reading_status(profile: CandidateCVProfile) -> tuple[str, str | None]:
 def import_one_resume(
     session: Session, *, restaurant_id: int | None, source_type: str,
     original_filename: str | None, storage_path: str | None, raw_text: str | None,
-    content_hash: str | None,
+    content_hash: str | None, source_provider: str | None = None,
 ) -> ImportResult:
     """Processes exactly one résumé end to end: no-extractable-text check,
     duplicate check, persist RawResume, parse (real AI, falling back to
@@ -119,6 +119,8 @@ def import_one_resume(
         profile = parse_resume(
             RawResumeRef(source_type=source_type, raw_text=raw_text, original_filename=original_filename)
         )
+        if source_provider:
+            profile.source_provider = source_provider
         candidate = persistence.save_candidate_profile(
             session, profile, restaurant_id=restaurant_id, raw_resume_id=raw_resume.id,
         )

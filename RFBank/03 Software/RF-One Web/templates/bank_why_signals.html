@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="{{ 'it' if ui_language == 'it' else 'en' }}">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WHY · Bank · RF-One</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-search-text2">
+  <style>
+    .ws-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:.6rem;margin:.6rem 0}
+    .ws-tile{border:1px solid var(--olive-300);border-radius:8px;padding:.6rem .8rem;background:none;text-align:left;cursor:pointer;color:inherit;font:inherit}
+    .ws-tile[aria-pressed="true"]{outline:2px solid var(--olive-600,#556b2f)}
+    .ws-tile strong{display:block;font-size:1.5rem}
+    .ws-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+    .ws-scroll{max-height:65vh}
+    .ws-mode{font-size:.75rem;border:1px solid var(--olive-300);border-radius:999px;padding:0 .45rem;margin-left:.3rem;white-space:nowrap}
+    .ws-mode.multiple{background:var(--olive-100,#eef2e2)}
+    .ws-muted{color:var(--muted)}
+    .ws-error{color:var(--bad)}
+    .ws-cond{display:grid;grid-template-columns:minmax(10rem,1.2fr) minmax(8rem,.8fr) minmax(10rem,1.5fr) auto;gap:.4rem;align-items:end;margin:.3rem 0}
+    .ws-cond label{margin:0!important}
+    .ws-sim-summary{display:flex;gap:1rem;flex-wrap:wrap;margin:.4rem 0}
+    .ws-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+    dialog.ws-wide{width:min(1000px,96vw)}
+    dialog .dialog-heading{position:sticky;top:0;background:var(--surface,#fff);z-index:1}
+    @media (max-width:640px){.ws-cond{grid-template-columns:1fr}}
+    #why-rules>.card,#why-rules>section{margin-bottom:1rem}
+    .sp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.6rem;margin:.6rem 0}
+    .sp-tile{border:1px solid var(--olive-300);border-radius:8px;padding:.6rem .8rem}
+    .sp-tile strong{display:block;font-size:1.5rem}
+    .sp-muted{color:var(--muted)} .sp-bad{color:var(--bad)} .sp-ok{color:var(--good,#2e7d32)}
+    .sp-pill{font-size:.75rem;border:1px solid var(--olive-300);border-radius:999px;padding:0 .45rem;white-space:nowrap}
+    .sp-scroll{max-height:60vh;overflow:auto}
+    /* BANK-2026-11-04 WHY layout (2026-11-05): "↑" at the top right of each section, back to the ovals */
+    .ws-has-top{position:relative}
+    .ws-has-top>.section-heading{padding-right:2.8rem}
+    .ws-top{position:absolute;top:.75rem;right:.75rem;min-width:1.9rem;padding:.1rem .5rem;font-weight:700;text-align:center;text-decoration:none;line-height:1.6}
+    /* the sticky tabs are taller on narrow screens: keep ovals and titles below their real height (--ws-tabs-h) */
+    #why-top,#why-associations,#why-rules,#why-split,#why-what{scroll-margin-top:calc(var(--ws-tabs-h,3.75rem) + .75rem)}
+  </style>
+  <script defer src="/static/bank-assistant/flow_i18n.js?v=ui-it5"></script><script defer src="/static/bank-assistant/why_signals.js?v=4"></script><script defer src="/static/bank-assistant/split.js?v=1"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  {% import "_bank_macros.html" as bank %}{{ bank.module_nav('why_signals') }}
+  {#- BANK_WHO_WHY_FINAL_LOGIC_001 + BANK_LAYOUT_NAVIGATION_001 (Product Owner, 2026-11-05): one WHY page in four
+      sections. 1 and 4 show, read-only, what the one editor (Configurazione) holds; 2 is the existing WHO WHY rules,
+      MULTIPLE mode and open-WHY list; 3 is the existing Ripartizioni list (split.js). No classification or rule is
+      changed by opening this page. -#}
+  <div class="page-heading"><div><h2>WHY</h2>
+    <p class="muted">Recognising the WHO and determining the WHY are two steps: the WHO page answers who it is, this page why the money moved. WHAT always comes from the WHY; WHOM from the Source. Nothing on this page changes a movement until you save and apply a rule or confirm a split.</p></div></div>
+
+  {%- set top_label = "Torna all'inizio" if ui_language == 'it' else 'Back to top' %}
+  {#- The ovals are bookmarks of the four sections; each section's "↑" returns here (plain anchors: no reload,
+      fields, filters and drafts stay as they are; scroll-margin-top keeps the target clear of the sticky tabs). -#}
+  <div id="why-top">{{ bank.section_nav([('why-associations', 'WHO → WHY associations'), ('why-rules', 'Disambiguation rules'), ('why-split', 'Splits'), ('why-what', 'WHY → WHAT')]) }}</div>
+  {#- BANK_WHO_WHY_CONFIG_001 (Product Owner, 2026-11-06): ONE row per WHO, whatever the account or card; edited in
+      the WHO's modal (simulation, then explicit confirmation). A WHO not configured yet keeps its former WHO + Source
+      classifications; when those carry different WHYs that cannot be reduced to one configuration it is "To decide". -#}
+  <section class="card ws-has-top" id="why-associations" aria-labelledby="why-assoc-h"><a class="btn-secondary ws-top" href="#why-top" aria-label="{{ top_label }}" title="{{ top_label }}">↑</a>
+    <div class="section-heading"><div><span class="eyebrow">1 · ONE CONFIGURATION PER WHO</span><h2 id="why-assoc-h">WHO → WHY associations <span class="badge">{{ who_rows|length }}</span></h2></div></div>
+    <p class="muted">Each WHO has one configuration, whatever the account or card: a single WHY, a Personal WHY and a Company WHY (read from the owner of the account or card at the movement date), or From rule. A new card follows the behaviour meant for its owner. A company exception replaces the general behaviour for that company only. WHAT follows from the WHY; WHOM is the owner of the account or card unless an exception says otherwise.</p>
+    {% if to_decide %}<p class="ws-error" id="wa-to-decide"><strong>{{ to_decide }}</strong> <span>WHO to decide: their accounts or cards carry different WHYs that cannot be reduced to one configuration. Until you decide (Edit), they keep the former WHY per account or card.</span></p>{% endif %}
+    <div class="ws-filters"><label>Search<input id="wa-q" type="search" data-rr-state placeholder="WHO or WHY" autocomplete="off"></label></div>
+    <div class="who-scroll ws-scroll"><table class="who-table"><thead><tr><th>WHO</th><th>Single WHY</th><th>Personal WHY</th><th>Company WHY</th><th>Exceptions</th><th></th></tr></thead>
+      <tbody id="wa-rows">{% for r in who_rows %}<tr data-rr-key="who:{{ r.id }}" data-q="{{ (r.who ~ ' ' ~ (r.single or '') ~ ' ' ~ (r.personal or '') ~ ' ' ~ (r.company or '') ~ ' ' ~ (r.exceptions|map(attribute='why')|join(' ')))|lower }}">
+        <td translate="no">{{ r.who }}</td>
+        {%- if r.behaviour == 'RULE' %}<td colspan="3"><span class="ws-mode multiple">From rule</span></td>
+        {%- elif r.conflict %}<td colspan="3"><span class="ws-error">To decide</span><br><small class="ws-muted">{{ r.conflict }}</small></td>
+        {%- else %}<td translate="no">{{ r.single or '' }}</td><td translate="no">{{ r.personal or '' }}</td><td translate="no">{{ r.company or '' }}</td>{% endif %}
+        <td>{% for x in r.exceptions %}<div><span translate="no">{{ x.entity }}: {{ x.why }}{% if x.whom %} · WHOM {{ x.whom }}{% endif %}</span>{% if not x.applies %} <small class="ws-error">not applied</small>{% endif %}</div>{% endfor %}</td>
+        <td><button type="button" class="btn-secondary" data-who-edit="{{ r.id }}">Edit</button></td></tr>{% else %}<tr><td colspan="6" class="ws-muted">No active WHO.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+
+  <section id="why-rules" aria-labelledby="why-rules-h">
+    <div class="card ws-has-top"><a class="btn-secondary ws-top" href="#why-top" aria-label="{{ top_label }}" title="{{ top_label }}">↑</a><div class="section-heading"><div><span class="eyebrow">2 · WHEN THE WHO ALONE DOES NOT DETERMINE THE WHY</span><h2 id="why-rules-h">Disambiguation rules</h2></div></div>
+      <p class="muted">For a <strong>MULTIPLE</strong> WHO the WHY depends on the single movement: only a <strong>WHO WHY rule</strong> decides it — conditions on Source, accounting subject at the date, description, Source information or documents — and a WHY registered on the pair is not used. Examples: AMAZON (the order evidence decides, and a charge may need several lines: section 3); Zelle payments to employees (the recipient alone does not establish the purpose of each payment). Cases that no rule resolves stay open, never forced to one default.</p></div>
+  <section class="card" aria-labelledby="ws-rules-h">
+    <div class="section-heading"><div><span class="eyebrow">AFTER WHO RECOGNITION</span><h2 id="ws-rules-h">WHO WHY rules <span class="badge" id="ws-rules-count">—</span></h2></div>
+      <div class="flow-actions"><button type="button" id="ws-new-rule">+ Define rule</button></div></div>
+    <p class="muted">These rules never identify a WHO (that is done on the WHO page): they determine the WHY of a WHO already recognised. A new rule is simulated on its movements first and saved inactive unless you activate it.</p>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Rule</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody id="ws-rules"></tbody></table></div>
+  </section>
+  <section class="card" aria-labelledby="ws-modes-h">
+    <div class="section-heading"><div><span class="eyebrow">WHO WHY MODE</span><h2 id="ws-modes-h">MULTIPLE WHO <span class="badge" id="ws-modes-count">—</span></h2></div></div>
+    <p class="muted">MULTIPLE is the “From rule” choice of the WHO’s Edit window (section 1): only WHO WHY rules decide its WHY. Every other WHO is UNIQUE: its single WHY or its Personal / Company WHY decides. Set MULTIPLE only when the WHY changes movement by movement.</p>
+    <div class="ws-filters"><label>WHO<select id="ws-mode-who"></select></label><label>Mode<select id="ws-mode-value"><option value="MULTIPLE">MULTIPLE</option><option value="UNIQUE">UNIQUE</option></select></label><label>Note<input id="ws-mode-note" maxlength="500"></label><button type="button" id="ws-mode-save">Save mode</button></div>
+    <p class="ws-error" id="ws-mode-error" role="alert"></p>
+    <ul id="ws-modes"></ul>
+  </section>
+  <section class="card" aria-labelledby="ws-groups-h">
+    <div class="section-heading"><div><span class="eyebrow">RECOGNISED WHO · WHY OPEN</span><h2 id="ws-groups-h">WHY to determine <span class="badge" id="ws-count">—</span></h2></div>
+      <div class="flow-actions"><button type="button" class="btn-secondary" id="ws-refresh">Recompute</button></div></div>
+    <div class="ws-tiles" id="ws-tiles"></div>
+    <div class="ws-filters"><label>Search<input id="ws-q" type="search" placeholder="WHO or Source"></label></div>
+    <div class="who-scroll ws-scroll"><table class="who-table"><thead><tr><th>WHO</th><th>Source</th><th>Reason</th><th class="num">Movements</th><th class="num">Amount</th><th>Action</th></tr></thead>
+      <tbody id="ws-rows"><tr><td colspan="6">Computing with the reconciliation engine (read-only)…</td></tr></tbody></table></div>
+  </section>
+  </section>
+
+  <section class="card ws-has-top" id="why-split" aria-labelledby="why-split-h"><a class="btn-secondary ws-top" href="#why-top" aria-label="{{ top_label }}" title="{{ top_label }}">↑</a>
+    <div class="section-heading"><div><span class="eyebrow">3 · ONE MOVEMENT, SEVERAL WHY</span><h2 id="why-split-h">Splits</h2></div></div>
+    <p class="muted">One bank movement stays one movement and may carry several lines, each with its amount, WHY, the WHAT of that WHY and the products or documents behind it. The lines must add up to the movement exactly. Open a movement to edit its split.</p>
+  </section>
+{% include "_bank_split_overview.html" %}
+
+  <section class="card ws-has-top" id="why-what" aria-labelledby="why-what-h"><a class="btn-secondary ws-top" href="#why-top" aria-label="{{ top_label }}" title="{{ top_label }}">↑</a>
+    <div class="section-heading"><div><span class="eyebrow">4 · FIXED MAPPINGS</span><h2 id="why-what-h">WHY → WHAT mappings <span class="badge">{{ mappings|length }}</span></h2></div>
+      <div class="flow-actions"><a class="btn-secondary" href="/bank/configuration#cp-why">Edit in Configuration</a></div></div>
+    <p class="muted">Each active WHY belongs to exactly one WHAT: once the WHY is chosen, the WHAT follows from this table and is never chosen movement by movement. A WHY without a WHAT is a configuration gap to resolve in Configuration › WHY.</p>
+    <div class="who-scroll ws-scroll"><table class="who-table"><thead><tr><th>WHY</th><th>WHAT</th></tr></thead>
+      <tbody>{% for x in mappings %}<tr><td translate="no">{{ x.why }}</td><td translate="no">{% if x.kind == 'NONE' %}<span class="ws-error">—</span>{% else %}{{ x.what }}{% endif %}</td></tr>{% else %}<tr><td colspan="2" class="ws-muted">No active WHY.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</div>
+<script>
+(function () {
+  var tabs = document.querySelector('nav.bank-tabs'); if (!tabs) return;
+  function fit() { document.documentElement.style.setProperty('--ws-tabs-h', tabs.getBoundingClientRect().height + 'px'); }
+  fit(); if (window.ResizeObserver) new ResizeObserver(fit).observe(tabs); else window.addEventListener('resize', fit);
+})();
+(function () {
+  var q = document.getElementById('wa-q'); if (!q) return;
+  q.addEventListener('input', function () { var v = q.value.trim().toLowerCase();
+    document.querySelectorAll('#wa-rows tr[data-q]').forEach(function (r) { r.hidden = !!v && r.dataset.q.indexOf(v) < 0; }); });
+})();
+</script>
+
+<dialog id="ws-movements" class="ws-wide" aria-labelledby="ws-movements-h">
+  <div class="dialog-heading"><h2 id="ws-movements-h">Movements</h2><span><button type="button" class="btn-secondary bank-help-q" data-how-works="why-movements-dialog" aria-label="How this window works">?</button> <button type="button" class="close-button" data-cancel="ws-movements" aria-label="Close">&times;</button></span></div>
+  <p id="ws-movements-note" class="muted"></p>
+  <div class="who-scroll"><table class="who-table"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Detail</th></tr></thead><tbody id="ws-movements-rows"></tbody></table></div>
+  <div class="dialog-actions"><button type="button" class="btn-secondary" data-cancel="ws-movements">Close</button></div>
+</dialog>
+
+{% include "_bank_who_why_dialog.html" %}
+
+{% include "_bank_why_rule_dialog.html" %}
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

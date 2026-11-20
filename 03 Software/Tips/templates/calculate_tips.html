@@ -127,7 +127,12 @@
           {% elif row.distributed_away_minor %}&minus; {{ money(row.distributed_away_minor) }}
           {% else %}<span class="muted">&mdash;</span>{% endif %}
         </td>
-        <td class="num"><strong>{{ money(row.final_entitlement_minor) }}</strong></td>
+        <td class="num">
+          {% for role, net in row.role_net_minor.items() %}
+            <div>{{ role }}: {{ money(net) }}</div>
+          {% endfor %}
+          <strong>{{ money(row.final_entitlement_minor) }}</strong>
+        </td>
         <td style="font-size:.78rem;">
           {% if row.has_warning %}
             <span class="badge warn" title="{{ row.warning_notes|join(' | ') }}">check</span>

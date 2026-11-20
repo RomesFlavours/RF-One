@@ -147,7 +147,14 @@ ALLOWED_EXT = set(SUPPORTED_EXTENSIONS)
 DOCUMENTS = document_store.from_environment(UPLOAD_DIR)
 
 _DB_URL = get_database_url()
-run_migrations_to_head(_DB_URL)
+if os.environ.get('RFONE_SELECTION_CANONICAL_LOCAL') == '1':
+    # The shared loopback launcher reuses the existing schema without migrating it.
+    from sqlalchemy.engine import make_url
+    _local_url = make_url(_DB_URL)
+    if (_local_url.host, _local_url.port, _local_url.database) != ('127.0.0.1', 55436, 'rfone_aws_copy'):
+        raise RuntimeError('Selection local integration requires the canonical loopback database.')
+else:
+    run_migrations_to_head(_DB_URL)
 _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
@@ -227,6 +234,10 @@ def _send_direct_visits_to_the_official_entry():
 
 @app.before_request
 def _require_rfone_login_and_selection_access():
+    if request.blueprint == 'indeed_receiver':
+        # Machine-only route: its own bearer authentication plus the original
+        # operator's current Selection grants are checked before every import.
+        return None
     if not RFONE_LOGIN_MODE or request.endpoint == "static":
         return None
     if request.blueprint == PUBLIC_BLUEPRINT:

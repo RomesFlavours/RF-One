@@ -1,0 +1,40 @@
+{
+  "counts": {
+    "financial_transactions": 3299,
+    "bank_occurrences": 308,
+    "bank_transaction_reasons": 148,
+    "bank_accounting_classifications": 137,
+    "bank_transaction_explanations": 0,
+    "bank_transaction_allocations": 0
+  },
+  "database_sha256": "4fb749757915d0733a2dc7d9ee91467e2480ed3eb679ec2a07f4b85b6a2367cb",
+  "existing_table_contents_unchanged": true,
+  "added_schema_tables_empty": true,
+  "integrity": "ok",
+  "foreign_key_errors": [],
+  "unit_tests_passed": 10,
+  "bank_post_requests_blocked": true,
+  "runtime_code_root": "C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\RFBank",
+  "aws_accessed": false,
+  "integrated_live_ai_simulation": {
+    "conflicts": 0,
+    "doubtful": 656,
+    "matched": 157,
+    "plan_signature": "e468aa633b9daafabab3398a6c89c0808f0e847d5f1ca5ab4f5638ed7f442950",
+    "revision": 1,
+    "title": "Estrazione WHO dalle descrizioni ACH, escluso PAYPAL",
+    "total": 3299,
+    "unmatched": 2486
+  },
+  "previous_preview_servers_stopped": true,
+  "review_filter_fix": {
+    "added_nullable_columns": [
+      "relationship",
+      "posting_transaction_id",
+      "first_engine_run_id",
+      "last_engine_run_id"
+    ],
+    "http_cases_passed": 8,
+    "table_contents_unchanged": true
+  }
+}

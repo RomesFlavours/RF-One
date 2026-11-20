@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% set help_section = 'myrf_home' %}
+{% set help_title = 'Come funziona RF-One' %}
+{% macro ui(value) %}{{ value }}{% endmacro %}
+{% block page_title %}RF-One{% endblock %}
+{% block content %}
+<div class="home-logout">
+  <form method="post" action="{{ url_for('logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="link-button">Esci</button>
+  </form>
+</div>
+
+<h1>Benvenuto, {{ account.display_name }}</h1>
+
+<h2>MyRFOne</h2>
+{% include '_how_works.html' %}
+{% if interview_tasks %}
+<div class="home-stack" aria-label="Interviste richieste">
+  {% for interview in interview_tasks %}
+  <a class="domain-card domain-card-released" href="{{ url_for('interview_session', session_id=interview.id) }}">
+    <div class="domain-name">{{ 'Riprendi intervista' if interview.status == 'In progress' else 'Intervista richiesta' }}</div>
+    <div class="domain-description">{{ interview.purpose|truncate(160) }}</div>
+    <div>Richiesta da {{ interview.requester|short_name }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if domains_view %}
+  <div class="home-stack">
+    {% for domain in domains_view %}
+      {#- The Domain's first item the account may use (ACCOUNT_ITEM_ACCESS_001). #}
+      {% set entry = domain_entry(domain.code) %}
+      {% set released = entry and domain.code not in work_in_progress_codes %}
+      {% if entry %}
+        <a class="domain-card {{ 'domain-card-released' if released else 'domain-card-unreleased' }}" href="{{ entry }}">
+          <div class="domain-name">{{ home_domain_name(domain.code, domain.display_name) }}</div>
+          <div class="domain-description">{{ home_domain_description(domain.code, domain.description) }}</div>
+        </a>
+      {% else %}
+        <div class="domain-card domain-card-unavailable domain-card-unreleased" aria-disabled="true">
+          <div class="domain-name">{{ home_domain_name(domain.code, domain.display_name) }}</div>
+          <div class="domain-description">{{ home_domain_description(domain.code, domain.description) }}</div>
+          <div class="domain-unavailable-label">Non ancora disponibile</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="empty">Nessun modulo operativo è attualmente assegnato a questo account.</p>
+{% endif %}
+
+<div class="home-stack">
+  {% if bank_available or clover_acquisition_available or can_manage_profiles or employees_available %}
+    <div class="domain-card home-block">
+      <div class="domain-name">Amministrazione</div>
+      {% if can_manage_profiles %}
+      <a class="home-row" href="{{ url_for('role_profiles_home',tab='people') }}"><strong>Registry <span role="img" aria-label="Funzionante" title="Funzionante">👍</span></strong> &mdash; Persone, ruoli, aziende e autorizzazioni di sistema.</a>
+      {% elif employees_available %}
+      <a class="home-row" href="{{ url_for('employee_directory_home') }}"><strong>Registry</strong> &mdash; Anagrafica delle persone.</a>
+      {% endif %}
+      {% if bank_available %}
+      <a class="home-row" href="{{ domain_entry('BANK') }}"><strong>Bank</strong> &mdash; Importa e riconcilia i movimenti bancari.</a>
+      {% endif %}
+      {% if clover_acquisition_available %}
+      <a class="home-row" href="{{ url_for('clover_acquisition_home') }}"><strong>Acquisizione Clover</strong> &mdash; Acquisisci i dati recenti e recupera lo storico Clover.</a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="domain-card home-block">
+    <div class="domain-name">Impostazioni</div>
+    {% if account.is_admin %}
+      <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Entità giuridiche</strong> &mdash; Gestisci le entità giuridiche.</a>
+    {% endif %}
+    {#- Organization is no longer here: it is a Domain card above, granted
+        account by account (ACCOUNT_ITEM_ACCESS_001). #}
+    <a class="home-row" href="{{ url_for('profile') }}"><strong>Profilo</strong> &mdash; Gestisci le informazioni del tuo account.</a>
+    {% if account.is_admin %}
+      <a class="home-row" href="{{ url_for('admin_workweek') }}"><strong>Settimana lavorativa</strong> &mdash; Il giorno di inizio della settimana lavorativa di ogni ristorante.</a>
+    {% endif %}
+  </div>
+
+  {% if dev_journal_available %}
+    <div class="domain-card home-block">
+      <div class="domain-name">Servizi</div>
+      <a class="home-row" href="{{ url_for('dev_journal_list') }}"><strong>Diario di sviluppo</strong> &mdash; Documenta le fasi di un lavoro, dallo studio al rilascio.</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

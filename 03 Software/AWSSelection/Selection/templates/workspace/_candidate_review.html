@@ -1,0 +1,75 @@
+<dialog id="candidate-review-dialog" class="candidate-review-dialog" aria-labelledby="candidate-review-title">
+ <header class="candidate-review-header"><h2 id="candidate-review-title">Analisi del candidato</h2><button type="button" id="candidate-review-close" aria-label="Chiudi analisi candidato">×</button></header>
+ <div class="candidate-review-help"><a href="#candidate-review-help" id="candidate-review-help-link">Come funziona questa finestra</a></div>
+ <p id="candidate-review-message" role="status"></p><p id="candidate-review-error" class="error" role="alert" hidden></p>
+ <form id="candidate-review-form" hidden>
+  <label for="candidate-review-priority">Priorità del selezionatore</label>
+  <select id="candidate-review-priority"><option value="">Mantieni la priorità AI</option><option value="HIGH">Alta</option><option value="MEDIUM">Media</option><option value="LOW">Bassa</option></select>
+  <p><a id="candidate-review-reading" class="btn btn-secondary" href="#" data-resume-details data-resume-help-kind="observations" data-label="Sintesi e osservazioni CV">Sintesi e osservazioni CV</a></p>
+  <h3>Conclusioni dell’analisi</h3><p id="candidate-review-analysis" class="review-prose"></p>
+  <h3>Punti da chiarire</h3><p class="small">Apri una voce e scegli se rispondere, ignorarla o includerla nelle domande. Solo le voci selezionate per l’invio saranno spedite.</p>
+  <div id="candidate-review-items"></div>
+  <h3>Altre domande da inviare</h3><div id="candidate-review-custom-questions"></div><button type="button" id="candidate-review-add-question" class="btn-secondary">Aggiungi domanda</button>
+  <fieldset id="candidate-review-channel"><legend>Modalità di invio</legend><label><input type="radio" name="review-channel" value="EMAIL" checked> Email</label><label><input type="radio" name="review-channel" value="TEXT"> Text</label></fieldset>
+  <p id="candidate-review-recipient"></p><p id="candidate-review-channel-status" role="status"></p><p id="candidate-review-delivery"></p>
+  <footer class="candidate-review-footer">
+   <button type="submit" id="candidate-review-save">Salva revisione</button>
+   <button type="button" id="candidate-review-send">Invia domande</button>
+  </footer>
+ </form>
+</dialog>
+<dialog id="candidate-review-help-dialog" class="candidate-review-dialog" aria-labelledby="candidate-review-help-title">
+ <header class="candidate-review-header"><h2 id="candidate-review-help-title">Revisione dell’analisi</h2><button type="button" aria-label="Chiudi aiuto revisione" onclick="this.closest('dialog').close()">×</button></header>
+ {% include 'help/candidate_review.html' %}
+</dialog>
+<style>
+.candidate-review-dialog{width:min(1000px,96vw);max-height:92vh;padding:0 1.2rem 1.2rem;border:1px solid var(--line);border-radius:12px;box-sizing:border-box;color:var(--ink)}
+.candidate-review-dialog::backdrop{background:#0006}.candidate-review-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;position:sticky;top:0;z-index:2;background:white;border-bottom:1px solid var(--line)}
+.candidate-review-help{text-align:right;margin:.6rem 0 1rem}.candidate-review-footer{display:flex;gap:.5rem;flex-wrap:wrap;position:sticky;bottom:-1.2rem;padding:.8rem 0;background:white;z-index:1}
+.candidate-review-dialog [hidden]{display:none!important}.candidate-review-dialog textarea,.candidate-review-dialog select{width:100%;box-sizing:border-box}.candidate-review-dialog textarea{min-height:5rem}
+.review-prose{white-space:pre-wrap;overflow-wrap:anywhere}.candidate-review-item{padding:.8rem;border:1px solid var(--line);border-radius:8px;margin:.7rem 0}.candidate-review-item summary{cursor:pointer;font-weight:600}
+.candidate-review-item label{display:block;margin:.5rem 0}.candidate-review-item input[type=radio]{width:auto;margin-right:.4rem}.candidate-review-dialog h2{overflow-wrap:anywhere}
+.candidate-review-dialog p,.candidate-review-dialog summary{overflow-wrap:anywhere}
+#candidate-review-priority{width:auto;max-width:100%}#candidate-review-message:empty{display:none}#candidate-review-channel{margin-top:1.2rem}#candidate-review-channel label{display:inline-block;margin-right:1rem}#candidate-review-channel input{width:auto}.review-custom-question{margin:.8rem 0}
+</style>
+<script>
+(()=>{
+ const modal=document.getElementById('candidate-review-dialog'),form=document.getElementById('candidate-review-form'),message=document.getElementById('candidate-review-message'),error=document.getElementById('candidate-review-error'),items=document.getElementById('candidate-review-items'),priority=document.getElementById('candidate-review-priority');
+ const buttons=['candidate-review-save','candidate-review-send'].map(id=>document.getElementById(id));
+ let origin=null,url='',data=null,busy=false,changed=false,requestId=0;
+ const deliveryLabels={SENT:'Email accettata dal server di posta.',QUEUED:'Domande in coda per l’invio.',SENDING:'Invio in corso o da verificare. Non reinviare.',LEASED:'Invio in preparazione.',UNKNOWN:'Esito dell’invio incerto: verifica la posta prima di ripetere. Nessun reinvio automatico.',FAILED:'Invio non riuscito.'};
+ function setBusy(value){busy=value;form.querySelectorAll('input,textarea,select,button').forEach(e=>e.disabled=value||!data?.can_edit);if(data)updateChannel();}
+ const customBox=document.getElementById('candidate-review-custom-questions');
+ function channel(){return form.querySelector('[name=review-channel]:checked').value;}
+ function customQuestions(){return [...customBox.querySelectorAll('textarea')].map(e=>e.value.trim()).filter(Boolean);}
+ function deliveryLabel(status){return channel()==='TEXT'&&status==='SENT'?'Text accettato da AWS per l’invio.':deliveryLabels[status]||'';}
+ function updateChannel(){const text=channel()==='TEXT';document.getElementById('candidate-review-recipient').textContent='Email: '+(data.email||'non disponibile')+' · Telefono: '+(data.phone||'non disponibile');document.getElementById('candidate-review-channel-status').textContent=text&&!data.text_available?'Mittente SMS AWS non configurato. Puoi salvare le domande o scegliere Email.':'';buttons[1].disabled=busy||!data.can_edit||(text?!data.text_available||!data.phone:!data.email);document.getElementById('candidate-review-delivery').textContent=channel()===(data.channel||'EMAIL')?deliveryLabel(data.delivery):'';}
+ function addQuestion(text=''){if(customBox.children.length>=20)return;const row=element('div',undefined,'review-custom-question'),label=element('label','Domanda personale'),input=element('textarea'),remove=element('button','Rimuovi domanda');input.value=text;input.maxLength=2000;input.dataset.customQuestion='';input.disabled=!data.can_edit;remove.type='button';remove.disabled=!data.can_edit;remove.onclick=()=>row.remove();label.append(input);row.append(label,remove);customBox.append(row);}
+ function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
+ function selected(){return [...items.querySelectorAll('details')].map(box=>({id:Number(box.dataset.id),mode:box.querySelector('input:checked').value,answer:box.querySelector('[data-answer]').value,question:box.querySelector('[data-question]').value}));}
+ function render(value){data=value;form.hidden=false;items.replaceChildren();document.getElementById('candidate-review-title').textContent='Analisi · '+value.name;document.getElementById('candidate-review-analysis').textContent=value.analysis;
+  priority.options[0].textContent='Mantieni la priorità AI ('+value.ai_priority+')';priority.value=value.priority;priority.disabled=!value.can_edit;const reading=document.getElementById('candidate-review-reading');reading.href=value.reading_url;reading.dataset.name=value.name;customBox.replaceChildren();(value.custom_questions||[]).forEach(q=>addQuestion(q));form.querySelectorAll('[name=review-channel]').forEach(e=>e.checked=e.value===(value.channel||'EMAIL'));
+  
+  document.getElementById('candidate-review-delivery').textContent=deliveryLabel(value.delivery);
+  if(!value.items.length)items.append(element('p','Nessun punto da chiarire.'));
+  value.items.forEach(item=>{const box=element('details',undefined,'candidate-review-item');box.dataset.id=item.id;const summary=element('summary');box.append(summary,element('p',item.reason,'review-prose'));
+   const answerLabel=element('label','Risposta del selezionatore'),answer=element('textarea');answer.dataset.answer='';answer.value=item.answer;answer.maxLength=4000;answerLabel.append(answer);
+   const questionLabel=element('label','Domanda da inviare'),question=element('textarea');question.dataset.question='';question.value=item.question;question.maxLength=2000;questionLabel.append(question);
+   function sync(){const mode=box.querySelector('input:checked').value;summary.textContent=(mode==='IGNORE'?'Ignorato':mode==='ANSWER'?'Risposto':'Da chiarire')+' · '+item.title;answerLabel.hidden=mode!=='ANSWER';questionLabel.hidden=mode!=='ASK';answer.required=mode==='ANSWER';question.required=mode==='ASK';}
+   [['OPEN','Lascia da chiarire'],['ANSWER','Rispondi direttamente'],['IGNORE','Ignora'],['ASK','Includi tra le domande da fare al candidato']].forEach(([code,label])=>{const row=element('label'),radio=element('input');radio.type='radio';radio.name='review-mode-'+item.id;radio.value=code;radio.checked=code===item.mode;radio.disabled=!value.can_edit;radio.onchange=sync;row.append(radio,document.createTextNode(label));box.append(row);});
+   answer.disabled=question.disabled=!value.can_edit;box.append(answerLabel,questionLabel);sync();items.append(box);
+  });setBusy(false);
+ }
+ document.querySelectorAll('[data-review-candidate]').forEach(link=>link.addEventListener('click',async event=>{event.preventDefault();if(busy)return;origin=link;url=link.href;data=null;changed=false;error.hidden=true;form.hidden=true;message.textContent='Caricamento analisi…';document.getElementById('candidate-review-title').textContent='Analisi · '+link.dataset.name;modal.showModal();const id=++requestId;
+  try{const response=await fetch(url);if(response.redirected)throw Error('Sessione scaduta. Ricarica la pagina.');const body=await response.json();if(!response.ok)throw Error(body.error||'Analisi non disponibile.');if(id!==requestId)return;render(body);message.textContent='';}catch(e){if(id===requestId){error.textContent=e.message;error.hidden=false;message.textContent='';}}
+ }));
+ async function submit(action){if(!data||busy)return;if(!form.reportValidity())return;const chosen=selected();if(action==='send'&&!chosen.some(i=>i.mode==='ASK')&&!customQuestions().length){error.textContent='Seleziona almeno una domanda da inviare.';error.hidden=false;return;}setBusy(true);error.hidden=true;message.textContent=action==='send'?'Invio delle sole domande selezionate…':'Salvataggio revisione…';
+  const payload={version:data.version,priority:priority.value,items:chosen,channel:channel(),custom_questions:customQuestions(),action},body=new FormData();body.set('csrf_token',{{ csrf_token()|tojson }});body.set('payload',JSON.stringify(payload));
+  try{const response=await fetch(url,{method:'POST',body});if(response.redirected)throw Error('Sessione scaduta. Ricarica la pagina.');const result=await response.json();if(!response.ok)throw Error(result.error||'Operazione non riuscita.');changed=true;const fresh=await fetch(url);if(!fresh.ok)throw Error('Revisione salvata. Chiudi e riapri per aggiornarla.');render(await fresh.json());message.textContent=action==='send'?(deliveryLabel(result.delivery)||'Domande registrate per l’invio.'):'Revisione salvata. Chiudi per aggiornare la graduatoria.';
+  }catch(e){error.textContent=e.message;error.hidden=false;message.textContent='';}finally{setBusy(false);}
+ }
+ form.onsubmit=e=>{e.preventDefault();submit('save');};buttons[1].onclick=()=>submit('send');document.getElementById('candidate-review-add-question').onclick=()=>addQuestion();form.querySelectorAll('[name=review-channel]').forEach(e=>e.onchange=updateChannel);
+ document.getElementById('candidate-review-close').onclick=()=>{if(!busy)modal.close();};modal.addEventListener('cancel',e=>{if(busy)e.preventDefault();});modal.addEventListener('close',()=>{requestId++;if(origin)origin.focus({preventScroll:true});if(changed){location.hash=origin.closest('tr').id;location.reload();}});
+ document.getElementById('candidate-review-help-link').onclick=e=>{e.preventDefault();document.getElementById('candidate-review-help-dialog').showModal();};
+})();
+</script>

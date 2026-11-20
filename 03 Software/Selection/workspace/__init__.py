@@ -30,6 +30,8 @@ def register_workspace(app, *, SessionFactory, documents, rfone_web_base_url) ->
     _cfg.SessionFactory = SessionFactory
     _cfg.documents = documents
     _cfg.rfone_web_base_url = rfone_web_base_url
+    from . import indeed
+    indeed.install(app)
     ai_adapter.install_guard(ai_enabled=os.environ.get("RFONE_SELECTION_AI") == "1",
                              cv_ai_authorized=os.environ.get("RFONE_SELECTION_AI_CV") == "1")
     app.register_blueprint(positions_bp)

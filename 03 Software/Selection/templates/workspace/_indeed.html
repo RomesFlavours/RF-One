@@ -1,0 +1,43 @@
+{% set it = config.get('RFONE_LOCAL_OPERATOR') %}
+<div class="card" id="indeed">
+  <h3>{{ 'Importa CV da Indeed' if it else 'Import résumés from Indeed' }}</h3>
+  {% if not indeed_panel.enabled %}
+  <p class="small muted">{{ 'Il servizio browser Indeed non è ancora configurato.' if it else 'The Indeed browser service has not been configured yet.' }}</p>
+  {% else %}
+  <p class="small">{{ 'Incolla la lista candidati dell’annuncio. Apri il browser remoto, completa accesso e SMS, poi torna qui e avvia il download. I CV saranno aggiunti a questa posizione.' if it else 'Paste the job’s candidate-list URL. Open the remote browser, complete sign-in and SMS verification, then return here and start downloading. Résumés will be added to this position.' }}</p>
+  <form method="post" action="{{ url_for('positions.indeed_start', position_id=position.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="indeed-url">{{ 'URL lista candidati Indeed' if it else 'Indeed candidate-list URL' }}</label>
+    <input id="indeed-url" type="url" name="url" required value="{{ indeed_panel.draft }}" placeholder="https://employers.indeed.com/candidates?..." style="width:100%">
+    <button class="btn">{{ 'Prepara importazione' if it else 'Prepare import' }}</button>
+  </form>
+  {% if indeed_panel.unavailable %}<p role="alert">{{ 'Servizio temporaneamente non disponibile. I CV già importati sono conservati.' if it else 'Service temporarily unavailable. Previously imported résumés are retained.' }}</p>{% endif %}
+  {% set labels = {'STARTING': 'Apertura browser' if it else 'Opening browser', 'WAITING_LOGIN': 'Accesso o verifica necessari' if it else 'Sign-in or verification required', 'RUNNING': 'Download in corso' if it else 'Downloading', 'PAUSED': 'In pausa: riprendi per riprovare' if it else 'Paused: resume to retry', 'STOPPING': 'Chiusura browser' if it else 'Closing browser', 'STOPPED': 'Fermato' if it else 'Stopped', 'COMPLETED': 'Completato' if it else 'Completed'} %}
+  {% for job in indeed_panel.jobs %}
+  <div style="border-top:1px solid var(--line);margin-top:1rem;padding-top:.6rem">
+    <strong>{{ labels.get(job.state, job.state) }}</strong>
+    <p class="small">{{ 'Importati' if it else 'Imported' }}: {{ job['items']|selectattr('status','equalto','OK')|list|length }} ·
+      {{ 'Già presenti' if it else 'Already present' }}: {{ job['items']|selectattr('status','equalto','DUPLICATE')|list|length }} ·
+      {{ 'Senza CV' if it else 'No résumé' }}: {{ job['items']|selectattr('status','equalto','NO_RESUME')|list|length }} ·
+      {{ 'Da riprovare' if it else 'To retry' }}: {{ job['items']|selectattr('status','equalto','FAILED')|list|length }} ·
+      {{ 'Totale rilevato' if it else 'Detected total' }}: {{ job.get('total', '—') }}</p>
+    <div class="row">
+    {% if job.state == 'WAITING_LOGIN' %}
+    <form method="post" target="_blank" action="{{ url_for('positions.indeed_action', position_id=position.id, job_id=job.id, action='browser') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">{{ 'Apri browser per accesso e SMS' if it else 'Open browser for sign-in and SMS' }}</button>
+    </form>{% endif %}
+    {% if job.state in ['WAITING_LOGIN','PAUSED','STOPPED'] %}
+    <form method="post" action="{{ url_for('positions.indeed_action', position_id=position.id, job_id=job.id, action='resume') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn">{{ 'Avvia / riprendi download' if it else 'Start / resume downloads' }}</button>
+    </form>{% endif %}
+    {% if job.state in ['STARTING','WAITING_LOGIN','RUNNING'] %}
+    <form method="post" action="{{ url_for('positions.indeed_action', position_id=position.id, job_id=job.id, action='stop') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">{{ 'Ferma' if it else 'Stop' }}</button>
+    </form>{% endif %}
+    </div>
+    {% if job.state == 'PAUSED' %}<p class="small">{{ 'I download riusciti sono conservati. Riprendi, accedi di nuovo nel browser e avvia il download per riprovare gli elementi mancanti.' if it else 'Successful imports are retained. Resume, sign in again in the browser, then start downloading to retry missing items.' }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  <a class="btn btn-secondary btn-small" href="{{ url_for('positions.position_detail', position_id=position.id, tab='candidature') }}#indeed">{{ 'Aggiorna avanzamento' if it else 'Refresh progress' }}</a>
+  {% endif %}
+</div>

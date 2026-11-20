@@ -1,0 +1,8 @@
+{% if sections %}
+<p class="small muted">Sintesi AI salvata durante la lettura del CV per questa ricerca.</p>
+{% for section in sections %}<section class="cv-observation-section"><h3>{{ section.title }}</h3>
+<ul>{% for point in section.bullets %}<li class="resume-data-text" style="margin:.6rem 0">{{ point.text }}</li>{% endfor %}</ul></section>{% endfor %}
+{% elif not has_rules %}<p>Non ci sono regole attive per questa ricerca. La sintesi viene preparata durante la lettura AI dopo aver configurato le regole.</p>
+{% else %}
+<p>{{ 'La sintesi è in preparazione. Chiudi e riapri la finestra al termine della lettura AI.' if preparing else 'La sintesi non è ancora stata salvata oppure CV o regole sono cambiati. Premi Applica Filtri e Regole in Candidature per generarla durante la lettura AI.' }}</p>
+{% endif %}

@@ -1,0 +1,6 @@
+{
+  "name": "RFBank",
+  "database": "rfone.db",
+  "database_url": "sqlite:///rfone.db",
+  "path_base": "directory containing this configuration"
+}

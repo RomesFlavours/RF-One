@@ -73,6 +73,9 @@ def main():
     if not key.is_file():
         raise RuntimeError('Configure the existing local RF-One Web session key first.')
     os.environ['RFONE_WEB_TEST_SECRET_KEY'] = key.read_text(encoding='ascii')
+    os.environ['RFONE_UI_LANGUAGE'] = 'it'
+    os.environ.pop('RFONE_DEV_JOURNAL_DOCUMENT_BUCKET', None)
+    os.environ['RFONE_DEV_JOURNAL_DOCUMENT_DIR'] = str(key.parent / 'dev-journal-documents')
     from app import app
     app.jinja_env.globals['ui']=lambda value:{'How this page works':'Come funziona','Close':'Chiudi'}.get(value,value)
     # Same local HTTP cookie convention as employee_registry_local.py; never deployed.
@@ -87,6 +90,17 @@ def main():
     from training_workspace_routes import install
     if 'tw_content' not in app.view_functions:
         install(app,SessionFactory=SessionFactory,auth=auth)
+    from myrf_home import install as install_home
+    import app as shell
+    install_home(app, SessionFactory=SessionFactory, auth=auth,
+                 require_domain_access=shell.require_domain_access)
+    # Automatic identity precedes company resolution, activation and SSO gates.
+    hooks = app.before_request_funcs[None]
+    operator_hook = next(h for h in hooks if h.__name__ == 'local_operator_session')
+    hooks.remove(operator_hook)
+    hooks.insert(0, operator_hook)
+    from local_home_services import install as install_services
+    install_services(app)
     app.run(host='127.0.0.1',port=5097,debug=False,use_reloader=False)
 
 

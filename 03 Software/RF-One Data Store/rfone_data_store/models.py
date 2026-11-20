@@ -1136,10 +1136,12 @@ class Employee(Base):
     RF-One does not infer a precise restaurant role from it (task §10)."""
 
     __tablename__ = "employees"
-    __table_args__ = (UniqueConstraint("source_system_id", "source_employee_id"),)
+    # Compatibility provenance of the first source. Authoritative external
+    # identity is EmployeeCloverLink (merchant + employee), not this pair.
+    __table_args__ = (UniqueConstraint("location_id", "source_system_id", "source_employee_id", name="uq_employees_location_source_employee"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
 
     source_system_id: Mapped[int | None] = mapped_column(
         ForeignKey("source_systems.id"), nullable=True
@@ -1147,8 +1149,10 @@ class Employee(Base):
     source_employee_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # API reachability is independent of employment status. False records
-    # an observed 404, not a proven deletion date or termination of employment.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Compatibility observations from the already-deployed historical reader.
+    # Per-site directory links are now authoritative for availability/review.
     source_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     source_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     custom_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -1476,8 +1480,8 @@ class OperationalArea(Base):
     __table_args__ = (UniqueConstraint("restaurant_id", "name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -1519,8 +1523,8 @@ class RestaurantRole(Base):
     __table_args__ = (UniqueConstraint("restaurant_id", "name"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(
-        ForeignKey("restaurants.id"), nullable=False, index=True
+    restaurant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("restaurants.id"), nullable=True, index=True
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -10755,11 +10759,25 @@ class RFOneAccount(Base):
     `rfone_account_service.set_password` on every password change (self-
     service reset AND the existing admin/trainer reset alike), so a
     session cookie issued before the change stops matching on its very
-    next request and is treated as logged out."""
+    next request and is treated as logged out.
+
+    ADMIN_PERMISSIONS_001 — `is_admin` marks an RF-One administrator; any
+    number of accounts may hold it, granted and revoked from Accounts.
+    `is_owner` marks the ONE owner of the installation (at most one row,
+    enforced by a partial unique index): always an administrator, and
+    never demoted or deactivated by anyone through the application. A
+    Domain administrator is NOT a flag here — it is the `admin` role on
+    that Domain's `RFOneAccountDomainAccess` row (see
+    `rfone_web_session.account_is_domain_admin`)."""
 
     __tablename__ = "rfone_accounts"
     __table_args__ = (
         CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_rfone_account_status"),
+        CheckConstraint("NOT is_owner OR is_admin", name="ck_rfone_account_owner_is_admin"),
+        Index(
+            "uq_rfone_accounts_single_owner", "is_owner", unique=True,
+            postgresql_where=text("is_owner"), sqlite_where=text("is_owner"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -10768,7 +10786,11 @@ class RFOneAccount(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ACTIVE")
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    # Registry contact data for external accounts; separate from login recovery.
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -10776,6 +10798,10 @@ class RFOneAccount(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
     )
 
+
+DOMAIN_ACCESS_SCOPE_ALL = "ALL"
+DOMAIN_ACCESS_SCOPE_SELECTED = "SELECTED"
+DOMAIN_ACCESS_SCOPES = (DOMAIN_ACCESS_SCOPE_ALL, DOMAIN_ACCESS_SCOPE_SELECTED)
 
 class RFOneAccountDomainAccess(Base):
     """Grants one `RFOneAccount` entry into one RF-One Domain (`domain_code`,
@@ -10786,11 +10812,17 @@ class RFOneAccountDomainAccess(Base):
     itself, once entered, interprets it (e.g. Training's own
     'TRAINER'/'STUDENT'). This table only stores and enforces WHETHER an
     account may enter a Domain; it implements no Domain-specific
-    authorization of its own."""
+    authorization of its own.
+
+    `scope` (ACCOUNT_ITEM_ACCESS_001) says how much of the Domain an enabled
+    row opens: ALL = the whole Domain, including items added to it later;
+    SELECTED = only the items listed in `RFOneAccountDomainItemAccess` for
+    the same (account, Domain). Rows that existed before `scope` keep ALL."""
 
     __tablename__ = "rfone_account_domain_access"
     __table_args__ = (
         UniqueConstraint("account_id", "domain_code", name="uq_rfone_account_domain_access_account_domain"),
+        CheckConstraint("scope IN ('ALL', 'SELECTED')", name="ck_rfone_account_domain_access_scope"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -10798,6 +10830,9 @@ class RFOneAccountDomainAccess(Base):
     domain_code: Mapped[str] = mapped_column(String(32), nullable=False)
     role_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    scope: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DOMAIN_ACCESS_SCOPE_ALL, server_default=DOMAIN_ACCESS_SCOPE_ALL,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
@@ -15015,3 +15050,204 @@ ALL_MODELS: tuple[type[Base], ...] = (
     WineList,
     WineListItem,
 )
+
+
+# Published identity, item-access and Project models; schema is managed separately.
+class EmployeeContextLink(Base):
+    """Explicit person association; no account authority or domain fact ownership."""
+    __tablename__ = "employee_context_links"
+    __table_args__ = (CheckConstraint(
+        "(CASE WHEN rfone_account_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN acting_identity_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN training_account_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN candidate_person_id IS NULL THEN 0 ELSE 1 END + "
+        "CASE WHEN project_responsible_id IS NULL THEN 0 ELSE 1 END) = 1",
+        name="ck_employee_context_one_target"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    rfone_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), unique=True)
+    acting_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), unique=True)
+    training_account_id: Mapped[int | None] = mapped_column(ForeignKey("training_accounts.id"), unique=True)
+    candidate_person_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_persons.id"), unique=True)
+    project_responsible_id: Mapped[int | None] = mapped_column(ForeignKey("project_responsible.id"), unique=True)
+    created_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+class EmployeeCloverLink(Base):
+    """Provider identity, never a second employee registry. NULL employee is pending review."""
+
+    __tablename__ = "employee_clover_links"
+    __table_args__ = (UniqueConstraint("merchant_id", "external_employee_id", name="uq_employee_clover_identity"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    merchant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_employee_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
+    state: Mapped[str] = mapped_column(String(24), nullable=False, default="PRESENT")
+
+class EmployeeIdentityAlias(Base):
+    """Retired employee IDs after an explicit, audited identity consolidation."""
+    __tablename__ = "employee_identity_aliases"
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), primary_key=True)
+    canonical_employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class EmployeeDirectoryEvent(Base):
+    """Append-only safe source changes and human identity/review decisions."""
+
+    __tablename__ = "employee_directory_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    link_id: Mapped[int | None] = mapped_column(ForeignKey("employee_clover_links.id"), nullable=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class RFOneAccountDomainItemAccess(Base):
+    """One Domain item (`item_code`, as listed for that Domain in
+    `RF-One Web/domain_registry.py`) that an account may use when its
+    `RFOneAccountDomainAccess.scope` for the Domain is SELECTED. Ignored when
+    the scope is ALL. Like `domain_code`, `item_code` is never validated
+    against a DB-side list: the registry is the one catalog of items."""
+
+    __tablename__ = "rfone_account_domain_item_access"
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id", "domain_code", "item_code", name="uq_rfone_account_domain_item_access_account_domain_item",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=False, index=True)
+    domain_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+class Project(Base):
+    __tablename__ = "project"
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="ck_project_name_not_blank"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+class ProjectChapter(Base):
+    __tablename__ = "project_chapter"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_project_chapter_title_not_blank"),
+        Index("ix_project_chapter_project_id", "project_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+class ProjectTask(Base):
+    """A Task, or a child activity when `parent_task_id` is set. The planned
+    end (start + planned days − 1, calendar days) is computed, never stored.
+    Percentage and actual days are entered by hand; nothing is derived."""
+
+    __tablename__ = "project_task"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_project_task_title_not_blank"),
+        CheckConstraint("percent_complete BETWEEN 0 AND 100", name="ck_project_task_percent_range"),
+        CheckConstraint("planned_duration_days >= 1", name="ck_project_task_planned_days_positive"),
+        CheckConstraint(
+            "actual_duration_days IS NULL OR actual_duration_days >= 0",
+            name="ck_project_task_actual_days_not_negative",
+        ),
+        CheckConstraint(
+            "parent_task_id IS NULL OR parent_task_id <> id", name="ck_project_task_not_own_parent"
+        ),
+        Index("ix_project_task_chapter_id", "chapter_id"),
+        Index("ix_project_task_parent_task_id", "parent_task_id"),
+        Index("ix_project_task_responsible_id", "responsible_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("project_chapter.id"), nullable=False)
+    parent_task_id: Mapped[int | None] = mapped_column(ForeignKey("project_task.id"), nullable=True)
+    # Optional, one per Task, always a Responsible of the Task's own Project
+    # (checked by `rfone_data_store.projects.service`).
+    responsible_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_responsible.id", name="fk_project_task_responsible_id"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    percent_complete: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    planned_start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    planned_duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+class ProjectResponsible(Base):
+    """A project-local responsible, optionally linked to the RF-One person.
+    Local name/history is retained; confirmed identity lives in EmployeeContextLink.
+    Native selections use an identity key; free names use a normalized name key.
+    No access or organizational authority is implied.
+    """
+
+    __tablename__ = "project_responsible"
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="ck_project_responsible_name_not_blank"),
+        UniqueConstraint("project_id", "name_key", name="uq_project_responsible_project_name_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("project.id", name="fk_project_responsible_project_id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+class ProjectTaskDependency(Base):
+    """`predecessor_task_id` should finish before `successor_task_id`
+    starts (finish-to-start). Informational only: nothing is rescheduled."""
+
+    __tablename__ = "project_task_dependency"
+    __table_args__ = (
+        CheckConstraint(
+            "predecessor_task_id <> successor_task_id", name="ck_project_task_dependency_not_self"
+        ),
+        Index("ix_project_task_dependency_successor", "successor_task_id"),
+    )
+
+    predecessor_task_id: Mapped[int] = mapped_column(ForeignKey("project_task.id"), primary_key=True)
+    successor_task_id: Mapped[int] = mapped_column(ForeignKey("project_task.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

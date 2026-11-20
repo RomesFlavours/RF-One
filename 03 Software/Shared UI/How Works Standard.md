@@ -1,5 +1,15 @@
 # How Works Standard
 
+## Mandatory help placement update (2026-11-14)
+
+**Applies to all RF-One pages and modal windows.** The contextual help link
+is right-aligned immediately below the divider between the title/header
+and the content. This replaces the older placement above the navigation
+divider wherever that earlier placement is specified below. The help
+opens the explanation of the current page/modal and preserves the work
+in progress; modal close controls remain visible.
+
+
 **Code:** UI_HOW_WORKS_001
 **Status:** standing, mandatory. Product Owner instruction, 2026-11-02.
 **Applies to:** every operational page of every RF-One Domain and Module, in every RF-One app (RF-One Web, Selection, Tips, Training, Invoice Intake and any future app on the RF-One login), and every release of them.

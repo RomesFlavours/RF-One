@@ -1,0 +1,12 @@
+recovery/
+rfone.db
+rfone.db-wal
+rfone.db-shm
+rfone.db-journal
+__pycache__/
+*.pyc
+recovery-manifest.json
+
+# Private isolated performance evidence and pre-index recovery copies.
+backups/performance-20261117/
+backups/before-performance-index-*.db
