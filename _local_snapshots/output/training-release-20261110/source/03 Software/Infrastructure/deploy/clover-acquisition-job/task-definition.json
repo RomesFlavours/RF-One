@@ -1,0 +1,36 @@
+{
+  "family": "rfone-clover-acquisition-job",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {"cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX"},
+  "executionRoleArn": "arn:aws:iam::418674484214:role/rfone-clover-acquisition-job-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "clover-acquisition-job",
+      "image": "418674484214.dkr.ecr.us-east-1.amazonaws.com/rfone-tips:latest",
+      "essential": true,
+      "workingDirectory": "/app/RF-One Data Store",
+      "command": ["python", "-m", "rfone_data_store.technical.connectors.clover.acquisition_jobs", "--help"],
+      "environment": [
+        {"name": "PYTHONUNBUFFERED", "value": "1"},
+        {"name": "PYTHONPATH", "value": "/app/RF-One Data Store:/app/Clover Data Explorer"}
+      ],
+      "secrets": [
+        {"name": "RFONE_DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/database-url-chNZo8"},
+        {"name": "CLOVER_API_TOKEN", "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-api-token-lTKFIX"},
+        {"name": "CLOVER_MERCHANT_ID", "valueFrom": "arn:aws:secretsmanager:us-east-1:418674484214:secret:rfone-tips/clover-merchant-id-Gs8iBu"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/rfone-clover-acquisition-job",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "job",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}

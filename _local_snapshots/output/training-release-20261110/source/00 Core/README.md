@@ -1,0 +1,102 @@
+# RF-One Core
+
+## Purpose
+
+The Core defines the fundamental concepts, principles and architectural rules shared by every RF-One Domain and Module.
+
+It establishes the common language of the platform and guarantees consistency across the entire system.
+
+The Core is independent from any specific business domain.
+
+---
+
+# Authority
+
+`00 Core/` holds the **highest canonical authority** in the repository for universal RF-One ontology, conceptual architecture, reasoning principles, epistemic principles, and domain-independent architecture.
+
+Core must not contain Restaurant-specific (or any other single-Domain) business rules, and must not contain RF-One's own commercial strategy as a company — those belong to `01 Domains/` and `09 Strategy/` respectively.
+
+Relationship to the other layers: **Core ≠ Domain ≠ Product ≠ Runtime**.
+
+- `01 Domains/` applies and specializes Core concepts for a specific field; it does not redefine them.
+- `02 Products/` combines Core capabilities and Domains into commercial offerings; it does not redefine Core or Domain semantics.
+- `03 Software/` is authoritative for actual runtime behavior, but not for the conceptual meaning of Core/Domain concepts.
+
+A concept existing in the Core does not imply that every Domain must use it, that every implementation must collect data for it, or that every Product must expose it — see `CLAUDE.md`.
+
+---
+
+# Scope
+
+The Core defines:
+
+- business concepts;
+- architectural principles;
+- implementation principles;
+- domain-independent definitions;
+- external data mapping principles;
+- shared terminology.
+
+It does not define business logic for any specific Domain or Module.
+
+---
+
+# Objectives
+
+The Core ensures that every RF-One implementation:
+
+- uses the same business language;
+- follows the same architectural principles;
+- preserves conceptual consistency;
+- remains independent from implementation technology;
+- evolves without breaking existing knowledge.
+
+---
+
+# Core Documents
+
+| Document | Purpose |
+|----------|---------|
+| ArchitecturePrinciples.md | Defines the architectural principles of RF-One. |
+| ImplementationGuidelines.md | Defines implementation guidelines shared by every module. |
+| ExternalDataMappingPrinciples.md | Defines how external systems are mapped into the RF-One Domain Model. |
+| Glossary.md | Defines the shared vocabulary used throughout RF-One. |
+| Entity.md | Defines the concept of a Business Entity. |
+| Goal.md | Defines the concept of a Goal. |
+| Process.md | Defines the concept of a Business Process. |
+| Relationship.md | Defines how business concepts relate to each other. |
+| Corporate.md | Defines the highest organizational Entity (governance, ownership, strategy). |
+| Brand.md | Defines the commercial identity through which a Corporate presents itself to the market. |
+| Operational Unit.md | Defines the fundamental operational Entity responsible for executing business operations. |
+| OperationalArea.md | Defines how business capabilities are logically organized. |
+| RF-ONE Core Principles.md | Defines the fundamental principles governing the evolution of RF-One. |
+| Core Evolution.md | Records the history and process of Core evolution. |
+| Organizational Responsibility.md | Defines Position, its scope, its relationship to the person(s) who occupy it, temporary delegation/coverage, and Process Ownership. |
+| ConceptualArchitecture/ | The canonical RF-One Core Conceptual Architecture (Approved Core 2.0, documents 00–14): Subject, Reality, Desire, Goal, Reality Check, Decision, Action, Outcome, Learning, Temporal Coherence, Epistemic Boundary, Subject Sovereignty, Business Autopilot and Intelligence Engine, Net/Retained Outcome and Lawful Structural Optimization, Identity/Authority/Delegation/Accountability/Auditability, RF-One Intelligence and User Relationship, Process Autonomy and Exception-Driven Human Involvement, Attention Management, Process Activation and Trigger Intelligence, Cognito (RF-One Cognitive Intelligence). Start at [ConceptualArchitecture/00_RF-One_Core_Vision.md](ConceptualArchitecture/00_RF-One_Core_Vision.md). |
+| ConceptualArchitecture/20_RF-One_Selection_Pills_Cognitive_Model.md | Listed here only for discoverability — physically located inside `ConceptualArchitecture/` but **not** Approved Core 2.0 at the same canonical level as documents 00–14 above. Its own status is "CONCEPTUAL BASELINE — FROZEN FOR THE DECISIONS RECORDED HERE; UNRESOLVED ITEMS REMAIN OPEN," and it records genuine unreconciled items (its own §25). Its folder location does not imply parity of canonical authority with 00–14. |
+| ConceptualArchitecture/15_Human_Operational_State_and_Adaptive_Cognito_Interaction.md | Listed here only for discoverability — status "APPROVED — Post-Baseline Conceptual Extension," produced and ratified after the `rf-one-2.0-baseline` tag, not part of the Approved 00–14 canonical set (see `Core Evolution.md`). Defines Human Operational State (temporary, contextual condition of a person at the current operational moment, distinct from stable person knowledge) and Adaptive Cognito Interaction (how Cognito's Human Interaction capability may adapt to it), including the boundary against medical diagnosis, the boundary against creating Authority, and the privacy/consent boundary for authorized physiological signals. Promotion to a numbered Core Principle remains a separate, future decision. |
+| ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md | Listed here only for discoverability — status "APPROVED — Post-Baseline Conceptual Extension," ratified by the Product Owner after document 15 above, not part of the Approved 00–14 canonical set (see `Core Evolution.md`). Defines Ambient Operational Context (what is happening around a person, distinct from Human Operational State) and In-Flow Cognito Assistance (a specialization of Cognito's Human Interaction capability that uses it to assist inside real-time work without breaking it), including the boundary against employee surveillance/permanent recording and the boundary against creating Authority. Recognizes the Restaurant Domain's existing Service Copilot module as its first Domain-level consumer instance, without redefining it. Promotion to a numbered Core Principle remains a separate, future decision. |
+| ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md | Listed here only for discoverability — status "APPROVED — Post-Baseline Conceptual Extension," ratified by the Product Owner, a sub-extension of document 16 above, not part of the Approved 00–14 canonical set (see `Core Evolution.md`). Documents Visual/Video Context as one source category of Ambient Operational Context: authorized images/video as scene-level Ambient Evidence (occupancy, queue length, a table occupied), never automatic Fact, never a judgment about a person, never a basis for face/biometric/emotion recognition. Promotion to a numbered Core Principle remains a separate, future decision. |
+
+---
+
+# Design Philosophy
+
+RF-One is designed around business knowledge.
+
+Business concepts are defined before software implementation.
+
+Technology exists to support the Domain, never to define it.
+
+Every Domain and Module inherits the principles defined by the Core.
+
+---
+
+# Design Principles
+
+- One shared business language.
+- One definition for every core concept.
+- Domain before technology.
+- Architecture before implementation.
+- Business knowledge before data.
+- Consistency across all Domains and Modules.

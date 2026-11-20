@@ -1,0 +1,7 @@
+{
+  "_comment": "Everything that differs on this PC. Keep it minimal. Python: a venv dedicated to Bank, local to this PC and outside OneDrive (%LOCALAPPDATA%\\RF-One\\Bank\\venv), with requirements.lock.txt installed \u2014 the system Python and its libraries are not touched.",
+  "computer_name": "MINIPC-KSYR1",
+  "python": "C:\\Users\\servi\\AppData\\Local\\RF-One\\Bank\\venv\\Scripts\\python.exe",
+  "onedrive": "C:\\Users\\servi\\OneDrive",
+  "verified": "2026-10-11T16:43:28-04:00 by Configura PC on MINIPC-KSYR1, code 1a06056eb0"
+}

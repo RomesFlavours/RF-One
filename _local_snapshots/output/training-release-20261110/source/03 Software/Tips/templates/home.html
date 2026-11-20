@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# Includes the outcome of a Sync Now started from this tab: RF-One Web
+   records it in the shared RF-One session and sends the person back here. #}
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}
+      <div class="error">{{ message }}</div>
+    {% elif category == "info" %}
+      <div class="info">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+{% if restaurant %}
+<p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+{% else %}
+<p class="error">No Restaurant exists in this database yet.</p>
+{% endif %}
+
+{# UI_NAVIGATION_AND_LOCAL_TIME_001 — Sync Now where it is needed. The
+   button posts to RF-One Web's ONE Sync Now action (same login, access,
+   CSRF and one-job-per-location lock); Tips starts nothing itself. #}
+{% set busy = clover.active_run is not none %}
+<div class="card" id="clover-acquisition"{% if busy %} data-active-run-id="{{ clover.active_run.id }}"{% endif %}>
+  <h2>Clover Acquisition</h2>
+  <p>
+    Last update:
+    {% if clover.sync_point %}<strong>{{ clover.sync_point.at|local_dt(tz, with_zone=True) }}</strong>
+    {% else %}<strong>none yet</strong>{% endif %}
+  </p>
+  {% if busy %}
+    <p id="sync-in-progress"><span class="badge warn">{{ 'Correction Sync in progress' if clover.active_run.acquisition_mode == 'CORRECTION' else 'Sync in progress' }}</span>
+      <span class="muted">#{{ clover.active_run.id }}{% if clover.active_requested_by %}, requested by {{ clover.active_requested_by }}{% elif clover.active_run.acquisition_mode == 'CORRECTION' %}, automatic — a few seconds{% endif %}</span></p>
+  {% endif %}
+  {% if not clover.sync_now_url %}
+    <p class="error">
+      RF-One Web navigation is not configured (RFONE_WEB_BASE_URL is not set), so Sync Now is not available
+      here. Ask an RF-One administrator to set RFONE_WEB_BASE_URL for Tips.
+    </p>
+  {% elif clover.may_sync %}
+    <form method="post" action="{{ clover.sync_now_url }}" onsubmit="return guardSyncNow()">
+      <input type="hidden" name="csrf_token" value="{{ clover.csrf_token }}">
+      <input type="hidden" name="return_to" value="tips">
+      <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not clover.location_id or not clover.sync_point) else '' }}>Sync Now</button>
+    </form>
+  {% elif clover.signed_in %}
+    <p class="muted">Sync Now requires the Clover Acquisition access on your RF-One account.</p>
+  {% else %}
+    <p class="muted"><a href="{{ clover.login_url }}">Sign in to RF-One</a> to use Sync Now.</p>
+  {% endif %}
+  {% if clover.full_page_url %}
+    <p style="font-size:.85rem;"><a href="{{ clover.full_page_url }}">Open Clover Acquisition</a></p>
+  {% endif %}
+</div>
+<script>
+  // UI guard only: RF-One Web enforces identity, access and the lock.
+  function guardSyncNow() {
+    var btn = document.getElementById('sync-now-btn');
+    if (btn.dataset.submitting === '1') { return false; }
+    btn.dataset.submitting = '1';
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+    return true;
+  }
+  (function () {
+    var box = document.getElementById('clover-acquisition');
+    var runId = box && box.dataset.activeRunId;
+    if (!runId) { return; }
+    setInterval(function () {
+      fetch('{{ clover.status_url or '' }}', {cache: 'no-store', credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (s) { if (String(s.active_run_id) !== String(runId)) { window.location.reload(); } })
+        .catch(function () {});
+    }, 5000);
+  })();
+</script>
+
+<div class="card">
+  <h2>Imported Clover data</h2>
+  <form method="get" action="{{ url_for('home') }}">
+    <div class="form-row">
+      <div>
+        <label for="from_date">From date</label>
+        <input type="date" id="from_date" name="from_date" value="{{ from_date }}" required>
+        {% if no_business_date_data %}
+          <p class="muted" style="font-size:.72rem; margin-top:.25rem;">
+            No Clover Business Date on file yet for this Restaurant.
+          </p>
+        {% endif %}
+      </div>
+      <div>
+        <label for="through_date">Through date</label>
+        <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
+      </div>
+      <div>
+        <button type="submit">Show imported data</button>
+      </div>
+    </div>
+  </form>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">Read-only: shows what RF-One already holds, imports nothing. Days and times are local ({{ zone_label(tz) }}).</p>
+</div>
+
+{# IMPORTED_CLOVER_DATA_CONTROL_001 — summaries first, to hold next to
+   Clover's Orders and Transactions reports; the listings come after.
+   Definitions: Tips/imported_data_view.py. #}
+{% macro money(cents) %}${{ "{:,.2f}".format((cents or 0) / 100) }}{% endmacro %}
+{% macro tile(label, value, extra='', note='') %}
+  <div class="control-tile {{ extra }}"><div class="label">{{ label }}</div><div class="value">{{ value }}</div>{% if note %}<div class="note">{{ note }}</div>{% endif %}</div>
+{% endmacro %}
+{% set period_chosen = from_date and through_date %}
+
+<div class="card" id="orders-summary">
+  <h2>Orders</h2>
+  {% if period_chosen %}
+  <div class="control-grid">
+    {{ tile("All orders", orders_summary.all) }}
+    {{ tile("Completed orders", orders_summary.completed) }}
+    {{ tile("Incomplete orders", orders_summary.incomplete) }}
+    {{ tile("Incomplete order value", money(orders_summary.incomplete_value)) }}
+  </div>
+  {% else %}
+  <p class="empty">Select a From/Through date above.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="transactions-summary">
+  <h2>Transactions</h2>
+  {% if period_chosen %}
+  <div class="control-grid">
+    {{ tile("Payments total", money(payments_summary.total), note="tips excluded") }}
+    {{ tile("Number of payments", payments_summary.count, note=(payments_summary.failed ~ " failed not counted") if payments_summary.failed else "") }}
+    {{ tile("Voluntary Tips", money(payments_summary.voluntary_tips)) }}
+    {{ tile("Gratuity", money(payments_summary.gratuity)) }}
+    {{ tile("Total Tips + Gratuity", money(payments_summary.tips_plus_gratuity), extra="sum") }}
+    {{ tile("Taxes and Fees", money(payments_summary.taxes_and_fees), note="gratuity excluded") }}
+  </div>
+  {% else %}
+  <p class="empty">Select a From/Through date above.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Orders detail</h2>
+  {% if period_chosen %}
+    {% if orders_rows %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Order ID</th><th>Employee</th><th class="num">Total</th><th class="num">Payments</th><th class="num">Gratuity</th><th>Settlement Time</th><th>State</th><th>Payment State</th></tr></thead>
+      <tbody>
+      {% for row in orders_rows %}
+        <tr>
+          <td>{{ row.source_order_id }}</td>
+          <td>{{ employee_names.get(row.employee_id, 'Unknown employee' if row.employee_id else '-') }}</td>
+          <td class="num">{{ money(row.total) if row.total is not none else '-' }}</td>
+          <td class="num">{{ row.num_payments }}{% if row.num_payments > 1 %} <span class="badge warn">split</span>{% endif %}</td>
+          <td class="num">{% if row.gratuity_total %}{{ money(row.gratuity_total) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{{ row.settlement_time|local_dt(tz, empty='(not settled)') }}</td>
+          <td>{{ row.state or '-' }}</td>
+          <td>{% if row.payment_state == 'Paid' %}Paid{% else %}<span class="badge warn">{{ row.payment_state }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">No Orders in the selected period.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Select a From/Through date above to view already-imported Orders for that period.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Transactions detail</h2>
+  {% if period_chosen %}
+    {% if payments_rows %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Payment</th><th>Order</th><th>Employee</th><th class="num">Amount</th><th class="num">Voluntary Tip</th><th class="num">Gratuity</th><th class="num">Tip + Gratuity</th><th>Time</th><th>Result</th></tr></thead>
+      <tbody>
+      {% for row in payments_rows %}
+        <tr{% if not row.success %} class="row-muted"{% endif %}>
+          <td>{{ row.source_payment_id }}</td>
+          <td>{{ row.source_order_id or '-' }}</td>
+          <td>{{ employee_names.get(row.employee_id, 'Unknown employee' if row.employee_id else '-') }}</td>
+          <td class="num">{{ money(row.amount) }}</td>
+          <td class="num">{% if row.tip_amount is not none %}{{ money(row.tip_amount) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td class="num">{% if row.gratuity %}{{ money(row.gratuity) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td class="num">{% if row.tip_plus_gratuity is not none %}{{ money(row.tip_plus_gratuity) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{{ row.created_at|local_dt(tz) }}</td>
+          <td>{% if row.success %}{{ row.result }}{% else %}<span class="badge bad">{{ row.result or 'unknown' }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted" style="font-size:.75rem;">Employee here is the Payment's employee (audit only; tips follow the Order's employee). Gratuity belongs to the Order and is shown once, on its first successful Payment. Failed attempts count in no total.</p>
+    {% else %}
+    <p class="empty">No Payments in the selected period.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Select a From/Through date above to view already-imported Payments for that period.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Imported Shifts (clock-in / clock-out source facts)</h2>
+  <p class="muted" style="font-size:.78rem;">Not yet used for any eligibility or distribution decision — made available for the future Tip Distribution Engine only.</p>
+  {% if from_date and through_date %}
+    {% if shifts_rows %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Employee</th><th>Clock-in</th><th>Clock-out</th><th>Source Shift ID</th></tr></thead>
+      <tbody>
+      {% for row in shifts_rows %}
+        <tr>
+          <td>{{ employee_names.get(row.employee_id, 'Unknown employee' if row.employee_id else '-') }}</td>
+          <td>{{ row.clock_in|local_dt(tz) }}</td>
+          <td>{% if row.clock_out %}{{ row.clock_out|local_dt(tz) }}{% else %}<span class="muted">(still clocked in)</span>{% endif %}</td>
+          <td class="muted" style="font-size:.78rem;">{{ row.source_shift_id }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="empty">No Shifts recorded for this Restaurant in the selected period yet.</p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Select a From/Through date above to view already-imported Shifts for that period.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

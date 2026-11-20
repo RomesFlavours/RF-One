@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+    <label>Immagine o PDF della fattura</label>
+    <input type="file" name="invoice_file" accept=".jpg,.jpeg,.png,.pdf,.webp,.bmp,.tiff" required>
+    <p class="hint">Foto scattate al telefono vengono lette con OCR (Tesseract): aspettati di dover correggere qualche campo. I PDF con testo digitale vengono letti in modo pulito.</p>
+    <div class="actions">
+      <button type="submit">Carica e leggi</button>
+    </div>
+  </form>
+</div>
+<p class="hint" style="margin-top:1rem;">I dati salvati finiscono in: <code>{{ excel_path }}</code></p>
+<p class="hint"><a href="{{ url_for('mailbox_acquisitions') }}">Vedi le fatture acquisite via email (mailbox)</a></p>
+<p class="hint"><a href="{{ url_for('review_queue') }}">Purchased Human Review — coda documenti HUMAN</a></p>
+<p class="hint"><a href="{{ url_for('acquisitions_list') }}">Acquisizioni (stato lettura, errori, riprova)</a> &nbsp;·&nbsp; <a href="{{ url_for('documents_list') }}">Tutti i documenti acquisiti</a></p>
+{% endblock %}

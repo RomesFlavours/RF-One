@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{# Roles lives under Configuration: its tab stays highlighted (TIPS_ACCESS_AND_DRILLDOWN_001). #}
+{% set active_nav = 'configuration' %}
+{% set crumbs = [('Configuration', url_for('configuration_home')), ('Roles', url_for('restaurant_roles_home')), ('New Role' if mode == 'create' else 'Edit Role', None)] %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}<div class="error">{{ message }}</div>{% endif %}
+  {% endfor %}
+{% endwith %}
+
+
+<div class="card">
+  <h2>{{ "New Role" if mode == "create" else "Edit Role" }}</h2>
+  {% if restaurant %}
+  <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+  {% endif %}
+
+  <form method="post">
+    <div class="form-row">
+      <div>
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" value="{{ role.name if role else '' }}" placeholder="e.g. Server" required autofocus>
+      </div>
+      <div>
+        <label for="code">Code</label>
+        <input type="text" id="code" name="code" value="{{ role.code if role and role.code else '' }}" placeholder="optional">
+      </div>
+      <div>
+        <label for="description">Description</label>
+        <input type="text" id="description" name="description" value="{{ role.description if role and role.description else '' }}" placeholder="optional">
+      </div>
+      <div>
+        <label for="active">Active</label>
+        <input type="checkbox" id="active" name="active" {{ "checked" if (role.active if role else True) else "" }}>
+      </div>
+      <div>
+        <button type="submit">{{ "Create Role" if mode == "create" else "Save changes" }}</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

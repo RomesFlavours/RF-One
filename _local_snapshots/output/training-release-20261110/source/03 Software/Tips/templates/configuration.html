@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+
+{# CONFIGURATION_TAB_001 — all Tips configuration in one place: the former
+   "Distribution Rules" and "Tips Configuration" tabs, unchanged, as two
+   sections of one page. The actions keep their own routes; every one of
+   them comes back here. #}
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}<div class="error">{{ message }}</div>
+    {% elif category == "info" %}<div class="info">{{ message }}</div>
+    {% elif category == "summary" %}<div class="card"><p>{{ message }}</p></div>{% endif %}
+  {% endfor %}
+{% endwith %}
+
+<h2 class="section-title" id="distribution-rules">Distribution Rules</h2>
+{% include "_distribution_rules_section.html" %}
+
+<h2 class="section-title" id="general-configuration">General Configuration</h2>
+{% include "_general_configuration_section.html" %}
+
+{% endblock %}

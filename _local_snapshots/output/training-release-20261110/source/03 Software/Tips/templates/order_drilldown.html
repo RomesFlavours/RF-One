@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% set crumbs = [('Calculate Tips', url_for('calculate_tips_home', start_at=start_at, end_at=end_at)), ('Order #' ~ drilldown.order.id, None)] %}
+{% block content %}
+
+
+<div class="card">
+  <h2>Order #{{ drilldown.order.id }} — why this amount?</h2>
+  <div class="meta-row">
+    <div class="meta-item"><div class="label">Settlement Time</div><div class="value">{{ drilldown.settlement_time|local_dt(tz, with_zone=True) }}</div></div>
+    <div class="meta-item"><div class="label">Voluntary Tip</div><div class="value">${{ "%.2f"|format(drilldown.voluntary_tip_minor / 100) }}</div></div>
+    <div class="meta-item"><div class="label">Automatic Gratuity</div><div class="value">${{ "%.2f"|format(drilldown.gratuity_minor / 100) }}</div></div>
+    <div class="meta-item"><div class="label">Gross Earned Tips</div><div class="value">${{ "%.2f"|format(drilldown.gross_earned_tips_minor / 100) }}</div></div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">Order Employee (Gross Tip owner): {{ order_employee_name or ('Unknown employee' if drilldown.order.source_employee_id else '-') }} &middot; State: {{ drilldown.order.state or '-' }} &middot; Payment State: {{ drilldown.order.payment_state or '-' }}</p>
+
+  {% if drilldown.refunds %}
+  <div class="error" style="margin-top:.8rem;">
+    This Order has {{ drilldown.refunds|length }} Refund(s) on record — never automatically reflected in the
+    calculation below (see the functional spec's Refund rule).
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Applied Rules</h2>
+  {% if not drilldown.allocations %}
+  <p class="empty">No Tip Distribution Rule applied to this Order (the Order's owner did not hold a matching Source Role at Settlement Time, or no active rule is configured).</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Rule Version</th><th>Calculation Base</th><th>Rate</th><th>Base Amount</th><th>Generated Pool</th>
+        <th>Recipient</th><th>Allocated</th><th>Eligibility Basis</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in drilldown.allocations %}
+      <tr>
+        <td>#{{ a.rule_version_id }}</td>
+        <td>{{ a.calculation_base }}</td>
+        <td>{{ a.rate }}%</td>
+        <td>${{ "%.2f"|format(a.base_amount_minor / 100) }}</td>
+        {# No pool was generated when nobody was eligible. RF-One does not
+           compute or show what a pool "would have been" — the Service
+           Owner simply keeps 100%, and the Eligibility Basis column says
+           why, qualitatively. #}
+        <td>
+          {% if a.pool_amount_minor %}${{ "%.2f"|format(a.pool_amount_minor / 100) }}
+          {% else %}<span class="muted" title="No pool was generated for this Order — the Service Owner keeps 100%">&mdash;</span>{% endif %}
+        </td>
+        <td>
+          {% if a.recipient_employee_id %}{{ recipient_names.get(a.recipient_employee_id, 'Unknown employee') }}
+          {% else %}<span class="badge warn">no eligible recipient</span>{% endif %}
+        </td>
+        <td>${{ "%.2f"|format(a.allocated_amount_minor / 100) }}</td>
+        <td class="muted" style="font-size:.78rem;">{{ a.recipient_eligibility_basis }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

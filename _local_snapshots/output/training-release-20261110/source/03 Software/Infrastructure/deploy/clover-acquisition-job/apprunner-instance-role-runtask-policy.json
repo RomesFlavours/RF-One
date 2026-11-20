@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartCloverAcquisitionJob",
+      "Effect": "Allow",
+      "Action": "ecs:RunTask",
+      "Resource": "arn:aws:ecs:us-east-1:418674484214:task-definition/rfone-clover-acquisition-job*",
+      "Condition": {"ArnEquals": {"ecs:cluster": "arn:aws:ecs:us-east-1:418674484214:cluster/rfone-jobs"}}
+    },
+    {
+      "Sid": "PassJobExecutionRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::418674484214:role/rfone-clover-acquisition-job-execution-role",
+      "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}
+    }
+  ]
+}

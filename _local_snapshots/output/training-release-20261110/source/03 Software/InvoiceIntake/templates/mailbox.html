@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="hint">Mailbox: <code>{{ mailbox }}</code> &nbsp;·&nbsp; Acquisizioni recenti (max {{ records|length }})</p>
+
+{% if not records %}
+<div class="card"><p class="hint">Nessuna acquisizione registrata ancora.</p></div>
+{% else %}
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Ricevuta</th>
+        <th>Mittente</th>
+        <th>Allegato</th>
+        <th>Fornitore</th>
+        <th>Stato</th>
+        <th>NORMALIZED/HUMAN</th>
+        <th>Errore/Retry</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.received_at or '—' }}</td>
+        <td>{{ r.sender or '—' }}</td>
+        <td>{{ r.attachment_filename }}</td>
+        <td>{{ r.supplier_name or '—' }}</td>
+        <td>{{ r.status }}</td>
+        <td>{{ r.functional_status or '—' }}</td>
+        <td>
+          {% if r.failure_reason %}
+            {{ r.failure_reason }} (retry: {{ r.retry_count }})
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="actions">
+  <a class="btn secondary" href="{{ url_for('index') }}">Torna a Invoice Intake</a>
+</div>
+{% endblock %}

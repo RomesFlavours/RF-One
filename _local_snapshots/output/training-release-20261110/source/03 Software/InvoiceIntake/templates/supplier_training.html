@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="hint"><a href="{{ url_for('review_queue') }}">&larr; coda review</a></p>
+<h2>Supplier + Format training</h2>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+{% if not rows %}
+<div class="card"><p class="hint">Nessuna osservazione registrata ancora.</p></div>
+{% else %}
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Supplier</th><th>Format</th><th>Reviewed</th><th>Normalized</th><th>Human</th>
+        <th>Streak corretto</th><th>Soglia</th><th>Trust state</th><th>Eleggibile</th>{% if can_validate %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.supplier_name }}</td>
+        <td>{{ r.source_format }}</td>
+        <td>{{ r.reviewed_count }}</td>
+        <td>{{ r.normalized_count }}</td>
+        <td>{{ r.human_count }}</td>
+        <td>{{ r.consecutive_correct_count }}</td>
+        <td>{{ r.threshold }}</td>
+        <td>
+          {% if r.trust_state == 'DEGRADED' %}<strong style="color:#8a3b2e">DEGRADED</strong>
+          {% elif r.trust_state == 'VALIDATED' %}<strong style="color:green">VALIDATED</strong>
+          {% else %}{{ r.trust_state }}{% endif %}
+        </td>
+        <td>
+          {% if r.eligible %}<strong style="color:green">ELIGIBLE FOR VALIDATION</strong>{% else %}—{% endif %}
+          <div class="hint">{{ r.eligibility_reason }}</div>
+        </td>
+        {% if can_validate %}
+        <td>
+          {% if r.eligible %}
+          <form method="post" action="{{ url_for('supplier_training_validate') }}">
+            <input type="hidden" name="supplier_name" value="{{ r.supplier_name }}">
+            <input type="hidden" name="source_format" value="{{ r.source_format }}">
+            <button type="submit">VALIDATE FORMAT</button>
+          </form>
+          {% else %}
+          <button disabled>VALIDATE FORMAT</button>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

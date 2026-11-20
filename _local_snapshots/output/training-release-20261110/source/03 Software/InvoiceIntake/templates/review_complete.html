@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Documento #{{ doc_id }} — <span style="color: {{ 'green' if result.functional_status == 'NORMALIZED' else '#8a3b2e' }}">{{ result.functional_status }}</span></h2>
+{% if result.functional_status == 'NORMALIZED' %}
+<div class="card"><p>Tutti i campi bloccanti sono risolti. Il documento è ora <strong>NORMALIZED</strong>.</p></div>
+{% else %}
+<div class="card">
+  <p>Restano campi bloccanti non risolti — il documento resta <strong>HUMAN</strong>:</p>
+  <ul>{% for r in result.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+<div class="actions">
+  <a class="btn secondary" href="{{ url_for('review_detail', doc_id=doc_id) }}">Torna al documento</a>
+  <a class="btn secondary" href="{{ url_for('review_queue') }}">Torna alla coda</a>
+</div>
+{% endblock %}
