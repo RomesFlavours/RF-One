@@ -17,16 +17,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   // Indeed forwarding addresses may never reach the person: ask for the real email.
   const email = form.elements.email;
-  const warning = document.createElement('p');
+  const warning = document.createElement('span');
   warning.className = 'error';
   warning.setAttribute('role', 'alert');
   warning.textContent = 'This is an Indeed forwarding address. Ask for their real email.';
   warning.hidden = true;
-  email.closest('label').after(warning);
+  warning.style.marginTop = '.5rem';
+  // Inside the email box's own grid cell, so it always sits right under it.
+  email.after(warning);
   const checkEmail = () => {
     const domain = (email.value.trim().toLowerCase().split('@')[1] || '');
     const forwarding = domain === 'indeedemail.com' || domain.endsWith('.indeedemail.com');
     warning.hidden = !forwarding;
+    warning.style.display = forwarding ? 'block' : 'none';
     email.setCustomValidity(forwarding ? warning.textContent : '');
   };
   email.addEventListener('input', checkEmail);
