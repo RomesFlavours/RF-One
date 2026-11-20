@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-"""HTTP-level verification for the "From date" prefill of the Tips home
-"Imported Clover data" view (formerly part of Historical Backfill, whose
-start actions now live in RF-One Web's Clover Acquisition page): must default to the latest operational `Order.business_date` already on
+"""HTTP-level verification for Historical Backfill's "From date" prefill:
+must default to the latest operational `Order.business_date` already on
 file for the Restaurant's Clover Location(s) - never `created_at`/
 `modified_at` (ingestion/sync timestamps) - inserted as the exact value
 (never advanced by a day), left editable, and left blank (with a message)
@@ -36,7 +35,6 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
-from tips_test_session import signed_in_client  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 
 UTC = timezone.utc
@@ -54,7 +52,7 @@ def main() -> int:
             print(f"FAILED: {description}" + (f" ({detail})" if detail else ""))
 
     try:
-        client = signed_in_client(tips_app)
+        client = tips_app.app.test_client()
 
         # -----------------------------------------------------------------
         # No Restaurant at all yet: unaffected by this change (pre-existing

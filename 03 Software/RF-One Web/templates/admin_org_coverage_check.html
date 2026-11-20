@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Organizational Coverage Check · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Coverage Check', None)]) }}
+<p><a href="{{ url_for('admin_organization') }}">&larr; Organization</a></p>
 <h1>Organizational Coverage Check</h1>
 <p class="empty">
   "If this Process/Phase raised Attention right now, is there a Position that can actually receive it?"

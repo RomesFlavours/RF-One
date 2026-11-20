@@ -36,12 +36,9 @@ b8f1c4a2e6d9_add_selection_resume_screening_schema.py`).
 
 from __future__ import annotations
 
-import io
-import mimetypes
 import os
 import sys
 import uuid
-from urllib.parse import urlencode
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Store"))
@@ -60,9 +57,6 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 from flask import session as flask_session  # noqa: E402
 
 from rfone_data_store import acting_identity_service as acting_id_svc  # noqa: E402
-from rfone_data_store import public_entry  # noqa: E402
-from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
-from rfone_data_store.selection import document_store  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store.database import (  # noqa: E402
     create_configured_engine, create_session_factory, get_database_url,
@@ -122,13 +116,8 @@ from rfone_data_store.selection.core import signal_model as sigm  # noqa: E402
 from rfone_data_store.selection.core import stage_model as stgm  # noqa: E402
 from rfone_data_store.selection.core import trainable_gap_model as tgm  # noqa: E402
 from rfone_data_store.selection.core.resume_source import LOCAL_UPLOAD  # noqa: E402
-from rfone_data_store.selection.import_pipeline import (  # noqa: E402
-    COMPLETED, DUPLICATE, PARTIAL, import_one_resume, reading_status,
-)
-from rfone_data_store.selection.industry import restaurant as restaurant_industry  # noqa: E402
-from rfone_data_store.selection.industry.restaurant import TARGET_ROLE_CHOICES, target_role_label  # noqa: E402
-from rfone_data_store.selection import preselection  # noqa: E402
-from rfone_data_store.selection.core.coordination_evidence import CATEGORY_LABELS as COORDINATION_LABELS  # noqa: E402
+from rfone_data_store.selection.import_pipeline import COMPLETED, PARTIAL, import_one_resume  # noqa: E402
+from rfone_data_store.selection.industry.restaurant import ROME_FLAVOURS_SERVER_ROLE_CONFIG  # noqa: E402
 from rfone_data_store.selection.industry.restaurant_templates import (  # noqa: E402
     seed_default_review_priority_policy, seed_default_selection_outcomes, seed_default_selection_queues,
     seed_romes_flavours_in_person_interview_structure, seed_romes_flavours_phone_interview_questions,
@@ -138,8 +127,6 @@ from rfone_data_store.selection.parsing.dedup import compute_content_hash  # noq
 from rfone_data_store.selection.parsing.text_extraction import SUPPORTED_EXTENSIONS, extract_text  # noqa: E402
 
 ALLOWED_EXT = set(SUPPORTED_EXTENSIONS)
-# SELECTION_AWS_PUBLISH_001 — uploads/ locally, a private S3 bucket when deployed.
-DOCUMENTS = document_store.from_environment(UPLOAD_DIR)
 
 _DB_URL = get_database_url()
 run_migrations_to_head(_DB_URL)
@@ -160,91 +147,6 @@ app = Flask(__name__)
 # selection to survive an app restart.
 app.secret_key = os.environ.get("RFONE_FLASK_SECRET_KEY") or os.urandom(24)
 
-# ---------------------------------------------------------------------------
-# SELECTION_AWS_PUBLISH_001 — publication behind RF-One's own login.
-#
-# With RFONE_SELECTION_REQUIRE_RFONE_LOGIN=1 (the AWS deployment) Selection
-# works like Tips: it is served on RF-One's official host under /selection/
-# (one CloudFront entry), reads the SAME signed session RF-One Web issues
-# (same RFONE_FLASK_SECRET_KEY), and every page, upload and original
-# document requires an RF-One account that may enter the SELECTION Domain —
-# the same rule RF-One Web's `require_domain_access("SELECTION")` applies.
-# The acting identity is then the one tied to that account; choosing or
-# registering an identity by hand (the pre-Authentication stand-in below) is
-# switched off. Without the variable (local development, tests) nothing
-# changes.
-# ---------------------------------------------------------------------------
-RFONE_LOGIN_MODE = os.environ.get("RFONE_SELECTION_REQUIRE_RFONE_LOGIN") == "1"
-SELECTION_DOMAIN_CODE = "SELECTION"
-SELECTION_PATH_PREFIX = "/selection"
-RFONE_ACCOUNT_PROVIDER = "rfone-account"
-
-if RFONE_LOGIN_MODE:
-    # The cookie is RF-One Web's: re-issued with exactly its attributes.
-    app.config.update(
-        SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_PATH="/",
-    )
-
-
-class _SelectionPathPrefix:
-    """A request arriving as /selection/... is served as /... with
-    /selection as its script root, so every url_for link keeps the prefix;
-    a request without it (local development) is untouched."""
-
-    def __init__(self, wsgi_app):
-        self.wsgi_app = wsgi_app
-
-    def __call__(self, environ, start_response):
-        path = environ.get("PATH_INFO", "")
-        if path == SELECTION_PATH_PREFIX or path.startswith(SELECTION_PATH_PREFIX + "/"):
-            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + SELECTION_PATH_PREFIX
-            environ["PATH_INFO"] = path[len(SELECTION_PATH_PREFIX):] or "/"
-        return self.wsgi_app(environ, start_response)
-
-
-app.wsgi_app = _SelectionPathPrefix(app.wsgi_app)
-
-
-def _rfone_web_base_url() -> str | None:
-    base = (os.environ.get("RFONE_WEB_BASE_URL") or "").strip().rstrip("/")
-    return base if base.startswith(("https://", "http://")) else None
-
-
-@app.before_request
-def _send_direct_visits_to_the_official_entry():
-    if not RFONE_LOGIN_MODE:
-        return None
-    target = public_entry.official_redirect(request.method, request.headers, request.full_path,
-                                            prefix=SELECTION_PATH_PREFIX)
-    return redirect(target, code=301) if target is not None else None
-
-
-@app.before_request
-def _require_rfone_login_and_selection_access():
-    if not RFONE_LOGIN_MODE or request.endpoint == "static":
-        return None
-    with SessionFactory() as db_session:
-        account = shared_session.account_for_session(
-            db_session, account_id=flask_session.get(shared_session.SESSION_ACCOUNT_KEY),
-            session_version=flask_session.get(shared_session.SESSION_VERSION_KEY),
-        )
-        if account is not None:
-            if not shared_session.account_may_enter_domain(db_session, account, SELECTION_DOMAIN_CODE):
-                abort(403)
-            return None
-    base = _rfone_web_base_url()
-    if base is None:
-        abort(401)
-    next_path = request.script_root + (request.full_path.rstrip("?") if request.method in ("GET", "HEAD") else "/")
-    return redirect(f"{base}/login?{urlencode({'next': next_path})}")
-
-
-@app.context_processor
-def _rfone_navigation():
-    return {"rfone_login_mode": RFONE_LOGIN_MODE,
-            "rfone_home_url": (_rfone_web_base_url() + "/") if RFONE_LOGIN_MODE and _rfone_web_base_url() else None}
-
 
 def _current_identity(session) -> "m.ActingIdentity":
     """GLOBAL_INTEGRITY_FIX_002 / C-1 — the ONE place this app resolves "who
@@ -254,22 +156,6 @@ def _current_identity(session) -> "m.ActingIdentity":
     validating the id against an existing, active `ActingIdentity` row —
     never a raw name read directly from a request form field."""
 
-    if RFONE_LOGIN_MODE:
-        # SELECTION_AWS_PUBLISH_001 — the identity of the RF-One account this
-        # request is authenticated as (checked in `_require_rfone_login_and_
-        # selection_access`), provisioned once per account, never chosen.
-        account = shared_session.account_for_session(
-            session, account_id=flask_session.get(shared_session.SESSION_ACCOUNT_KEY),
-            session_version=flask_session.get(shared_session.SESSION_VERSION_KEY),
-        )
-        if account is None:
-            abort(401)
-        identity = acting_id_svc.get_or_create_identity_for_verified_subject(
-            session, provider=RFONE_ACCOUNT_PROVIDER, subject=str(account.id),
-            display_name=shared_session.account_display_name(account),
-        )
-        session.commit()
-        return identity
     return acting_id_svc.get_current_acting_identity(
         session, requested_identity_id=flask_session.get("acting_identity_id"),
     )
@@ -285,8 +171,6 @@ def identity_switch():
     identity, it only lets an operator pick among identities a
     HUMAN_USER has already registered via `/identity/register`)."""
 
-    if RFONE_LOGIN_MODE:
-        abort(404)  # the identity is the RF-One account's (SELECTION_AWS_PUBLISH_001)
     with SessionFactory() as session:
         if request.method == "POST":
             identity_id = request.form.get("identity_id", type=int)
@@ -311,8 +195,6 @@ def identity_register():
     itself, proof of who is making any given request; it only makes the
     identity selectable via `/identity/switch` above."""
 
-    if RFONE_LOGIN_MODE:
-        abort(404)
     with SessionFactory() as session:
         display_name = (request.form.get("display_name") or "").strip()
         if display_name:
@@ -329,7 +211,7 @@ def _bootstrap_restaurant(session) -> "m.Restaurant":
 
     from sqlalchemy import select
 
-    existing = session.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
+    existing = session.scalars(select(m.Restaurant)).first()
     if existing:
         return existing
     restaurant = m.Restaurant(name="Rome's Flavours", default_currency="USD")
@@ -339,7 +221,7 @@ def _bootstrap_restaurant(session) -> "m.Restaurant":
     return restaurant
 
 
-def _candidate_rows(session, candidates: list["m.Candidate"]) -> list[dict]:
+def _candidate_rows(candidates: list["m.Candidate"]) -> list[dict]:
     """Builds the candidate-list table's rows (TASK_SELECTION_002 §9): name,
     location, source, latest/current role, employment-record count, import
     status and information-quality confidence — no universal CV score."""
@@ -347,9 +229,7 @@ def _candidate_rows(session, candidates: list["m.Candidate"]) -> list[dict]:
     rows = []
     for candidate in candidates:
         profile = persistence.to_profile(candidate)
-        # SELECTION_FOH_TEAM_LEADER_001 — the APPLICATION's target role.
-        application = app_svc.get_application_for_candidate(session, candidate.id)
-        view = analyze_candidate(profile, target_role=application.target_role if application else None)
+        view = analyze_candidate(profile)
 
         current_role = next((w.original_job_title for w in profile.work_history if w.is_current), None)
         if not current_role:
@@ -366,10 +246,9 @@ def _candidate_rows(session, candidates: list["m.Candidate"]) -> list[dict]:
                 "source_provider": candidate.source_provider or "-",
                 "current_role": current_role or "-",
                 "employment_count": len(profile.work_history),
-                "target_role": view.target_role_label or "to be clarified",
-                "target_role_issue": view.target_role_issue,
-                "direct_months": view.breakdown.direct_role_months if view.role_config else None,
-                "relevant_months": view.breakdown.relevant_propedeutic_months if view.role_config else None,
+                "target_role": candidate.target_role or "-",
+                "direct_months": view.breakdown.direct_role_months,
+                "relevant_months": view.breakdown.relevant_propedeutic_months,
                 "stability": next(i for i in view.indicators if i.name == "Stability").state,
                 "flag_count": len(view.flags),
                 "confidence_pct": view.information_quality.overall_confidence_pct,
@@ -386,12 +265,12 @@ def home():
     with SessionFactory() as session:
         restaurant = _bootstrap_restaurant(session)
         candidates = persistence.list_candidates(session, restaurant_id=restaurant.id)
-        rows = _candidate_rows(session, candidates)
+        rows = _candidate_rows(candidates)
 
         return render_template(
             "home.html",
             client_name=restaurant.name,
-            target_role_choices=TARGET_ROLE_CHOICES,
+            active_role=ROME_FLAVOURS_SERVER_ROLE_CONFIG.target_role,
             candidate_count=len(rows),
             candidates=rows,
             db_url=redact_database_url(_DB_URL),
@@ -399,19 +278,7 @@ def home():
         )
 
 
-def _requested_target_role() -> str | None:
-    """SELECTION_FOH_TEAM_LEADER_001 — the operator must choose the target
-    role for an upload (single or batch): no preselection, no default. Only a
-    supported role is accepted."""
-
-    value = (request.form.get("target_role") or "").strip()
-    return value if value in restaurant_industry.ROLE_CONFIGURATIONS else None
-
-
-TARGET_ROLE_REQUIRED = "Choose the target role (Server or FOH Team Leader) before importing résumés."
-
-
-def _process_one_upload(file_storage, target_role: str) -> dict:
+def _process_one_upload(file_storage) -> dict:
     """Handles exactly one uploaded résumé — file-extension validation,
     saving, real text extraction, then hands off to
     `import_pipeline.import_one_resume` for duplicate-checked
@@ -428,15 +295,14 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
             "error": f"Unsupported format: {ext or '(none)'}. Supported formats: {supported}.",
         }
 
+    unique_name = f"{uuid.uuid4().hex[:8]}_{filename}"
+    saved_path = os.path.join(UPLOAD_DIR, unique_name)
     try:
-        staged = DOCUMENTS.stage(file_storage, filename)
+        file_storage.save(saved_path)
     except Exception:
         return {"filename": filename, "status": "FAILED", "error": "Could not save the uploaded file."}
-    try:
-        raw_text = extract_text(staged.local_path, ext)
-    finally:
-        staged.cleanup()
-    saved_path = staged.storage_path
+
+    raw_text = extract_text(saved_path, ext)
     content_hash = compute_content_hash(raw_text, filename)
 
     with SessionFactory() as session:
@@ -448,33 +314,11 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
         )
 
         application_id = None
-        status, candidate_id, full_name, error = result.status, result.candidate_id, result.full_name, result.error
-        reused_document = False
-        if result.status == DUPLICATE and result.duplicate_of_raw_resume_id is not None:
-            # SELECTION_FOH_TEAM_LEADER_001 — the same résumé for another
-            # target role is a new application reusing the document; for the
-            # same target role it stays a duplicate (nothing created).
-            application, created = app_svc.application_for_known_resume(
-                session, raw_resume_id=result.duplicate_of_raw_resume_id, restaurant_id=restaurant.id,
-                target_role=target_role,
-            )
-            if created:
-                seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
-                sig_svc.generate_resume_stage_signals(session, application.id)
-                session.commit()
-                copy = persistence.get_candidate(session, application.candidate_id)
-                status, error = reading_status(persistence.to_profile(copy))
-                candidate_id, full_name, application_id, reused_document = copy.id, copy.full_name, application.id, True
-            elif application is not None:
-                candidate_id, application_id = application.candidate_id, application.id
-                error = f"Already imported for {target_role_label(target_role)}: no new application created."
-        elif result.status in (COMPLETED, PARTIAL) and result.candidate_id is not None:
+        if result.status in (COMPLETED, PARTIAL) and result.candidate_id is not None:
             # Task 3C: every successfully imported résumé becomes one
             # Application, resolved/linked to its CandidatePerson (best-
             # effort, by email) — never blocks or fails the upload itself.
-            application = app_svc.create_application(
-                session, candidate_id=result.candidate_id, restaurant_id=restaurant.id, target_role=target_role,
-            )
+            application = app_svc.create_application(session, candidate_id=result.candidate_id, restaurant_id=restaurant.id)
             seed_default_review_priority_policy(session, restaurant_id=restaurant.id)  # idempotent
             sig_svc.generate_resume_stage_signals(session, application.id)
             session.commit()
@@ -482,16 +326,11 @@ def _process_one_upload(file_storage, target_role: str) -> dict:
 
     if result.status == "FAILED":
         app.logger.warning("Resume import failed for %r: %s", filename, result.error)
-    if result.status in ("FAILED", DUPLICATE):
-        # Not kept as a new document (a failure, or the same document already
-        # stored): nothing is left in the archive without a record.
-        DOCUMENTS.discard(saved_path)
 
     return {
-        "filename": filename, "status": status,
-        "candidate_id": candidate_id, "full_name": full_name,
-        "parsing_mode": result.parsing_mode, "error": error, "application_id": application_id,
-        "reused_document": reused_document,
+        "filename": filename, "status": result.status,
+        "candidate_id": result.candidate_id, "full_name": result.full_name,
+        "parsing_mode": result.parsing_mode, "error": result.error, "application_id": application_id,
     }
 
 
@@ -505,10 +344,7 @@ def api_upload():
     file = request.files.get("resume_file")
     if not file or file.filename == "":
         return jsonify({"filename": None, "status": "FAILED", "error": "No file received."}), 400
-    target_role = _requested_target_role()
-    if target_role is None:
-        return jsonify({"filename": file.filename, "status": "FAILED", "error": TARGET_ROLE_REQUIRED}), 400
-    return jsonify(_process_one_upload(file, target_role))
+    return jsonify(_process_one_upload(file))
 
 
 @app.route("/upload", methods=["POST"])
@@ -522,19 +358,7 @@ def upload():
     if not files:
         return redirect(url_for("home"))
 
-    target_role = _requested_target_role()
-    if target_role is None:
-        # Nothing is imported: the choice applies to the whole batch.
-        with SessionFactory() as session:
-            restaurant = _bootstrap_restaurant(session)
-            rows = _candidate_rows(session, persistence.list_candidates(session, restaurant_id=restaurant.id))
-        return render_template(
-            "home.html", client_name=restaurant.name, target_role_choices=TARGET_ROLE_CHOICES,
-            candidate_count=len(rows), candidates=rows, db_url=redact_database_url(_DB_URL),
-            error=TARGET_ROLE_REQUIRED, active_nav="candidates",
-        ), 400
-
-    results = [_process_one_upload(f, target_role) for f in files]
+    results = [_process_one_upload(f) for f in files]
 
     if len(results) == 1 and results[0]["status"] in (COMPLETED, PARTIAL):
         return redirect(url_for("candidate_detail", candidate_id=results[0]["candidate_id"]))
@@ -542,12 +366,12 @@ def upload():
     with SessionFactory() as session:
         restaurant = _bootstrap_restaurant(session)
         candidates = persistence.list_candidates(session, restaurant_id=restaurant.id)
-        rows = _candidate_rows(session, candidates)
+        rows = _candidate_rows(candidates)
 
     return render_template(
         "home.html",
         client_name=restaurant.name,
-        target_role_choices=TARGET_ROLE_CHOICES,
+        active_role=ROME_FLAVOURS_SERVER_ROLE_CONFIG.target_role,
         candidate_count=len(rows),
         candidates=rows,
         db_url=redact_database_url(_DB_URL),
@@ -566,18 +390,14 @@ def candidate_detail(candidate_id: int):
             return redirect(url_for("home"))
 
         profile = persistence.to_profile(candidate)
-        # SELECTION_FOH_TEAM_LEADER_001 — the page, its indicators and its
-        # questions use THIS application's target role; none is assumed.
-        application = app_svc.get_application_for_candidate(session, candidate_id)
-        view = analyze_candidate(profile, target_role=application.target_role if application else None)
+        view = analyze_candidate(profile)
 
+        role_config = ROME_FLAVOURS_SERVER_ROLE_CONFIG
         work_entries = [
             {
                 "record": w,
                 "months": months_between(w.start_date, w.end_date if not w.is_current else None),
-                "category": classify_role(w.normalized_role, view.role_config) if view.role_config else None,
-                "leadership_basis": restaurant_industry.leadership_title_context(
-                    w.original_job_title, w.responsibilities)[1],
+                "category": classify_role(w.normalized_role, role_config),
             }
             for w in profile.work_history
         ]
@@ -591,6 +411,7 @@ def candidate_detail(candidate_id: int):
         available_requirement_sets = req_svc.list_requirement_sets(
             session, restaurant_id=candidate.restaurant_id, active_only=True,
         )
+        application = app_svc.get_application_for_candidate(session, candidate_id)
         # Task 5A-ALIGN §12 — a Candidate Flag (e.g. a prior "Training Check
         # Not Passed") must be immediately visible at CV Review too.
         active_flags = flag_svc.list_active_flags_for_application(session, application.id) if application else []
@@ -602,7 +423,6 @@ def candidate_detail(candidate_id: int):
             fit_assessments=fit_assessments, available_requirement_sets=available_requirement_sets,
             application=application, original_cv_available=_original_cv_available(session, candidate),
             active_flags=active_flags, active_nav="candidates",
-            coordination_area_labels=restaurant_industry.COORDINATION_AREA_LABELS,
         )
 
 
@@ -614,7 +434,7 @@ def _original_cv_available(session, candidate: "m.Candidate") -> bool:
     if not candidate.raw_resume_id:
         return False
     raw = session.get(m.RawResume, candidate.raw_resume_id)
-    return bool(raw and DOCUMENTS.exists(raw.storage_path))
+    return bool(raw and raw.storage_path and os.path.isfile(raw.storage_path))
 
 
 @app.route("/candidate/<int:candidate_id>/original-cv")
@@ -631,14 +451,13 @@ def candidate_original_cv(candidate_id: int):
             return render_template("original_cv_unavailable.html", candidate=candidate, active_nav="candidates"), 404
 
         raw = session.get(m.RawResume, candidate.raw_resume_id)
-        # Only documents this app stored itself (uploads/ locally, its own
-        # S3 prefix when deployed) are ever served — anything else is refused.
-        content = DOCUMENTS.read(raw.storage_path)
-        if content is None:
+        storage_path = os.path.normpath(raw.storage_path)
+        # The only files ever referenced here are ones this app itself saved
+        # into UPLOAD_DIR (see `_process_one_upload`) — refuse anything else.
+        if os.path.commonpath([storage_path, UPLOAD_DIR]) != os.path.normpath(UPLOAD_DIR):
             abort(403)
-        name = raw.original_filename or "resume"
-        return send_file(io.BytesIO(content), as_attachment=False, download_name=name,
-                         mimetype=mimetypes.guess_type(name)[0] or "application/octet-stream")
+
+        return send_file(storage_path, as_attachment=False, download_name=raw.original_filename or None)
 
 
 # ---------------------------------------------------------------------------
@@ -997,11 +816,6 @@ def applications_home():
             session, restaurant_id=restaurant.id, priority=priority, workflow_status=workflow_status,
             target_role=target_role, repeated_only=repeated_only, sort_by=sort_by,
         )
-        # SELECTION_PRESELECTION_COMPARE_001 — preselection filters, applied
-        # on each application's own analysis; none is preselected.
-        presel = _preselection_filters()
-        summaries = {a.id: preselection.summarize_application(session, a) for a in applications}
-        applications = [a for a in applications if preselection.matches(summaries[a.id], presel)]
         rows = [
             {
                 "id": a.id,
@@ -1018,12 +832,10 @@ def applications_home():
                 "workflow_status": a.workflow_status,
                 "prior_count": len(app_svc.list_prior_applications(session, a.id)),
                 "original_cv_available": _original_cv_available(session, a.candidate),
-                "summary": summaries[a.id],
             }
             for a in applications
         ]
-        target_roles = sorted({code for code, _ in TARGET_ROLE_CHOICES} | {
-            a.target_role for a in app_svc.list_applications(session, restaurant_id=restaurant.id) if a.target_role})
+        target_roles = sorted({a.target_role for a in applications if a.target_role})
 
         return render_template(
             "applications_home.html", client_name=restaurant.name, applications=rows, active_nav="applications",
@@ -1033,66 +845,6 @@ def applications_home():
                 "repeated": repeated_only, "sort": sort_by,
             },
             pending_identity_matches=len(id_svc.list_pending_matches(session, restaurant_id=restaurant.id)),
-            presel=presel, stages=stgm.STAGES, coordination_labels=COORDINATION_LABELS,
-            stability_categories=preselection.STABILITY_CATEGORIES, no_outcome=preselection.NO_OUTCOME,
-            outcome_labels=[d.name for d in outcome_svc.list_outcome_definitions(session, restaurant_id=restaurant.id)],
-            target_role_label=target_role_label, compare_error=request.args.get("compare_error"),
-        )
-
-
-def _int_arg(name: str) -> int | None:
-    value = (request.args.get(name) or "").strip()
-    return int(value) if value.isdigit() else None
-
-
-def _preselection_filters() -> "preselection.PreselectionFilters":
-    """SELECTION_PRESELECTION_COMPARE_001 — the preselection filters from the
-    query string. Unknown values never satisfy a numeric or stability filter
-    unless `unclear=1` (include data to be clarified) is set explicitly."""
-
-    return preselection.PreselectionFilters(
-        stage=request.args.get("stage") or None,
-        outcome=request.args.get("outcome") or None,
-        direct_min=_int_arg("direct_min"), direct_max=_int_arg("direct_max"),
-        propedeutic_min=_int_arg("prop_min"), propedeutic_max=_int_arg("prop_max"),
-        stability=tuple(v for v in request.args.getlist("stability") if v in preselection.STABILITY_CATEGORIES),
-        coordination=request.args.get("coordination") or None,
-        issues=request.args.get("issues") or None,
-        include_to_clarify=request.args.get("unclear") == "1",
-    )
-
-
-@app.route("/applications/compare")
-def applications_compare():
-    """SELECTION_PRESELECTION_COMPARE_001 — 2 to 4 applications for the same
-    target role side by side, from existing analysis only: no score, rank,
-    weight or recommendation. Each column links to its application (to note
-    or update stage and outcome with the existing functions), its candidate
-    page and the original CV."""
-
-    ids = [int(v) for v in request.args.getlist("ids") if v.isdigit()]
-    with SessionFactory() as session:
-        restaurant = _bootstrap_restaurant(session)
-        try:
-            columns = preselection.comparison(session, ids)
-        except preselection.ComparisonNotAllowed as exc:
-            return render_template(
-                "applications_compare.html", client_name=restaurant.name, error=str(exc), columns=[],
-                active_nav="applications",
-            ), 400
-        first_column_of_person: dict[int, int] = {}
-        same_person_as = []
-        for index, column in enumerate(columns):
-            same_person_as.append(first_column_of_person.get(column.person_id))
-            first_column_of_person.setdefault(column.person_id, index)
-        cv_available = {
-            c.application_id: _original_cv_available(session, persistence.get_candidate(session, c.candidate_id))
-            for c in columns
-        }
-        return render_template(
-            "applications_compare.html", client_name=restaurant.name, error=None, columns=columns,
-            same_person_as=same_person_as, cv_available=cv_available, coordination_area_labels=
-            restaurant_industry.COORDINATION_AREA_LABELS, active_nav="applications",
         )
 
 
@@ -3841,12 +3593,10 @@ def public_application_submit(token: str):
                 selection_session=context["session"], restaurant_name="", questions=questions, error=error,
             ), 400
 
-        staged = DOCUMENTS.stage(resume_file, resume_file.filename)
-        try:
-            raw_text = extract_text(staged.local_path, ext)
-        finally:
-            staged.cleanup()
-        saved_path = staged.storage_path
+        unique_name = f"{uuid.uuid4().hex[:8]}_{resume_file.filename}"
+        saved_path = os.path.join(UPLOAD_DIR, unique_name)
+        resume_file.save(saved_path)
+        raw_text = extract_text(saved_path, ext)
         content_hash = compute_content_hash(raw_text, resume_file.filename)
 
         answers = {}

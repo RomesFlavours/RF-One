@@ -35,11 +35,7 @@ def main() -> None:
     run_migrations_to_head(url)
 
     engine = create_configured_engine(url)
-    # `Base.metadata.tables` (not `.sorted_tables`) — this is a count only, so
-    # topological dependency order is irrelevant; `.sorted_tables` also
-    # triggers an SAWarning on RF-One's known circular FKs for no benefit
-    # here (see DATABASE_SCHEMA.md §12, "Circular FK SAWarning").
-    table_count = len(Base.metadata.tables)
+    table_count = len(Base.metadata.sorted_tables)
     print(f"Tables created: {table_count}")
 
     session_factory = create_session_factory(engine)

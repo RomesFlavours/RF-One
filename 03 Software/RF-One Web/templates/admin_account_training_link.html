@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Training Identity · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Training Identity', None)]) }}
+<p><a href="{{ url_for('admin_accounts') }}">&larr; Accounts</a></p>
 <h1>Training Identity</h1>
 <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
 

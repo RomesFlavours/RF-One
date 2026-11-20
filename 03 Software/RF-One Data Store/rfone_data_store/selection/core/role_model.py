@@ -1,4 +1,4 @@
-"""Generic Role Model (01 Domains/Shared Domains/Selection/
+"""Generic Role Model (01 Domains/Cross Domain/Selection/
 ResumeScreening/RoleModel.md). Selection Core defines only the shape; every
 concrete role name/list is Industry Extension / Client / Role Configuration
 content supplied by the caller.
@@ -27,13 +27,6 @@ class RoleConfiguration:
     propedeutic_roles: set[str] = field(default_factory=set)
     adjacent_roles: set[str] = field(default_factory=set)
     transition_flags: set[str] = field(default_factory=set)
-    # How the target role is named to people (e.g. "FOH Team Leader" for the
-    # FOH_SUPERVISOR code). None: the code itself, title-cased.
-    display_name: str | None = None
-
-    @property
-    def label(self) -> str:
-        return self.display_name or self.target_role.replace("_", " ").title()
 
 
 def classify_role(normalized_role: str | None, config: RoleConfiguration) -> str:

@@ -42,7 +42,6 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as tips_app  # noqa: E402
-from tips_test_session import signed_in_client  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')  # not used by Tips - no CSRF here; kept for parity
@@ -66,14 +65,14 @@ def main() -> int:
             s.commit()
             restaurant_id = restaurant.id
 
-        client = signed_in_client(tips_app)
+        client = tips_app.app.test_client()
 
         # -----------------------------------------------------------------
         # Before any Role exists: the create-rule form shows a helpful
         # message with a link to Role management, and the create select
         # boxes are disabled (never a silently empty, submittable select).
         # -----------------------------------------------------------------
-        resp = client.get("/configuration")
+        resp = client.get("/distribution-rules")
         check(
             "with zero Roles, the Distribution Rules page shows a helpful message linking to Role management",
             b"No Roles are defined yet" in resp.data and b'href="/roles/new"' in resp.data,
@@ -160,7 +159,7 @@ def main() -> int:
         # Recipient) on the Distribution Rules create form, and a valid
         # Rule can be saved.
         # -----------------------------------------------------------------
-        resp = client.get("/configuration")
+        resp = client.get("/distribution-rules")
         check(
             "with Roles defined, both role selects are populated (Server and Host each appear twice: "
             "once as a Source option, once as a Recipient option)",
@@ -194,7 +193,7 @@ def main() -> int:
                 and versions[0].recipient_role_id == host_role_id,
             )
 
-        resp = client.get("/configuration")
+        resp = client.get("/distribution-rules")
         check(
             "the newly created Rule appears on the Distribution Rules page with the correct Role names",
             b"Server" in resp.data and b"Host" in resp.data and b"TOTAL_SALES" in resp.data,

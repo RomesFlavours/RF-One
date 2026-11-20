@@ -81,15 +81,6 @@ def main() -> int:
             )
             s.commit()
 
-            # Organization is a Domain of its own (ACCOUNT_ITEM_ACCESS_001):
-            # the administrator holds it explicitly, as the migration grants
-            # it to every existing administrator — never through is_admin.
-            account_service.set_domain_access(
-                s, account_id=account_service.get_account_by_username(s, "admin1").id,
-                domain_code="ORGANIZATION", enabled=True, role_code=None,
-            )
-            s.commit()
-
             position = org_svc.create_position(s, name="TEST/DEMO HTTP Position")
             occupant = m.ActingIdentity(kind=m.HUMAN_USER, display_name="TEST/DEMO HTTP Occupant")
             s.add(occupant)
@@ -119,8 +110,8 @@ def main() -> int:
             # pointing at /admin/organization instead of the plain Positions
             # list — see test_organization_chart_http.py for full coverage
             # of that page.
-            "admin sees the Organization Domain card on Home (ACCOUNT_ITEM_ACCESS_001)",
-            b'href="/admin/organization"' in admin_client.get("/").data,
+            "admin sees the 'Manage Organization' link on Home",
+            b"Manage Organization" in admin_client.get("/").data,
         )
 
         for path in (

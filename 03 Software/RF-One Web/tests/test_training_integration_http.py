@@ -307,7 +307,7 @@ def main() -> int:
         fresh_admin_client = web_app.app.test_client()
         login(fresh_admin_client, "admin", "AdminPass123!")
         resp = fresh_admin_client.get("/")
-        check("10a: RF-One Home still works", resp.status_code == 200 and b'href="/admin/accounts"' in resp.data)
+        check("10a: RF-One Home still works", resp.status_code == 200 and b"Administration" in resp.data)
 
         # Run Tips' own regression check in a SEPARATE PROCESS, not this
         # test's own — Tips and RF-One Web are always separate deployments
@@ -339,11 +339,7 @@ def main() -> int:
             [sys.executable, "-c", tips_check_code], cwd=_TIPS_DIR, env=tips_env,
             capture_output=True, text=True, timeout=30,
         )
-        # TIPS_ACCESS_AND_DRILLDOWN_001 — Tips pages now require the RF-One
-        # login: signed out, the home is refused (302 to RF-One's login, or
-        # 401 when RF-One Web's address is not configured, as here).
-        check("10b: Tips home page answers, and requires the RF-One login when signed out",
-              re.search(r"TIPS_HOME_STATUS (302|401)\b", result.stdout) is not None, result.stderr[-1500:])
+        check("10b: Tips home page still works unmodified", "TIPS_HOME_STATUS 200" in result.stdout, result.stderr[-1500:])
         check("10c: Tips' own /training/menu still works unmodified", "TIPS_TRAINING_MENU_STATUS 200" in result.stdout)
         check(
             "10d: Training's OWN login under Tips is untouched (still rejects a wrong password)",

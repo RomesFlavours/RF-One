@@ -1,14 +1,12 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Compensation · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Compensation', None)]) }}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
 <h1>Compensation</h1>
 <p class="muted">Prepare, review and approve compensation, then communicate it to the Payroll Provider and record its result — manual handoff in both directions (V1).</p>
 
 <div class="btn-row">
   <a class="btn" href="{{ url_for('compensation_run_new') }}">New preparation run</a>
-  <a class="btn btn-secondary" href="{{ url_for('compensation_period_summary') }}">Period Summary</a>
 </div>
 
 <div class="card">

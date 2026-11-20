@@ -1,5 +1,5 @@
 """Invoice Source Contract + NormalizedInvoice — the provider-agnostic
-extraction boundary, per `01 Domains/Shared Domains/Administration/Invoice
+extraction boundary, per `01 Domains/Cross Domain/Administration/Invoice
 Intake/CROSS_DOMAIN_INVOICE_INTAKE_AGENT_001.md` §3/§4/§5/§6/§7.
 
 Every provider (`tesseract_provider.py`, `textract_provider.py`) implements
@@ -7,7 +7,7 @@ Every provider (`tesseract_provider.py`, `textract_provider.py`) implements
 Invoice Intake — and, later, whatever consumes its output — never depends
 on which provider actually ran. Nothing here calls Purchasing or any other
 Business Domain; this module has no import of `rfone_data_store` or
-`purchased_bridge` (renamed from `purchasing_bridge`) at all.
+`purchasing_bridge` at all.
 """
 
 from __future__ import annotations

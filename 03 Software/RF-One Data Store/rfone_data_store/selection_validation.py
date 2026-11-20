@@ -1623,11 +1623,7 @@ def _assert_selection_3c_fix(session_factory: sessionmaker[Session], result: Val
                 original_filename=f"{email}.txt", storage_path=None, raw_text=text,
                 content_hash=compute_content_hash(text, f"{email}.txt"),
             )
-            # The target role is explicit at upload (SELECTION_FOH_TEAM_LEADER_001);
-            # before, these applications silently inherited the parser's "SERVER".
-            application = app_svc.create_application(
-                session, candidate_id=imported.candidate_id, restaurant_id=restaurant.id, target_role="SERVER",
-            )
+            application = app_svc.create_application(session, candidate_id=imported.candidate_id, restaurant_id=restaurant.id)
             session.commit()
             return application
 
@@ -2001,11 +1997,7 @@ def _assert_selection_3c_micro_fix(session_factory: sessionmaker[Session], resul
                 original_filename=f"{email}.txt", storage_path=None, raw_text=text,
                 content_hash=compute_content_hash(text, f"{email}.txt"),
             )
-            # The target role is explicit at upload (SELECTION_FOH_TEAM_LEADER_001);
-            # before, these applications silently inherited the parser's "SERVER".
-            application = app_svc.create_application(
-                session, candidate_id=imported.candidate_id, restaurant_id=restaurant.id, target_role="SERVER",
-            )
+            application = app_svc.create_application(session, candidate_id=imported.candidate_id, restaurant_id=restaurant.id)
             session.commit()
             return application
 
@@ -9157,7 +9149,7 @@ def _assert(session: Session, result: ValidationResult) -> None:
     fixture1 = stable_experienced_candidate()
     for w in fixture1.work_history:
         w.normalized_role = restaurant_industry.normalize_title(w.original_job_title)
-    view1 = analyze_candidate(fixture1, target_role=fixture1.target_role)
+    view1 = analyze_candidate(fixture1)
     result.check(
         "4: stable candidate's direct Server experience is substantial (target+equivalent months > 60)",
         view1.breakdown.direct_role_months > 60,
@@ -9187,7 +9179,7 @@ def _assert(session: Session, result: ValidationResult) -> None:
     fixture2 = strong_career_progression_candidate()
     for w in fixture2.work_history:
         w.normalized_role = restaurant_industry.normalize_title(w.original_job_title)
-    view2 = analyze_candidate(fixture2, target_role=fixture2.target_role)
+    view2 = analyze_candidate(fixture2)
     result.check(
         "9: career progression candidate shows at least one PROMOTION trajectory event "
         "(Host -> Server -> Floor Supervisor, same employer)",
@@ -9209,7 +9201,7 @@ def _assert(session: Session, result: ValidationResult) -> None:
     fixture3 = short_tenure_boh_transition_candidate()
     for w in fixture3.work_history:
         w.normalized_role = restaurant_industry.normalize_title(w.original_job_title)
-    view3 = analyze_candidate(fixture3, target_role=fixture3.target_role)
+    view3 = analyze_candidate(fixture3)
     result.check(
         "12: short-tenure candidate triggers SHORT_TENURE_PATTERN (three consecutive jobs < 6 months)",
         any(f.type == "SHORT_TENURE_PATTERN" for f in view3.flags),
@@ -9262,7 +9254,7 @@ def _assert(session: Session, result: ValidationResult) -> None:
     )
 
     reloaded_profile = persistence.to_profile(reloaded)
-    reloaded_view = analyze_candidate(reloaded_profile, target_role=reloaded_profile.target_role)
+    reloaded_view = analyze_candidate(reloaded_profile)
     result.check(
         "18: re-running analysis on a reloaded (persisted-then-reloaded) profile reproduces the same "
         "flags as the original in-memory profile — Derived/Flags/Indicators are always recomputed "
@@ -9280,7 +9272,7 @@ def _assert(session: Session, result: ValidationResult) -> None:
     # 20. Age context stays out of Indicators (task §12)
     # =====================================================================
     profile_with_age = CandidateCVProfile(full_name="Test", declared_age_context="Stated: 24 years old")
-    view_age = analyze_candidate(profile_with_age, target_role="SERVER")
+    view_age = analyze_candidate(profile_with_age)
     result.check(
         "20: declared/derived age context is never read by any Indicator name or value",
         all("age" not in i.name.lower() for i in view_age.indicators),

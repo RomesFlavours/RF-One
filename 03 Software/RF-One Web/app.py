@@ -31,7 +31,7 @@ _DATA_STORE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "RF-One Data Sto
 if _DATA_STORE_DIR not in sys.path:
     sys.path.insert(0, _DATA_STORE_DIR)
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
+from flask import Flask, abort, flash, redirect, render_template, request, send_from_directory, url_for  # noqa: E402
 
 import auth  # noqa: E402
 from auth import (  # noqa: E402
@@ -39,25 +39,14 @@ from auth import (  # noqa: E402
     require_admin, require_csrf, require_login,
 )
 from db import SessionFactory  # noqa: E402
-from domain_registry import DOMAINS, DOMAINS_BY_CODE, TIPS_HOME_URL  # noqa: E402
-from rfone_data_store import display_format  # noqa: E402
-from rfone_data_store import public_entry  # noqa: E402
+from domain_registry import DOMAINS  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
-from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
-from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical import ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
-from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
-from bank_routes import register_bank_routes  # noqa: E402
-from tips_validation_routes import register_tips_validation_routes  # noqa: E402
-from clover_acquisition_routes import register_clover_acquisition_routes  # noqa: E402
-from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
-from projects_routes import register_projects_routes  # noqa: E402
-from dev_journal_routes import register_dev_journal_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -90,74 +79,9 @@ app.config.update(
 )
 
 
-@app.before_request
-def _send_direct_visits_to_the_official_entry():
-    """A person who reaches this service's technical App Runner hostname is
-    sent to the same page on RF-One's official address
-    (`rfone_data_store.public_entry`, UI_OFFICIAL_ENTRY_AND_LOCAL_DAYS_001)."""
-    target = public_entry.official_redirect(request.method, request.headers, request.full_path)
-    if target is not None:
-        return redirect(target, code=301)
-    return None
-
-
 @app.context_processor
 def inject_csrf():
     return {"csrf_token": get_csrf_token}
-
-
-@app.context_processor
-def inject_local_environment():
-    """`local_env`: which PC, database, code and AI mode this page runs on —
-    only when the server was started by the local Bank environment
-    ("Avvia Bank", 03 Software/Infrastructure/Bank Local Environment), which
-    sets RFONE_LOCAL_ENV_*; None everywhere else (AWS, tests)."""
-    pc = os.environ.get("RFONE_LOCAL_ENV_PC")
-    if not pc:
-        return {"local_env": None}
-    from rfone_data_store.bank_reconciliation import ai_rules
-    provider, model = ai_rules.active_ai_description()
-    mode = ai_rules.ai_mode()
-    return {"local_env": {
-        "pc": pc, "kind": os.environ.get("RFONE_LOCAL_ENV_KIND", "WORK"),
-        "label": os.environ.get("RFONE_LOCAL_ENV_LABEL", ""), "db": os.environ.get("RFONE_LOCAL_ENV_DB", ""),
-        "generation": os.environ.get("RFONE_LOCAL_ENV_GENERATION", ""),
-        "code": os.environ.get("RFONE_LOCAL_ENV_CODE", ""),
-        "ai": ("SESSION Claude Code (VS Code) — no call to an AI provider" if mode == ai_rules.AI_MODE_SESSION
-               else f"PROVIDER {provider} · {model or 'no model configured'}"),
-    }}
-
-
-# UI_NAVIGATION_AND_LOCAL_TIME_001 — RF-One UI Rules
-# (`03 Software/Shared UI/UI Rules.md`): times in the Location's local time,
-# employees as "Surname I.", one shared formatter for every RF-One app.
-app.jinja_env.filters["local_dt"] = display_format.local_datetime
-app.jinja_env.filters["short_name"] = display_format.employee_short_name
-app.jinja_env.filters["first_name_initial"] = display_format.employee_first_name_initial
-app.jinja_env.globals["zone_label"] = display_format.zone_label
-app.jinja_env.globals["tips_home_url"] = TIPS_HOME_URL
-# The first breadcrumb level, named the same in every app hosting shared
-# templates (Training's): RF-One Web's own Home here.
-app.jinja_env.globals["rfone_home_url"] = lambda: url_for("home")
-
-
-@app.context_processor
-def inject_site_timezone():
-    """`tz`: the zone every time on an RF-One Web page is shown in, unless
-    the page sets its own (RF-One UI Rules §1) — the IANA timezone of the
-    Restaurant's own Clover Location, the same Location Tips and Clover
-    Acquisition use. None -> the formatter shows UTC and says so."""
-    with SessionFactory() as db:
-        restaurant = db.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
-        if restaurant is None:
-            return {"tz": None}
-        tz_name = db.scalars(
-            select(m.Location.timezone)
-            .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
-            .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
-            .where(m.RestaurantLocation.restaurant_id == restaurant.id, m.SourceSystem.code == "CLOVER")
-        ).first()
-        return {"tz": tz_name}
 
 
 # ---------------------------------------------------------------------------
@@ -287,20 +211,10 @@ def training_menu():
 # ---------------------------------------------------------------------------
 
 
-def _safe_next(target: str | None) -> str | None:
-    """A post-login destination inside this application only: a local path
-    ("/..."), never another host ("//host", "http://..."), so `next` can
-    never send a person elsewhere (CLOVER_ACQUISITION_IDENTITY_001 §3)."""
-    if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
-        return None
-    return target
-
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    next_target = _safe_next(request.values.get("next"))
     if current_account_id() is not None:
-        return redirect(next_target or url_for("home"))
+        return redirect(url_for("home"))
 
     if request.method == "POST":
         require_csrf()
@@ -310,11 +224,11 @@ def login():
             result = account_service.verify_login(db, username, password)
         if result.account is None:
             flash(result.error or "Invalid username or password.", "error")
-            return render_template("login.html", next_target=next_target), 401
+            return render_template("login.html"), 401
         log_in(result.account.id, result.account.session_version)
-        return redirect(next_target or url_for("home"))
+        return redirect(url_for("home"))
 
-    return render_template("login.html", next_target=next_target)
+    return render_template("login.html")
 
 
 @app.route("/logout", methods=["POST"])
@@ -329,17 +243,6 @@ def logout():
 # Home
 # ---------------------------------------------------------------------------
 
-# Home presentation rules (Product Owner, 2026-09-25) — not Domain
-# definitions: `domain_registry` is unchanged.
-#   * Selection is Work in progress: its registry name says so and its link
-#     is the provisional `selection_work_in_progress` page. Every other
-#     Domain on Home counts as operational.
-#   * Bank is presented under Administration instead of as a Domain.
-_HOME_WORK_IN_PROGRESS_CODES: frozenset[str] = frozenset()  # Selection released (SELECTION_AWS_PUBLISH_001)
-_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
-# System-level services, shown in their own "Services" block, never as a Domain.
-_HOME_SERVICE_CODES = frozenset({"DEV_JOURNAL"})
-
 
 @app.route("/", strict_slashes=False)
 @require_login
@@ -352,24 +255,9 @@ def home():
 
         access_rows = account_service.list_domain_access_for_account(db, account.id)
         enabled_codes = {row.domain_code for row in access_rows if row.enabled}
-        # Home presentation only: operational Domains first, then Work in
-        # progress ones, each group alphabetical. Bank is shown under
-        # Administration, not as a Domain, with the same access rule.
-        domains_view = sorted(
-            (d for d in DOMAINS if d.code in enabled_codes
-             and d.code not in _HOME_ADMINISTRATION_CODES and d.code not in _HOME_SERVICE_CODES),
-            key=lambda d: (d.code in _HOME_WORK_IN_PROGRESS_CODES, d.display_name.casefold()),
-        )
+        domains_view = [d for d in DOMAINS if d.code in enabled_codes]
 
-        return render_template(
-            "home.html", account=account, domains_view=domains_view,
-            # Released = operational (see the rules above): the card's colour
-            # follows this, never a per-Domain choice in the template.
-            work_in_progress_codes=_HOME_WORK_IN_PROGRESS_CODES,
-            bank_available="BANK" in enabled_codes,
-            clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
-            dev_journal_available="DEV_JOURNAL" in enabled_codes,
-        )
+        return render_template("home.html", account=account, domains_view=domains_view)
 
 
 def require_domain_access(domain_code: str):
@@ -382,14 +270,7 @@ def require_domain_access(domain_code: str):
     matching `require_admin`'s own convention). This is what makes the
     Home filtering meaningful — a Domain link is never itself the access
     control (task: "Il collegamento nella Home filtrato per Domain non
-    protegge da solo la destinazione").
-
-    ACCOUNT_ITEM_ACCESS_001: when the requested path belongs to one of the
-    Domain's items (`domain_registry`), the account must also be allowed
-    that item — the same rule the navigation uses to hide it, so a hidden
-    item is closed by direct URL too, for its pages and its operations."""
-    domain = DOMAINS_BY_CODE.get(domain_code)
-
+    protegge da solo la destinazione")."""
     def decorator(view):
         @wraps(view)
         @require_login
@@ -399,56 +280,14 @@ def require_domain_access(domain_code: str):
                 if account is None:
                     log_out()
                     return redirect(url_for("login", next=request.path))
-                # The one Domain rule, shared with Tips (`rfone_web_session`).
-                if not shared_session.account_may_enter_domain(db, account, domain_code):
+                if account.status != "ACTIVE":
                     abort(403)
-                item = domain.item_for_path(request.path) if domain else None
-                if item is not None and not shared_session.account_may_use_domain_item(
-                    db, account, domain_code, item.code,
-                ):
+                access_rows = account_service.list_domain_access_for_account(db, account.id)
+                if not any(r.domain_code == domain_code and r.enabled for r in access_rows):
                     abort(403)
             return view(*args, **kwargs)
-        # Lets a test prove that every route of an item is gated.
-        wrapped.rfone_domain_gate = domain_code
         return wrapped
     return decorator
-
-
-def _allowed_items(domain_code: str):
-    """The current account's usable items of `domain_code`, in registry
-    order — computed once per request."""
-    cache = g.setdefault("rfone_allowed_items", {})
-    if domain_code not in cache:
-        domain = DOMAINS_BY_CODE[domain_code]
-        with SessionFactory() as db:
-            allowed = set(shared_session.allowed_domain_items(
-                db, load_current_account(db), domain_code, [i.code for i in domain.items],
-            ))
-        cache[domain_code] = [i for i in domain.items if i.code in allowed]
-    return cache[domain_code]
-
-
-def domain_entry(domain_code: str) -> str | None:
-    """Where a Domain is entered from Home or a breadcrumb: its first usable
-    item (the Domain's own landing page when the whole Domain is granted),
-    or the registry `link` for a Domain without items."""
-    domain = DOMAINS_BY_CODE[domain_code]
-    if not domain.items:
-        return domain.link
-    items = _allowed_items(domain_code)
-    return url_for(items[0].endpoint) if items else None
-
-
-# Template globals, not a context processor, so imported macro files
-# (`_bank_macros.html`) see them too: `domain_nav(code)` — (item code, label,
-# URL) of the items the account may use, for a Domain's own navigation;
-# `may_use_item(code, item)`; `domain_entry(code)`. All read the one item
-# list in `domain_registry`.
-app.jinja_env.globals.update(
-    domain_nav=lambda code: [(i.code, i.label, url_for(i.endpoint)) for i in _allowed_items(code)],
-    may_use_item=lambda code, item: any(i.code == item for i in _allowed_items(code)),
-    domain_entry=domain_entry,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -477,106 +316,16 @@ register_compensation_routes(
     load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
-# Settings > Workweek (COMPENSATION_PERIOD_SUMMARY_001) — the shared
-# Restaurant Workweek start, read by every per-week function.
-register_workweek_settings_routes(
-    app, require_admin=require_admin, SessionFactory=SessionFactory,
-    require_csrf=require_csrf, load_current_account=load_current_account,
-)
-
 # ---------------------------------------------------------------------------
-# Organization — Organizational Responsibility + Attention Management (TASK_
-# ATTENTION_ORG_RUNTIME §12). Since ACCOUNT_ITEM_ACCESS_001 its own Domain
-# (`require_domain_access("ORGANIZATION")`, per item); every change stays
-# reserved to administrators. Never the eventual end-user Attention Inbox
-# (see `organizational_responsibility_routes.py`'s own module docstring for
-# the full boundary statement).
+# Admin — Organizational Responsibility + Attention Management (TASK_
+# ATTENTION_ORG_RUNTIME §12). ADMIN / CONFIGURATION / TEST HARNESS only —
+# never the eventual end-user Attention Inbox (task explicitly forbids
+# building that here; see `organizational_responsibility_routes.py`'s own
+# module docstring for the full boundary statement).
 # ---------------------------------------------------------------------------
 
 register_organizational_responsibility_routes(
-    app, require_admin=require_admin, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
-    require_csrf=require_csrf, load_current_account=load_current_account,
-)
-
-
-# ---------------------------------------------------------------------------
-# Bank Reconciliation — Canonical Financial Model Convergence (Phases 1-6B,
-# FINANCIAL_MODEL_CONVERGENCE_001). Manual CSV import (Chase, First
-# Citizens) and PayPal acquisition, normalized into the canonical
-# PaymentInstrument/FinancialTransaction ledger; the Bank Recognition
-# Expert System, Kermali Monthly Accountant Export, and automatic
-# cross-ledger internal-transfer matching (Phase 6B). Gated the same way
-# as every other destination here: `require_domain_access("BANK")`.
-# ---------------------------------------------------------------------------
-
-register_bank_routes(
-    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
-    load_current_account=load_current_account, require_csrf=require_csrf,
-)
-
-
-# ---------------------------------------------------------------------------
-# Tips — period validation only (TIPS_AWS_FINALIZATION_WORKFLOW_001). The
-# human step that turns a CALCULATED Tips period FINAL needs the RF-One
-# login, which only reaches this host; everything else in Tips stays in the
-# Tips app. Gated by `require_domain_access("TIPS")` + CSRF — see
-# `tips_validation_routes.py`'s own module docstring.
-# ---------------------------------------------------------------------------
-
-register_tips_validation_routes(
-    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
-    load_current_account=load_current_account, require_csrf=require_csrf,
-)
-
-
-# ---------------------------------------------------------------------------
-# Clover Acquisition (CLOVER_ACQUISITION_IDENTITY_001) — Sync Now and
-# Historical Backfill, startable only by a signed-in account holding the
-# CLOVER_ACQUISITION access. See `clover_acquisition_routes.py`.
-# ---------------------------------------------------------------------------
-
-# How accepted acquisition jobs are started: `None` = the deployment's
-# configured launcher (`RFONE_CLOVER_JOB_LAUNCHER`); tests replace it.
-clover_job_launcher = None
-
-register_clover_acquisition_routes(
-    app, SessionFactory=SessionFactory, load_current_account=load_current_account,
-    require_csrf=require_csrf, log_out=log_out, get_launcher=lambda: clover_job_launcher,
-)
-
-
-# ---------------------------------------------------------------------------
-# Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001) — wine types, the
-# purchasable catalog and each Entity's Wine lists. See
-# `restaurant_wines_routes.py`; gated by `require_domain_access("WINES")`.
-# ---------------------------------------------------------------------------
-
-register_restaurant_wines_routes(
-    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
-    load_current_account=load_current_account, require_csrf=require_csrf,
-)
-
-
-# ---------------------------------------------------------------------------
-# MyRF Project Management — Projects, a Project's plan and its read-only
-# Gantt. Gated by `require_domain_access("PROJECTS")` + CSRF; see
-# `projects_routes.py`.
-# ---------------------------------------------------------------------------
-
-register_projects_routes(
-    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory, require_csrf=require_csrf,
-)
-
-
-# ---------------------------------------------------------------------------
-# Development Journal — a system-level service (`10 System/Development
-# Journal/README.md`). See `dev_journal_routes.py`; every page and document
-# is gated by `require_domain_access("DEV_JOURNAL")`.
-# ---------------------------------------------------------------------------
-
-register_dev_journal_routes(
-    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
-    load_current_account=load_current_account, require_csrf=require_csrf,
+    app, require_admin=require_admin, SessionFactory=SessionFactory, require_csrf=require_csrf,
 )
 
 
@@ -616,7 +365,7 @@ def admin_account_new():
             try:
                 account = account_service.create_account(
                     db, username=username, display_name=display_name, password=password, status=status,
-                    email=email, is_admin=request.form.get("is_admin") == "on",
+                    email=email,
                 )
                 db.commit()
             except (account_service.UsernameTakenError, account_service.EmailTakenError, ValueError) as exc:
@@ -651,27 +400,18 @@ def admin_account_edit(account_id: int):
             require_csrf()
             display_name = request.form.get("display_name", "").strip()
             status = "ACTIVE" if request.form.get("status") == "ACTIVE" else "INACTIVE"
-            # ADMIN_PERMISSIONS_001 — any number of RF-One administrators;
-            # the service refuses only what would demote the owner, lock the
-            # actor out, or leave no active administrator.
-            is_admin = request.form.get("is_admin") == "on"
             try:
-                account_service.update_account(
-                    db, account, display_name=display_name, status=status,
-                    is_admin=is_admin, actor=load_current_account(db),
-                )
+                account_service.update_account(db, account, display_name=display_name, status=status)
                 db.commit()
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                db.refresh(account)
-                return render_template("admin_account_form.html", mode="edit", account=account,
-                                       actor_id=current_account_id()), 400
+                return render_template("admin_account_form.html", mode="edit", account=account), 400
 
             flash("Account updated.", "info")
             return redirect(url_for("admin_accounts"))
 
-        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id())
+        return render_template("admin_account_form.html", mode="edit", account=account)
 
 
 @app.route("/admin/accounts/<int:account_id>/reset-password", methods=["POST"])
@@ -710,61 +450,25 @@ def admin_account_access(account_id: int):
 
         if request.method == "POST":
             require_csrf()
-            try:
-                for domain in DOMAINS:
-                    # ACCOUNT_ITEM_ACCESS_001: none / the whole Domain / only
-                    # the selected items (offered only for a Domain with items).
-                    # The earlier form's `enabled_<CODE>=on` still means the whole Domain.
-                    legacy = _ACCESS_ALL if request.form.get(f"enabled_{domain.code}") == "on" else _ACCESS_NONE
-                    mode = request.form.get(f"access_{domain.code}", legacy)
-                    if mode == _ACCESS_SELECTED and not domain.items:
-                        mode = _ACCESS_NONE
-                    role_code = request.form.get(f"role_{domain.code}", "").strip() or None
-                    item_codes = [
-                        code for code in request.form.getlist(f"items_{domain.code}") if domain.item(code) is not None
-                    ]
-                    account_service.set_domain_access(
-                        db, account_id=account.id, domain_code=domain.code, enabled=mode != _ACCESS_NONE,
-                        role_code=role_code,
-                        scope=m.DOMAIN_ACCESS_SCOPE_SELECTED if mode == _ACCESS_SELECTED else m.DOMAIN_ACCESS_SCOPE_ALL,
-                        item_codes=item_codes,
-                    )
-                    if domain.code == "TRAINING":
-                        # Explicit, authorized sync point (task: "assegnano o
-                        # modificano il ruolo TRAINING di un account già
-                        # collegato") — same transaction as the access change
-                        # itself, committed together below.
-                        training_integration.sync_training_role_if_linked(db, account.id, role_code)
-            except ValueError as exc:
-                db.rollback()
-                flash(f"Nothing saved. {exc}", "error")
-                return redirect(url_for("admin_account_access", account_id=account_id))
+            for domain in DOMAINS:
+                enabled = request.form.get(f"enabled_{domain.code}") == "on"
+                role_code = request.form.get(f"role_{domain.code}", "").strip() or None
+                account_service.set_domain_access(
+                    db, account_id=account.id, domain_code=domain.code, enabled=enabled, role_code=role_code,
+                )
+                if domain.code == "TRAINING":
+                    # Explicit, authorized sync point (task: "assegnano o
+                    # modificano il ruolo TRAINING di un account già
+                    # collegato") — same transaction as the access change
+                    # itself, committed together below.
+                    training_integration.sync_training_role_if_linked(db, account.id, role_code)
             db.commit()
             flash("Domain access updated.", "info")
             return redirect(url_for("admin_accounts"))
 
         access_by_code = {row.domain_code: row for row in account_service.list_domain_access_for_account(db, account.id)}
-        items_by_code = account_service.list_domain_item_access_for_account(db, account.id)
-        domains_view = []
-        for d in DOMAINS:
-            access = access_by_code.get(d.code)
-            if access is None or not access.enabled:
-                mode = _ACCESS_NONE
-            elif access.scope == m.DOMAIN_ACCESS_SCOPE_SELECTED and d.items:
-                mode = _ACCESS_SELECTED
-            else:
-                mode = _ACCESS_ALL
-            domains_view.append({
-                "domain": d, "access": access, "mode": mode,
-                "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
-            })
+        domains_view = [{"domain": d, "access": access_by_code.get(d.code)} for d in DOMAINS]
         return render_template("admin_account_access.html", account=account, domains_view=domains_view)
-
-
-# The three access choices of the Access screen (ACCOUNT_ITEM_ACCESS_001).
-_ACCESS_NONE = "none"
-_ACCESS_ALL = "all"
-_ACCESS_SELECTED = "selected"
 
 
 # ---------------------------------------------------------------------------

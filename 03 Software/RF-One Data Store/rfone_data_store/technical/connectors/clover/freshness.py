@@ -74,11 +74,6 @@ def _is_range_covered(
             m.IngestionRun.status.in_(("COMPLETE", "PARTIAL")),
             m.IngestionRun.source_window_start.is_not(None),
             m.IngestionRun.source_window_end.is_not(None),
-            # Whole-Location Backfill/Live Sync runs only — a Correction/
-            # Reconciliation Poller resource cursor (`resource_type` set)
-            # only re-verifies changed records, never a full ingestion of its
-            # window, so it must never be read as "this range was imported."
-            m.IngestionRun.resource_type.is_(None),
         )
         .order_by(m.IngestionRun.source_window_start)
     ).all()

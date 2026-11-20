@@ -1,4 +1,4 @@
-"""Experience Analysis (01 Domains/Shared Domains/Selection/
+"""Experience Analysis (01 Domains/Cross Domain/Selection/
 ResumeScreening/ExperienceAndTrajectory.md).
 
 Every function here returns Derived Information computed from Work History
@@ -198,9 +198,6 @@ class TenureStats:
     jobs_under_6_months: int = 0
     jobs_over_12_months: int = 0
     jobs_over_24_months: int = 0
-    # SELECTION_PRESELECTION_COMPARE_001 — how many jobs have a computable
-    # duration: with none, the averages above are not 0 but unknown.
-    dated_job_count: int = 0
 
 
 def compute_tenure_stats(work_history: list[WorkHistoryRecord]) -> TenureStats:
@@ -212,7 +209,6 @@ def compute_tenure_stats(work_history: list[WorkHistoryRecord]) -> TenureStats:
             durations.append(months)
 
     stats = TenureStats(employer_count=len({r.employer for r in work_history if r.employer}))
-    stats.dated_job_count = len(durations)
     if durations:
         stats.average_tenure_months = round(sum(durations) / len(durations), 1)
         sorted_durations = sorted(durations)

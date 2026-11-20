@@ -1,7 +1,4 @@
 {% extends "base.html" %}
-{# Roles lives under Configuration: its tab stays highlighted (TIPS_ACCESS_AND_DRILLDOWN_001). #}
-{% set active_nav = 'configuration' %}
-{% set crumbs = [('Configuration', url_for('configuration_home')), ('Roles', url_for('restaurant_roles_home')), ('New Role' if mode == 'create' else 'Edit Role', None)] %}
 {% block content %}
 
 {% with messages = get_flashed_messages(with_categories=True) %}
@@ -10,6 +7,7 @@
   {% endfor %}
 {% endwith %}
 
+<p><a href="{{ url_for('restaurant_roles_home') }}">&larr; Back to Roles</a></p>
 
 <div class="card">
   <h2>{{ "New Role" if mode == "create" else "Edit Role" }}</h2>

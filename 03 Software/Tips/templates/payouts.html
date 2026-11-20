@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% for category, message in messages %}
+    {% if category == "error" %}
+      <div class="error">{{ message }}</div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="card">
+    <h2>Tip Payouts — Mercury Sandbox pilot</h2>
+    <p class="muted" style="font-size:.85rem;">
+      Exception handling &amp; configuration only — the normal Process runs without opening this screen
+      (Core 2.0 Process Autonomy). SANDBOX ONLY: never a production Mercury endpoint or token.
+    </p>
+    {% if connector_error %}
+      <p class="error">Mercury sandbox connector not available: {{ connector_error }}</p>
+    {% endif %}
+    {% if not restaurant %}
+      <p class="error">No Restaurant exists in this database yet.</p>
+    {% elif not state or not state.business_date %}
+      <p class="empty">No Business Date with Order data on file yet — nothing to process.</p>
+    {% else %}
+      <table style="margin-bottom:1rem;">
+        <tr><td class="muted">Candidate Business Date</td><td><strong>{{ state.business_date }}</strong></td></tr>
+        <tr><td class="muted">Already calculated</td><td>{{ "yes" if state.already_calculated else "no" }}</td></tr>
+        <tr><td class="muted">Payment Instructions</td><td>{{ state.payment_instructions_total }} total, {{ state.payment_instructions_verified }} Outcome-verified, {{ state.payment_instructions_needing_attention }} needing attention</td></tr>
+        <tr><td class="muted">Fully settled</td><td>{{ "yes" if state.fully_settled else "no" }}</td></tr>
+      </table>
+      <form method="post" action="{{ url_for('payouts_run') }}">
+        <button type="submit" {{ 'disabled' if state.fully_settled else '' }}>
+          {{ "Recalculate & submit payouts" if not state.already_calculated else "Submit / refresh payouts for this Business Date" }}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  {% for category, summary in messages %}
+    {% if category == "summary" %}
+    <div class="card"><p>{{ summary }}</p></div>
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+
+<div class="card">
+  <h2>Payment Instructions</h2>
+  {% if not instructions %}
+    <p class="empty">No Payment Instructions for the current Business Date yet.</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Employee</th><th>Amount</th><th>Mercury recipient</th><th>Status</th>
+        <th>Provider status</th><th>Priority / Reason</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for instruction in instructions %}
+      {% set employee = employees_by_id.get(instruction.employee_id) %}
+      {% set reference = references_by_employee.get(instruction.employee_id) %}
+      <tr>
+        <td>{{ employee.display_name if employee else ('Employee #' ~ instruction.employee_id) }}</td>
+        <td>${{ "%.2f"|format(instruction.amount_minor / 100) }}</td>
+        <td>
+          {% if reference %}
+            <span class="muted" style="font-size:.78rem;">linked</span>
+          {% else %}
+            <form method="post" action="{{ url_for('payouts_link_recipient', employee_id=instruction.employee_id) }}" style="display:flex; gap:.3rem;">
+              <input type="text" name="recipient_name" placeholder="Mercury sandbox recipient name" required style="font-size:.78rem;">
+              <button type="submit" style="font-size:.78rem;">Link</button>
+            </form>
+          {% endif %}
+        </td>
+        <td><span class="badge {{ 'warn' if instruction.status == 'NEEDS_ATTENTION' else '' }}">{{ instruction.status }}</span></td>
+        <td>{{ instruction.provider_status or "-" }}</td>
+        <td class="muted" style="font-size:.78rem;">
+          {% if instruction.priority %}<strong>{{ instruction.priority }}</strong> — {% endif %}
+          {{ instruction.reason_for_failure or "" }}
+        </td>
+        <td>
+          {% if instruction.status == "NEEDS_ATTENTION" %}
+          <form method="post" action="{{ url_for('payouts_retry_instruction', instruction_id=instruction.id) }}">
+            <button type="submit" style="font-size:.78rem;">Retry this instruction only</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
+    Retrying resubmits ONLY the selected instruction, with the same deterministic idempotency key — every
+    other instruction is unaffected. A NEEDS_ATTENTION row without a linked recipient must be linked first.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

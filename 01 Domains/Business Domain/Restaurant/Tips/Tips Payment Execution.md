@@ -1,7 +1,7 @@
 # Tips Payment Execution — Core 2.0 Process-First Pilot
 
-**Version:** 0.1 — pilot, for technical review (JP, Shelbi); operational context extended by `Tips Configuration.md` (Payment Cycle, Payment Readiness, connector-neutral execution, STEP 12B) — noted inline below
-**Status:** PILOT — IMPLEMENTED items below are real, working, sandbox-only code; nothing here is deployed or authorized for production. Payment execution now runs inside the Payment Cycle model and the connector-neutral resolver `Tips Configuration.md` describes — this document's own "What this pilot did NOT implement" section is historical (see its updated note below).
+**Version:** 0.1 — pilot, for technical review (JP, Shelbi)
+**Status:** PILOT — IMPLEMENTED items below are real, working, sandbox-only code on `review/tips-core2-pilot`; nothing here is deployed or authorized for production
 **Module:** Restaurant Domain / Tips
 **Origin:** TASK_TIPS_CORE2_PILOT
 
@@ -12,20 +12,6 @@
 This document describes how the Tips Distribution Engine's finalized, per-Employee net amount (`Tip Allocation.md`'s atomic allocations, aggregated) is paid out through an external Payment Executor (Mercury, sandbox only in this pilot), and how that payout's Outcome is verified — consuming, never redefining, RF-One Core 2.0.
 
 It does **not** redefine any Tip Business Rule (`Tip.md`, `Tip Policy.md`, `Tip Allocation.md`) — the Tip Distribution Engine (`rfone_data_store/tips/distribution_engine.py`) is reused exactly as it exists today.
-
-**Clover freshness vs. consolidation:** `readiness.py`'s "latest `Order.business_date` on file" is the concrete instance of the consolidation boundary formalized in `03 Software/RF-One Data Store/CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` §7 — Tips privileges a reconciled Business Date over live Clover freshness; it does not calculate or pay out against a Business Date before that data has passed through both the Fast Live Extractor and the Correction/Reconciliation Poller described there. Not redefined by this document.
-
----
-
-## Canonical payment-connector decision (Product Owner, external-review closure)
-
-Payment method is **variable and configurable**, not fixed to any one provider. RF-One owns the payment instruction and its workflow; a configured payment-mode setting determines WHICH connector actually executes it:
-
-- **`TipPaymentInstruction`** = what RF-One has decided must be paid — provider-neutral, and must remain so.
-- **Payment mode / configuration** = HOW that payment is to be executed.
-- **Configured connector** (Mercury today; other providers possible later) = the technical executor of that payment.
-
-**IMPLEMENTED (STEP 12B integration).** `tips/payment_connector.py` is the connector-neutral seam this decision required: a small, explicit, deterministic registry (`resolve_connector`) maps `TipsPaymentScheduleConfig.connector_code` (the "Payment mode / configuration" setting above, see `Tips Configuration.md` §7) to a registered connector implementation. `payment_instruction.py`/`payment_cycle_service.py`/`scheduler.py` execute against whichever `PaymentConnector` they are given and catch only connector-neutral exceptions (`payment_connector.PaymentConnectorError` and its subclasses) — they never import `technical.connectors.mercury` directly. Missing or unknown connector configuration **fails closed** (`ConnectorNotConfiguredError`/`UnknownConnectorError`) — there is no code path that falls back to Mercury silently. Mercury (`MercuryPaymentConnector`, wrapping `technical/connectors/mercury/`) is registered exactly like any future second connector would be, under the code `MERCURY` — it remains this pilot's one currently-*real* connector, never the canonical payment model, and every Mercury-specific detail below (its sandbox endpoints, its recipient/idempotency model, its failure classes) stays inside that one adapter.
 
 ---
 
@@ -50,7 +36,7 @@ Payment method is **variable and configurable**, not fixed to any one provider. 
 
 ### Tips Engine
 
-Untouched. The persisted calculation is `calculation_run_service.save_calculation_run` (the Location's Business Day, `build_employee_review` reused as-is); this pilot only consumes `EmployeeReviewRow.net_before_adjustments_minor` as the per-Employee Final Payable, and only from a FINAL run (BANK_FINAL_RELEASE_BLOCKERS_001).
+Untouched. `distribution_engine.run_tip_distribution_calculation` / `build_employee_review` are reused as-is; this pilot only consumes `EmployeeReviewRow.net_before_adjustments_minor` as the per-Employee Final Payable.
 
 ### Payment Instruction identity (RF-One's own primary duplicate-payment guard)
 
@@ -86,19 +72,21 @@ Untouched. The persisted calculation is `calculation_run_service.save_calculatio
 
 `payout_process.retry_instruction` resubmits exactly one instruction; every sibling instruction is untouched (verified both by automated tests and by the real sandbox run).
 
-### UI — superseded by Payment Control (STEP 12B)
+### UI (exception handling & configuration only — `03 Software/Tips/templates/payouts.html`, `/payouts*` routes)
 
-The `/payouts` route/template this section originally described has been **replaced** by `/payment-control` (`03 Software/Tips/templates/payment_control.html`) and `/configuration` (`configuration.html`, General Configuration section; the former `/tips-configuration` URL redirects there) — see `Tips Configuration.md` §12 for the current UI. It offers the same read-only readiness summary, per-instruction status/priority/reason, retry, and recipient-linking actions this section described, now against the Payment Cycle model (§6 there) rather than one calculation run at a time, and remains **exception handling / configuration** UI, never a required step of the normal Process.
+Read-only readiness summary, per-instruction status/priority/reason, a manual "submit/refresh" trigger (standing in for a future automatic Process Activation call), a "link existing recipient" form, and a "retry this instruction only" action. This is explicitly classified as **exception handling / configuration** UI (task §15) — the normal Process does not require opening it.
 
 ---
 
-## What this pilot did NOT implement at v0.1 — since built (STEP 12B integration)
+## What this pilot does NOT implement (blocker reported, not worked around)
 
-Per this task's own original instruction (§12/§14): where Attention Management or Organizational Responsibility needed a genuinely new, cross-domain, reusable Foundation to implement correctly, this pilot stopped and reported rather than building a Tips-specific shortcut. That Foundation has SINCE been built, independent of Tips (TASK_ATTENTION_ORG_RUNTIME and later organizational-runtime work), and Tips now consumes it — this section is historical record, not the current state:
+Per this task's own explicit instruction (§12/§14): where Attention Management or Organizational Responsibility would need a genuinely new, cross-domain, reusable Foundation to implement correctly, this pilot stops and reports rather than building a Tips-specific shortcut.
 
-- **Attention Management runtime** (Core 2.0 `12_Attention_Management.md`): now exists (`attention_service.py`) and is consumed directly by `tips/payment_cycle_service.py` — a failed/reopened `TipPaymentInstruction`, or a persistently-failing Payment Readiness gate, raises exactly one `AttentionItem`, routed through the shared Process Ownership -> Position -> Occupant -> Temporary Coverage -> Backup Position -> Organizational Fallback chain, never a Tips-specific escalation path. See `Tips Configuration.md` §8/§10.
-- **Organizational Responsibility runtime** (Position/Occupant/Delegation): now exists and is what the Attention routing above resolves through.
-- **Mobile/Attention Inbox delivery**: still not built as a dedicated push/PWA mechanism — a failure remains visible by opening Payment Control in a browser (now a responsive, phone/tablet/PC-friendly surface, `Tips Configuration.md` §12, rather than a PC-only page).
+- **Attention Management runtime** (Core 2.0 `12_Attention_Management.md`): does not exist anywhere in this codebase today. `TipPaymentInstruction.priority`/`failure_class`/`reason_for_failure` are plain Domain data — a genuine transversal capability that determines **who** receives an item, through **what channel**, with escalation policy, does not exist and is not built here.
+- **Organizational Responsibility runtime** (Position/Occupant/Delegation): does not exist anywhere in this codebase today. No Position is attributed to this Process or its exceptions in software (only conceptually, in this document).
+- **Mobile/Attention Inbox delivery** (task §14): no PWA, native app, or push-notification infrastructure exists in this repository today (confirmed by inspection — `03 Software/RF-One Web` is a server-rendered Flask app, mobile-responsive at best, with no manifest/service worker/push mechanism). Building a reusable, cross-domain Attention Inbox is a new Foundation, not a Tips concern — **not built here**. Today, a failure is only visible by opening `/payouts` in a browser.
+
+**Recommendation:** a dedicated, separate task/spec (Documentation First, per CLAUDE.md) to design the actual Attention Management + Organizational Responsibility runtime, reusable by Tips and every other Domain, before any Domain builds its own notification path.
 
 ---
 
@@ -111,18 +99,16 @@ Chase → Mercury funding is out of scope (unchanged from the earlier Mercury di
 ## Residual role of existing Tips UI
 
 - `Calculate Tips` / `History` / `Distribution Rules` / `Roles`: **unchanged**, still the configuration/inspection/exception surfaces they already were.
-- `Tips Configuration` / `Payment Control`: **current** (STEP 12B, superseding `/payouts` above) — exception handling & configuration only, never a required step of the normal Process. See `Tips Configuration.md`.
+- `/payouts`: **new**, exception handling & configuration only (see above) — never a required step of the normal Process.
 
 ---
 
 ## Related documents
 
 - [Tip.md](Tip.md), [Tip Policy.md](Tip%20Policy.md), [Tip Allocation.md](Tip%20Allocation.md) — untouched Business Rules this pilot pays out
-- [Tips Configuration.md](Tips%20Configuration.md) — the current Calculation/Payment Schedule, Payment Cycle, Payment Readiness, and Payment Control UI this document's payout mechanics now operate inside
 - `00 Core/ConceptualArchitecture/11_Process_Autonomy_and_Exception_Driven_Human_Involvement.md`, `12_Attention_Management.md`, `13_Process_Activation_and_Trigger_Intelligence.md` — Core 2.0 principles consumed
-- `01 Domains/Shared Domains/Administration/Payroll/Payment Execution.md` — the analogous, earlier Payroll boundary (`payment_execution_provider`, evidence-vs-status separation) this pilot's Tips-side design mirrors
-- `03 Software/RF-One Data Store/rfone_data_store/technical/connectors/mercury/` — the one currently-real connector
-- `03 Software/RF-One Data Store/rfone_data_store/tips/payment_connector.py` — the connector-neutral registry/resolver (STEP 12B) this document's "Canonical payment-connector decision" is implemented by
-- `03 Software/RF-One Data Store/rfone_data_store/tips/{readiness,payment_instruction,payout_process,payment_cycle_service,payment_readiness,schedule_service,scheduler}.py` — the pilot's own modules, as integrated
+- `01 Domains/Cross Domain/Administration/Payroll/Payment Execution.md` — the analogous, earlier Payroll boundary (`payment_execution_provider`, evidence-vs-status separation) this pilot's Tips-side design mirrors
+- `03 Software/RF-One Data Store/rfone_data_store/technical/connectors/mercury/` — the connector
+- `03 Software/RF-One Data Store/rfone_data_store/tips/{readiness,payment_instruction,payout_process}.py` — the pilot's own modules
 - `03 Software/Tips/sandbox_pilot_e2e.py` — the real-sandbox demonstration script (never part of the automated test suite)
-- `07 Tasks/Reports/TASK_TIPS_CORE2_PILOT_REPORT.md` — full implementation report (v0.1, pilot)
+- `07 Tasks/Reports/TASK_TIPS_CORE2_PILOT_REPORT.md` — full implementation report

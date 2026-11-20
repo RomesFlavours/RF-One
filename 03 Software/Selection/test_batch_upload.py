@@ -14,10 +14,7 @@ Task 2A replaced the fabricated-fixture DEMO fallback with a real,
 rule-based parser (`rfone_data_store/selection/parsing/deterministic_parser.py`);
 these tests upload real, hand-written résumé text/DOCX fixtures and assert
 the structured candidate data actually comes from that content — never a
-canned fixture — since no AI provider is configured for this test: the AI
-client is isolated from this machine's `.env` for the whole run
-(`ai_test_isolation.isolated_ai_client`), and any attempt to reach a real
-Anthropic/Bedrock client is blocked and fails the run.
+canned fixture — since no AI credentials are configured in this environment.
 
 Runs against a throwaway SQLite database (never the real
 `data/selection.db`) and cleans up every file it writes into `uploads/`
@@ -41,7 +38,6 @@ os.remove(_TEST_DB_PATH)  # let app.py's migration runner create it fresh
 os.environ["RFONE_DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH.replace(os.sep, '/')}"
 
 import app as selection_app  # noqa: E402
-from rfone_data_store.selection.parsing.ai_test_isolation import isolated_ai_client  # noqa: E402
 
 try:
     import docx as _python_docx
@@ -117,28 +113,6 @@ def _fake_pdf(label: str) -> bytes:
 
 
 def main() -> int:
-    with isolated_ai_client() as ai_guard:
-        checks_passed, checks_failed = _run_checks()
-    no_real_ai_call = "no real AI provider call was attempted during the run"
-    if ai_guard.attempts:
-        checks_failed.append(f"{no_real_ai_call} (attempted: {', '.join(ai_guard.attempts)})")
-    else:
-        checks_passed.append(no_real_ai_call)
-
-    if not checks_failed:
-        print(f"Selection batch upload (Task 2A) tests: SUCCESS ({len(checks_passed)}/{len(checks_passed)} checks passed)")
-        return 0
-
-    print(
-        "Selection batch upload (Task 2A) tests: FAILURE "
-        f"({len(checks_passed)} passed, {len(checks_failed)} failed)"
-    )
-    for description in checks_failed:
-        print(f"  FAILED: {description}")
-    return 1
-
-
-def _run_checks() -> tuple[list[str], list[str]]:
     checks_passed: list[str] = []
     checks_failed: list[str] = []
 
@@ -174,7 +148,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
         if _python_docx is not None:
             files.insert(1, (BytesIO(_make_docx_bytes(BETA_RESUME_DOCX_PARAGRAPHS)), "candidate_beta.docx"))
 
-        response = client.post("/upload", data={"target_role": "SERVER", "resume_file": files}, content_type="multipart/form-data")
+        response = client.post("/upload", data={"resume_file": files}, content_type="multipart/form-data")
         check("1: batch upload returns HTTP 200", response.status_code == 200)
 
         with selection_app.SessionFactory() as session:
@@ -200,7 +174,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
                 profile = selection_app.persistence.to_profile(alpha_candidate)
                 alpha_parsing_mode = alpha_candidate.parsing_mode
             check(
-                "4: parsing_mode is RULE_BASED (no AI provider configured for this test) — "
+                "4: parsing_mode is RULE_BASED (no AI credentials configured in this environment) — "
                 "never DEMO for a real upload",
                 alpha_parsing_mode == "RULE_BASED",
             )
@@ -241,7 +215,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
         )
         good_response = client.post(
             "/api/upload",
-            data={"target_role": "SERVER", "resume_file": (BytesIO(epsilon_text.encode("utf-8")), "candidate_epsilon.txt")},
+            data={"resume_file": (BytesIO(epsilon_text.encode("utf-8")), "candidate_epsilon.txt")},
             content_type="multipart/form-data",
         )
         good_json = good_response.get_json()
@@ -253,7 +227,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         bad_response = client.post(
             "/api/upload",
-            data={"target_role": "SERVER", "resume_file": (BytesIO(b"whatever"), "candidate_zeta.rtf")},
+            data={"resume_file": (BytesIO(b"whatever"), "candidate_zeta.rtf")},
             content_type="multipart/form-data",
         )
         bad_json = bad_response.get_json()
@@ -265,7 +239,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         no_text_response = client.post(
             "/api/upload",
-            data={"target_role": "SERVER", "resume_file": (BytesIO(_fake_pdf("eta")), "candidate_eta.pdf")},
+            data={"resume_file": (BytesIO(_fake_pdf("eta")), "candidate_eta.pdf")},
             content_type="multipart/form-data",
         )
         no_text_json = no_text_response.get_json()
@@ -278,7 +252,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         partial_response = client.post(
             "/api/upload",
-            data={"target_role": "SERVER", "resume_file": (BytesIO(NO_STRUCTURE_TEXT.encode("utf-8")), "candidate_theta.txt")},
+            data={"resume_file": (BytesIO(NO_STRUCTURE_TEXT.encode("utf-8")), "candidate_theta.txt")},
             content_type="multipart/form-data",
         )
         partial_json = partial_response.get_json()
@@ -290,7 +264,7 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         duplicate_response = client.post(
             "/api/upload",
-            data={"target_role": "SERVER", "resume_file": (BytesIO(ALPHA_RESUME_TXT.encode("utf-8")), "candidate_alpha.txt")},
+            data={"resume_file": (BytesIO(ALPHA_RESUME_TXT.encode("utf-8")), "candidate_alpha.txt")},
             content_type="multipart/form-data",
         )
         duplicate_json = duplicate_response.get_json()
@@ -384,8 +358,8 @@ def _run_checks() -> tuple[list[str], list[str]]:
 
         # ---------------------------------------------------------------
         # 5. Task 3D-FIX — automatic Primary Screening through the real
-        #    HTTP routes, with NO AI provider configured for this test
-        #    (the authentic unavailable-provider path).
+        #    HTTP routes, with NO AI provider configured in this
+        #    environment (the authentic unavailable-provider path).
         # ---------------------------------------------------------------
         criterion_response = client.post(
             "/primary-screening-criteria/new",
@@ -497,7 +471,17 @@ def _run_checks() -> tuple[list[str], list[str]]:
                 except OSError:
                     pass
 
-    return checks_passed, checks_failed
+    if not checks_failed:
+        print(f"Selection batch upload (Task 2A) tests: SUCCESS ({len(checks_passed)}/{len(checks_passed)} checks passed)")
+        return 0
+
+    print(
+        "Selection batch upload (Task 2A) tests: FAILURE "
+        f"({len(checks_passed)} passed, {len(checks_failed)} failed)"
+    )
+    for description in checks_failed:
+        print(f"  FAILED: {description}")
+    return 1
 
 
 if __name__ == "__main__":

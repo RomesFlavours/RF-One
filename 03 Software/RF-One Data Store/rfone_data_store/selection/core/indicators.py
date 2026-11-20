@@ -1,4 +1,4 @@
-"""Initial Indicators (01 Domains/Shared Domains/Selection/
+"""Initial Indicators (01 Domains/Cross Domain/Selection/
 ResumeScreening/FlagsAndIndicators.md, "Indicators"). Separate, named
 dimensions — never combined into one CV score. Each carries a raw value plus
 a descriptive state where useful; no weighting between them is defined here.
@@ -20,17 +20,12 @@ class Indicator:
     state: str | None = None
 
 
-TARGET_ROLE_TO_CLARIFY = "target role to be clarified"
-
-
 def _months_label(months: int) -> str:
     return f"{months} month{'s' if months != 1 else ''}"
 
 
 def _stability_state(tenure: TenureStats) -> str:
-    if tenure.employer_count == 0 or tenure.dated_job_count == 0:
-        # No job with a computable duration: unknown, not "Moderate" from an
-        # average of 0 (SELECTION_PRESELECTION_COMPARE_001).
+    if tenure.employer_count == 0:
         return "Unknown"
     short_ratio = (tenure.jobs_under_6_months / tenure.employer_count) if tenure.employer_count else 0
     if short_ratio >= 0.5:
@@ -45,20 +40,12 @@ def compute_indicators(
     tenure: TenureStats,
     trajectory_events: list[TrajectoryEvent],
     information_quality: InformationQuality,
-    *,
-    role_known: bool = True,
 ) -> list[Indicator]:
-    """`role_known=False` (SELECTION_FOH_TEAM_LEADER_001): the application has
-    no supported target role, so the two role-relative Indicators are shown
-    as to be clarified instead of a misleading "0 months"."""
-
     progression_observed = any(e.type in (PROMOTION, INCREASE_IN_RESPONSIBILITY) for e in trajectory_events)
 
     return [
-        Indicator("Direct Role Experience",
-                  _months_label(breakdown.direct_role_months) if role_known else TARGET_ROLE_TO_CLARIFY),
-        Indicator("Relevant / Propedeutic Experience",
-                  _months_label(breakdown.relevant_propedeutic_months) if role_known else TARGET_ROLE_TO_CLARIFY),
+        Indicator("Direct Role Experience", _months_label(breakdown.direct_role_months)),
+        Indicator("Relevant / Propedeutic Experience", _months_label(breakdown.relevant_propedeutic_months)),
         Indicator("Industry Experience", _months_label(breakdown.industry_months)),
         Indicator(
             "Stability",

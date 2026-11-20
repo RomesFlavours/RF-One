@@ -73,11 +73,9 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
     return result
 
 
-# The acquisition page template, three levels up from this file
+# `03 Software/Tips/templates/home.html`, three levels up from this file
 # (`rfone_data_store/`, then `RF-One Data Store/`, then `03 Software/`).
-# CLOVER_ACQUISITION_IDENTITY_001 — the acquisition forms moved from the
-# Tips page to RF-One Web's Clover Acquisition page.
-_TIPS_HOME_TEMPLATE = Path(__file__).resolve().parents[2] / "RF-One Web" / "templates" / "clover_acquisition.html"
+_TIPS_HOME_TEMPLATE = Path(__file__).resolve().parents[2] / "Tips" / "templates" / "home.html"
 
 
 def _test_ui_button_disabled_on_submit(result: ValidationResult) -> None:
@@ -86,24 +84,20 @@ def _test_ui_button_disabled_on_submit(result: ValidationResult) -> None:
     No browser/JS test runner is available in this environment, so this is
     a static assertion on the shipped template rather than a real
     click-through: it confirms the submit handler that disables the button,
-    relabels it "Starting...", and blocks a second submit from the same
+    relabels it "Importing...", and blocks a second submit from the same
     page is actually present and wired to the form — the same limitation
     documented in `07 Tasks/Reports/TIPS_IMPORT_CONCURRENCY_GUARD_001.md`."""
     if not _TIPS_HOME_TEMPLATE.is_file():
         result.check(f"UI guard: {_TIPS_HOME_TEMPLATE} exists", False)
         return
     html = _TIPS_HOME_TEMPLATE.read_text(encoding="utf-8")
-    # CLOVER_ACQUISITION_JOBS_001: the page has two acquisition forms (Sync
-    # Now, Historical Backfill) sharing one guard; a submit now only starts
-    # a job, hence "Starting..." rather than "Importing...".
     result.check(
-        "UI guard: both acquisition forms' submits are wired to the guard handler",
-        "onsubmit=\"return guardSubmit('backfill-btn')\"" in html and 'id="backfill-btn"' in html
-        and "onsubmit=\"return guardSubmit('sync-now-btn')\"" in html and 'id="sync-now-btn"' in html,
+        "UI guard: the import form's submit is wired to a guard handler",
+        'onsubmit="return guardImportSubmit()"' in html and 'id="import-submit-btn"' in html,
     )
     result.check(
-        "UI guard: first submit disables the button and relabels it 'Starting...'",
-        "btn.disabled = true" in html and "Starting..." in html,
+        "UI guard: first submit disables the button and relabels it 'Importing...'",
+        "btn.disabled = true" in html and "Importing..." in html,
     )
     result.check(
         "UI guard: a second submit from the same page (before reload) is blocked",

@@ -31,17 +31,11 @@ from flask import abort, redirect, request, session as flask_session, url_for
 
 from db import SessionFactory
 from rfone_data_store import models as m
-from rfone_data_store import rfone_web_session as shared_session
+from rfone_data_store import rfone_account_service as account_service
 
-# TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §15 — these two keys and
-# the account+revocation lookup below now live in
-# `rfone_data_store/rfone_web_session.py`, so a second RF-One app (Tips)
-# honours THIS session rather than growing a login of its own. Imported
-# rather than re-declared: two copies of a session key drift, and the day
-# they drift everyone is silently logged out of one app only.
-SESSION_ACCOUNT_KEY = shared_session.SESSION_ACCOUNT_KEY
-SESSION_VERSION_KEY = shared_session.SESSION_VERSION_KEY
-SESSION_CSRF_KEY = shared_session.SESSION_CSRF_KEY
+SESSION_ACCOUNT_KEY = "rfone_account_id"
+SESSION_VERSION_KEY = "rfone_session_version"
+SESSION_CSRF_KEY = "rfone_csrf_token"
 # Deliberately a DIFFERENT key from SESSION_ACCOUNT_KEY: holding the
 # in-progress forgot-password username here (rather than reusing the real
 # login key) means an anonymous visitor mid-recovery is never mistaken for
@@ -55,7 +49,11 @@ SESSION_FORGOT_PASSWORD_USERNAME_KEY = "rfone_forgot_password_username"
 
 
 def get_csrf_token() -> str:
-    return shared_session.csrf_token(flask_session)
+    token = flask_session.get(SESSION_CSRF_KEY)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        flask_session[SESSION_CSRF_KEY] = token
+    return token
 
 
 def csrf_valid() -> bool:
@@ -99,13 +97,16 @@ def load_current_account(db_session) -> "m.RFOneAccount | None":
     call site (this app's own `require_login`/`require_admin` below, and
     `training_integration.py`'s SSO gate/trainer check, which both call
     this same function) gets the revocation check for free — there is
-    exactly one place this comparison is made — `rfone_web_session.
-    account_for_session`, which Tips calls too (§15)."""
-    return shared_session.account_for_session(
-        db_session,
-        account_id=current_account_id(),
-        session_version=flask_session.get(SESSION_VERSION_KEY),
-    )
+    exactly one place this comparison is made."""
+    account_id = current_account_id()
+    if account_id is None:
+        return None
+    account = account_service.get_account(db_session, account_id)
+    if account is None:
+        return None
+    if flask_session.get(SESSION_VERSION_KEY) != account.session_version:
+        return None
+    return account
 
 
 # ---------------------------------------------------------------------------

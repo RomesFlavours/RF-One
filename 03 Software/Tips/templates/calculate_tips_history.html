@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>Tip Calculation History</h2>
+  {% if restaurant %}
+  <p class="muted" style="font-size:.85rem;">Restaurant: <strong>{{ restaurant.name }}</strong></p>
+  {% else %}
+  <p class="error">No Restaurant exists in this database yet.</p>
+  {% endif %}
+
+  {% if not run_rows %}
+  <p class="empty">No Tip Distribution Calculation has been run yet — use "Calculate Tips" above to run the first one.</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Period</th><th>Status</th><th>Started</th><th>Completed</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for row in run_rows %}
+      <tr>
+        <td>{{ row.from_date }} &rarr; {{ row.through_date }}</td>
+        <td>
+          <span class="badge {{ 'ok' if row.status == 'COMPLETE' else ('bad' if row.status == 'FAILED' else 'warn') }}">{{ row.status }}</span>
+          {% if row.superseded %}<span class="badge warn" title="A later recalculation for this exact period superseded this run.">superseded</span>{% endif %}
+        </td>
+        <td>{{ row.started_at.strftime('%Y-%m-%d %H:%M') if row.started_at else '-' }}</td>
+        <td>{{ row.completed_at.strftime('%Y-%m-%d %H:%M') if row.completed_at else '-' }}</td>
+        <td><a href="{{ url_for('calculate_tips_home', from_date=row.from_date, through_date=row.through_date) }}">View Review &rarr;</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

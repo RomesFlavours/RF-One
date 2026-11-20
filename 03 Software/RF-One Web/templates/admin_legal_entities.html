@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Legal Entities · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Legal Entities', None)]) }}
+<p><a href="{{ url_for('home') }}">&larr; Home</a></p>
 <h1>Legal Entities</h1>
 
 <div class="btn-row">

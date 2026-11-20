@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block page_title %}Org Chart · RF-One{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('admin_org_positions') }}">&larr; Positions</a></p>
+<h1>Org Chart — ADMIN / CONFIGURATION / TEST HARNESS</h1>
+<p class="empty">A minimal administrative listing, not a diagram — verifies the model is configurable and comprehensible.</p>
+
+{% for node in nodes %}
+  <div class="card">
+    <h3>{{ node.position.name }}{% if node.position.parent_position %} <span class="empty">(reports to {{ node.position.parent_position.name }})</span>{% endif %}</h3>
+    <p>Occupant: <strong>{{ node.occupant.display_name if node.occupant else "VACANT" }}</strong>
+      {% if node.coverage %}
+        — currently covered by
+        {{ node.coverage.delegate_acting_identity.display_name if node.coverage.delegate_acting_identity else node.coverage.delegate_position.name }}
+      {% endif %}
+    </p>
+    <p>Scope: {% if node.scopes %}{% for s in node.scopes %}{{ s.scope_type }}={{ s.scope_id if s.scope_id is not none else s.scope_key }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="empty">(none — global)</span>{% endif %}</p>
+    <p>Process Ownership: {% if node.ownerships %}{% for o in node.ownerships %}{{ o.domain }}/{{ o.process_name }}{% if o.phase %} ({{ o.phase }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="empty">(none)</span>{% endif %}</p>
+    <p><a href="{{ url_for('admin_org_position_detail', position_id=node.position.id) }}">Manage</a></p>
+  </div>
+{% else %}
+  <p class="empty">No Position configured yet.</p>
+{% endfor %}
+{% endblock %}

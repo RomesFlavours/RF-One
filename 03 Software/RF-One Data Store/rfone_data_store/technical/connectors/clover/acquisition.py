@@ -36,16 +36,8 @@ This module owns the one shared acquisition path every mode uses:
 - **Live Sync** (`technical/connectors/clover/live_sync.py`): a short,
   recent, automatically-advancing window, run on a tight interval for
   near-real-time operation (seconds, not minutes).
-- **Sync Now** (CLOVER_ACQUISITION_JOBS_001): last successful
-  synchronization -> now, on request, from any RF-One area.
 
-Since CLOVER_ACQUISITION_JOBS_001, Sync Now and Historical Backfill are
-never executed inside a web request: `acquisition_jobs.py` accepts the job
-(status QUEUED, holding the Location's lock), a separate process runs it
-through `import_clover_period()` (RUNNING), and the run ends COMPLETE/
-PARTIAL/FAILED in the same `IngestionRun` history.
-
-All of them call the exact same `import_clover_period()` — there is no second
+Both call the exact same `import_clover_period()` — there is no second
 ingestion system, no duplicated fetch/mapping/upsert logic, and no
 duplicated concurrency guard. The two modes differ in HOW the
 `period_start`/`period_end` window is chosen and how often the call is
@@ -80,17 +72,6 @@ which resolves against whatever catalog is already canonical instead of
 refreshing it. `ingest_clover.py`'s own older full pipeline still
 independently covers the same ground from an on-disk bundle; none of these
 three paths read each other's writes.
-
-Business Date: every Order this module touches leaves the acquisition with
-its operating day already determined and persisted on
-`Order.business_date`, via `resolve_order_business_dates()` below — called
-once, after this window's Payments are in, because Business Date derives
-from Settlement Time which derives from those Payments. The rule itself is
-NOT defined, derived or duplicated here: this module only calls the single
-canonical implementation in `rfone_data_store.business_date` (Sales Model
-§6a). The same one call is reused by `correction_sync.py`, so an Order
-whose Payments Clover later corrected has its operating day corrected too
-rather than frozen at whatever it was when first acquired.
 
 READ-ONLY against Clover: only `CloverClient.get()` (a GET-only client with
 no write methods at all) is ever used. Never logs or exposes the API token,
@@ -143,7 +124,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -153,12 +134,6 @@ from .... import models as m
 from ....ingestion.common import payload_hash, utc_now
 from . import historical_backfill_detail, mapping
 from .ingest import upsert
-from .source_guard import (
-    CloverAcquisitionError,
-    CloverSourceUnavailableError,
-    require_complete,
-    verify_clover_access,
-)
 
 # Same reuse boundary `enrichment.py` already established: make the
 # existing, already-reviewed read-only Clover client/pagination primitives
@@ -178,34 +153,9 @@ UTC = timezone.utc
 # out from under itself; short enough that a real crash/kill self-heals well
 # within a single operator's working session.
 _STALE_RUN_THRESHOLD = timedelta(minutes=30)
-# CLOVER_ACQUISITION_JOBS_001 — a job run by `acquisition_jobs.py` in its
-# own process proves it is alive by refreshing `heartbeat_at` (every
-# `acquisition_jobs.HEARTBEAT_INTERVAL`). Such a run is judged by its last
-# heartbeat, not its start time, so a legitimately long Historical Backfill
-# is never reaped while its process still lives, and a dead one frees its
-# Location within minutes instead of half an hour.
-_HEARTBEAT_STALE_THRESHOLD = timedelta(minutes=5)
-# A QUEUED job holds the Location's lock but has not been picked up yet.
-# Its process starts within seconds locally and within a few minutes when
-# a fresh AWS job environment has to be provisioned; a QUEUED row this old
-# means its process never started.
-_QUEUED_STALE_THRESHOLD = timedelta(minutes=15)
 
 MODE_BACKFILL = "BACKFILL"
 MODE_LIVE_SYNC = "LIVE_SYNC"
-# CLOVER_ACQUISITION_JOBS_001 — "Sync Now": last successful synchronization
-# -> now, on request. It is the normal day-to-day manual update, so it
-# acquires the same full scope as Historical Backfill (catalog, Order Item
-# Tax, Order Discounts), never Live Sync's reduced continuous scope — an
-# Order acquired by Sync Now must not be less complete than one acquired by
-# Backfill.
-MODE_SYNC_NOW = "SYNC_NOW"
-FULL_SCOPE_MODES = frozenset({MODE_BACKFILL, MODE_SYNC_NOW})
-
-STATUS_QUEUED = "QUEUED"
-STATUS_RUNNING = "RUNNING"
-# A run holding its Location's lock is in one of these two states.
-ACTIVE_STATUSES = (STATUS_QUEUED, STATUS_RUNNING)
 
 
 class CloverReadClient(Protocol):
@@ -262,31 +212,8 @@ class ImportSummary:
     employees_resolved: int = 0  # distinct Employees upserted/resolved this run
     shifts_imported: int = 0  # Shift (clock-in/clock-out) rows touched, within the period
 
-    # Business Date Foundation wiring — Orders this run left with a
-    # persisted `Order.business_date`, and Orders it could not resolve one
-    # for (no successful Payment yet, or an unconfigured Location). The two
-    # always sum to the Orders touched this run, so a silent gap is visible
-    # in the run summary instead of only in the data.
-    business_dates_resolved: int = 0
-    business_dates_unresolved: int = 0
-
     employee_mismatches: list[EmployeeMismatch] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-
-    # CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE §2 PRECHECK finding —
-    # distinct from `errors` (which also collects per-RECORD issues, e.g. one
-    # unresolved Order reference, that do not mean the period's own
-    # createdTime-windowed scan was incomplete). True only when a scan this
-    # run DEPENDS ON to claim "this window is fully covered" — the Payments
-    # or Refunds createdTime-filtered fetch itself — did not succeed. Read by
-    # `_finalize_import_run` to decide COMPLETE/PARTIAL vs FAILED: a run that
-    # never actually completed its windowed scan must never be eligible to
-    # advance `compute_next_sync_window`'s or `freshness._is_range_covered`'s
-    # checkpoint, even though some other resource in the same cycle (e.g.
-    # Employees, or Orders reached via a partial Payments page) may have
-    # succeeded — see Task report "Live Cursor safety" for the verified gap
-    # this closes.
-    window_scan_failed: bool = False
 
     @property
     def employee_mismatches_count(self) -> int:
@@ -341,48 +268,6 @@ def get_order_settlement_time(session: Session, order_id: int) -> datetime | Non
             m.Payment.order_id == order_id, m.Payment.result == "SUCCESS",
         )
     )
-
-
-def resolve_order_business_dates(session: Session, order_ids: Iterable[int]) -> int:
-    """Business Date Foundation wiring — persist `Order.business_date` for
-    every Order this acquisition touched, once its Payments are in.
-
-    This connector does NOT define, derive or duplicate the Business Date
-    rule: it only calls the single canonical implementation
-    (`rfone_data_store.business_date.resolve_and_persist_order_business_date`,
-    Sales Model §6a — Settlement Time evaluated against the Location's own
-    `timezone` and `operating_day_cutoff_time`). Nothing about the rule
-    lives here, so a future change to the operating-day definition changes
-    exactly one file, still not this one.
-
-    Call ordering matters and is the whole reason this is a separate step
-    rather than part of `_ingest_order`: Business Date is a function of
-    Settlement Time, which is a function of the Order's successful Payments
-    (`get_order_settlement_time`). At `_ingest_order` time those Payments
-    have not been upserted yet, so an Order ingested there could only ever
-    resolve against a stale or absent Settlement Time.
-
-    Re-entrant by construction, which is what makes it correct for the
-    recurring/nightly path: the canonical function recomputes from current
-    Payments and REPLACES the stored value, so an Order first seen while
-    only partially paid (or not yet settled at all) picks up its real
-    Business Date on the next run that re-reads it, and an Order whose
-    Payments later changed has its Business Date corrected rather than
-    frozen. An Order with no successful Payment yet is left untouched
-    (`None`) — never guessed.
-
-    Returns the number of Orders that came out with a resolved Business
-    Date."""
-    # Imported lazily: `business_date` imports `get_order_settlement_time`
-    # from THIS module, so a module-level import here would be circular.
-    from ....business_date import resolve_and_persist_order_business_date
-
-    resolved = 0
-    for order_id in dict.fromkeys(order_ids):  # de-duplicated, order preserved
-        if resolve_and_persist_order_business_date(session, order_id) is not None:
-            resolved += 1
-    session.flush()
-    return resolved
 
 
 def _mirror_source_record(
@@ -493,10 +378,8 @@ def _fetch_reference_catalogs(
     Live Sync ever calling `/tenders`/`/devices` itself. Returns
     `(employee_by_source_id, tender_by_source_id, device_by_source_id)`."""
     employee_by_source_id: dict[str, int] = {}
-    # CLOVER_ACQUISITION_SAFETY_001 — a failed read raises; it is never an
-    # empty list that would clear existing Employee links.
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/employees")
-    for raw in require_complete(result, "Employees"):
+    for raw in result.elements if result.ok else []:
         values = mapping.map_employee(raw)
         source_id = values.pop("source_employee_id")
         if not source_id:
@@ -512,10 +395,10 @@ def _fetch_reference_catalogs(
             entity_type="employee", source_id=source_id, retrieved_at=retrieved_at, raw=raw,
         )
 
-    if mode in FULL_SCOPE_MODES:
+    if mode == MODE_BACKFILL:
         tender_by_source_id: dict[str, int] = {}
         result = paginate(client, f"/v3/merchants/{client.merchant_id}/tenders")
-        for raw in require_complete(result, "Tenders (payment methods)"):
+        for raw in result.elements if result.ok else []:
             values = mapping.map_tender(raw)
             source_id = values.pop("source_tender_id")
             if not source_id:
@@ -533,7 +416,7 @@ def _fetch_reference_catalogs(
 
         device_by_source_id: dict[str, int] = {}
         result = paginate(client, f"/v3/merchants/{client.merchant_id}/devices")
-        for raw in require_complete(result, "Devices"):
+        for raw in result.elements if result.ok else []:
             values = mapping.map_device(raw)
             source_id = values.pop("source_device_id")
             if not source_id:
@@ -573,9 +456,11 @@ def _fetch_and_ingest_shifts(
     period before upserting, so a run does not repeatedly rewrite a growing
     history of unrelated older Shifts."""
     result = paginate(client, f"/v3/merchants/{client.merchant_id}/shifts")
+    if not result.ok:
+        return 0
 
     touched = 0
-    for raw in require_complete(result, "Shifts"):
+    for raw in result.elements:
         clock_in = raw.get("inTime")
         if clock_in is None or not (
             int(period_start.astimezone(UTC).timestamp() * 1000)
@@ -657,21 +542,8 @@ def _ingest_fee_line_items(
 
     Called exactly ONCE per Order (from the Order-ingestion loop, never from
     the per-Payment loop), so a gratuity line item is counted exactly once
-    regardless of how many Payments settle that Order.
-
-    The payload's fee lines are the Order's CURRENT fee lines: a gratuity
-    added and later removed in Clover before payment must not survive here.
-    So, whenever the payload carries `lineItems` at all, any stored OrderFee
-    of this Order whose line item is no longer in it is deleted. A payload
-    without the `lineItems` key is not evidence of removal (it may simply
-    not have been expanded) and leaves stored fees untouched."""
+    regardless of how many Payments settle that Order."""
     line_items = (order_raw.get("lineItems") or {}).get("elements", [])
-    if "lineItems" in order_raw:
-        current_fee_line_ids = {li.get("id") for li in line_items if li.get("isOrderFee")}
-        for stale in session.scalars(select(m.OrderFee).where(m.OrderFee.order_id == order.id)).all():
-            if stale.source_line_item_id not in current_fee_line_ids:
-                session.delete(stale)
-        session.flush()
     for li_raw in line_items:
         if not li_raw.get("isOrderFee"):
             continue
@@ -831,57 +703,28 @@ def _aware_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
-def _is_stale(run: m.IngestionRun, *, now: datetime | None = None) -> bool:
-    """Whether a lock-holding run (QUEUED or RUNNING) is presumed orphaned.
-
-    - QUEUED: its process never picked it up within `_QUEUED_STALE_THRESHOLD`.
-    - RUNNING with a heartbeat (a job run by `acquisition_jobs.py`): no
-      heartbeat for `_HEARTBEAT_STALE_THRESHOLD`.
-    - RUNNING without one (any caller that runs the engine in its own
-      process — the Live Sync loop, the CLI tools): started more than
-      `_STALE_RUN_THRESHOLD` ago, exactly as before."""
-    now = now or utc_now()
-    if run.status == STATUS_QUEUED:
-        return _aware_utc(run.queued_at or run.started_at) < now - _QUEUED_STALE_THRESHOLD
-    if run.status != STATUS_RUNNING:
-        return False
-    if run.heartbeat_at is not None:
-        return _aware_utc(run.heartbeat_at) < now - _HEARTBEAT_STALE_THRESHOLD
-    return _aware_utc(run.started_at) < now - _STALE_RUN_THRESHOLD
-
-
 def _reap_if_stale(session: Session, *, location_id: int) -> int | None:
-    """If the run currently holding this Location's acquisition lock is
-    stale (`_is_stale`), treat it as orphaned (a process interruption that
-    never reached its own FAILED-handling code): mark it FAILED with an
-    explicit auto-recovery note, clear its `lock_key`, commit, and return
-    its id so the caller can retry acquiring the lock. Returns `None` (and
-    changes nothing) if no run holds this lock, or if it holds it but is not
-    yet stale — in the latter case a genuinely in-progress acquisition must
-    not be disturbed."""
+    """If the run currently holding this Location's acquisition lock has
+    been RUNNING longer than `_STALE_RUN_THRESHOLD`, treat it as orphaned (a
+    process interruption that never reached its own FAILED-handling code):
+    mark it FAILED with an explicit auto-recovery note, clear its
+    `lock_key`, commit, and return its id so the caller can retry acquiring
+    the lock. Returns `None` (and changes nothing) if no RUNNING run holds
+    this lock, or if it holds it but is not yet stale — in the latter case a
+    genuinely in-progress acquisition must not be disturbed."""
     lock_key = _acquisition_lock_key(location_id)
+    stale_cutoff = utc_now() - _STALE_RUN_THRESHOLD
     stale_run = session.scalars(
-        select(m.IngestionRun).where(
-            m.IngestionRun.lock_key == lock_key, m.IngestionRun.status.in_(ACTIVE_STATUSES),
-        )
+        select(m.IngestionRun).where(m.IngestionRun.lock_key == lock_key, m.IngestionRun.status == "RUNNING")
     ).first()
-    if stale_run is None or not _is_stale(stale_run):
+    if stale_run is None or _aware_utc(stale_run.started_at) >= stale_cutoff:
         return None
 
-    reason = (
-        "never picked up by its acquisition process"
-        if stale_run.status == STATUS_QUEUED
-        else "no sign of life within the maximum allowed time"
-    )
     stale_run.status = "FAILED"
     stale_run.finished_at = utc_now()
     stale_run.lock_key = None
-    stale_run.error_summary = (
-        f"Interrupted: {reason} — presumed orphaned by an interrupted process. "
-        "Recovered automatically; no imported data was reverted."
-    )
     stale_run.notes = (
-        f"{stale_run.notes or ''} | AUTO-RECOVERED: {reason} — "
+        f"{stale_run.notes or ''} | AUTO-RECOVERED: exceeded max run time ({_STALE_RUN_THRESHOLD}) — "
         "presumed orphaned by an interrupted process (killed/crashed before reaching COMPLETE/FAILED). "
         "Recovered automatically by the next acquisition attempt; no data was reverted (an interrupted "
         "run's own write transaction, if any, was never committed and needed no recovery of its own)."
@@ -893,9 +736,9 @@ def _reap_if_stale(session: Session, *, location_id: int) -> int | None:
 
 def _acquire_import_lock(
     session: Session, *, location_id: int, source_system_id: int,
-    period_start: datetime, period_end: datetime, mode: str, status: str = STATUS_RUNNING,
+    period_start: datetime, period_end: datetime, mode: str,
 ) -> m.IngestionRun:
-    """Persists the execution token *before* any Clover fetch or
+    """Persists the RUNNING execution token *before* any Clover fetch or
     long-running write transaction begins, and commits immediately in its
     own short transaction so the guard is visible to any other request the
     instant it is acquired. Race-safety comes from `IngestionRun.
@@ -903,22 +746,15 @@ def _acquire_import_lock(
     concurrent submissions attempting this same INSERT can never both
     succeed, even against SQLite's single-writer file lock — the loser gets
     an `IntegrityError`. Before surfacing that as a rejection, one staleness
-    check/reap is attempted so an orphaned run from a past interruption
-    self-heals on the very next acquisition attempt.
-
-    `status=STATUS_QUEUED` (CLOVER_ACQUISITION_JOBS_001) takes the same lock
-    for a job accepted by `acquisition_jobs.py` but not yet started by its
-    separate process — so a second acquisition is refused from the moment
-    the first is accepted, not only once it starts running."""
+    check/reap is attempted so an orphaned RUNNING row from a past
+    interruption self-heals on the very next acquisition attempt."""
     lock_key = _acquisition_lock_key(location_id)
     for attempt in range(2):
-        now = utc_now()
         run = m.IngestionRun(
-            source_system_id=source_system_id, location_id=location_id, started_at=now,
-            queued_at=now if status == STATUS_QUEUED else None,
-            status=status, source_window_start=period_start, source_window_end=period_end,
-            lock_key=lock_key, acquisition_mode=mode,
-            notes=f"CLOVER_ACQUISITION mode={mode} location_id={location_id}; {status}",
+            source_system_id=source_system_id, location_id=location_id, started_at=utc_now(),
+            status="RUNNING", source_window_start=period_start, source_window_end=period_end,
+            lock_key=lock_key,
+            notes=f"CLOVER_ACQUISITION mode={mode} location_id={location_id}; RUNNING",
         )
         session.add(run)
         try:
@@ -937,38 +773,17 @@ def _acquire_import_lock(
 
 
 def _finalize_import_run(ingestion_run: m.IngestionRun, summary: ImportSummary, *, location_id: int, mode: str) -> None:
-    """The RUNNING -> COMPLETE/PARTIAL/FAILED transition, and "release the
-    execution guard" (clearing `lock_key` back to NULL).
-
-    `window_scan_failed` (CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE §2
-    PRECHECK) takes priority over the ordinary PARTIAL-on-errors rule: a run
-    whose Payments or Refunds createdTime-windowed scan itself did not
-    succeed is marked FAILED, never PARTIAL/COMPLETE — `compute_next_sync_
-    window` and `freshness._is_range_covered` both only ever treat COMPLETE/
-    PARTIAL runs as having advanced the checkpoint, so a FAILED run here
-    correctly leaves the checkpoint exactly where it was, and the next cycle
-    (via its own overlap buffer) retries the same ground rather than silently
-    skipping past a window that was never actually verified."""
-    if summary.window_scan_failed:
-        ingestion_run.status = "FAILED"
-    else:
-        ingestion_run.status = "COMPLETE" if not summary.errors else "PARTIAL"
+    """The RUNNING -> COMPLETE/PARTIAL transition, and "release the
+    execution guard" (clearing `lock_key` back to NULL)."""
+    ingestion_run.status = "COMPLETE" if not summary.errors else "PARTIAL"
     ingestion_run.finished_at = utc_now()
     ingestion_run.lock_key = None
-    # CLOVER_ACQUISITION_JOBS_001 — the job history's own columns; the same
-    # numbers `notes` below has always carried.
-    ingestion_run.acquisition_mode = mode
-    ingestion_run.orders_processed = summary.orders_imported + summary.orders_updated
-    ingestion_run.payments_processed = summary.payments_imported + summary.payments_updated
-    ingestion_run.shifts_processed = summary.shifts_imported
-    ingestion_run.error_summary = "; ".join(summary.errors)[:2000] if summary.errors else None
     ingestion_run.notes = (
         f"CLOVER_ACQUISITION mode={mode} location_id={location_id}; "
         f"payments={summary.payments_imported + summary.payments_updated}; "
         f"orders={summary.orders_imported + summary.orders_updated}; "
         f"shifts={summary.shifts_imported}; "
         f"refunds={summary.refunds_found}"
-        + ("; WINDOW SCAN FAILED — checkpoint not advanced, will retry" if summary.window_scan_failed else "")
     )
 
 
@@ -985,9 +800,9 @@ def get_latest_acquisition_status(session: Session, *, location_id: int) -> Acqu
     ).first()
     if run is None:
         return None
-    is_stale = _is_stale(run)
-    mode_hint = run.acquisition_mode
-    if mode_hint is None and run.notes and "mode=" in run.notes:
+    is_stale = run.status == "RUNNING" and _aware_utc(run.started_at) < utc_now() - _STALE_RUN_THRESHOLD
+    mode_hint = None
+    if run.notes and "mode=" in run.notes:
         try:
             mode_hint = run.notes.split("mode=", 1)[1].split(" ", 1)[0]
         except IndexError:  # pragma: no cover — defensive only, notes is free text
@@ -1003,14 +818,13 @@ def reap_stale_acquisition_run(session: Session, *, location_id: int) -> int | N
     to the automatic self-heal `_acquire_import_lock` already performs on
     its own next attempt. Returns the reaped run's id, or `None` if nothing
     was stale (either no RUNNING run exists, or one exists but has not yet
-    exceeded its staleness threshold (`_is_stale`) — never disturbed)."""
+    exceeded `_STALE_RUN_THRESHOLD` — never disturbed)."""
     return _reap_if_stale(session, location_id=location_id)
 
 
 def import_clover_period(
     session: Session, *, location_id: int, period_start: datetime, period_end: datetime,
     client: CloverReadClient | None = None, mode: str = MODE_BACKFILL,
-    ingestion_run: m.IngestionRun | None = None,
 ) -> ImportSummary:
     """The central Clover data acquisition entry point. Fetches Payments for
     the period, their Orders, qualifying fee line items, resolves Employees/
@@ -1039,14 +853,7 @@ def import_clover_period(
     execution token it registers is always resolved to COMPLETE, PARTIAL, or
     FAILED before this function returns or raises, so a failed (or
     interrupted-and-later-reaped) run never leaves the system permanently
-    locked.
-
-    `ingestion_run` (CLOVER_ACQUISITION_JOBS_001): a run whose lock was
-    already taken when the job was accepted (`acquisition_jobs.py`, status
-    QUEUED, then RUNNING in the separate process). The lock is then NOT
-    acquired a second time — this call simply executes that run and
-    resolves it exactly as it would its own. Everything the acquisition
-    fetches, maps and writes is identical either way."""
+    locked."""
     summary = ImportSummary(location_id=location_id, period_start=period_start, period_end=period_end)
 
     merchant = _resolve_clover_merchant(session, location_id)
@@ -1059,16 +866,10 @@ def import_clover_period(
         return summary
     source_system_id, merchant_id = merchant
 
-    if ingestion_run is None:
-        ingestion_run = _acquire_import_lock(
-            session, location_id=location_id, source_system_id=source_system_id,
-            period_start=period_start, period_end=period_end, mode=mode,
-        )
-    elif ingestion_run.status != STATUS_RUNNING or ingestion_run.lock_key != _acquisition_lock_key(location_id):
-        raise ValueError(
-            f"IngestionRun {ingestion_run.id} is not a RUNNING run holding location_id={location_id}'s "
-            "acquisition lock — refusing to execute it."
-        )
+    ingestion_run = _acquire_import_lock(
+        session, location_id=location_id, source_system_id=source_system_id,
+        period_start=period_start, period_end=period_end, mode=mode,
+    )
     # One retrieved_at timestamp for every Provider Mirror row this run
     # writes — the same "single timestamp per run/bundle" convention
     # `ingest.py`'s bulk pipeline already uses, not a per-record fetch time.
@@ -1076,16 +877,6 @@ def import_clover_period(
 
     try:
         resolved_client = client or get_default_client()
-
-        # CLOVER_ACQUISITION_SAFETY_001 — pre-flight, before any fetch or
-        # write: right merchant for this Location, confirmed by Clover, and
-        # every source this job will read answering. Raises otherwise.
-        location = session.get(m.Location, location_id)
-        verify_clover_access(
-            resolved_client, expected_merchant_id=merchant_id,
-            location_label=f"location '{location.name}' (id {location_id})",
-            full_scope=mode in FULL_SCOPE_MODES,
-        )
 
         start_ms = int(period_start.astimezone(UTC).timestamp() * 1000)
         end_ms = int(period_end.astimezone(UTC).timestamp() * 1000)
@@ -1098,18 +889,12 @@ def import_clover_period(
                 "orderBy": "createdTime ASC",
             },
         )
-        # CLOVER_ACQUISITION_SAFETY_001 — raises if the window's Payments
-        # scan did not succeed completely; nothing has been written yet.
-        payments_raw = require_complete(payments_result, "Payments")
-        # Refunds are read here too, before anything is written, so a failed
-        # Refunds scan stops the job before its first write rather than after.
-        refunds_raw = require_complete(
-            paginate(
-                resolved_client, f"/v3/merchants/{merchant_id}/refunds",
-                extra_params={"filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"]},
-            ),
-            "Refunds",
-        )
+        if not payments_result.ok:
+            summary.errors.append(f"Fetching Payments failed: {payments_result.error or 'unknown error'}")
+            _finalize_import_run(ingestion_run, summary, location_id=location_id, mode=mode)
+            session.flush()
+            return summary
+        payments_raw = payments_result.elements
 
         employee_by_source_id, tender_by_source_id, device_by_source_id = _fetch_reference_catalogs(
             resolved_client, session, location_id=location_id, source_system_id=source_system_id,
@@ -1136,7 +921,7 @@ def import_clover_period(
         # ingest_order_item_and_modifier_detail`).
         catalog: historical_backfill_detail.CatalogMaps | None = None
         tax_override_cache: dict[str, float] = {}
-        if mode in FULL_SCOPE_MODES:
+        if mode == MODE_BACKFILL:
             catalog = historical_backfill_detail.fetch_full_catalog(
                 resolved_client, session, location_id=location_id, source_system_id=source_system_id,
                 ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
@@ -1163,18 +948,14 @@ def import_clover_period(
         # (CLOVER_LIVE_SYNC_SCOPE_REDUCTION_001) — Order Discounts are not
         # in Live Sync's retained-entity list, so there is no reason for
         # Live Sync's per-order GET to request them.
-        order_expand = "employee,lineItems,discounts" if mode in FULL_SCOPE_MODES else "employee,lineItems"
+        order_expand = "employee,lineItems,discounts" if mode == MODE_BACKFILL else "employee,lineItems"
         for order_source_id in order_ids_needed:
             order_result = resolved_client.get(
                 f"/v3/merchants/{merchant_id}/orders/{order_source_id}", params={"expand": order_expand},
             )
             if not order_result.ok:
-                # CLOVER_ACQUISITION_SAFETY_001 — an Order the window's
-                # Payments reference is mandatory: never skip it silently.
-                raise CloverSourceUnavailableError(
-                    f"Order {order_source_id[:4]}...", status_code=order_result.status_code,
-                    detail=order_result.error,
-                )
+                summary.errors.append(f"Fetching Order {order_source_id[:4]}... failed: {order_result.error}")
+                continue
             order_raw = order_result.data
             orders_raw_by_source_id[order_source_id] = order_raw
             order, is_new = _ingest_order(
@@ -1189,7 +970,7 @@ def import_clover_period(
                 summary.orders_updated += 1
             _ingest_fee_line_items(session, order_raw, order, source_system_id=source_system_id, summary=summary)
 
-            if mode in FULL_SCOPE_MODES and catalog is not None:
+            if mode == MODE_BACKFILL and catalog is not None:
                 # Full detail: OrderItem, OrderItemModifier, OrderItemTax,
                 # OrderDiscount — needs the live-fetched catalog above.
                 historical_backfill_detail.ingest_order_detail(
@@ -1230,23 +1011,6 @@ def import_clover_period(
             )
             payment_by_source_id[payment_raw.get("id")] = payment.id
 
-        # Business Date Foundation wiring — deliberately HERE, after every
-        # Payment of this window has been upserted: Business Date derives
-        # from Settlement Time, which derives from the Order's successful
-        # Payments. Resolving it inside the Order loop above would compute
-        # it against Payments this very run had not written yet. Covers all
-        # four required moments in one place, because all four reach this
-        # line: a brand-new Order, an already-known Order re-read, an Order
-        # completed/changed by a later Payment (that Payment puts its Order
-        # back into `order_by_source_id`), and any Order re-read by a
-        # subsequent recurring/nightly run.
-        summary.business_dates_resolved = resolve_order_business_dates(
-            session, order_by_source_id.values()
-        )
-        summary.business_dates_unresolved = (
-            len(order_by_source_id) - summary.business_dates_resolved
-        )
-
         # Order.employee vs Payment.employee: Order.employee is the Tip
         # Distribution Engine's authoritative tip owner; Payment.employee is
         # preserved independently for audit/anomaly detection only and
@@ -1274,24 +1038,26 @@ def import_clover_period(
                         )
                     )
 
-        for refund_raw in refunds_raw:
-            _ingest_refund(
-                session, refund_raw, source_system_id=source_system_id,
-                order_by_source_id=order_by_source_id, payment_by_source_id=payment_by_source_id,
-                employee_by_source_id=employee_by_source_id, device_by_source_id=device_by_source_id,
-                ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
-            )
-            summary.refunds_found += 1
+        refunds_result = paginate(
+            resolved_client, f"/v3/merchants/{merchant_id}/refunds",
+            extra_params={"filter": [f"createdTime>={start_ms}", f"createdTime<={end_ms}"]},
+        )
+        if refunds_result.ok:
+            for refund_raw in refunds_result.elements:
+                _ingest_refund(
+                    session, refund_raw, source_system_id=source_system_id,
+                    order_by_source_id=order_by_source_id, payment_by_source_id=payment_by_source_id,
+                    employee_by_source_id=employee_by_source_id, device_by_source_id=device_by_source_id,
+                    ingestion_run_id=ingestion_run.id, retrieved_at=retrieved_at,
+                )
+                summary.refunds_found += 1
+        else:
+            summary.errors.append(f"Fetching Refunds failed: {refunds_result.error or 'unknown error'}")
     except Exception as exc:  # noqa: BLE001 — a failed run must release the guard, never stay RUNNING forever
         session.rollback()
         ingestion_run.status = "FAILED"
         ingestion_run.finished_at = utc_now()
         ingestion_run.lock_key = None
-        # A Clover read failure carries its own message written for a
-        # person; anything else keeps the type-and-message summary.
-        ingestion_run.error_summary = (
-            str(exc)[:2000] if isinstance(exc, CloverAcquisitionError) else _safe_error_summary(exc)
-        )
         ingestion_run.notes = (
             f"CLOVER_ACQUISITION mode={mode} location_id={location_id}; FAILED: {_safe_error_summary(exc)}"
         )

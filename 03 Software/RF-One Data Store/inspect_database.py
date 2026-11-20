@@ -29,13 +29,7 @@ def main() -> None:
     print("-" * 60)
 
     with Session(engine) as session:
-        # `Base.metadata.tables.values()` (not `.sorted_tables`) — this is a
-        # per-table listing, not a dependency-ordered operation, so
-        # topological order is irrelevant; `.sorted_tables` also triggers an
-        # SAWarning on RF-One's known circular FKs for no benefit here (see
-        # DATABASE_SCHEMA.md §12, "Circular FK SAWarning", and the identical
-        # fix already applied in create_database.py).
-        for table in Base.metadata.tables.values():
+        for table in Base.metadata.sorted_tables:
             column_count = len(table.columns)
             if table.name in existing_tables:
                 row_count = session.scalar(select(func.count()).select_from(table))

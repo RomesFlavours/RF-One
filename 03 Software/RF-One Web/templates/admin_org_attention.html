@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Attention Items · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Organization', domain_entry('ORGANIZATION')), ('Attention Items', None)]) }}
+<p><a href="{{ url_for('admin_org_positions') }}">&larr; Positions</a></p>
 <h1>Attention Items — ADMIN / CONFIGURATION / TEST HARNESS</h1>
 <p class="empty">Inspection only. This is NOT the operational Attention Inbox — no delivery happens from this screen.</p>
 

@@ -1,4 +1,4 @@
-"""Career Trajectory detection (01 Domains/Shared Domains/Selection/
+"""Career Trajectory detection (01 Domains/Cross Domain/Selection/
 ResumeScreening/ExperienceAndTrajectory.md, "Career trajectory").
 
 Detects THAT a transition happened; never infers WHY (see that document,
@@ -119,8 +119,6 @@ class TransitionToInvestigate:
     from_title: str | None
     from_employer: str | None
     suggested_question: str
-    evidence_snippet: str | None = None  # the résumé text of the role the transition is read from
-    to_role_label: str | None = None  # how the target role is named to people (e.g. "FOH Team Leader")
 
 
 def detect_transitions_to_investigate(
@@ -133,37 +131,30 @@ def detect_transitions_to_investigate(
     (BOH, Management, ... — Industry Extension-defined) is one of
     `role_config.transition_flags`, this is worth an interview question —
     never automatic rejection (task §9's own example: Cook applying for
-    Server).
-
-    SELECTION_TRANSITION_EVIDENCE_001 — a transition is read only from a
-    POSITIVE classification: the Industry Extension's `role_category_fn`
-    must place the role in a category (e.g. "NON_HOSPITALITY" only for a
-    role it explicitly classifies as outside its industry). A missing or
-    unrecognized role means "to be clarified" (MISSING_INFORMATION /
-    TITLE_INCONSISTENCY flags), never "from another sector"; and a role
-    whose reading is uncertain (`structure_confidence == "LOW"`) yields no
-    conclusion about the career path at all — only the request to verify
-    the reading (EXTRACTION_UNCERTAIN)."""
+    Server). A role that could not be classified into the industry's own
+    catalog at all (`role_category_fn` returns None while a
+    `normalized_role` was still attempted) is treated as "NON_HOSPITALITY"
+    when that category is configured — Selection Core does not otherwise
+    know what "outside the industry" means for a given industry."""
 
     ordered = _ordered(work_history)
     if not ordered:
         return []
     most_recent = ordered[-1]
-    if most_recent.structure_confidence == "LOW":
-        return []
     category = role_category_fn(most_recent.normalized_role)
+    if category is None and most_recent.normalized_role is None and "NON_HOSPITALITY" in role_config.transition_flags:
+        category = "NON_HOSPITALITY"
     if category is None or category not in role_config.transition_flags:
         return []
 
     question = (
         f"Your recent experience has primarily been in {_display_category(category)}. "
-        f"What is making you want to move into {role_config.label}?"
+        f"What is making you want to move into {role_config.target_role.replace('_', ' ').title()}?"
     )
     return [
         TransitionToInvestigate(
             from_category=category, to_role=role_config.target_role,
             from_title=most_recent.original_job_title, from_employer=most_recent.employer,
-            suggested_question=question, evidence_snippet=most_recent.evidence_snippet,
-            to_role_label=role_config.label,
+            suggested_question=question,
         )
     ]

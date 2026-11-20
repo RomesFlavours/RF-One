@@ -31,8 +31,8 @@ This document is about the **physical schema**, not restaurant business meaning 
 
 **Purpose:** one execution of a source ingestion process — supports future incremental imports and auditability. No ingestion logic is implemented by this task.
 **PK:** `id`. **FKs:** `source_system_id` → `source_systems` (required), `location_id` → `locations` (nullable — a run may be merchant-wide before a Location is even known).
-**Direct fields:** `started_at` (required), `finished_at`, `status`, `source_window_start/end`, `notes`, `resource_type`.
-**Nullable and why:** everything except `started_at`/`status`/`source_system_id` — a run may still be in progress (`finished_at` null) or unwindowed (a full historical backfill has no natural window). `resource_type` (added by CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md §4) is `NULL` for every Historical Backfill/Live Sync run — one whole-Location run per cycle, unchanged — and set (e.g. `"orders"`, `"payments"`, `"refunds"`) only by the Correction/Reconciliation Poller's own Modification Cursor rows, one per resource per correction cycle. `live_sync.compute_next_sync_window` and `freshness._is_range_covered` both filter `resource_type IS NULL`, so a Modification Cursor row is never mistaken for the whole-Location Live Cursor.
+**Direct fields:** `started_at` (required), `finished_at`, `status`, `source_window_start/end`, `notes`.
+**Nullable and why:** everything except `started_at`/`status`/`source_system_id` — a run may still be in progress (`finished_at` null) or unwindowed (a full historical backfill has no natural window).
 
 ### `source_records`
 
@@ -273,7 +273,7 @@ For every current-scope `SourceRole` (matching this Restaurant's `RestaurantLoca
 
 ## 4d. Payroll (TASK_PAYROLL_001)
 
-Administration Domain, transversal — independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Shared Domains/Administration/Payroll/` for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
+Administration Domain, transversal — independent from Restaurant, Personnel Management, ADP, and jurisdiction-specific labor law. See `01 Domains/Cross Domain/Administration/Payroll/` for the Domain-level definitions and `PAYROLL.md` for the runtime/import workflow. Money is minor units (cents), matching the rest of this schema; every total (Payroll Employer Cost, run totals) is computed from the atomic fact tables below at query time, never stored as a redundant column.
 
 ### `payroll_schedules`
 
@@ -289,11 +289,11 @@ Administration Domain, transversal — independent from Restaurant, Personnel Ma
 
 ### `payroll_runs`
 
-**Purpose:** one actual administrative payroll processing event (task §18). **PK:** `id`. **FKs:** `restaurant_id` → `restaurants`, `source_system_id` → `source_systems` (both required, indexed); `payroll_schedule_id` → `payroll_schedules` (**nullable** — null for `SPECIAL` runs); `superseded_by_payroll_run_id` → `payroll_runs.id` (self-referential, nullable — populated only when an explicitly confirmed corrected import supersedes this run). **Direct fields:** `period_start`/`period_end` (nullable only for `SPECIAL` runs — never inferred from `pay_date`), `pay_date` (required), `run_type` (required — `REGULAR`/`SPECIAL`), `provider_reference`/`status` (free strings — conceptual `status` values `OPEN`/`COMPLETE`/`SUPERSEDED`), `payment_execution_provider` (nullable — `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`, `CheckConstraint`-enforced, TASK_PAYROLL_002; `NULL` = not yet assigned, never guessed for historical rows and **never defaulted merely because the source is ADP** (TASK_PAYROLL_003 correction) — resolved from an explicit selection or a `payroll_execution_configurations` row valid at `pay_date`, or left `NULL`; immutable once assigned to a non-null value — see `01 Domains/Shared Domains/Administration/Payroll/Payment Execution.md` and `rfone_data_store/payroll/payment_execution.py`), `created_at`/`updated_at`.
+**Purpose:** one actual administrative payroll processing event (task §18). **PK:** `id`. **FKs:** `restaurant_id` → `restaurants`, `source_system_id` → `source_systems` (both required, indexed); `payroll_schedule_id` → `payroll_schedules` (**nullable** — null for `SPECIAL` runs); `superseded_by_payroll_run_id` → `payroll_runs.id` (self-referential, nullable — populated only when an explicitly confirmed corrected import supersedes this run). **Direct fields:** `period_start`/`period_end` (nullable only for `SPECIAL` runs — never inferred from `pay_date`), `pay_date` (required), `run_type` (required — `REGULAR`/`SPECIAL`), `provider_reference`/`status` (free strings — conceptual `status` values `OPEN`/`COMPLETE`/`SUPERSEDED`), `payment_execution_provider` (nullable — `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`, `CheckConstraint`-enforced, TASK_PAYROLL_002; `NULL` = not yet assigned, never guessed for historical rows and **never defaulted merely because the source is ADP** (TASK_PAYROLL_003 correction) — resolved from an explicit selection or a `payroll_execution_configurations` row valid at `pay_date`, or left `NULL`; immutable once assigned to a non-null value — see `01 Domains/Cross Domain/Administration/Payroll/Payment Execution.md` and `rfone_data_store/payroll/payment_execution.py`), `created_at`/`updated_at`.
 
 ### `payroll_execution_configurations`
 
-**Purpose:** Restaurant-scoped, temporally valid statement of which Payment Execution Provider is approved for new `payroll_runs` during a window (TASK_PAYROLL_003, `01 Domains/Shared Domains/Administration/Payroll/Payment Execution.md`) — the source `payroll_runs.payment_execution_provider` may be derived from when not explicitly selected. **PK:** `id`. **FK:** `restaurant_id` → `restaurants` (required, indexed). **Direct fields:** `provider` (required — `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`, `CheckConstraint`-enforced), `valid_from` (required), `valid_to` (nullable — open-ended), `source_note`, `created_at`/`updated_at`. Mirrors the existing `employee_compensation_terms`/`tip_policies` temporal-configuration pattern: a change closes the prior row's `valid_to` and opens a new row — never overwritten in place, so an already-assigned `PayrollRun` is never retroactively affected by a later configuration change (its own `payment_execution_provider` is separately immutable once set).
+**Purpose:** Restaurant-scoped, temporally valid statement of which Payment Execution Provider is approved for new `payroll_runs` during a window (TASK_PAYROLL_003, `01 Domains/Cross Domain/Administration/Payroll/Payment Execution.md`) — the source `payroll_runs.payment_execution_provider` may be derived from when not explicitly selected. **PK:** `id`. **FK:** `restaurant_id` → `restaurants` (required, indexed). **Direct fields:** `provider` (required — `ADP_DIRECT_DEPOSIT`/`MERCURY_ACH`, `CheckConstraint`-enforced), `valid_from` (required), `valid_to` (nullable — open-ended), `source_note`, `created_at`/`updated_at`. Mirrors the existing `employee_compensation_terms`/`tip_policies` temporal-configuration pattern: a change closes the prior row's `valid_to` and opens a new row — never overwritten in place, so an already-assigned `PayrollRun` is never retroactively affected by a later configuration change (its own `payment_execution_provider` is separately immutable once set).
 
 ### `payroll_provider_employee_identities`
 
@@ -578,23 +578,6 @@ operational_areas.restaurant_id, physical_areas.restaurant_id, restaurant_roles.
 ```
 
 No additional speculative indexes were added (task §37's explicit caution).
-
-### Known `alembic check` false positives (SQLite reflection)
-
-Verified (STEP 11B/11C, external-review closure): `alembic check` reports drift on four tables even though their actual enforced uniqueness is unchanged and correct —
-
-```text
-applications.candidate_id
-in_person_interview_plans.application_id
-phone_interview_plans.application_id
-purchased_line_additions.purchase_line_id
-```
-
-Cause: each column is declared inline as `mapped_column(ForeignKey(...), nullable=False, unique=True, index=True)`. SQLite's reflection of an inline `unique=True` column-level constraint differs textually from an explicit named `UniqueConstraint`/`Index` object, which is what `alembic check`'s autogenerate comparison expects — the column is still uniquely enforced at the database level in both cases; this is a reflection/tooling artifact, not a schema defect. No migration is required for these four columns.
-
-This is a known class of false positive, not a blanket exemption — a future `alembic check` difference on a *different* column must still be individually investigated rather than assumed to be the same cause.
-
-**Circular-FK `SAWarning`:** `Base.metadata.sorted_tables` raises `SAWarning: Cannot correctly sort tables; there are unresolvable cycles...` because RF-One's schema has genuine circular FK references between certain tables. This does not affect actual schema creation (Alembic's migrations use explicit, individually ordered `op.create_table()` calls, never `Base.metadata.create_all()`) or ORM query behavior (ambiguous relationships already disambiguated via explicit `foreign_keys=[...]` on the affected `relationship()` calls). `create_database.py`'s own diagnostic table count previously triggered this warning unnecessarily by calling `.sorted_tables` for a count that does not need sort order; it now uses `.tables` instead (see that file). `inspect_database.py` still uses `.sorted_tables` for its own per-table listing and will still emit the same warning there — same known cause, not yet fixed, tracked as a separate non-blocking cleanup.
 
 ---
 

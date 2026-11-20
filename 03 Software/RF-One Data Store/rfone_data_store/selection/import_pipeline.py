@@ -59,25 +59,6 @@ def _has_minimal_signal(profile: CandidateCVProfile) -> bool:
     )
 
 
-def reading_status(profile: CandidateCVProfile) -> tuple[str, str | None]:
-    """COMPLETED, or PARTIAL with the reason a person must look at it."""
-
-    if not _has_minimal_signal(profile):
-        return PARTIAL, (
-            "Résumé text was extracted and saved, but no name, contact details, work history or "
-            "education could be confidently identified — review the raw text manually."
-        )
-    uncertain = sum(1 for w in profile.work_history if w.structure_confidence == "LOW")
-    if uncertain:
-        # SELECTION_CV_STRUCTURE_READING_001 — a reading with unresolved
-        # structural doubts is never reported as complete.
-        return PARTIAL, (
-            f"{uncertain} experience(s) could not be read with certainty — verify them against the "
-            "original résumé on the candidate page."
-        )
-    return COMPLETED, None
-
-
 def import_one_resume(
     session: Session, *, restaurant_id: int | None, source_type: str,
     original_filename: str | None, storage_path: str | None, raw_text: str | None,
@@ -123,11 +104,14 @@ def import_one_resume(
             session, profile, restaurant_id=restaurant_id, raw_resume_id=raw_resume.id,
         )
         session.commit()
-        status, message = reading_status(profile)
+        status = COMPLETED if _has_minimal_signal(profile) else PARTIAL
         return ImportResult(
             status=status, original_filename=original_filename,
             candidate_id=candidate.id, full_name=candidate.full_name,
-            parsing_mode=candidate.parsing_mode, error=message,
+            parsing_mode=candidate.parsing_mode,
+            error=None if status == COMPLETED else
+            "Résumé text was extracted and saved, but no name, contact details, work history or "
+            "education could be confidently identified — review the raw text manually.",
         )
     except Exception as exc:
         # Never log/propagate the résumé's own text (task §12 — no raw
