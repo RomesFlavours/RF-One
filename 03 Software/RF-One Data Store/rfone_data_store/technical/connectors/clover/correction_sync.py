@@ -55,16 +55,11 @@ differently:
   reverted-to-unmodified Refund has no signal to resume from) — only
   `source_window_end` still only advances on success, which is all the Tips
   readiness gate (§7, `tips/readiness.py`) actually needs.
-- **employees** — deliberately NOT a separate resource here. Clover's
-  `/employees` collection is already fetched IN FULL, unconditionally, every
-  Live Sync cycle (`acquisition._fetch_reference_catalogs`, both modes) —
-  an Employee record change is already visible within one Live Sync interval
-  (~15s), faster than this Poller could ever check it. The gap this
-  document's illustrative "employee reassignment corrected after the shift"
-  example actually describes is an ORDER's own `employee` reference being
-  corrected later — already covered by the Orders resource above (`_ingest_
-  order` already overwrites `Order.employee_id`/`source_employee_id` from
-  Clover's current value on every re-upsert).
+- **employees** — Employee Directory also refreshes the complete roster in
+  this active AWS poller before work corrections, through the SAME importer
+  used by Live Sync and Sync Now. It has no modification cursor of its own:
+  failures preserve source state and leave the work cursors unchanged;
+  pending identity confirmations are reported before any work attribution.
 - Order Item / Order Item Modifier / Order Fee / Payment Tip — no separate
   resource either: all four are nested under, and only ever re-verified
   together with, their parent Order/Payment (exactly how Live Sync already
@@ -136,7 +131,7 @@ from .acquisition import (
     _mirror_source_record,
     _resolve_clover_merchant,
     _safe_error_summary,
-    get_default_client,
+    get_location_client,
     paginate,
     resolve_order_business_dates,
 )
@@ -208,6 +203,36 @@ class ResourceCorrectionResult:
 class CorrectionCycleSummary:
     location_id: int
     results: list[ResourceCorrectionResult] = field(default_factory=list)
+    employee_errors: list[str] = field(default_factory=list)
+
+
+def _employee_ids_for_location(session, location_id):
+    from ....employee_directory import ensure_legacy_links
+    ensure_legacy_links(session)
+    location = session.get(m.Location, location_id)
+    return {link.external_employee_id: link.employee_id for link in session.scalars(
+        select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == location.source_location_id,
+                                         m.EmployeeCloverLink.employee_id.is_not(None)))}
+
+
+def _refresh_employees(session, client, *, location_id, merchant_id, run_id):
+    """The active AWS poller uses the SAME complete-only directory importer."""
+    from ....employee_directory import import_snapshot
+    from .source_guard import require_complete
+    try:
+        if client.merchant_id != merchant_id:
+            raise ValueError("Clover client does not match this Location's merchant.")
+        records = require_complete(paginate(client, f"/v3/merchants/{merchant_id}/employees",
+                                           extra_params={"expand": "role"}), "Employees")
+        with session.begin_nested():
+            _, pending = import_snapshot(session, location_id=location_id, merchant_id=merchant_id,
+                                         records=records, run_id=run_id)
+        session.commit()
+        return ([f"{len(pending)} Clover employee identities require confirmation in Employee Directory. "
+                 "Work corrections will resume after identity confirmation."] if pending else [])
+    except Exception as exc:
+        session.rollback()
+        return [f"Employee synchronization failed; previous roster preserved: {_safe_error_summary(exc)}"]
 
 
 @dataclass(frozen=True)
@@ -354,9 +379,7 @@ def _correct_orders(
         errors.append(f"Fetching modified Orders failed: {result.error or 'unknown error'}")
     else:
         seen = len(result.elements)
-        employee_by_source_id = _existing_ids_by_source(
-            session, m.Employee, source_system_id=source_system_id, source_id_column="source_employee_id",
-        )
+        employee_by_source_id = _employee_ids_for_location(session, location_id)
         for order_raw in result.elements:
             try:
                 # A nested SAVEPOINT (this codebase's established pattern for
@@ -447,9 +470,7 @@ def _correct_payments(
         errors.append(f"Fetching modified Payments failed: {result.error or 'unknown error'}")
     else:
         seen = len(result.elements)
-        employee_by_source_id = _existing_ids_by_source(
-            session, m.Employee, source_system_id=source_system_id, source_id_column="source_employee_id",
-        )
+        employee_by_source_id = _employee_ids_for_location(session, location_id)
         tender_by_source_id = _existing_ids_by_source(
             session, m.Tender, source_system_id=source_system_id, source_id_column="source_tender_id",
         )
@@ -535,9 +556,7 @@ def _correct_refunds(
         errors.append(f"Fetching recent Refunds failed: {result.error or 'unknown error'}")
     else:
         seen = len(result.elements)
-        employee_by_source_id = _existing_ids_by_source(
-            session, m.Employee, source_system_id=source_system_id, source_id_column="source_employee_id",
-        )
+        employee_by_source_id = _employee_ids_for_location(session, location_id)
         device_by_source_id = _existing_ids_by_source(
             session, m.Device, source_system_id=source_system_id, source_id_column="source_device_id",
         )
@@ -610,6 +629,7 @@ def run_correction_cycle(
         LOG.info("location_id=%s is not a Clover-sourced Location — skipping this correction cycle.", location_id)
         return None
     source_system_id, merchant_id = merchant
+    resolved_client = client or get_location_client(merchant_id)
 
     try:
         # Reuses the SAME Location-scoped lock Live Sync/Backfill already
@@ -629,7 +649,6 @@ def run_correction_cycle(
         )
         return None
 
-    resolved_client = client or get_default_client()
     summary = CorrectionCycleSummary(location_id=location_id)
 
     def beat() -> None:
@@ -643,6 +662,14 @@ def run_correction_cycle(
     beat()
     session.commit()
     try:
+        summary.employee_errors = _refresh_employees(
+            session, resolved_client, location_id=location_id, merchant_id=merchant_id, run_id=lock_run.id,
+        )
+        if summary.employee_errors:
+            _finalize_import_run(lock_run, _CycleLockSummary(errors=summary.employee_errors, window_scan_failed=True),
+                                 location_id=location_id, mode=MODE_CORRECTION)
+            session.commit()
+            return summary
         summary.results.append(
             _correct_orders(
                 session, resolved_client, location_id=location_id, source_system_id=source_system_id,

@@ -1,0 +1,17 @@
+{
+  "release": "employee-directory-20261028",
+  "scope": "Shared employee identity, Clover observations and existing startup integrity guard; no Clover writes",
+  "files": {
+    "RF-One Data Store/rfone_data_store/models.py": "817057c5057bd517336a5a3a0959cbff2491f764313fa65f08fcdbc69512b2a8",
+    "RF-One Data Store/rfone_data_store/employee_directory.py": "092d74afb0fb100b4eb922dd11a5f9bbd1dfb51e02f1b0301d4ea8123f50ce43",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "6f242832cde5d2f45f23a39d1ac905e0acf6a82c0c3ae4bfe92b4069a52a6e66",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "1f733aa6a1b7b72acd2438d735d432ee1c39255b1aea9d904a5cd0bed8608775",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "cad7dd0aaddc59f0b1898058ad6553756cbf1eee65fe3249c64d600c31d291d7",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py": "ac07920b794a700912e5e605db174f1203d507feac99edc5ae949e540f030e5f",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py": "36aabe9bbbb85e42e75d36e0d5f8a55e7efaebecaf02e013aa60da7a9d07dcb1",
+    "RF-One Data Store/test_clover_employee_history.py": "e88e19aac8a85e371f40f49e52478b6a44481549853f36187aa56a6e3ee6cf40",
+    "RF-One Data Store/test_clover_monthly_recovery.py": "9f40416226bb0636f6288fb2f8b85d2bac8239156d6965e4921b1d0d5a5f7eab",
+    "RF-One Data Store/test_clover_line_presence.py": "d00655d5915f31cf88243071bb4e1e63811d5c79c22b7393265e2c00bc4f05c4",
+    "RF-One Data Store/clover_connector_release_check.py": "265da34b4a8f6b6493de3fd88454951f0080a1d1d0b28d955cbe6d4fe82bae7e"
+  }
+}

@@ -85,7 +85,12 @@ class _FullCoverageFakeCloverClient(FakeCloverClient):
         if path.endswith("/order_types"):
             return _collection(self.order_types)
         if path.endswith("/employees") and params.get("expand") == "role":
-            return _collection(self.employees_expand_role)
+            # Clover expansion adds relationships to full Employee objects;
+            # it does not replace the roster with sparse role-only records.
+            expanded = {raw["id"]: dict(raw) for raw in self.employees}
+            for raw in self.employees_expand_role:
+                expanded.setdefault(raw["id"], {}).update(raw)
+            return _collection(list(expanded.values()))
         if path.endswith("/items") and "/orders/" not in path:
             return _collection(self.items)
         if path.endswith("/roles"):
