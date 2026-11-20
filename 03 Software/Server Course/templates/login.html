@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RF One Server Training</title>
+<link rel="icon" href="{{ url_for('static', filename='rf-one-logo.png') }}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Instrument+Serif&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main class="narrow center" style="padding-top:10vh">
+  <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="RF One" width="110" height="110" style="border-radius:50%">
+  <div class="tag">Rome's Flavours · RF One</div>
+  <h1>Server Training</h1>
+  <p class="sub">Test version. Enter the access code you were given.</p>
+  <form method="post" class="box stack" style="text-align:left">
+    <label for="code">Access code</label>
+    <input id="code" name="code" type="password" autocomplete="current-password" autofocus required>
+    {% if error %}<p class="bad">{{ error }}</p>{% endif %}
+    <div><button type="submit">Sign in</button></div>
+  </form>
+</main>
+</body>
+</html>

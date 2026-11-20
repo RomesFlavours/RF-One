@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Rome's Flavours interview</title>
+<link rel="icon" href="{{ url_for('static', filename='rf-one-logo.png') }}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Instrument+Serif&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <span class="brand">
+      <img src="{{ url_for('static', filename='rf-one-logo.png') }}" alt="RF One" width="44" height="44">
+      <span><span class="tag">Rome's Flavours</span><span class="brand-name">Your interview</span></span>
+    </span>
+  </header>
+
+{% if not candidate %}
+  <div class="box narrow center">
+    <h1>This link isn't active</h1>
+    <p>Please check the link you were sent, or contact Rome's Flavours.</p>
+  </div>
+{% else %}
+  <section id="v-chat" class="view chat-view" hidden>
+    <p class="crumb"><span id="chat-title"></span></p>
+    <div class="chat-grid">
+      <aside class="rail">
+        <section class="box" id="rail-course">
+          <h2 id="rail-title"></h2>
+          <p id="rail-sub" class="small"></p>
+          <ul id="rail-modules" class="checklist"></ul>
+        </section>
+        <section class="box">
+          <h2>How it works</h2>
+          <ul id="rail-how"></ul>
+        </section>
+      </aside>
+      <div class="main">
+        <div class="bar">
+          <span class="clock" id="clock">0:00</span>
+          <span class="status" id="status"></span>
+          <button type="button" class="warn" id="end-btn">End</button>
+        </div>
+        <div id="log" class="log" aria-live="polite"></div>
+        <form id="say" class="composer">
+          <textarea id="msg" rows="2" placeholder="Type your answer…" required></textarea>
+          <button type="submit" id="send">Send</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="v-sel-done" class="view" hidden>
+    <div class="box narrow center">
+      <h1>Thank you{% if candidate.first_name %}, {{ candidate.first_name }}{% endif %}</h1>
+      <p>That's the end of the interview. The hiring team will read your answers and be in touch about the next step.</p>
+      <p class="small">You can close this page.</p>
+    </div>
+  </section>
+
+  <script>window.RF_MODULES = {{ modules|tojson }}; window.RF_CANDIDATE = {{ candidate|tojson }};</script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endif %}
+</div>
+</body>
+</html>

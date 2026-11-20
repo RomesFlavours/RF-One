@@ -1,0 +1,236 @@
+{
+ "id": "RF-MANAGEMENT-COURSE",
+ "version": "0.2",
+ "date": "2026-11-06",
+ "role": "Manager",
+ "kind": "management",
+ "title": "The Management Course",
+ "academy": "Rome's Flavours Academy",
+ "master_text": "rf-management-course-master-v1.md",
+ "session_minutes": 30,
+ "notes": "Built from Management Training: the 4-Week Program, Draft 0.2 (6 November 2026). No tests: the reasoning is kept as evidence, never scored. A module is 'worked through', not passed.",
+ "pass_mark": 0,
+ "levels": [
+  {
+   "id": "M",
+   "title": "Four modules, then a look back",
+   "question": "How do we reason as managers?"
+  }
+ ],
+ "units": [
+  {
+   "id": "W1",
+   "level": "M",
+   "title": "Money and stock",
+   "subtitle": "Thinking about value before spending",
+   "objective": "Reason about need, full cost and alternatives before spending, and fix what's already been bought without blame.",
+   "evidence": "Starts from need and full cost, checks alternatives, knows the approval.",
+   "prerequisites": [],
+   "banner": "m7",
+   "sources": [
+    "legacy"
+   ],
+   "extra": [],
+   "practical": [],
+   "test": [],
+   "characteristics": [
+    7,
+    4,
+    1
+   ],
+   "modules": [
+    {
+     "id": "W1.case",
+     "title": "The case",
+     "scenario": "A supplier has a great deal: 60 serving trays at half price. The restaurant uses about 5 a month, and there are already 20 in storage. Do you buy them, and why? Which of the six questions helps most? If someone else had already bought them, what would you do now?",
+     "known": "Has reasoned through: need before price (20 in stock is four months; 60 more is twelve more), the full cost (cash tied up, space, damage, what else the money could do), the alternatives (the other location, buying when needed, a smaller quantity), what can still be done if it's already bought (return, move, pause orders) without blame, and that it needs written approval."
+    },
+    {
+     "id": "W1.card",
+     "title": "The quick card",
+     "scenario": "You're low on napkins. The other location has 10 cases it won't use for a month. Which card, and why?",
+     "known": "Has given a card and the reason. Reference: yellow, because the stock belongs to the other location, so you agree it with them first; moving what we own comes before buying."
+    },
+    {
+     "id": "W1.task",
+     "title": "The real task",
+     "scenario": "In your own work: pick one item in your area that you buy often. Count what's there and how many you use in a week, then tell the Trainer what you found.",
+     "known": "Has reported the item, the count, the weekly use, and what it tells them (how long it lasts, whether to order). Or has said they haven't done it yet and when they will."
+    }
+   ]
+  },
+  {
+   "id": "W2",
+   "level": "M",
+   "title": "Whose decision is it?",
+   "subtitle": "Deciding, consulting, deciding together, escalating",
+   "objective": "Recognize who owns a decision, who needs to be asked or told, and act in time.",
+   "evidence": "Names the owner, separates facts from assumptions, makes the decision reach everyone affected.",
+   "prerequisites": [
+    "W1"
+   ],
+   "banner": "m5",
+   "sources": [
+    "legacy"
+   ],
+   "extra": [],
+   "practical": [],
+   "test": [],
+   "characteristics": [
+    4,
+    9,
+    10,
+    15
+   ],
+   "modules": [
+    {
+     "id": "W2.case",
+     "title": "The case",
+     "scenario": "Friday night, busy. The kitchen wants to stop taking orders for one dish because it's slowing the line. Front of house says guests have been asking for it all week. Whose decision is it, and how do you know? Who needs to be asked or told, and when? What would you do in the next five minutes?",
+     "known": "Has reasoned through: facts (slow line, guests asking) versus assumptions (that stopping the dish fixes the line), who owns the decision and deciding together quickly if it's shared, the guest and the brand (what the server tells a guest who asked for it), telling everyone affected (servers, host, POS), and whether it's recurring and belongs in the brief."
+    },
+    {
+     "id": "W2.card",
+     "title": "The quick card",
+     "scenario": "A guest asks for a discount because the wait was long. It's within the limit. Which card, and why?",
+     "known": "Has given a card and the reason. Reference: green for the front of house lead, within their limit, and still recorded so a pattern of long waits can be seen."
+    },
+    {
+     "id": "W2.task",
+     "title": "The real task",
+     "scenario": "In your own work: write down one decision you make, which card it was, and what you expected to happen. Tell the Trainer, and later what actually happened.",
+     "known": "Has reported one real decision, its card, and the expected outcome (and the actual result if known). Or has said they haven't done it yet and when they will."
+    }
+   ]
+  },
+  {
+   "id": "W3",
+   "level": "M",
+   "title": "Asking someone to do something",
+   "subtitle": "Delegating with a clear result",
+   "objective": "Ask for work with the result, what done looks like, the date, a checkpoint and 'how will you do it?', and keep owning the result.",
+   "evidence": "Separates work done from outcome reached, takes their own part, rewrites the request.",
+   "prerequisites": [
+    "W2"
+   ],
+   "banner": "m6",
+   "sources": [
+    "legacy"
+   ],
+   "extra": [],
+   "practical": [],
+   "test": [],
+   "characteristics": [
+    10,
+    5,
+    1,
+    9
+   ],
+   "modules": [
+    {
+     "id": "W3.case",
+     "title": "The case",
+     "scenario": "You ask a team member to \"clean up the storage room before Saturday.\" On Saturday it's tidier, but the boxes are blocking the shelves you needed. What went wrong, and whose part was it? What should you have said when you asked? What could you have asked or checked to catch it early?",
+     "known": "Has reasoned through: work done is not outcome reached, their own part (the request didn't say the result or why), a rewritten request with the result, what done looks like and the date, a checkpoint before Saturday and 'how will you do it?', and treating the team member as someone who can judge once they know the purpose."
+    },
+    {
+     "id": "W3.card",
+     "title": "The quick card",
+     "scenario": "You gave someone a task due Friday. On Wednesday they tell you they're stuck. Good news or bad news, and why?",
+     "known": "Has answered and given the reason. Reference: good news, a problem raised before the deadline can still be solved, and raising it early is never held against anyone."
+    },
+    {
+     "id": "W3.task",
+     "title": "The real task",
+     "scenario": "In your own work: the next time you give someone a task, say the result you want, the date and why it matters, and ask 'how will you do it?' Then tell the Trainer what happened.",
+     "known": "Has reported a real request made this way and what happened. Or has said they haven't done it yet and when they will."
+    }
+   ]
+  },
+  {
+   "id": "W4",
+   "level": "M",
+   "title": "Owning the result",
+   "subtitle": "Structural cause, learning, new application, verification",
+   "objective": "Reason from facts to a possible structural cause, propose what should change to reduce or prevent recurrence, and say how we'll know it worked.",
+   "evidence": "Looks at how the work is organized, proposes a process change, names an observable check.",
+   "prerequisites": [
+    "W3"
+   ],
+   "banner": "m9",
+   "sources": [
+    "legacy"
+   ],
+   "extra": [],
+   "practical": [],
+   "test": [],
+   "characteristics": [
+    2,
+    8,
+    11,
+    12
+   ],
+   "modules": [
+    {
+     "id": "W4.case",
+     "title": "The case",
+     "scenario": "A delivery was short two cases. Nobody checked it when it arrived. You only find out on Saturday, when you run out. What happened, and then why? Is this the first time? What in the way receiving works made it possible? What should change to reduce or prevent recurrence, and how will we know whether it worked?",
+     "known": "Has reasoned through: the facts without blame and whether it has happened before, a possible structural cause in how receiving is organized (no check against order and invoice, no clear owner, deliveries when nobody is free), their own part as the person responsible for the area, a change to the process rather than 'be more careful', an observable way to know it worked over a set period, and that the change is agreed with the process owner and checked after."
+    },
+    {
+     "id": "W4.card",
+     "title": "The quick card",
+     "scenario": "Something in your area went wrong because of a step you didn't check. Do you say \"nobody told me\" or \"I should have checked\"? And what's the next question?",
+     "known": "Has answered and named a next question. Reference: 'I should have checked', then 'what in how we work let it happen?'"
+    },
+    {
+     "id": "W4.task",
+     "title": "The real task",
+     "scenario": "Pick one thing that didn't go as planned recently. Tell the Trainer four things: what happened, the possible structural cause, what should change, and how you'd know it worked.",
+     "known": "Has reported a real case with what happened, a possible structural cause, what should change, and how they'd know it worked. Or has said they haven't done it yet and when they will."
+    }
+   ]
+  },
+  {
+   "id": "W5",
+   "level": "M",
+   "title": "Looking back",
+   "subtitle": "What got better, and what's next",
+   "objective": "Take stock of the course in their own words, and say what to work on next.",
+   "evidence": "Their own account of what changed and two things to work on.",
+   "prerequisites": [
+    "W4"
+   ],
+   "banner": "m1",
+   "sources": [
+    "legacy"
+   ],
+   "extra": [],
+   "practical": [],
+   "test": [],
+   "characteristics": [
+    12
+   ],
+   "modules": [
+    {
+     "id": "W5.better",
+     "title": "What got better",
+     "scenario": "Looking back over the course, what got better in how you work? A concrete example helps.",
+     "known": "Has said what got better, ideally with one concrete example."
+    },
+    {
+     "id": "W5.next",
+     "title": "What's next",
+     "scenario": "What two things do you want to work on next?",
+     "known": "Has named two things to work on next."
+    },
+    {
+     "id": "W5.course",
+     "title": "About the course",
+     "scenario": "Which case felt most like real life here, and which one should change?",
+     "known": "Has said which case was most realistic and which should change, or that they have no view."
+    }
+   ]
+  }
+ ]
+}
