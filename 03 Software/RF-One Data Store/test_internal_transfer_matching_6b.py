@@ -46,6 +46,7 @@ from rfone_data_store.database import (
     create_session_factory,
 )
 from rfone_data_store import models as m
+from rfone_data_store.bank_reconciliation.testing_support import confirm_decided_rows
 from rfone_data_store.technical.connectors.paypal import ingest
 
 UTC = timezone.utc
@@ -488,11 +489,11 @@ def main() -> int:
             result.check(
                 "confirmed INTERNAL_TRANSFER transactions do NOT trigger the missing-Who blocker (§25.A)",
                 not any(
-                    f"transaction id={bank_side_1.id} " in reason and "Missing Who" in reason
+                    f"transaction id={bank_side_1.id} " in reason and "Needs review" in reason
                     for reason in blocker_reasons_a
                 )
                 and not any(
-                    f"transaction id={paypal_side_1.id} " in reason and "Missing Who" in reason
+                    f"transaction id={paypal_side_1.id} " in reason and "Needs review" in reason
                     for reason in blocker_reasons_a
                 ),
             )
@@ -564,6 +565,8 @@ def main() -> int:
                     ),
                 )
                 txn.review_status = "REVIEWED"
+            # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.
+            confirm_decided_rows(s, year=year, month=month)
             s.commit()
 
             final_blockers = export.compute_export_blockers(s, year=year, month=month)

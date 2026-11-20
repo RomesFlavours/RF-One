@@ -6,7 +6,7 @@
 
 *Preserved from an earlier design (TASK_BANK_RECONCILIATION_PAYPAL_001); the Financial Model Convergence work may supersede parts of this foundation. Retained here for its unique conceptual history — see `01 Domains/Domain Architecture.md` §9 item 6 and the Purchased Domain README for related, still-open boundaries.*
 
-**The current implementation specifications are `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`, `BANK_INVOICE_EVIDENCE_COLLABORATION_001.md` and `BANK_REPORTING_CONFIGURATION_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
+**The current implementation specifications are `BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001.md`, `BANK_ECONOMIC_ALLOCATION_FOUNDATION_001.md`, `BANK_INVOICE_EVIDENCE_COLLABORATION_001.md`, `BANK_REPORTING_CONFIGURATION_001.md`, `BANK_CONFIGURATION_001.md`, `BANK_RECONCILIATION_001.md` and `BANK_RECONCILIATION_STANDARDS_001.md` (this folder)** — it supersedes this README's `PaymentInstrumentTransaction`-based schema description below with the canonical `FinancialTransaction`/Bank Recognition Expert System model now on `main`. This README remains for historical/conceptual context only.
 
 ---
 

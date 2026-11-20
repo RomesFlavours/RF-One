@@ -1,0 +1,501 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Bank Configuration · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{#- BANK_CONFIGURATION_001 — the single Bank Configuration page, built on
+    the approved prototype (BANK_CONFIGURATION_PROTOTYPE_001). Order: WHAT,
+    WHY, WHO (the core model), then Accounts & Cards, then Support. Each
+    modal posts to one /bank/configuration/... route; every rule is applied
+    by the Bank configuration service, the checks here only spare a round
+    trip. -#}
+{{ breadcrumb([('RF-One', url_for('home')), ('Bank Reconciliation', url_for('bank_home')), ('Configuration', None)]) }}
+
+<style>
+<style>
+  .cp-header { display: flex; align-items: center; gap: .6rem 1.2rem; flex-wrap: wrap; margin: .25rem 0 .8rem; }
+  .cp-header h1 { margin: 0; font-size: 1.45rem; }
+  .cp-jump { display: flex; gap: .9rem; font-size: .88rem; }
+  .cp-back { margin-left: auto; }
+  .cp-block { border: 1px solid var(--olive-300, #d6dbc4); border-radius: 6px; padding: .6rem .9rem .8rem; margin-bottom: .8rem; background: #fff; }
+  .cp-block-head { display: flex; align-items: baseline; gap: .4rem 1rem; flex-wrap: wrap; margin-bottom: .45rem; }
+  .cp-block-head h2 { margin: 0; font-size: 1.1rem; }
+  .cp-block-head .cp-num { color: var(--muted, #6b6f5e); font-weight: 600; margin-right: .15rem; }
+  .cp-desc { color: var(--muted, #6b6f5e); font-size: .84rem; }
+  .cp-block-head .cp-add { margin-left: auto; }
+  .cp-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+  .cp-table th { text-align: left; font-size: .7rem; text-transform: uppercase; letter-spacing: .03em;
+    background: #eef0e4; padding: .35rem .5rem; white-space: nowrap; }
+  .cp-table td { padding: .3rem .5rem; border-top: 1px solid #e8eadf; vertical-align: middle; }
+  .cp-table tr.cp-inactive td { color: #9a9d8e; }
+  .cp-table tr.cp-flash td { background: #fff7d6; }
+  .cp-code { font-variant-numeric: tabular-nums; font-weight: 600; width: 5rem; }
+  .cp-sub { display: block; font-size: .74rem; color: var(--muted, #6b6f5e); }
+  .cp-count { font-variant-numeric: tabular-nums; cursor: help; border-bottom: 1px dotted #b9c28f; }
+  .cp-narrow { width: 5.5rem; white-space: nowrap; }
+  .cp-btn { margin: 0; padding: .18rem .55rem; font-size: .78rem; }
+  .cp-support { border: 1px dashed #c9cfb4; border-radius: 6px; padding: .5rem .9rem .7rem; background: #fafbf6; }
+  .cp-support > h2 { margin: .1rem 0 .4rem; font-size: 1.05rem; color: var(--muted, #6b6f5e); }
+  .cp-support details { border-top: 1px solid #e3e6d6; padding: .35rem 0; }
+  .cp-support summary { cursor: pointer; font-weight: 600; font-size: .92rem; }
+  .cp-support details > div { margin-top: .45rem; }
+  .cp-kv { display: flex; gap: 2rem; align-items: center; font-size: .9rem; }
+  /* modal */
+  .cp-overlay { position: fixed; inset: 0; background: rgba(30, 34, 20, .45); display: flex;
+    align-items: flex-start; justify-content: center; padding: 5vh 1rem; z-index: 50; }
+  .cp-overlay[hidden] { display: none; }
+  .cp-modal { background: #fff; border-radius: 8px; width: min(640px, 100%); max-height: 90vh; overflow: auto;
+    padding: 1rem 1.2rem; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .cp-modal h2 { margin: 0 0 .6rem; font-size: 1.15rem; }
+  .cp-f { margin: .55rem 0; }
+  .cp-f > label, .cp-f > .cp-flabel { display: block; font-weight: 600; font-size: .84rem; margin-bottom: .2rem; }
+  .cp-f input[type=text], .cp-f select, .cp-f input[type=search] { width: 100%; max-width: none; box-sizing: border-box; margin: 0; }
+  .cp-check { display: inline-flex; align-items: center; gap: .35rem; font-weight: 400; margin: 0 1rem .2rem 0; }
+  .cp-checklist { border: 1px solid #d6dbc4; border-radius: 6px; max-height: 9.5rem; overflow: auto; padding: .3rem .5rem; margin-top: .3rem; }
+  .cp-checklist .cp-check { display: flex; margin: .15rem 0; }
+  .cp-checklist .cp-what { color: var(--muted, #6b6f5e); font-size: .75rem; margin-left: .3rem; }
+  .cp-rules { width: 100%; border-collapse: collapse; font-size: .84rem; margin-top: .3rem; }
+  .cp-rules td, .cp-rules th { padding: .2rem .3rem; text-align: left; }
+  .cp-rules th { font-size: .7rem; text-transform: uppercase; color: var(--muted, #6b6f5e); }
+  .cp-rules input[type=text] { width: 100%; margin: 0; font-family: ui-monospace, Consolas, monospace; }
+  .cp-rules select { margin: 0; }
+  .cp-error { color: #a33; font-size: .82rem; min-height: 1em; }
+  .cp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
+</style>
+  .cp-f input[type=date] { margin: 0; }
+  .cp-note { color: var(--muted, #6b6f5e); font-size: .8rem; margin: .15rem 0 0; }
+  .cp-inline { display: flex; gap: .8rem; }
+  .cp-inline > .cp-f { flex: 1; }
+  .cp-search { display: flex; align-items: center; gap: .6rem; margin: 0 0 .45rem; }
+  .cp-search input { flex: 0 1 22rem; margin: 0; }
+  .cp-search .cp-desc { white-space: nowrap; }
+  .cp-bs { color: var(--muted, #6b6f5e); font-style: italic; }
+</style>
+
+<div class="cp-header">
+  <h1>Bank Configuration</h1>
+  <nav class="cp-jump" aria-label="Sections">
+    <a href="#cp-what">WHAT</a><a href="#cp-why">WHY</a><a href="#cp-who">WHO</a>
+    <a href="#cp-accounts">Accounts &amp; Cards</a><a href="#cp-support">Support</a>
+  </nav>
+  <a class="btn btn-secondary cp-back" href="{{ url_for('bank_reconciliation') }}">Reconciliation</a>
+</div>
+
+<section class="cp-block" id="cp-what">
+  <div class="cp-block-head">
+    <h2><span class="cp-num">1</span>WHAT</h2><span class="cp-desc">Accounting categories.</span>
+    <button type="button" class="cp-btn cp-add" data-add="what">+ Add WHAT</button>
+  </div>
+  <table class="cp-table"><thead><tr><th>Code</th><th>Name</th><th>Group</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+    <tbody data-list="what"></tbody></table>
+</section>
+
+<section class="cp-block" id="cp-why">
+  <div class="cp-block-head">
+    <h2><span class="cp-num">2</span>WHY</h2><span class="cp-desc">Business reasons. Each WHY belongs to exactly one WHAT.</span>
+    <button type="button" class="cp-btn cp-add" data-add="why">+ Add WHY</button>
+  </div>
+  <table class="cp-table"><thead><tr><th>WHY</th><th>Associated WHAT</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+    <tbody data-list="why"></tbody></table>
+</section>
+
+<section class="cp-block" id="cp-who">
+  <div class="cp-block-head">
+    <h2><span class="cp-num">3</span>WHO</h2><span class="cp-desc">Counterparties: their possible WHY, default WHY, entities served and recognition rules.</span>
+    <button type="button" class="cp-btn cp-add" data-add="who">+ Add WHO</button>
+  </div>
+  <div class="cp-search">
+    <input type="search" id="cp-who-search" placeholder="Search WHO by name" aria-label="Search WHO by name" autocomplete="off">
+    <span class="cp-desc" id="cp-who-count"></span>
+  </div>
+  <table class="cp-table"><thead><tr><th>WHO</th><th>Default WHY</th><th class="cp-narrow">Possible WHY</th>
+    <th class="cp-narrow">Entities served</th><th class="cp-narrow">Recognition rules</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+    <tbody data-list="who"></tbody></table>
+</section>
+
+<section class="cp-block" id="cp-accounts">
+  <div class="cp-block-head">
+    <h2><span class="cp-num">4</span>Accounts &amp; Cards</h2><span class="cp-desc">Payment sources. The owning entity is the default "For whom" on Reconciliation.</span>
+    <button type="button" class="cp-btn cp-add" data-add="account">+ Add Account / Card</button>
+  </div>
+  <table class="cp-table"><thead><tr><th>Label</th><th>Type</th><th>Owning entity</th><th class="cp-narrow">Reference</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+    <tbody data-list="account"></tbody></table>
+</section>
+
+<section class="cp-support" id="cp-support">
+  <h2>Support</h2>
+  <details id="cp-entities">
+    <summary>Entities / LLCs</summary>
+    <div>
+      <div class="cp-block-head"><span class="cp-desc">Used by Accounts &amp; Cards, WHO entities served and For whom.</span>
+        <button type="button" class="cp-btn cp-add" data-add="entity">+ Add Entity</button></div>
+      <table class="cp-table"><thead><tr><th>Entity</th><th>Legal name</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+        <tbody data-list="entity"></tbody></table>
+    </div>
+  </details>
+  <details id="cp-bs-destinations">
+    <summary>Balance Sheet destinations</summary>
+    <div>
+      <div class="cp-block-head"><span class="cp-desc">Not WHAT. Accounts where a non-P&amp;L WHY settles (tips payable, sales tax, card balance, own transfers). Read-only here; they belong to the canonical chart of accounts.</span></div>
+      <table class="cp-table"><thead><tr><th>Code</th><th>Name</th><th>Group</th><th class="cp-narrow">WHY using it</th></tr></thead>
+        <tbody data-list="bs"></tbody></table>
+    </div>
+  </details>
+  <details id="cp-sources">
+    <summary>Source / file recognition</summary>
+    <div>
+      <div class="cp-block-head"><span class="cp-desc">How an incoming file is tied to its Account / Card.</span>
+        <button type="button" class="cp-btn cp-add" data-add="source">+ Add source rule</button></div>
+      <table class="cp-table"><thead><tr><th>Source format</th><th>File name key</th><th>In-file identifier</th><th>Account / Card</th><th class="cp-narrow">Active</th><th class="cp-narrow"></th></tr></thead>
+        <tbody data-list="source"></tbody></table>
+    </div>
+  </details>
+  <details id="cp-control">
+    <summary>Control settings</summary>
+    <div class="cp-kv" data-list="control"></div>
+  </details>
+  <details id="cp-dedup">
+    <summary>Deduplication &amp; card settlement</summary>
+    <div>
+      <div class="cp-block-head"><span class="cp-desc">Rows with the same settlement account, posting date, signed amount and payee are one accounting fact.</span>
+        <form method="post" action="{{ url_for('bank_configuration_dedup_recompute') }}" class="cp-add" style="margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="cp-btn btn-secondary">Recompute deduplication</button>
+        </form></div>
+      <table class="cp-table"><thead><tr><th>Card</th><th>Settles to</th><th>Cardholder</th><th class="cp-narrow"></th></tr></thead>
+        <tbody data-list="card"></tbody></table>
+    </div>
+  </details>
+</section>
+
+<div class="cp-overlay" id="cp-modal" hidden>
+  <div class="cp-modal" role="dialog" aria-modal="true" aria-labelledby="cp-modal-title">
+    <h2 id="cp-modal-title"></h2>
+    <div id="cp-modal-body"></div>
+    <p class="cp-error" id="cp-modal-error"></p>
+    <div class="cp-actions">
+      <button type="button" class="btn-secondary" id="cp-cancel">Cancel</button>
+      <button type="button" id="cp-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="cp-post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+<script type="application/json" id="cp-data">{{ config|tojson }}</script>
+<script>
+(function () {
+  var S = JSON.parse(document.getElementById('cp-data').textContent);
+  var BASE = {{ url_for('bank_configuration')|tojson }};
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function same(a, b) { return a != null && b != null && String(a) === String(b); }
+  function byId(list, id) { return S[list].filter(function (x) { return same(x.id, id); })[0]; }
+  function yes(v) { return v ? 'Yes' : 'No'; }
+  function names(list, ids) { return ids.map(function (id) { var x = byId(list, id); return x ? x.name : '?'; }); }
+  function destinationCell(y) {
+    var d = y.destination || { kind: 'NONE', label: '—' };
+    return d.kind === 'WHAT' ? esc(d.label) : '<span class="cp-bs">' + esc(d.label) + '</span>';
+  }
+  function accountLabel(id) { var a = byId('accounts', id); return a ? a.label + (a.reference ? ' ··' + a.reference : '') : '—'; }
+  function editBtn(kind, id) { return '<button type="button" class="btn-secondary cp-btn" data-edit="' + kind + '" data-id="' + id + '">Edit</button>'; }
+  function row(cells, item, kind) {
+    return '<tr data-id="' + item.id + '" class="' + (item.active === false ? 'cp-inactive' : '') + '">' + cells.join('') + '<td class="cp-narrow">' + editBtn(kind, item.id) + '</td></tr>';
+  }
+  function td(html, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + html + '</td>'; }
+  function count(list, title) { return '<span class="cp-count" title="' + esc(title.join(', ') || 'none') + '">' + list.length + '</span>'; }
+
+  // ------------------------------------------------------------ rendering
+  var RENDER = {
+    what: function () { return S.whats.map(function (w) {
+      return row([td(esc(w.code), 'cp-code'), td(esc(w.name)), td(esc(w.group || '—')), td(yes(w.active), 'cp-narrow')], w, 'what'); }); },
+    why: function () { return S.whys.map(function (y) {
+      return row([td(esc(y.name) + (y.description ? '<span class="cp-sub">' + esc(y.description) + '</span>' : '')),
+                  td(destinationCell(y)), td(yes(y.active), 'cp-narrow')], y, 'why'); }); },
+    who: function () { return S.whos.map(function (o) {
+      var def = byId('whys', o.default_why);
+      return row([td('<strong>' + esc(o.name) + '</strong>'), td(def ? esc(def.name) : '—'),
+                  td(count(o.whys, names('whys', o.whys)), 'cp-narrow'),
+                  td(count(o.entities, names('entities', o.entities)), 'cp-narrow'),
+                  td(count(o.rules, o.rules.map(function (r) { return r.match + ': ' + r.pattern; })), 'cp-narrow'),
+                  td(yes(o.active), 'cp-narrow')], o, 'who'); }); },
+    account: function () { return S.accounts.map(function (a) {
+      var entity = a.entity_name ? esc(a.entity_name) : '—';
+      if (a.derived) entity = '<span title="Derived from the settlement account">' + entity + '</span>';
+      return row([td(esc(accountLabel(a.id))), td(esc(a.type)), td(entity),
+                  td(esc(a.reference), 'cp-narrow'), td(yes(a.active), 'cp-narrow')], a, 'account'); }); },
+    entity: function () { return S.entities.map(function (e) {
+      return row([td(esc(e.name)), td(esc(e.legal_name || '— (virtual)')), td(yes(e.active), 'cp-narrow')], e, 'entity'); }); },
+    source: function () { return S.sources.map(function (s) {
+      return row([td(esc(s.format)), td('<code>' + esc(s.file_key || '—') + '</code>'), td(esc(s.in_file || '—')),
+                  td(esc(accountLabel(s.account))), td(yes(s.active), 'cp-narrow')], s, 'source'); }); },
+    bs: function () { return S.balance_sheet_destinations.map(function (d) {
+      return '<tr data-id="' + d.id + '">' + td(esc(d.code), 'cp-code') + td(esc(d.name)) + td(esc(d.group || '—'))
+        + td(String(d.why_count), 'cp-narrow') + '</tr>'; }); },
+    card: function () { return S.cards.map(function (c) {
+      return '<tr data-id="' + c.account + '">' + td(esc(accountLabel(c.account))) + td(esc(c.settles_to ? accountLabel(c.settles_to) : '—'))
+        + td(esc(c.cardholder || '—')) + '<td class="cp-narrow">' + editBtn('card', c.account) + '</td></tr>'; }); },
+  };
+  function render(kind) {
+    var el = document.querySelector('[data-list="' + kind + '"]');
+    if (kind === 'control') {
+      el.innerHTML = '<span>Control start <strong>' + esc(S.control.control_start || '—') + '</strong></span>'
+        + '<span>Validated through <strong>' + esc(S.control.validated_through || '—') + '</strong></span>'
+        + '<button type="button" class="btn-secondary cp-btn" data-edit="control" data-id="control">Edit</button>';
+      return;
+    }
+    el.innerHTML = RENDER[kind]().join('');
+  }
+  ['what', 'why', 'who', 'account', 'entity', 'bs', 'source', 'card', 'control'].forEach(render);
+
+  // D9 — WHO search: an immediate client-side filter on the visible name.
+  // Rows keep their data-id, so Edit always opens the WHO that was clicked.
+  var whoSearch = document.getElementById('cp-who-search'), whoCount = document.getElementById('cp-who-count');
+  var whoRows = Array.prototype.slice.call(document.querySelectorAll('[data-list="who"] tr'));
+  var whoNames = {}; S.whos.forEach(function (o) { whoNames[o.id] = (o.name || '').toLowerCase(); });
+  whoRows.forEach(function (tr) { tr.dataset.hay = whoNames[tr.dataset.id] || ''; });
+  function filterWho() {
+    var q = whoSearch.value.trim().toLowerCase(), shown = 0;
+    whoRows.forEach(function (tr) { var hit = !q || tr.dataset.hay.indexOf(q) !== -1; tr.hidden = !hit; if (hit) shown += 1; });
+    whoCount.textContent = q ? (shown ? shown + ' of ' + whoRows.length : 'No WHO matches') : whoRows.length + ' WHO';
+  }
+  whoSearch.addEventListener('input', filterWho);
+  filterWho();
+
+  // ----------------------------------------------------------- form helpers
+  function fText(id, label, value, attrs) { return '<div class="cp-f"><label for="' + id + '">' + label + '</label><input type="text" id="' + id + '" value="' + esc(value || '') + '" autocomplete="off"' + (attrs || '') + '></div>'; }
+  function fDate(id, label, value) { return '<div class="cp-f"><label for="' + id + '">' + label + '</label><input type="date" id="' + id + '" value="' + esc(value || '') + '"></div>'; }
+  function fSelect(id, label, options, value, attrs) {
+    return '<div class="cp-f"><label for="' + id + '">' + label + '</label><select id="' + id + '"' + (attrs || '') + '>'
+      + options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(value == null ? '' : value) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
+      + '</select></div>';
+  }
+  function fActive(value, attrs, note) { return '<div class="cp-f"><label class="cp-check"><input type="checkbox" id="f-active"' + (value !== false ? ' checked' : '') + (attrs || '') + '> Active</label>' + (note ? '<p class="cp-note">' + esc(note) + '</p>' : '') + '</div>'; }
+  function fChecklist(name, label, items, selected, withSearch) {
+    return '<div class="cp-f"><span class="cp-flabel">' + label + '</span>'
+      + (withSearch ? '<input type="search" id="f-' + name + '-search" placeholder="Search">' : '')
+      + '<div class="cp-checklist" id="f-' + name + '">'
+      + items.map(function (i) { return '<label class="cp-check" data-hay="' + esc(i.label.toLowerCase()) + '"><input type="checkbox" value="' + i.id + '"'
+        + (selected.some(function (s) { return same(s, i.id); }) ? ' checked' : '') + '> ' + esc(i.label) + (i.note ? '<span class="cp-what">' + esc(i.note) + '</span>' : '') + '</label>'; }).join('')
+      + '</div></div>';
+  }
+  function checked(name) { return Array.prototype.slice.call(document.querySelectorAll('#f-' + name + ' input:checked')).map(function (c) { return c.value; }); }
+  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function flag(id) { return document.getElementById(id).checked ? '1' : '0'; }
+  function legalEntityOptions(current) {
+    return [['', '— Not set —']].concat(S.entities.filter(function (e) { return e.legal && (e.active || same(e.id, current)); })
+      .map(function (e) { return [e.id, e.name + (e.active ? '' : ' (inactive)')]; }));
+  }
+  function accountOptions() { return S.accounts.map(function (a) { return [a.id, accountLabel(a.id)]; }); }
+
+  // One POST per Save; the server applies every rule and answers on this page.
+  function submit(path, fields) {
+    var form = document.getElementById('cp-post');
+    Array.prototype.slice.call(form.querySelectorAll('input[data-f]')).forEach(function (i) { i.remove(); });
+    fields.forEach(function (f) {
+      var input = document.createElement('input');
+      input.type = 'hidden'; input.name = f[0]; input.value = f[1] == null ? '' : f[1]; input.dataset.f = '1';
+      form.appendChild(input);
+    });
+    form.action = BASE + path;
+    form.submit();
+  }
+
+  // ---------------------------------------------------------------- forms
+  var FORMS = {
+    what: { title: 'WHAT', list: 'whats', blank: { code: '', name: '', group_id: null, active: true },
+      body: function (x) {
+        var opts = [['', 'Choose a group…']].concat(S.groups.filter(function (g) { return g.active || same(g.id, x.group_id); })
+          .map(function (g) { return [g.id, g.label + ' (' + g.statement + ')']; }));
+        if (x.group_id && !byId('groups', x.group_id)) { var p = byId('whats', x.group_id); if (p) opts.push([p.id, p.code + ' — ' + p.name]); }
+        return fText('f-code', 'Code', x.code, x.id ? ' readonly title="A WHAT code never changes"' : '')
+          + fText('f-name', 'Name', x.name) + fSelect('f-group', 'Group', opts, x.group_id) + fActive(x.active); },
+      save: function (x) {
+        if (!val('f-code') || !val('f-name')) return 'Code and Name are required.';
+        if (!val('f-group')) return 'Choose the Group this WHAT belongs to.';
+        submit(x.id ? '/what/' + x.id : '/what', [['code', val('f-code')], ['name', val('f-name')], ['group_id', val('f-group')], ['active', flag('f-active')]]); } },
+    why: { title: 'WHY', list: 'whys', blank: { name: '', description: '', what: null, active: true },
+      body: function (x) {
+        var opts = [['', 'Choose a WHAT…']];
+        // An existing WHY that settles on a Balance Sheet destination keeps
+        // it unless the operator explicitly picks a P&L WHAT (D11).
+        var keeps = x.id && x.destination && x.destination.kind !== 'WHAT' && x.what != null;
+        if (keeps) opts.push([x.what, x.destination.label + ' (current)']);
+        opts = opts.concat(S.whats.filter(function (w) { return w.assignable || same(w.id, x.what); })
+          .map(function (w) { return [w.id, w.code + ' — ' + w.name]; }));
+        return fText('f-name', 'WHY', x.name) + fText('f-description', 'Description (optional)', x.description)
+          + fSelect('f-what', 'WHAT (exactly one)', opts, x.what || '')
+          + (keeps ? '<p class="cp-note">This WHY settles on a Balance Sheet destination, which is not a WHAT. It stays as it is unless you choose a P&amp;L WHAT.</p>' : '')
+          + fActive(x.active); },
+      save: function (x) {
+        if (!val('f-name')) return 'The WHY name is required.';
+        if (!val('f-what')) return 'Choose the WHAT this WHY belongs to.';
+        submit(x.id ? '/why/' + x.id : '/why', [['name', val('f-name')], ['description', val('f-description')], ['what_id', val('f-what')], ['active', flag('f-active')]]); } },
+    who: { title: 'WHO', list: 'whos', blank: { name: '', whys: [], default_why: null, entities: [], rules: [], active: true },
+      body: function (x) {
+        var whyItems = S.whys.filter(function (y) { return y.active || x.whys.some(function (id) { return same(id, y.id); }); })
+          .map(function (y) { return { id: y.id, label: y.name, note: (y.destination || {}).label }; });
+        var entItems = S.entities.filter(function (e) { return e.active || x.entities.some(function (id) { return same(id, e.id); }); })
+          .map(function (e) { return { id: e.id, label: e.name }; });
+        var rules = x.rules.map(function (r) { return ruleRow(r); }).join('');
+        return fText('f-name', 'WHO name', x.name)
+          + fChecklist('whys', 'Possible WHY', whyItems, x.whys, true)
+          + '<div class="cp-f"><label for="f-default">Default WHY</label><select id="f-default"></select></div>'
+          + fChecklist('entities', 'Entities / LLCs served', entItems, x.entities, false)
+          + '<div class="cp-f"><span class="cp-flabel">Recognition rules</span>'
+          + '<table class="cp-rules"><thead><tr><th>Text / code pattern</th><th>Match</th><th>Active</th><th></th></tr></thead><tbody id="f-rules">' + rules + '</tbody></table>'
+          + '<button type="button" class="btn-secondary cp-btn" id="f-add-rule">+ Add recognition rule</button></div>'
+          + fActive(x.active); },
+      after: function (x) {
+        var sync = function () { syncDefault(x.default_why); };
+        document.getElementById('f-whys').addEventListener('change', sync);
+        document.getElementById('f-whys-search').addEventListener('input', function (e) {
+          var q = e.target.value.toLowerCase();
+          document.querySelectorAll('#f-whys .cp-check').forEach(function (l) { l.hidden = q && l.dataset.hay.indexOf(q) === -1; });
+        });
+        document.getElementById('f-add-rule').addEventListener('click', function () {
+          document.getElementById('f-rules').insertAdjacentHTML('beforeend', ruleRow({ id: null, pattern: '', match: 'Exact', active: true }));
+          var inputs = document.querySelectorAll('#f-rules input[type=text]'); inputs[inputs.length - 1].focus();
+        });
+        document.getElementById('f-rules').addEventListener('click', function (e) {
+          if (e.target.matches('[data-remove-rule]')) e.target.closest('tr').remove();
+        });
+        syncDefault(x.default_why);
+      },
+      save: function (x) {
+        if (!val('f-name')) return 'The WHO name is required.';
+        var fields = [['name', val('f-name')], ['default_why_id', val('f-default')], ['active', flag('f-active')]];
+        checked('whys').forEach(function (id) { fields.push(['why_ids', id]); });
+        checked('entities').forEach(function (id) { fields.push(['entity_ids', id]); });
+        Array.prototype.slice.call(document.querySelectorAll('#f-rules tr')).forEach(function (tr) {
+          fields.push(['rule_id', tr.dataset.ruleId || ''], ['rule_pattern', tr.querySelector('input[type=text]').value.trim()],
+                      ['rule_match', tr.querySelector('select').value.toUpperCase()],
+                      ['rule_active', tr.querySelector('input[type=checkbox]').checked ? '1' : '0']);
+        });
+        submit(x.id ? '/who/' + x.id : '/who', fields); } },
+    account: { title: 'Account / Card', list: 'accounts', blank: { label: '', type_code: 'BANK_ACCOUNT', entity: null, reference: '', active: true },
+      body: function (x) {
+        var types = [['BANK_ACCOUNT', 'Bank Account'], ['CREDIT_CARD', 'Credit Card']];
+        if (x.type_code === 'PAYPAL') types.push(['PAYPAL', 'PayPal']);
+        return fText('f-label', 'Label', x.label) + fSelect('f-type', 'Type', types, x.type_code)
+          + fSelect('f-entity', 'Owning entity (default "For whom")', legalEntityOptions(x.entity), x.derived ? '' : x.entity)
+          + '<p class="cp-note" id="f-entity-derived" hidden>A card’s owning entity is derived from its settlement account'
+          + (x.id && x.derived ? ': <strong>' + esc(x.entity_name || 'none yet') + '</strong>' : '') + '. Change it under Support › Deduplication &amp; card settlement.</p>'
+          + fText('f-reference', 'Identifying reference / last digits', x.reference)
+          + (x.id ? fActive(x.active, ' disabled', 'Opening and closing an account or card is recorded in Monthly Sources.') : fActive(x.active)); },
+      after: function () {
+        var type = document.getElementById('f-type');
+        var sync = function () {
+          var card = type.value === 'CREDIT_CARD', entity = document.getElementById('f-entity');
+          entity.disabled = card; if (card) entity.value = '';
+          document.getElementById('f-entity-derived').hidden = !card;
+        };
+        type.addEventListener('change', sync); sync();
+      },
+      save: function (x) {
+        if (!val('f-label')) return 'The label is required.';
+        var fields = [['label', val('f-label')], ['instrument_type', val('f-type')], ['reference', val('f-reference')]];
+        if (val('f-type') !== 'CREDIT_CARD') fields.push(['entity_id', val('f-entity')]);
+        if (!x.id) fields.push(['active', flag('f-active')]);
+        submit(x.id ? '/account/' + x.id : '/account', fields); } },
+    entity: { title: 'Entity / LLC', list: 'entities', blank: { name: '', legal_name: '', legal: true, active: true },
+      body: function (x) {
+        var virtual = x.id && !x.legal;
+        return fText('f-name', 'Entity', x.name)
+          + fText('f-legal', 'Legal name', x.legal_name, virtual ? ' disabled placeholder="Virtual entity — no LLC"' : '')
+          + (x.id ? '' : '<p class="cp-note">Leave the legal name empty for a virtual (non-LLC) entity.</p>')
+          + fActive(x.active); },
+      save: function (x) { if (!val('f-name')) return 'The entity name is required.';
+        submit(x.id ? '/entity/' + x.id : '/entity', [['name', val('f-name')], ['legal_name', val('f-legal')], ['active', flag('f-active')]]); } },
+    source: { title: 'Source rule', list: 'sources', blank: { format_code: '', file_key: '', in_file: '', account: null, active: true },
+      body: function (x) { return fSelect('f-format', 'Source format', [['', 'Choose a format…']].concat(S.formats), x.format_code)
+          + fText('f-file', 'File name key', x.file_key)
+          + fText('f-infile', 'In-file identifier', x.in_file) + fSelect('f-account', 'Account / Card', [['', 'Choose…']].concat(accountOptions()), x.account) + fActive(x.active); },
+      save: function (x) { if (!val('f-format')) return 'The source format is required.';
+        if (!val('f-file') && !val('f-infile')) return 'Give a file name key or an in-file identifier.';
+        if (!val('f-account')) return 'Choose the Account / Card.';
+        submit(x.id ? '/source/' + x.id : '/source', [['detected_format', val('f-format')], ['file_name_key', val('f-file')], ['account_hint', val('f-infile')],
+          ['payment_instrument_id', val('f-account')], ['active', flag('f-active')]]); } },
+    control: { title: 'Control settings', edit: function () { return S.control; },
+      body: function (x) { return fText('f-start', 'Control start (YYYY-MM)', x.control_start) + fText('f-validated', 'Validated through (YYYY-MM)', x.validated_through); },
+      save: function () {
+        if (!/^\d{4}-\d{2}$/.test(val('f-start'))) return 'Use YYYY-MM for the control start.';
+        if (val('f-validated') && !/^\d{4}-\d{2}$/.test(val('f-validated'))) return 'Use YYYY-MM for validated through.';
+        submit('/control', [['control_start', val('f-start')], ['validated_through', val('f-validated')]]); } },
+    card: { title: 'Card settlement & cardholder', edit: function (id) { return S.cards.filter(function (c) { return same(c.account, id); })[0]; },
+      body: function (x) {
+        var banks = [['', '— Not set —']].concat(S.accounts.filter(function (a) { return a.type_code === 'BANK_ACCOUNT'; }).map(function (a) { return [a.id, accountLabel(a.id)]; }));
+        return '<p class="cp-desc">' + esc(accountLabel(x.account)) + '</p>'
+          + '<div class="cp-inline">' + fSelect('f-settles', 'Settles to', banks, x.settles_to) + fDate('f-settles-from', 'Valid from', x.settles_from || S.today) + '</div>'
+          + '<p class="cp-note">A new settlement account starts a new period from this date; the previous one is kept in the history.</p>'
+          + '<div class="cp-inline">' + fSelect('f-holder-kind', 'Holder type', [['', '— Not set —']].concat(S.holder_kinds), x.holder_kind)
+          + '<div class="cp-f"><label for="f-holder">Cardholder</label><select id="f-holder"></select><input type="text" id="f-holder-name" value="' + esc(x.holder_kind === 'UNLINKED_PERSON' ? x.holder_name : '') + '" placeholder="Full name" hidden></div>'
+          + fDate('f-holder-from', 'Valid from', x.holder_from || S.today) + '</div>'; },
+      after: function (x) {
+        var kind = document.getElementById('f-holder-kind'), holder = document.getElementById('f-holder'), name = document.getElementById('f-holder-name');
+        var sync = function () {
+          var k = kind.value;
+          holder.innerHTML = S.holders.filter(function (h) { return h.kind === k; })
+            .map(function (h) { return '<option value="' + h.id + '"' + (k === x.holder_kind && same(h.id, x.holder_id) ? ' selected' : '') + '>' + esc(h.name) + '</option>'; }).join('');
+          holder.hidden = k === 'UNLINKED_PERSON' || !k; name.hidden = k !== 'UNLINKED_PERSON';
+        };
+        kind.addEventListener('change', sync); sync();
+      },
+      save: function (x) {
+        var fields = [['settlement_account_id', val('f-settles')], ['settlement_valid_from', val('f-settles-from')],
+                      ['holder_kind', val('f-holder-kind')], ['holder_valid_from', val('f-holder-from')]];
+        if (val('f-holder-kind') === 'UNLINKED_PERSON') fields.push(['holder_name', val('f-holder-name')]);
+        else if (val('f-holder-kind')) fields.push(['holder_id', val('f-holder')]);
+        submit('/card/' + x.account, fields); } },
+  };
+  function ruleRow(r) {
+    return '<tr' + (r.id ? ' data-rule-id="' + r.id + '"' : '') + '><td><input type="text" value="' + esc(r.pattern) + '" placeholder="GFS STORE 0123" aria-label="Pattern"></td><td><select aria-label="Match">'
+      + ['Exact', 'Contains', 'Prefix'].map(function (m) { return '<option' + (m === r.match ? ' selected' : '') + '>' + m + '</option>'; }).join('')
+      + '</select></td><td><input type="checkbox"' + (r.active ? ' checked' : '') + ' aria-label="Active"></td>'
+      + '<td><button type="button" class="btn-secondary cp-btn" data-remove-rule>Remove</button></td></tr>';
+  }
+  function syncDefault(current) {
+    var chosen = checked('whys'), sel = document.getElementById('f-default');
+    var keep = sel.value || (current == null ? '' : String(current));
+    sel.innerHTML = '<option value="">' + (chosen.length ? '— No default —' : 'Choose possible WHY first') + '</option>';
+    chosen.forEach(function (id) {
+      var y = byId('whys', id), o = document.createElement('option');
+      o.value = id; o.textContent = y.name; sel.appendChild(o);
+    });
+    // a WHY no longer allowed for this WHO can no longer be its default
+    sel.value = chosen.indexOf(keep) !== -1 ? keep : '';
+  }
+
+  // ------------------------------------------------------------ modal flow
+  var modal = document.getElementById('cp-modal'), current = null;
+  function open(kind, id) {
+    var form = FORMS[kind], item;
+    if (form.edit) { item = form.edit(id); }
+    else if (id) { item = byId(form.list, id); }
+    else { item = JSON.parse(JSON.stringify(form.blank)); item.id = null; }
+    var draft = JSON.parse(JSON.stringify(item));
+    current = { kind: kind, draft: draft, isNew: !id && !form.edit };
+    document.getElementById('cp-modal-title').textContent = (current.isNew ? 'Add ' : 'Edit ') + form.title;
+    document.getElementById('cp-modal-body').innerHTML = form.body(draft);
+    document.getElementById('cp-modal-error').textContent = '';
+    modal.hidden = false;
+    if (form.after) form.after(draft);
+    var first = modal.querySelector('input[type=text]:not([readonly]):not([disabled])'); if (first) first.focus();
+  }
+  function close() { modal.hidden = true; current = null; }
+  document.getElementById('cp-save').addEventListener('click', function () {
+    var error = FORMS[current.kind].save(current.draft);
+    if (error) { document.getElementById('cp-modal-error').textContent = error; return; }
+    document.getElementById('cp-save').disabled = true;
+  });
+  document.getElementById('cp-cancel').addEventListener('click', close);
+  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function (e) { if (!modal.hidden && e.key === 'Escape') close(); });
+  document.addEventListener('click', function (e) {
+    var add = e.target.closest('[data-add]'), edit = e.target.closest('[data-edit]');
+    if (add) open(add.dataset.add, null);
+    if (edit) open(edit.dataset.edit, edit.dataset.id);
+  });
+  // A Support section named in the address (after a save there) opens itself.
+  if (location.hash && document.querySelector(location.hash + ' > summary')) document.querySelector(location.hash).open = true;
+})();
+</script>
+{% endblock %}

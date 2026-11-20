@@ -400,7 +400,7 @@ def main() -> int:
         with SessionFactory() as db:
             unresolved = export_service.unresolved_transactions(db, year=2026, month=8)
             missing_who = [b for b in export_service.compute_export_blockers(db, year=2026, month=8)
-                           if b.reason.startswith("Missing Who:")]
+                           if b.reason.startswith("Needs review:")]
         check("K. Review Missing counts the Export's unresolved transactions",
               shown_unresolved == len(unresolved) == len(missing_who) == 3,
               f"{shown_unresolved} {len(unresolved)} {len(missing_who)}")

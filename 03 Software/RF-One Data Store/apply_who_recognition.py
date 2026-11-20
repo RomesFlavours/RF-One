@@ -11,6 +11,13 @@ invoice match or a financial transaction.
 The canonical financial manifest is computed before and after; if it
 differs, or the raw/canonical counts move, the run is rolled back.
 
+Merge-safe (BANK_WHO_WHY_CANONICAL_CATALOG_001): before creating a WHO the
+recognizer resolves the name to the ACTIVE canonical WHO through approved
+description rules, canonical names and aliases. A name that only matches
+an INACTIVE (merged) WHO is never recreated or reactivated — it is held as
+PROPOSED for a person. Re-running after the canonical WHO/WHY import is
+therefore safe.
+
     python apply_who_recognition.py           # preview (rolled back)
     python apply_who_recognition.py --apply   # write
 
@@ -65,6 +72,9 @@ def main() -> int:
                 print(f"  {tier:<14} {count:>6}  {count / max(summary.transactions, 1):6.1%}")
             print(f"occurrences created {summary.occurrences_created} (used {summary.occurrences_used})")
             print(f"aliases created     {summary.aliases_created}")
+            print(f"resolved existing   by name {summary.resolved_by_name} · by alias "
+                  f"{summary.resolved_by_alias} · by approved rule {summary.resolved_by_rule}")
+            print(f"held for review     {summary.held_for_review}  (inactive/merged or ambiguous WHO)")
             print(f"recognitions        created {summary.recognitions_created} · updated "
                   f"{summary.recognitions_updated} · unchanged {summary.recognitions_unchanged}")
             print(f"supplier links      {dict(summary.supplier_outcomes)}")

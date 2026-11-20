@@ -147,7 +147,7 @@ def main() -> int:
         page = client.get("/bank/classification").data
         check(
             "the canonical accounting catalog is present after the ordinary migration",
-            baseline_whats == 136, detail=str(baseline_whats),
+            baseline_whats == 137, detail=str(baseline_whats),
         )
         check(
             "the page presents the five sections in order",
@@ -243,7 +243,7 @@ def main() -> int:
         })
         with SessionFactory() as s:
             why_id = s.query(m.BankTransactionReason).filter_by(code="FOOD_PURCHASE").one().id
-            type_id = s.query(m.BankOccurrenceType).one().id
+            type_id = s.query(m.BankOccurrenceType).filter_by(code="SUPPLIER").one().id
 
         # =================================================================
         # Approval

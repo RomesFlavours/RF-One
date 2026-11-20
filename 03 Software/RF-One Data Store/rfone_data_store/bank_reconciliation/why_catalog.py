@@ -29,7 +29,7 @@ destination is decides whether there is a WHAT at all:
 destinations, or a destination that is a P&L GROUP.
 
 **Management groups organise the catalog and nothing else.** They are
-shown in the "+ New" modal, where 77 purposes have to be browsable, and
+shown in the "+ New" modal, where 81 purposes have to be browsable, and
 in a future Company Panel. Ordinary Bank reconciliation never shows one:
 after the Who is chosen the operator sees only the Whys already
 associated with that Who, plus "+ New".

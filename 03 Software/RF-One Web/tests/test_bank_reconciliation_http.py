@@ -56,6 +56,7 @@ run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 import app as web_app  # noqa: E402
 from db import SessionFactory  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
+from rfone_data_store.bank_reconciliation.testing_support import confirm_decided_rows  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import export as export_service  # noqa: E402
 
@@ -280,7 +281,7 @@ def main() -> int:
         resp = operator_client.get("/bank/export?year=2026&month=5")
         check(
             "export page shows a blocking reason before a reconciliation decision is recorded",
-            b"Export blocked" in resp.data and b"Missing Who" in resp.data,
+            b"Export blocked" in resp.data and b"Needs review" in resp.data,
         )
 
         # -----------------------------------------------------------------
@@ -519,6 +520,10 @@ def main() -> int:
         # -----------------------------------------------------------------
         # Export now succeeds; verify column order and real Excel types.
         # -----------------------------------------------------------------
+        # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.
+        with SessionFactory() as s:
+            confirm_decided_rows(s, year=2026, month=5)
+            s.commit()
         resp = operator_client.get("/bank/export?year=2026&month=5")
         check("export page shows no blocking reason once the decision is resolved", b"Export blocked" not in resp.data)
 

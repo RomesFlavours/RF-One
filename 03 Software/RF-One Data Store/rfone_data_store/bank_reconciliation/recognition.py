@@ -231,6 +231,7 @@ def purpose_reason_for(
 
 def _capture_snapshot(
     session: Session, *, occurrence_id: int | None, transaction_reason_id: int | None,
+    accounting_classification_id: int | None = None,
 ) -> dict:
     """Canonical Financial Model Convergence — Phase 4B (Product Owner
     Decision 8). Reads `BankOccurrence.canonical_name` and the selected
@@ -246,7 +247,14 @@ def _capture_snapshot(
     WHY name and the WHAT: the accounting classification's id, code,
     name and statement type are captured here too, so editing the
     WHO -> WHY or WHY -> WHAT association later changes only FUTURE
-    classifications. An absent WHAT stays NULL and is never invented."""
+    classifications. An absent WHAT stays NULL and is never invented.
+
+    BANK_RECONCILIATION_STANDARDS_001: `accounting_classification_id`, when
+    given, is the EFFECTIVE destination a human chose for this transaction or
+    a Standard supplied — snapshotted instead of the WHY's own mapping, which
+    is never modified. The caller records which of the two it is in
+    `accounting_destination_source`."""
+    chosen_destination_id = accounting_classification_id
     occurrence_name_snapshot = None
     if occurrence_id is not None:
         occurrence = session.get(m.BankOccurrence, occurrence_id)
@@ -274,9 +282,11 @@ def _capture_snapshot(
         reason = session.get(m.BankTransactionReason, transaction_reason_id)
         if reason is not None:
             transaction_reason_name_snapshot = reason.name
+            destination_id = (chosen_destination_id if chosen_destination_id is not None
+                              else reason.accounting_classification_id)
             what = (
-                session.get(m.BankAccountingClassification, reason.accounting_classification_id)
-                if reason.accounting_classification_id is not None else None
+                session.get(m.BankAccountingClassification, destination_id)
+                if destination_id is not None else None
             )
             if what is not None:
                 accounting_classification_id = what.id
@@ -303,6 +313,9 @@ def _create_decision_row(
     occurrence_id: int | None, transaction_reason_id: int | None, recognition_rule_id: int | None,
     decision_source: str, decision_status: str, confidence: str | None, explanation_notes: str,
     confirmed_by_account_id: int | None = None, confirmed_at: datetime | None = None,
+    accounting_classification_id: int | None = None,
+    accounting_destination_source: str = m.DESTINATION_SOURCE_WHY,
+    reconciliation_standard_id: int | None = None,
 ) -> "m.BankTransactionExplanation":
     """Always INSERTs a new row — never updates an existing one in place.
     This is what makes the decision history an audit trail: a transaction's
@@ -314,7 +327,10 @@ def _create_decision_row(
     place that captures the immutable snapshot (Decision 8) and keeps
     `FinancialTransaction.explanation_id` pointed at whichever row is now
     current (Decision 6). No prior row is ever updated."""
-    snapshot = _capture_snapshot(session, occurrence_id=occurrence_id, transaction_reason_id=transaction_reason_id)
+    snapshot = _capture_snapshot(
+        session, occurrence_id=occurrence_id, transaction_reason_id=transaction_reason_id,
+        accounting_classification_id=accounting_classification_id,
+    )
     row = m.BankTransactionExplanation(
         financial_transaction_id=txn.id,
         occurrence_id=occurrence_id,
@@ -326,6 +342,8 @@ def _create_decision_row(
         explanation_notes=explanation_notes,
         confirmed_by_account_id=confirmed_by_account_id,
         confirmed_at=confirmed_at,
+        accounting_destination_source=accounting_destination_source,
+        reconciliation_standard_id=reconciliation_standard_id,
         **snapshot,
     )
     session.add(row)
@@ -470,6 +488,10 @@ def redecide_for_transaction(
     current = get_current_explanation(session, financial_transaction_id=txn.id)
     if current is not None and current.decision_source == "HUMAN":
         return current
+    # BANK_RECONCILIATION_STANDARDS_001 — a decision produced by a
+    # human-approved Standard is replaced only by a human, never by a re-run.
+    if current is not None and current.reconciliation_standard_id is not None:
+        return current
     proposal = _propose(session, txn)
     if current is not None:
         same_why = (current.transaction_reason_id == proposal.transaction_reason_id
@@ -494,7 +516,7 @@ def redecide_for_transaction(
 
 def create_or_reuse_rule(
     session: Session, *, match_type: str, normalized_pattern: str,
-    occurrence_id: int, transaction_reason_id: int,
+    occurrence_id: int, transaction_reason_id: int | None,
     payment_instrument_id: int | None, direction: str | None,
     auto_apply_enabled: bool, created_from_transaction_id: int | None, priority: int = 0,
     match_field: str = DESCRIPTION, determines_purpose: bool | None = None,
@@ -613,6 +635,12 @@ class HumanDecisionRequest:
     #
     # When None, only the Who is recorded; the Why stays for a human.
     transaction_reason_id: int | None = None
+    # BANK_RECONCILIATION_STANDARDS_001 — the EFFECTIVE accounting destination
+    # the operator chose for THIS transaction, if any. When it equals the
+    # WHY's own mapping the decision is recorded as WHY-derived; when it
+    # differs it is a transaction-level exception (TRANSACTION). The WHY's
+    # master mapping is never changed by it.
+    accounting_classification_id: int | None = None
     # Whether this confirmation teaches RF-One that THIS normalized
     # description means THIS Who. It is a learning control only: the
     # Who -> Why -> What associations themselves are stored on the
@@ -665,7 +693,10 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             raise ValueError(f"Why {request.transaction_reason_id} does not exist.")
         if reason.status != "ACTIVE":
             raise ValueError(f"Why {reason.code} — {reason.name} is inactive.")
-        what = reason.accounting_classification
+        # Read by id, not through the relationship: a mapping edited earlier
+        # in this same session must be the one used.
+        what = (session.get(m.BankAccountingClassification, reason.accounting_classification_id)
+                if reason.accounting_classification_id is not None else None)
         if what is None:
             raise ValueError(
                 f"Why {reason.code} — {reason.name} has no accounting destination yet."
@@ -681,6 +712,25 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
             session, occurrence_id=request.occurrence_id,
             transaction_reason_id=reason.id, source="HUMAN",
         )
+        destination_source = m.DESTINATION_SOURCE_WHY
+        if (request.accounting_classification_id is not None
+                and request.accounting_classification_id != what.id):
+            chosen = session.get(m.BankAccountingClassification, request.accounting_classification_id)
+            if chosen is None:
+                raise ValueError(f"WHAT {request.accounting_classification_id} does not exist.")
+            current = get_current_explanation(session, financial_transaction_id=txn.id)
+            keeps_current = (current is not None
+                             and current.accounting_classification_id == chosen.id)
+            # A transaction-level choice is a P&L WHAT. The only other value
+            # accepted is the destination this transaction ALREADY has (e.g. a
+            # preserved Balance Sheet destination), so nothing is converted.
+            if not (chosen.is_what or keeps_current):
+                raise ValueError(
+                    f"{chosen.code} — {chosen.name} is not a P&L WHAT that can be chosen for a "
+                    "transaction."
+                )
+            what = chosen
+            destination_source = m.DESTINATION_SOURCE_TRANSACTION
         chain = classification_service.ResolvedChain(
             occurrence, transaction_reason=reason, accounting_classification=what,
         )
@@ -690,6 +740,7 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         # nothing else: the Who's default Why is never applied. The decision
         # records the Who and leaves the Why for a human (NEEDS_HUMAN_REVIEW).
         reason = what = None
+        destination_source = m.DESTINATION_SOURCE_WHY
 
     previous = get_current_explanation(session, financial_transaction_id=txn.id)
 
@@ -836,6 +887,11 @@ def record_human_decision(session: Session, request: HumanDecisionRequest) -> "m
         recognition_rule_id=recognition_rule_id, decision_source="HUMAN", decision_status=decision_status,
         confidence="HIGH" if reason is not None else None, explanation_notes=" ".join(notes_parts),
         confirmed_by_account_id=request.confirmed_by_account_id, confirmed_at=confirmed_at,
+        # An explicit destination only for a TRANSACTION exception; otherwise
+        # the snapshot derives it from the WHY exactly as before.
+        accounting_classification_id=(what.id if destination_source == m.DESTINATION_SOURCE_TRANSACTION
+                                      else None),
+        accounting_destination_source=destination_source,
     )
 
 
@@ -876,6 +932,17 @@ def reclassify_transaction(
         raise ValueError(
             "Reclassify re-resolves the SAME Who through the current chain. "
             "To change the Who itself, confirm a different Who instead."
+        )
+    # BANK_RECONCILIATION_STANDARDS_001 — only a destination DERIVED from the
+    # WHY may be re-derived. One a human chose for this transaction, or one a
+    # Standard supplied, is never reset silently to the WHY's mapping.
+    if previous.accounting_destination_source != m.DESTINATION_SOURCE_WHY:
+        origin = ("was chosen explicitly for this transaction"
+                  if previous.accounting_destination_source == m.DESTINATION_SOURCE_TRANSACTION
+                  else "was supplied by an approved Reconciliation Standard")
+        raise ValueError(
+            f"This transaction's accounting destination {origin}; Reclassify only re-derives a "
+            "destination that came from the WHY, so it was left unchanged."
         )
 
     occurrence = session.get(m.BankOccurrence, previous.occurrence_id)

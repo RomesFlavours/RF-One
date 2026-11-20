@@ -154,7 +154,8 @@ def main() -> int:
             )
             s.add(checking)
             s.flush()
-            kind = m.BankOccurrenceType(code="COUNTERPARTY", name="Counterparty")
+            kind = (s.query(m.BankOccurrenceType).filter_by(code="COUNTERPARTY").one_or_none()  # seeded by f6c2e8a4b1d7
+                    or m.BankOccurrenceType(code="COUNTERPARTY", name="Counterparty"))
             s.add(kind)
             s.commit()
 
@@ -489,8 +490,8 @@ def main() -> int:
             # 13. The catalog is untouched
             # =============================================================
             check(
-                "13. the canonical catalog is still the approved 136 accounts",
-                len(accounts) == 136 and not cc.semantic_problems(s),
+                "13. the canonical catalog is still the approved 137 accounts",
+                len(accounts) == 137 and not cc.semantic_problems(s),
                 detail=f"{len(accounts)} accounts",
             )
     finally:

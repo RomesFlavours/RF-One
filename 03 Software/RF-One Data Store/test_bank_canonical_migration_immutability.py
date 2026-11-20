@@ -12,7 +12,7 @@ This suite proves the separation holds, structurally and functionally:
 
 * no canonical-accounting revision resolves a path into the live catalog
   package, and each reads only its own frozen snapshot;
-* the chain still demonstrates 134 -> 134 with semantics -> 136;
+* the chain still demonstrates 134 -> 134 with semantics -> 136 -> 137;
 * EDITING THE LIVE CSV DOES NOT CHANGE WHAT THE MIGRATIONS DO. The proof
   is a real one: the live CSV is temporarily replaced by a mutated
   version, a database is built from `base` to `head` against it, and the
@@ -57,6 +57,7 @@ CANONICAL_REVISIONS = {
     "b8d3f1a72c64": "b8d3f1a72c64_seed_canonical_restaurant_accounting_catalog.py",
     "c5f8b2e91a47": "c5f8b2e91a47_add_canonical_account_semantics.py",
     "d7a4c9e2f318": "d7a4c9e2f318_correct_equity_draws_and_split_asset_disposal.py",
+    "a7c3e9d5f2b8": "a7c3e9d5f2b8_add_municipal_utilities_and_settlement_whys.py",
 }
 
 # What each revision must leave behind, in account count.
@@ -64,6 +65,7 @@ EXPECTED_AT_REVISION = {
     "b8d3f1a72c64": 134,
     "c5f8b2e91a47": 134,
     "d7a4c9e2f318": 136,
+    "a7c3e9d5f2b8": 137,
 }
 
 FINAL_SEMANTICS = {
@@ -71,6 +73,7 @@ FINAL_SEMANTICS = {
     "8400": (PL, "GROUP", cc.CREDIT, False, False),
     "8410": (PL, "POSTING", cc.CREDIT, False, False),
     "8420": (PL, "POSTING", cc.DEBIT, False, False),
+    "7460": (PL, "POSTING", cc.DEBIT, False, False),
 }
 
 
@@ -246,6 +249,7 @@ def main() -> int:
         "b8d3f1a72c64": "2. b8d3f1a72c64 alone produces exactly 134 historical accounts",
         "c5f8b2e91a47": "3. through c5f8b2e91a47 the catalog is still exactly 134",
         "d7a4c9e2f318": "4. through d7a4c9e2f318 the catalog is exactly 136",
+        "a7c3e9d5f2b8": "4c. through a7c3e9d5f2b8 the catalog is exactly 137 (7460 Municipal Utilities)",
     }
     for revision, expected in EXPECTED_AT_REVISION.items():
         upgrade_to(revision)
@@ -253,10 +257,10 @@ def main() -> int:
         check(labels[revision], found == expected, detail=f"{found} accounts")
 
     check(
-        "4b. the chain itself demonstrates 134 -> 134 with semantics -> 136, so the "
-        "history does not depend on today's catalog holding 136",
+        "4b. the chain itself demonstrates 134 -> 134 with semantics -> 136 -> 137, so the "
+        "history does not depend on today's catalog holding 137",
         EXPECTED_AT_REVISION["b8d3f1a72c64"] == 134
-        and len(cc.catalog_rows()) == 136,
+        and len(cc.catalog_rows()) == 137,
         detail=f"live catalog has {len(cc.catalog_rows())} accounts",
     )
 
@@ -286,8 +290,8 @@ def main() -> int:
             session.commit()
             check(
                 "6. the current canonical seed against the migrated database creates 0 "
-                "accounts and reports 136 unchanged",
-                not outcome.created and len(outcome.unchanged) == 136
+                "accounts and reports 137 unchanged",
+                not outcome.created and len(outcome.unchanged) == 137
                 and not outcome.conflicts,
                 detail=f"created={len(outcome.created)} unchanged={len(outcome.unchanged)}",
             )
@@ -305,8 +309,8 @@ def main() -> int:
     # =================================================================
     reference = _build_and_fingerprint("reference")
     check(
-        "8. a completely fresh base -> head database holds the 136 approved accounts",
-        len(reference) == 136,
+        "8. a completely fresh base -> head database holds the 137 approved accounts",
+        len(reference) == 137,
         detail=f"{len(reference)} accounts",
     )
     check(
@@ -383,7 +387,7 @@ def main() -> int:
     upgrade_to("head")
     check(
         "9b. re-upgrading to head returns exactly the approved final state",
-        account_count() == 136,
+        account_count() == 137,
     )
     engine = create_configured_engine(chain_url)
     try:

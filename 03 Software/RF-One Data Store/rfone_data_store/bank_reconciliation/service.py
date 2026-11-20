@@ -53,6 +53,7 @@ from . import accounting_dedup
 from . import matching
 from . import parsers
 from . import recognition
+from . import reconciliation_standards
 
 # First Citizens' free-text `Status` column values map into the canonical
 # FinancialTransaction.status vocabulary (COMPLETED/PENDING/REVERSED/
@@ -1593,6 +1594,10 @@ def _normalize_rows(
         # looked at the row — never re-run for a transaction that already
         # has a decision (that would risk overwriting a human's choice).
         recognition.deduce_for_transaction(session, normalized)
+        # BANK_RECONCILIATION_STANDARDS_001 — a new transaction matching one
+        # human-approved Reconciliation Standard is completed by it
+        # (AUTOMATIC). Import time only: nothing already imported is touched.
+        reconciliation_standards.apply_to_transaction(session, normalized)
 
         # Accounting deduplication keying
         # (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001): the payee

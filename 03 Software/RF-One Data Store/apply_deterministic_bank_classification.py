@@ -19,6 +19,15 @@ For each matched group it creates, idempotently:
 It never overwrites a decision a human already made, never touches a
 suppressed accounting copy, and previews by default.
 
+RETIRED (BANK_FINAL_RELEASE_BLOCKERS_001): `main` refuses before reading
+anything, because a Who's default Why deciding a transaction is "WHO
+determines WHY". The body is kept, and is canonical-WHO safe
+(BANK_WHO_WHY_CANONICAL_CATALOG_001): a group's Who is chosen only through
+`canonical_group_who`, which delegates to the same
+`who_recognition.CanonicalWhoResolver.resolve` WHO recognition uses — so an
+INACTIVE merged fragment is never reused, recreated or reactivated, an
+ambiguous name is held, and only a genuinely new identity may be created.
+
     python apply_deterministic_bank_classification.py           # preview
     python apply_deterministic_bank_classification.py --apply   # write
 
@@ -35,6 +44,7 @@ from rfone_data_store.bank_reconciliation import canonical_catalog
 from rfone_data_store.bank_reconciliation import classification as classification_service
 from rfone_data_store.bank_reconciliation import deterministic_rules
 from rfone_data_store.bank_reconciliation import receiver_candidates as rc
+from rfone_data_store.bank_reconciliation import who_recognition as wr
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -81,6 +91,20 @@ def _ensure_why(session, rule: deterministic_rules.DeterministicRule):
         accounting_classification_id=account.id,
         description=rule.rationale,
     )
+
+
+def canonical_group_who(resolver: wr.CanonicalWhoResolver,
+                        candidate: rc.ReceiverCandidate) -> wr.WhoResolution:
+    """The Who a receiver group belongs to, by THE canonical resolution
+    (`CanonicalWhoResolver.resolve`): an approved description rule within the
+    group's own direction, the active canonical name, an active alias — or
+    held, or genuinely new. No second algorithm, so this script and WHO
+    recognition cannot disagree. A rule scoped to one instrument is not
+    applied to a group, which may span several instruments."""
+    sample = candidate.sample_descriptions[0] if candidate.sample_descriptions else None
+    signed = 1 if candidate.direction == "CREDIT" else -1
+    return resolver.resolve(candidate.payee_normalized, description=sample,
+                            amount_minor=signed, instrument_id=None)
 
 
 def main() -> int:
@@ -135,6 +159,8 @@ def main() -> int:
                 else:
                     matched.append((candidate, found))
 
+            resolver = wr.CanonicalWhoResolver(session)
+            resolutions = {id(c): canonical_group_who(resolver, c) for c, _ in matched}
             print("PREVIEW — deterministic matches")
             print("=" * 92)
             for candidate, found in matched:
@@ -147,7 +173,17 @@ def main() -> int:
                     f"{(account.name if account else '?')[:30]:<30} [{effect}]"
                 )
             print("=" * 92)
+            redirected = [(c, r) for c, _ in matched if (r := resolutions[id(c)]).occurrence is not None
+                          and r.occurrence.canonical_name != c.payee_normalized]
+            held = [(c, r) for c, _ in matched if (r := resolutions[id(c)]).held is not None]
+            for candidate, resolution in redirected:
+                print(f"  CANONICAL  {candidate.payee_normalized[:42]:<42} -> "
+                      f"{resolution.occurrence.canonical_name} (by {resolution.how})")
+            for candidate, resolution in held:
+                print(f"  HELD       {candidate.payee_normalized[:42]:<42} : {resolution.held}")
             print(f"  deterministic groups      : {len(matched)}")
+            print(f"  -> canonical WHO differs  : {len(redirected)}")
+            print(f"  -> held for review        : {len(held)}")
             print(f"  transactions covered      : {sum(c.transaction_count for c, _ in matched)}")
             print(f"  mixed suppliers (refused) : {len(mixed)}")
             print(f"  unmatched -> human review : {len(unmatched)}")
@@ -170,10 +206,11 @@ def main() -> int:
             created_groups = 0
 
             for candidate, found in matched:
+                resolution = canonical_group_who(resolver, candidate)
+                if resolution.held is not None:
+                    continue  # held for a person: nothing is written for this group
                 why = _ensure_why(session, found.rule)
-                occurrence = session.query(m.BankOccurrence).filter_by(
-                    canonical_name=candidate.payee_normalized
-                ).first()
+                occurrence = resolution.occurrence  # always an ACTIVE canonical Who
                 if occurrence is None:
                     occurrence = classification_service.create_occurrence(
                         session,
@@ -185,6 +222,8 @@ def main() -> int:
                             f"{found.rule.rationale}"
                         ),
                     )
+                if resolution.is_new:
+                    resolver.add_created(occurrence)
                 outcome = rc.approve_candidates(
                     session,
                     payee_keys=[candidate.group_key],
