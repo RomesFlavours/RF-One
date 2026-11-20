@@ -1,0 +1,21 @@
+{% extends 'training_workspace/_base.html' %}
+{% set active_tab = 'student_home' %}
+{% set help_section = 'training_student_home' %}
+{% block title %}Training{% endblock %}
+{% block main %}
+<h1>{{ 'Il tuo percorso Training' if config.get('RFONE_LOCAL_OPERATOR') else 'Your Training path' }}</h1>
+<section class="tw-card"><h2>{{ account.acting_identity.display_name }}</h2>
+<p>{{ 'Username' if config.get('RFONE_LOCAL_OPERATOR') else 'Username' }}: {{ account.username }}</p>
+<p><a href="{{ url_for('training_menu') }}">{{ 'Consulta la guida dei piatti' if config.get('RFONE_LOCAL_OPERATOR') else 'Browse the dish guide' }}</a></p>
+<form method="post" action="{{ url_for('training.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>{{ 'Esci' if config.get('RFONE_LOCAL_OPERATOR') else 'Log out' }}</button></form></section>
+{% for entry in needs_view %}<section class="tw-card"><h2>{{ entry.need.text }}</h2>
+<div class="tw-table-scroll"><table><thead><tr><th>{{ 'Contenuto' if config.get('RFONE_LOCAL_OPERATOR') else 'Content' }}</th><th>{{ 'Stato' if config.get('RFONE_LOCAL_OPERATOR') else 'Status' }}</th><th>{{ 'Ultimo risultato' if config.get('RFONE_LOCAL_OPERATOR') else 'Last score' }}</th><th></th></tr></thead><tbody>
+{% for row in entry.assignments %}<tr><td>{{ row.pill.title }}</td><td>{{ {'completed':'Completato','in_progress':'In corso','not_started':'Da iniziare'}.get(row.status,'Da iniziare') if config.get('RFONE_LOCAL_OPERATOR') else row.status_label }}</td><td>{{ (row.latest_attempt.points_earned|string ~ ' / ' ~ row.latest_attempt.points_possible|string) if row.latest_attempt else '—' }}</td><td><a href="{{ url_for('training.assignment_detail',assignment_id=row.assignment.id) }}">{{ 'Apri' if config.get('RFONE_LOCAL_OPERATOR') else 'Open' }}</a></td></tr>
+{% else %}<tr><td colspan="4">{{ 'Nessun contenuto assegnato per questo obiettivo.' if config.get('RFONE_LOCAL_OPERATOR') else 'No content assigned to this need yet.' }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% else %}<p>{{ 'Nessun percorso assegnato: chiedi al tuo istruttore.' if config.get('RFONE_LOCAL_OPERATOR') else 'No training path assigned yet: ask your trainer.' }}</p>{% endfor %}
+<section class="tw-card"><h2>{{ 'Verify del percorso' if config.get('RFONE_LOCAL_OPERATOR') else 'Whole-path quiz' }}</h2>
+{% if overall_available %}<a href="{{ url_for('training.overall_quiz') }}">{{ 'Inizia la verifica del percorso' if config.get('RFONE_LOCAL_OPERATOR') else 'Take the whole-path quiz' }}</a>
+{% else %}<p>{{ 'La verifica è disponibile dopo il completamento di tutti i contenuti assegnati.' if config.get('RFONE_LOCAL_OPERATOR') else 'Available after every assigned content has been completed.' }}</p>{% endif %}
+{% if overall_history %}<table><thead><tr><th>{{ 'Data' if config.get('RFONE_LOCAL_OPERATOR') else 'Date' }}</th><th>{{ 'Risultato' if config.get('RFONE_LOCAL_OPERATOR') else 'Score' }}</th></tr></thead><tbody>{% for a in overall_history %}<tr><td><a href="{{ url_for('training.overall_attempt_result',attempt_id=a.id) }}">{{ a.submitted_at|local_dt(tz) }}</a></td><td>{{ a.points_earned }} / {{ a.points_possible }}</td></tr>{% endfor %}</tbody></table>{% endif %}</section>
+{% endblock %}
