@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% from "_restaurant_wines_macros.html" import wines_header, wines_styles with context %}
+{% block page_title %}Wine List · Wines · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-wines.js') }}?v=1"></script>
+{{ wines_styles() }}
+{{ wines_header('list', 'Wine List') }}
+{% set status_labels = {'ACTIVE': 'In effect', 'FUTURE': 'Prepared (future)', 'PAST': 'Previous'} %}
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+{% if not entities %}
+  <p class="empty">There is no active Entity yet. Entities come from the Legal Entities registry (Settings › <a href="{{ url_for('admin_legal_entities') }}">Legal Entities</a>).</p>
+{% else %}
+
+<div class="wines-toolbar">
+  <form method="get" action="{{ url_for('restaurant_wines_home') }}" id="entity-form">
+    <label for="entity-select">Entity</label>
+    <select id="entity-select" name="entity">
+      {% for e in entities %}<option value="{{ e.id }}" {{ 'selected' if entity and e.id == entity.id }}>{{ e.legal_name }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit" class="btn-secondary">Show</button></noscript>
+  </form>
+  <div class="wines-toolbar-right">
+    <button type="button" id="item-new" {{ 'disabled' if not editable }}
+      title="{{ 'Add a catalog wine to the Wine list shown below' if editable else ('This version is no longer in effect and can only be consulted' if selected else 'Create a Wine list first') }}">Add new wine to current Wine list</button>
+    <button type="button" id="list-new">New Wine list</button>
+  </div>
+</div>
+
+{% if versions %}
+<div class="wines-versions" aria-label="Wine list versions">
+  <span class="muted">Versions:</span>
+  {% for v in versions %}
+    <a class="wines-version {{ 'is-selected' if selected and v.id == selected.id }}" data-rf-busy
+       href="{{ url_for('restaurant_wines_home', entity=entity.id, list=v.id) }}">
+      from {{ v.effective_from.isoformat() }} · {{ status_labels[v.status] }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if selected %}
+  <div class="module-header">
+    <div>
+      <h2 style="margin:0">{{ entity.legal_name }} — Wine list from {{ selected.effective_from.isoformat() }}</h2>
+      <p class="module-tagline">
+        <span class="badge">{{ status_labels[selected_status] }}</span>
+        {% if selected_status == 'FUTURE' %}It replaces the current list on {{ selected.effective_from.isoformat() }}; until then the list in effect does not change.
+        {% elif selected_status == 'PAST' %}Replaced by a later version: shown for consultation only.
+        {% else %}The list in effect today ({{ today.isoformat() }}).{% endif %}
+        {% if not active %} No list is in effect yet today.{% endif %}
+      </p>
+    </div>
+    <a class="btn btn-secondary" href="{{ url_for('restaurant_wine_list_export', list_id=selected.id) }}">Export Wine list</a>
+  </div>
+
+  {% if items %}
+  <div class="table-scroll">
+    <table class="table-compact">
+      <thead>
+        <tr>
+          <th>Type · Label</th><th>Producer</th><th>Vintage</th><th>Format</th>
+          <th class="col-amount">Cost used</th><th class="col-amount">Value</th>
+          <th class="col-amount">Bottle price</th><th class="col-amount">Glass price</th>
+          <th class="col-narrow"></th><th class="col-narrow"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><strong>{{ it.wine.type_name }}</strong>{% if it.wine.label_name %} · {{ it.wine.label_name }}{% endif %}
+            <span class="cell-note">{{ it.wine.category_label }} · {{ it.wine.style_label }}</span></td>
+          <td>{{ it.wine.producer }}</td>
+          <td>{{ it.wine.vintage_label }}</td>
+          <td>{{ it.wine.bottle_size_ml }} ml</td>
+          <td class="col-amount">
+            {% if it.cost_used %}${{ it.cost_used }}{% else %}<span class="badge warn">Unknown</span>{% endif %}
+            {% if it.catalog_cost_changed %}
+              <span class="wines-flag">Catalog now ${{ it.wine.cost_usd }}</span>
+              {% if editable %}
+              <form method="post" action="{{ url_for('restaurant_wine_list_item_adopt_cost', item_id=it.id) }}" style="margin-top:.2rem">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-secondary btn-inline" style="padding:.2rem .5rem;font-size:.7rem">Adopt and recalculate</button>
+              </form>
+              {% endif %}
+            {% endif %}
+          </td>
+          <td class="col-amount">{{ it.value }}</td>
+          <td class="col-amount">
+            {% if it.applied_bottle %}${{ it.applied_bottle }}{% else %}<span class="badge warn">To complete</span>{% endif %}
+            {% if it.bottle_manual %}<span class="wines-flag">Set by hand · calculated {{ ('$' ~ it.calculated_bottle) if it.calculated_bottle is not none else '—' }}</span>{% endif %}
+          </td>
+          <td class="col-amount">
+            {% if it.sells_by_glass %}
+              {% if it.applied_glass %}${{ it.applied_glass }}{% else %}<span class="badge warn">To complete</span>{% endif %}
+              {% if it.glass_manual %}<span class="wines-flag">Set by hand · calculated {{ ('$' ~ it.calculated_glass) if it.calculated_glass is not none else '—' }}</span>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+            {% if it.parameters_changed %}<span class="wines-flag" title="{{ it.parameters }}">Calculated with earlier parameters</span>{% endif %}
+          </td>
+          <td>
+            {% if editable %}
+            <div class="wines-row-actions">
+              <button type="button" class="btn-secondary" data-edit-item="{{ it.id }}">Edit</button>
+              {% if it.bottle_manual or it.glass_manual %}
+              <form method="post" action="{{ url_for('restaurant_wine_list_item_restore', item_id=it.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-secondary" title="Replace the hand-set prices with the calculated ones">Restore calculated</button>
+              </form>
+              {% endif %}
+              {% if it.parameters_changed %}
+              <form method="post" action="{{ url_for('restaurant_wine_list_item_adopt_parameters', item_id=it.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-secondary" title="Recalculate with the current pricing parameters">Adopt parameters</button>
+              </form>
+              {% endif %}
+            </div>
+            {% endif %}
+          </td>
+          <td>
+            {% if editable %}
+            <form method="post" action="{{ url_for('restaurant_wine_list_item_delete', item_id=it.id) }}"
+                  data-confirm="Remove {{ it.wine.display_name }} from this Wine list? It stays in the catalog.">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-danger btn-inline" style="padding:.3rem .6rem;font-size:.75rem">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">This Wine list has no wines yet.{% if editable %} Use “Add new wine to current Wine list”.{% endif %}</p>
+  {% endif %}
+{% else %}
+  <p class="empty">{{ entity.legal_name }} has no Wine list yet. Create one with “New Wine list”.</p>
+{% endif %}
+
+<details class="wines-settings">
+  <summary>Pricing parameters</summary>
+  <p class="muted">Bottle price = C × A ÷ log<sub>B</sub>(C) × Value², glass price = the same ÷ G, each rounded to the whole dollar (.5 up). C must be greater than 1. A change applies to prices calculated from now on; rows already on a Wine list keep theirs until you adopt the new parameters.</p>
+  <form method="post" action="{{ url_for('restaurant_wine_settings_update') }}" class="compact-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="entity_id" value="{{ entity.id if entity }}">
+    <input type="hidden" name="list_id" value="{{ selected.id if selected }}">
+    <div><label for="ps-a">Coefficient A</label><input id="ps-a" type="number" step="any" name="coefficient_a" value="{{ settings.coefficient_a.normalize() }}"></div>
+    <div><label for="ps-b">Log base B</label><input id="ps-b" type="number" step="any" name="log_base_b" value="{{ settings.log_base_b.normalize() }}"></div>
+    <div><label for="ps-g">Glass divisor G</label><input id="ps-g" type="number" step="any" name="glass_divisor_g" value="{{ settings.glass_divisor_g.normalize() }}"></div>
+    <div><button type="submit" class="btn-secondary">Save parameters</button></div>
+  </form>
+</details>
+
+{# --- New Wine list ------------------------------------------------------ #}
+<div id="list-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-narrow" role="dialog" aria-modal="true" aria-labelledby="list-modal-title">
+    <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="list-modal-title">New Wine list — {{ entity.legal_name if entity }}</h3></div>
+    <form method="post" action="{{ url_for('restaurant_wine_list_create') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="entity_id" value="{{ entity.id if entity }}">
+      <label for="nl-date">Effective from</label>
+      <input id="nl-date" type="date" name="effective_from" required>
+      <label class="wines-check"><input type="radio" name="mode" value="EMPTY" {{ 'checked' if not active }}> Empty list</label>
+      <label class="wines-check"><input type="radio" name="mode" value="COPY_ACTIVE" {{ 'checked' if active else 'disabled' }}>
+        Copy of the current list{% if active %} (from {{ active.effective_from.isoformat() }}){% else %} — none in effect today{% endif %}</label>
+      <p class="cell-note">Previous versions are kept. A future date prepares the new list without replacing the current one before that day.</p>
+      <div class="btn-row">
+        <button type="submit">Create Wine list</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# --- Add / edit a Wine list row ------------------------------------------ #}
+<div id="item-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-wide" role="dialog" aria-modal="true" aria-labelledby="item-modal-title">
+    <button class="org-modal-close" type="button" aria-label="Close" data-modal-close>&times;</button>
+    <div class="modal-header"><h3 id="item-modal-title">Add a wine</h3></div>
+    <form id="item-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div id="if-picker-block">
+        <label for="if-search">Wine from the catalog</label>
+        <input id="if-search" type="search" placeholder="Search type, producer, label, vintage" autocomplete="off">
+        <div class="wines-picker" id="if-picker" role="radiogroup" aria-label="Catalog wines"></div>
+        <p class="cell-note" id="if-picker-empty" hidden>No catalog wine matches. Add it first in <a href="{{ url_for('restaurant_wine_availability') }}">Availability</a>.</p>
+      </div>
+      <p id="if-wine-name" hidden><strong></strong></p>
+      <div class="wines-grid">
+        <div><label for="if-cost">Cost used (USD)</label><input id="if-cost" type="number" name="cost_used" min="0" step="0.01" placeholder="Unknown"></div>
+        <div><label for="if-value">Value</label><input id="if-value" type="number" name="value_factor" min="0.0001" step="0.01" value="1"></div>
+        <div><label class="wines-check" style="margin-top:1.3rem"><input type="checkbox" id="if-glass" name="sells_by_glass" value="1"> Sold by the glass</label></div>
+      </div>
+      <div class="wines-prices">
+        <span></span><strong>Calculated</strong><strong>Applied</strong>
+        <span>Bottle</span><span class="wines-calc" id="if-calc-bottle">—</span>
+        <input type="number" id="if-applied-bottle" name="applied_bottle" min="0" step="0.01">
+        <span data-glass>Glass</span><span class="wines-calc" data-glass id="if-calc-glass">—</span>
+        <input type="number" data-glass id="if-applied-glass" name="applied_glass" min="0" step="0.01">
+      </div>
+      <p class="cell-note" id="if-price-note">The applied price starts equal to the calculated one; change it to set it by hand.</p>
+      <div class="error" id="if-error" hidden></div>
+      <div class="btn-row">
+        <button type="submit" id="if-submit">Add to Wine list</button>
+        <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="application/json" id="wine-list-data">{{ {
+  'items': items, 'catalog': catalog_wines,
+  'addUrl': url_for('restaurant_wine_list_item_create', list_id=selected.id) if selected else None,
+  'itemUrl': url_for('restaurant_wines_home') ~ '/items/',
+  'previewUrl': url_for('restaurant_wine_price_preview'),
+}|tojson }}</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var data = JSON.parse(document.getElementById("wine-list-data").textContent);
+
+  document.getElementById("entity-select").addEventListener("change", function () {
+    RFOneWines.busyStart();
+    document.getElementById("entity-form").submit();
+  });
+
+  document.querySelectorAll("form[data-confirm]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!window.confirm(form.getAttribute("data-confirm"))) { event.preventDefault(); }
+    });
+  });
+
+  var listModal = RFOneModal.create({ overlay: document.getElementById("list-modal") });
+  document.getElementById("list-new").addEventListener("click", function () { listModal.open(this); });
+
+  // ---- Add / edit a row -------------------------------------------------
+  var form = document.getElementById("item-form");
+  var itemModal = RFOneModal.create({ overlay: document.getElementById("item-modal") });
+  var picker = document.getElementById("if-picker");
+  var search = document.getElementById("if-search");
+  var cost = document.getElementById("if-cost");
+  var value = document.getElementById("if-value");
+  var glass = document.getElementById("if-glass");
+  var appliedBottle = document.getElementById("if-applied-bottle");
+  var appliedGlass = document.getElementById("if-applied-glass");
+  var calcBottle = document.getElementById("if-calc-bottle");
+  var calcGlass = document.getElementById("if-calc-glass");
+  var error = document.getElementById("if-error");
+  var state = { item: null, touchedBottle: false, touchedGlass: false, lastCalc: {} };
+
+  function renderPicker() {
+    var key = RFOneWines.nameKey(search.value);
+    picker.innerHTML = "";
+    var shown = 0;
+    data.catalog.forEach(function (w) {
+      var text = [w.display_name, w.denomination, w.region, w.bottle_size_ml + " ml"].join(" ");
+      if (key && RFOneWines.nameKey(text).indexOf(key) === -1) { return; }
+      shown += 1;
+      var label = document.createElement("label");
+      var radio = document.createElement("input");
+      radio.type = "radio"; radio.name = "wine_id"; radio.value = w.id;
+      radio.disabled = w.in_list;
+      if (w.in_list) { label.className = "is-disabled"; }
+      radio.addEventListener("change", function () {
+        cost.value = w.cost_usd;
+        preview();
+      });
+      label.appendChild(radio);
+      var span = document.createElement("span");
+      span.textContent = w.display_name + " · " + w.bottle_size_ml + " ml"
+        + (w.cost_known ? " · $" + w.cost_usd : " · cost unknown")
+        + (w.in_list ? " · already on this list" : "");
+      label.appendChild(span);
+      picker.appendChild(label);
+    });
+    document.getElementById("if-picker-empty").hidden = shown !== 0;
+  }
+  search.addEventListener("input", renderPicker);
+
+  function syncGlass() {
+    form.querySelectorAll("[data-glass]").forEach(function (node) { node.hidden = !glass.checked; });
+  }
+  glass.addEventListener("change", function () { syncGlass(); preview(); });
+
+  function money(v) { return v === null || v === undefined ? "" : String(v); }
+
+  // An applied price the person has not touched follows the calculated one.
+  function follow(input, touched, calculated) {
+    if (!touched) { input.value = money(calculated); }
+  }
+
+  var timer = null;
+  var sequence = 0;
+  function preview() {
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      if (!value.value || Number(value.value) <= 0) {
+        calcBottle.textContent = "—"; calcGlass.textContent = "—"; return;
+      }
+      var params = new URLSearchParams({ cost: cost.value, value: value.value });
+      if (state.item) { params.set("item", state.item.id); }
+      var mine = ++sequence;
+      RFOneWines.get(data.previewUrl + "?" + params.toString()).then(function (answer) {
+        if (mine !== sequence) { return; }
+        if (!answer.ok) { calcBottle.textContent = "—"; calcGlass.textContent = "—"; return; }
+        calcBottle.textContent = answer.bottle === null ? "to complete (cost must be > $1)" : "$" + answer.bottle;
+        calcGlass.textContent = answer.glass === null ? "to complete" : "$" + answer.glass;
+        follow(appliedBottle, state.touchedBottle, answer.bottle);
+        follow(appliedGlass, state.touchedGlass, glass.checked ? answer.glass : null);
+      });
+    }, 300);
+  }
+  cost.addEventListener("input", preview);
+  value.addEventListener("input", preview);
+  appliedBottle.addEventListener("input", function () { state.touchedBottle = true; });
+  appliedGlass.addEventListener("input", function () { state.touchedGlass = true; });
+
+  function openItem(trigger, item) {
+    form.reset();
+    state = { item: item, touchedBottle: false, touchedGlass: false };
+    error.hidden = true;
+    var wineName = document.getElementById("if-wine-name");
+    document.getElementById("if-picker-block").hidden = !!item;
+    wineName.hidden = !item;
+    document.getElementById("item-modal-title").textContent = item ? "Edit Wine list row" : "Add a wine to this Wine list";
+    document.getElementById("if-submit").textContent = item ? "Save" : "Add to Wine list";
+    if (item) {
+      wineName.querySelector("strong").textContent = item.wine.display_name + " · " + item.wine.bottle_size_ml + " ml";
+      cost.value = item.cost_used;
+      value.value = item.value;
+      glass.checked = item.sells_by_glass;
+      appliedBottle.value = item.applied_bottle;
+      appliedGlass.value = item.applied_glass;
+      // A hand-set price stays as it is; an automatic one follows the calculation.
+      state.touchedBottle = item.bottle_manual;
+      state.touchedGlass = item.glass_manual;
+    } else {
+      search.value = "";
+      value.value = "1";
+      renderPicker();
+    }
+    syncGlass();
+    calcBottle.textContent = "—"; calcGlass.textContent = "—";
+    itemModal.open(trigger);
+    preview();
+  }
+
+  var addButton = document.getElementById("item-new");
+  if (addButton && data.addUrl) {
+    addButton.addEventListener("click", function () { openItem(this, null); });
+  }
+  document.querySelectorAll("[data-edit-item]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = Number(button.getAttribute("data-edit-item"));
+      openItem(button, data.items.filter(function (it) { return it.id === id; })[0]);
+    });
+  });
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var body = new FormData(form);
+    if (!glass.checked) { body.delete("applied_glass"); }
+    var url = state.item ? data.itemUrl + state.item.id : data.addUrl;
+    RFOneWines.post(url, body, true).then(function (answer) {
+      if (!answer.ok) { error.textContent = answer.error; error.hidden = false; return; }
+      window.location.href = answer.redirect;
+    });
+  });
+});
+</script>
+{% endif %}
+{% endblock %}
