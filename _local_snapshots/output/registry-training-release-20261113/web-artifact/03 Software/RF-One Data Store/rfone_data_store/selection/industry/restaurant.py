@@ -1,0 +1,474 @@
+"""Restaurant Industry Extension (01 Domains/Business Domain/Restaurant/Selection/README.md).
+
+Adds Restaurant-specific interpretation on top of Selection Core: a
+normalized role catalog, title normalization, seniority ranking (for
+trajectory detection only), role-category classification (for the
+BOH/MANAGEMENT/NON_HOSPITALITY transition Flags), and the first real
+`RoleConfiguration` — Rome's Flavours' Server role. Nothing here is known to
+`..core`.
+
+Task 2B additions (role/title normalization for `selection/normalization.py`):
+`ROLE_FAMILY`/`role_family()`, `DISPLAY_NAME`/`display_name_for()`,
+`split_multi_role_title()`, `seniority_level_from_title()`. These are a
+separate axis from `SENIORITY_RANK`/`seniority_rank()` below — that dict is
+an internal ranking used ONLY for trajectory-direction detection (its own
+docstring: "never a compensation scale, never shown to the evaluator as a
+'level'"); `seniority_level_from_title()` is the opposite — a human-facing
+label, but ONLY ever derived from explicit title wording, never from tenure
+or from that internal rank.
+"""
+
+from __future__ import annotations
+
+import re
+
+from ..core.role_model import RoleConfiguration
+
+FOH_ROLES = {
+    "SERVER", "BARTENDER", "HOST", "BUSSER", "FOOD_RUNNER", "FOH_SUPERVISOR", "FOH_MANAGER",
+}
+BOH_ROLES = {
+    "PREP_COOK", "LINE_COOK", "PIZZA_COOK", "DISHWASHER", "SOUS_CHEF", "CHEF", "BOH_MANAGER",
+}
+# GENERAL_MANAGER/ASSISTANT_GENERAL_MANAGER/MANAGER are deliberately kept out
+# of FOH_ROLES/BOH_ROLES — management is a distinct axis from front/back of
+# house (role_category() below still reports them as "MANAGEMENT").
+OTHER_ROLES = {"GENERAL_MANAGER", "ASSISTANT_GENERAL_MANAGER", "MANAGER"}
+
+# Server-equivalent title codes (RoleModel.md's own worked example: "Waiter"/
+# "Waitress" for "Server" — different title, same substance). Not part of the
+# task §11 FOH/BOH/OTHER catalog list itself (that list reports at the
+# coarser "SERVER" level); kept as distinct normalized codes ONLY so
+# RoleConfiguration's TARGET vs. EQUIVALENT classification (RoleModel.md) is
+# meaningfully exercised, per the Server Role Configuration below. Treated as
+# full FOH/Server-equivalent for every other classification in this module.
+SERVER_EQUIVALENT_ROLES = {"WAITER", "WAITRESS", "DINING_SERVER"}
+
+ALL_CATALOG_ROLES = FOH_ROLES | BOH_ROLES | OTHER_ROLES | SERVER_EQUIVALENT_ROLES
+
+# Ordered (most specific keyword first) so e.g. "sous chef" matches before
+# the more general "chef" — used by normalize_title() below.
+_TITLE_KEYWORDS: list[tuple[str, str]] = [
+    # SELECTION_FOH_TEAM_LEADER_001 — Product Owner decisions (2026-10-03).
+    # "Chef de rang" is a dining-room server, never kitchen: before "chef".
+    ("chef de rang", "SERVER"),
+    # FOH Team Leader is the existing FOH_SUPERVISOR role (rank 3). These
+    # titles name the front of house explicitly.
+    ("foh team leader", "FOH_SUPERVISOR"),
+    ("front of house team leader", "FOH_SUPERVISOR"),
+    ("foh supervisor", "FOH_SUPERVISOR"),
+    ("capo sala", "FOH_SUPERVISOR"),
+    ("caposala", "FOH_SUPERVISOR"),
+    ("responsabile di sala", "FOH_SUPERVISOR"),
+    ("sous chef", "SOUS_CHEF"),
+    ("executive chef", "CHEF"),
+    ("head chef", "CHEF"),
+    ("chef", "CHEF"),
+    ("pizza cook", "PIZZA_COOK"),
+    ("pizza maker", "PIZZA_COOK"),
+    ("prep cook", "PREP_COOK"),
+    ("line cook", "LINE_COOK"),
+    ("cook", "LINE_COOK"),
+    ("dishwasher", "DISHWASHER"),
+    ("kitchen manager", "BOH_MANAGER"),
+    ("boh manager", "BOH_MANAGER"),
+    # Must precede "general manager"/"restaurant manager" below — each
+    # contains that shorter phrase as a substring, so the more specific match
+    # has to be checked first (Task 2B: AGM must not collapse into GM).
+    ("assistant general manager", "ASSISTANT_GENERAL_MANAGER"),
+    ("assistant restaurant manager", "ASSISTANT_GENERAL_MANAGER"),
+    ("assistant manager", "ASSISTANT_GENERAL_MANAGER"),
+    ("general manager", "GENERAL_MANAGER"),
+    ("restaurant manager", "GENERAL_MANAGER"),
+    ("foh manager", "FOH_MANAGER"),
+    ("front of house manager", "FOH_MANAGER"),
+    ("floor supervisor", "FOH_SUPERVISOR"),
+    ("bartender", "BARTENDER"),
+    ("mixologist", "BARTENDER"),
+    ("host", "HOST"),
+    ("hostess", "HOST"),
+    ("busser", "BUSSER"),
+    ("bus person", "BUSSER"),
+    ("food runner", "FOOD_RUNNER"),
+    ("runner", "FOOD_RUNNER"),
+    ("dining server", "DINING_SERVER"),
+    ("waiter", "WAITER"),
+    ("waitress", "WAITRESS"),
+    ("server", "SERVER"),
+    # Generic fallback — checked last, so it only ever catches a bare
+    # "Manager" that none of the more specific management phrases above
+    # matched (task's own "Manager / Bartender" multi-role example: "Manager"
+    # alone is genuinely ambiguous, but still real evidence worth keeping
+    # rather than discarding as unrecognized).
+    ("manager", "MANAGER"),
+]
+
+# Short acronyms need word-boundary matching, not substring — a plain
+# `"gm" in lowered` would false-positive inside unrelated words. Checked
+# before the phrase-keyword loop; AGM must precede GM for the same
+# most-specific-first reason as in `_TITLE_KEYWORDS`.
+_ACRONYM_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bagm\b", re.IGNORECASE), "ASSISTANT_GENERAL_MANAGER"),
+    (re.compile(r"\bgm\b", re.IGNORECASE), "GENERAL_MANAGER"),
+]
+
+
+# Generic coordination titles (SELECTION_FOH_TEAM_LEADER_001: Team Leader,
+# Team Lead, Shift Leader, Shift Lead, Floor Leader and — since the
+# Product Owner's correction of 2026-10-03 — a bare or qualified
+# "Supervisor": Shift, Restaurant, Kitchen, Warehouse Supervisor...). They are
+# FOH_SUPERVISOR only when the résumé ties the experience to the dining room:
+# the title says so, or a duty describes coordinating servers, hosts,
+# runners or table service. Working in a restaurant is not enough — it may
+# be the kitchen. Without that context the title is kept as written and
+# left to be clarified (normalized role None).
+# Titles that name the front of house explicitly: FOH_SUPERVISOR whatever
+# the duties say (Product Owner list, 2026-10-03).
+_EXPLICIT_FOH_SUPERVISOR_TITLES = (
+    "foh team leader", "front of house team leader", "foh supervisor", "floor supervisor",
+    "capo sala", "caposala", "responsabile di sala",
+)
+_GENERIC_LEADERSHIP_RE = re.compile(
+    r"\b(team\s+lead(?:er)?|shift\s+lead(?:er)?|floor\s+leader|supervisor)\b", re.IGNORECASE,
+)
+_FOH_TITLE_RE = re.compile(
+    r"\b(foh|front\s+of\s+house|sala|servers?|waiters?|waitress(?:es)?|hosts?|hostess(?:es)?|runners?)\b",
+    re.IGNORECASE,
+)
+_KITCHEN_RE = re.compile(
+    r"\b(kitchen|boh|back\s+of\s+house|cucina|cooks?|chefs?|prep|pizza|dishwashers?)\b", re.IGNORECASE,
+)
+_COORDINATION_RE = re.compile(
+    r"\b(coordinat\w*|supervis\w*|led|lead\w*|manag\w*|oversaw|oversee\w*|direct\w*|train\w*|"
+    r"schedul\w*|assign\w*)\b", re.IGNORECASE,
+)
+_FOH_DUTY_OBJECT_RE = re.compile(
+    r"\b(servers?|waiters?|waitress(?:es)?|hosts?|hostess(?:es)?|runners?|table\s+service|"
+    r"servizio\s+al\s+tavolo)\b", re.IGNORECASE,
+)
+
+# Why a generic coordination title was, or was not, read as FOH_SUPERVISOR.
+LEADERSHIP_FROM_TITLE = "FOH_IN_TITLE"
+LEADERSHIP_FROM_DUTIES = "FOH_IN_DUTIES"
+LEADERSHIP_KITCHEN = "KITCHEN"
+LEADERSHIP_CONFLICT = "CONFLICTING_DUTIES"
+LEADERSHIP_NO_CONTEXT = "NO_FOH_CONTEXT"
+
+
+def is_generic_leadership_title(original_job_title: str | None) -> bool:
+    return bool(original_job_title and _GENERIC_LEADERSHIP_RE.search(original_job_title))
+
+
+def _duty_sentences(responsibilities: str | None) -> list[str]:
+    return [s for s in re.split(r"[\n.;]+", responsibilities or "") if s.strip()]
+
+
+def leadership_title_context(original_job_title: str | None, responsibilities: str | None) -> tuple[str | None, str | None]:
+    """(normalized_role, basis) for a generic coordination title; (None,
+    None) when the title is not one. The basis says what the reading rests
+    on — it shows the DECLARED role only: whether coordination duties were
+    actually performed is a separate question."""
+
+    if original_job_title and any(t in original_job_title.lower() for t in _EXPLICIT_FOH_SUPERVISOR_TITLES):
+        return "FOH_SUPERVISOR", LEADERSHIP_FROM_TITLE
+    if not is_generic_leadership_title(original_job_title):
+        return None, None
+    if _KITCHEN_RE.search(original_job_title):
+        return None, LEADERSHIP_KITCHEN
+    if _FOH_TITLE_RE.search(original_job_title):
+        return "FOH_SUPERVISOR", LEADERSHIP_FROM_TITLE
+    sentences = _duty_sentences(responsibilities)
+    foh = any(_COORDINATION_RE.search(s) and _FOH_DUTY_OBJECT_RE.search(s) for s in sentences)
+    kitchen = any(_COORDINATION_RE.search(s) and _KITCHEN_RE.search(s) for s in sentences)
+    if foh and kitchen:
+        return None, LEADERSHIP_CONFLICT
+    if foh:
+        return "FOH_SUPERVISOR", LEADERSHIP_FROM_DUTIES
+    return None, LEADERSHIP_NO_CONTEXT
+
+
+# SELECTION_COORDINATION_EVIDENCE_001 — the area a declared coordination
+# duty concerns, read from the sentence only (never from the job title it
+# sits under: "Trained new hires" under a Server job does not say where).
+COORDINATION_AREA_FOH = "FOH"
+COORDINATION_AREA_KITCHEN = "KITCHEN"
+COORDINATION_AREA_OTHER = "OTHER"
+COORDINATION_AREA_LABELS = {
+    COORDINATION_AREA_FOH: "Dining room (FOH)",
+    COORDINATION_AREA_KITCHEN: "Kitchen",
+    COORDINATION_AREA_OTHER: "Other (outside the restaurant floor and kitchen)",
+}
+_FOH_AREA_RE = re.compile(
+    r"\b(servers?|waiters?|waitress(?:es)?|hosts?|hostess(?:es)?|runners?|bussers?|bartenders?|"
+    r"table\s+service|servizio\s+al\s+tavolo|dining\s+room|front\s+of\s+house|foh|sala|camerieri)\b", re.I)
+_OTHER_AREA_RE = re.compile(
+    r"\b(warehouse|magazzino|pickers?|forklift|drivers?|cashiers?|retail|store|stock\s*room|call\s+cent(?:er|re)|"
+    r"office)\b", re.I)
+
+
+def coordination_area(sentence: str, record=None) -> str | None:
+    """FOH / KITCHEN / OTHER when the sentence names it; None (to be
+    clarified) when it names none, or both the dining room and the kitchen."""
+
+    foh = bool(_FOH_AREA_RE.search(sentence))
+    kitchen = bool(_KITCHEN_RE.search(sentence))
+    if foh and kitchen:
+        return None
+    if foh:
+        return COORDINATION_AREA_FOH
+    if kitchen:
+        return COORDINATION_AREA_KITCHEN
+    if _OTHER_AREA_RE.search(sentence):
+        return COORDINATION_AREA_OTHER
+    return None
+
+
+def normalize_title(original_job_title: str | None) -> str | None:
+    """Maps a free-text job title to a catalog code by transparent keyword
+    matching. Returns None when nothing clearly matches — never guessed."""
+
+    if not original_job_title:
+        return None
+    lowered = original_job_title.lower()
+    for pattern, code in _ACRONYM_PATTERNS:
+        if pattern.search(lowered):
+            return code
+    for keyword, code in _TITLE_KEYWORDS:
+        if keyword in lowered:
+            return code
+    return None
+
+
+# Seniority, for trajectory detection only (01 Domains/Business Domain/Restaurant/Selection/
+# README.md, "Seniority, for trajectory detection") — never a compensation
+# scale, never shown to the evaluator as a "level."
+SENIORITY_RANK: dict[str, int] = {
+    "DISHWASHER": 1, "BUSSER": 1, "HOST": 1, "PREP_COOK": 1,
+    "FOOD_RUNNER": 2, "SERVER": 2, "WAITER": 2, "WAITRESS": 2, "DINING_SERVER": 2,
+    "BARTENDER": 2, "LINE_COOK": 2, "PIZZA_COOK": 2,
+    "SOUS_CHEF": 3, "FOH_SUPERVISOR": 3,
+    "CHEF": 4, "FOH_MANAGER": 4, "BOH_MANAGER": 4, "ASSISTANT_GENERAL_MANAGER": 4, "MANAGER": 4,
+    "GENERAL_MANAGER": 5,
+}
+
+
+def seniority_rank(normalized_role: str | None) -> int | None:
+    if not normalized_role:
+        return None
+    return SENIORITY_RANK.get(normalized_role)
+
+
+# Role classification for Indicators (README.md, "Role classification for
+# Indicators").
+CUSTOMER_FACING_ROLES = FOH_ROLES | SERVER_EQUIVALENT_ROLES
+COMMERCIAL_ROLES = {"SERVER", "WAITER", "WAITRESS", "DINING_SERVER", "BARTENDER"}
+SUPERVISORY_ROLES = {
+    "FOH_SUPERVISOR", "FOH_MANAGER", "SOUS_CHEF", "CHEF", "BOH_MANAGER",
+    "GENERAL_MANAGER", "ASSISTANT_GENERAL_MANAGER", "MANAGER",
+}
+INDUSTRY_ROLES = ALL_CATALOG_ROLES
+
+# Category classification for the transition Flags (README.md, "Rome's
+# Flavours Server Role Configuration"). SELECTION_TRANSITION_EVIDENCE_001: a
+# category is returned only for a role this extension positively classifies;
+# a missing or unrecognized role returns None ("to be clarified"), never
+# "NON_HOSPITALITY". No role is classified as outside hospitality yet, so the
+# NON_HOSPITALITY transition cannot appear on a real résumé until such roles
+# are defined. Hotel work is hospitality (e.g. the adjacent
+# HOTEL_GUEST_SERVICE) and must never be placed here.
+NON_HOSPITALITY_ROLES: frozenset[str] = frozenset()
+_MANAGEMENT_ROLES = {"GENERAL_MANAGER", "FOH_MANAGER", "BOH_MANAGER", "ASSISTANT_GENERAL_MANAGER", "MANAGER"}
+
+
+def role_category(normalized_role: str | None) -> str | None:
+    if not normalized_role:
+        return None
+    if normalized_role in _MANAGEMENT_ROLES:
+        return "MANAGEMENT"
+    if normalized_role in BOH_ROLES:
+        return "BOH"
+    if normalized_role in FOH_ROLES or normalized_role in SERVER_EQUIVALENT_ROLES:
+        return "FOH"
+    if normalized_role in NON_HOSPITALITY_ROLES:
+        return "NON_HOSPITALITY"
+    return None
+
+
+def transition_detail_type(category: str) -> str:
+    """BOH -> SERVER gets the more specific Flag type FlagsAndIndicators.md
+    names (`BOH_TO_FOH`); other investigated transitions use the generic
+    Core `ROLE_TRANSITION` type."""
+    if category == "BOH":
+        return "BOH_TO_FOH"
+    return "ROLE_TRANSITION"
+
+
+ROME_FLAVOURS_SERVER_ROLE_CONFIG = RoleConfiguration(
+    target_role="SERVER", display_name="Server",
+    equivalent_roles={"WAITER", "WAITRESS", "DINING_SERVER"},
+    propedeutic_roles={"BARTENDER", "FOOD_RUNNER", "BUSSER", "HOST"},
+    adjacent_roles={"RETAIL_SALES", "HOTEL_GUEST_SERVICE", "CUSTOMER_SERVICE"},
+    transition_flags={"BOH", "MANAGEMENT", "NON_HOSPITALITY"},
+)
+
+# Registry, keyed by target role code — the smallest coherent "Role
+# Configuration lookup" the MVP needs (01 Domains/Shared Domains/Personnel Management/
+# Selection/ResumeScreening/README.md, "Domain architecture", layer D).
+# SELECTION_FOH_TEAM_LEADER_001 — FOH Team Leader is the existing
+# FOH_SUPERVISOR role (Product Owner, 2026-10-03). Direct experience: roles
+# read as FOH_SUPERVISOR. Propedeutic: Server (with its catalog equivalents
+# Waiter/Waitress/Dining Server), Bartender, Host. A move from the kitchen or
+# from management is only ever a neutral question. No weights or thresholds.
+ROME_FLAVOURS_FOH_TEAM_LEADER_ROLE_CONFIG = RoleConfiguration(
+    target_role="FOH_SUPERVISOR",
+    propedeutic_roles={"SERVER", "WAITER", "WAITRESS", "DINING_SERVER", "BARTENDER", "HOST"},
+    transition_flags={"BOH", "MANAGEMENT"},
+    display_name="FOH Team Leader",
+)
+
+ROLE_CONFIGURATIONS: dict[str, RoleConfiguration] = {
+    "SERVER": ROME_FLAVOURS_SERVER_ROLE_CONFIG,
+    "FOH_SUPERVISOR": ROME_FLAVOURS_FOH_TEAM_LEADER_ROLE_CONFIG,
+}
+
+# The target roles an application can be imported for, in the order shown.
+TARGET_ROLE_CHOICES: list[tuple[str, str]] = [
+    (code, config.label) for code, config in ROLE_CONFIGURATIONS.items()
+]
+
+
+def target_role_label(code: str | None) -> str | None:
+    config = ROLE_CONFIGURATIONS.get(code or "")
+    return config.label if config else code
+
+
+# ---------------------------------------------------------------------------
+# Task 2B — role families, display names, multi-role titles, seniority
+# ---------------------------------------------------------------------------
+
+# Practical hospitality role families (task's own minimum list). A catalog
+# code missing here falls back to "Other / Unknown" in role_family() below —
+# defensive only; every code in ALL_CATALOG_ROLES is listed explicitly.
+ROLE_FAMILY: dict[str, str] = {
+    "SERVER": "FOH Service", "WAITER": "FOH Service", "WAITRESS": "FOH Service", "DINING_SERVER": "FOH Service",
+    "BARTENDER": "Bar",
+    "HOST": "Host / Guest Reception",
+    "BUSSER": "Support / Busser / Runner", "FOOD_RUNNER": "Support / Busser / Runner",
+    "PREP_COOK": "Kitchen / BOH", "LINE_COOK": "Kitchen / BOH", "PIZZA_COOK": "Kitchen / BOH",
+    "DISHWASHER": "Kitchen / BOH",
+    "SOUS_CHEF": "Culinary Leadership", "CHEF": "Culinary Leadership",
+    "FOH_SUPERVISOR": "Restaurant Management", "FOH_MANAGER": "Restaurant Management",
+    "BOH_MANAGER": "Restaurant Management", "ASSISTANT_GENERAL_MANAGER": "Restaurant Management",
+    "MANAGER": "Restaurant Management",
+    "GENERAL_MANAGER": "Operations / General Management",
+}
+
+
+def role_family(normalized_role: str | None) -> str | None:
+    """None when there is no normalized role at all (nothing to classify);
+    "Other / Unknown" only for the defensive case of a catalog code this
+    table has not been kept in sync with — never guessed from free text."""
+
+    if not normalized_role:
+        return None
+    return ROLE_FAMILY.get(normalized_role, "Other / Unknown")
+
+
+# Human-readable canonical display name per catalog code (task's
+# `normalized_title`). WAITER/WAITRESS/DINING_SERVER collapse to "Server" for
+# display — RoleModel.md's own note: those codes exist only to exercise
+# TARGET/EQUIVALENT classification, and are "full FOH/Server-equivalent for
+# every other classification" (role_model.py's docstring already says this).
+DISPLAY_NAME: dict[str, str] = {
+    "SERVER": "Server", "WAITER": "Server", "WAITRESS": "Server", "DINING_SERVER": "Server",
+    "BARTENDER": "Bartender",
+    "HOST": "Host",
+    "BUSSER": "Busser",
+    "FOOD_RUNNER": "Food Runner",
+    "PREP_COOK": "Prep Cook",
+    "LINE_COOK": "Line Cook",
+    "PIZZA_COOK": "Pizza Cook",
+    "DISHWASHER": "Dishwasher",
+    "SOUS_CHEF": "Sous Chef",
+    "CHEF": "Chef",
+    "FOH_SUPERVISOR": "FOH Supervisor / Team Leader",
+    "FOH_MANAGER": "Front of House Manager",
+    "BOH_MANAGER": "Kitchen Manager",
+    "ASSISTANT_GENERAL_MANAGER": "Assistant General Manager",
+    "MANAGER": "Manager",
+    "GENERAL_MANAGER": "General Manager",
+}
+
+
+def display_name_for(normalized_role: str | None, original_job_title: str | None = None) -> str | None:
+    """`DISPLAY_NAME` lookup, with one conservative refinement: CHEF keeps
+    "Executive Chef"/"Head Chef" instead of collapsing to the generic "Chef"
+    when the original title said so — task §"COMMON HOSPITALITY ROLE
+    NORMALIZATION": "without collapsing meaningful distinctions
+    unnecessarily." The underlying catalog code stays CHEF either way
+    (classification/RoleModel behavior is unchanged); only the human-facing
+    label gets more specific."""
+
+    if not normalized_role:
+        return None
+    if normalized_role == "CHEF" and original_job_title:
+        lowered = original_job_title.lower()
+        if "executive chef" in lowered:
+            return "Executive Chef"
+        if "head chef" in lowered:
+            return "Head Chef"
+    return DISPLAY_NAME.get(normalized_role, normalized_role.replace("_", " ").title())
+
+
+# Separators a hospitality résumé commonly uses for a genuinely combined
+# title ("Server/Bartender", "Host & Server", "Cook / Dishwasher"). Kept
+# deliberately small (task §"Do NOT create a giant universal occupation
+# ontology" applies just as much here) — a title with none of these stays a
+# single segment, which is exactly the previous (Task 2A) single-title
+# behavior.
+_MULTI_ROLE_SEPARATOR_RE = re.compile(r"\s*(?:/|&|\+|,|\band\b)\s*", re.IGNORECASE)
+
+
+def split_multi_role_title(original_job_title: str | None) -> list[str]:
+    """Splits a title into candidate role segments. Returns `[title]`
+    unchanged (never `[]`) when no separator is found, so a caller can
+    always iterate the result the same way regardless of whether the title
+    was single- or multi-role."""
+
+    if not original_job_title or not original_job_title.strip():
+        return []
+    parts = [p.strip() for p in _MULTI_ROLE_SEPARATOR_RE.split(original_job_title) if p.strip()]
+    return parts or [original_job_title.strip()]
+
+
+# Seniority evidenced by the TITLE TEXT ITSELF only — never inferred from
+# tenure/years worked (task §"SENIORITY": "Do NOT infer seniority merely from
+# years worked"). Checked in this order so a more specific phrase always wins
+# over a more generic one it contains (e.g. "Assistant General Manager"
+# before the bare "manager" pattern); the AGM pattern also matches the bare
+# "AGM" acronym. "Executive"/"Director" deliberately excludes "Executive
+# Chef" — that is a Culinary Leadership title (see `display_name_for`), not
+# a generic seniority rung.
+_SENIORITY_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bassistant\s+general\s+manager\b|\bagm\b", re.IGNORECASE), "Assistant Manager"),
+    (re.compile(r"\bassistant\s+manager\b", re.IGNORECASE), "Assistant Manager"),
+    (re.compile(r"\bgeneral\s+manager\b|\bgm\b", re.IGNORECASE), "General Manager"),
+    (re.compile(r"\bdirector\b|\bexecutive\b(?!\s+chef)", re.IGNORECASE), "Director / Executive"),
+    (re.compile(r"\bsupervisor\b", re.IGNORECASE), "Supervisor"),
+    (re.compile(r"\blead\b|\bhead\s+(server|bartender|host)\b", re.IGNORECASE), "Lead"),
+    (re.compile(r"\btrainee\b|\bapprentice\b", re.IGNORECASE), "Trainee"),
+    (re.compile(r"\bjunior\b|\bjr\.?\b", re.IGNORECASE), "Junior"),
+    (re.compile(r"\bmanager\b", re.IGNORECASE), "Manager"),
+]
+
+
+def seniority_level_from_title(original_job_title: str | None) -> str | None:
+    """None whenever the title carries no explicit seniority wording — never
+    fabricated, and never derived from anything but this one string."""
+
+    if not original_job_title:
+        return None
+    for pattern, level in _SENIORITY_PATTERNS:
+        if pattern.search(original_job_title):
+            return level
+    return None
