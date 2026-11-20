@@ -545,10 +545,6 @@ def expectation_with_lifecycle_boundary(
     verdict = expectation_for(instrument, period)
     if instrument.effective_end_date is not None:
         return verdict
-    if instrument.status == "ACTIVE":
-        # Reactivated from the Source page: a person said it is alive now,
-        # so an earlier closing decision no longer closes the future.
-        return verdict
     decision = lifecycle_end_decision(session, instrument.id)
     if decision is None:
         return verdict
@@ -633,19 +629,17 @@ def multi_instrument_batches_evidencing(
 
 
 def relevant_instruments(session: Session) -> list["m.PaymentInstrument"]:
-    """Every PAYMENT source RF-One knows about.
+    """Every Payment Instrument RF-One knows about.
 
     Inactive ones are included on purpose: a card closed last year is still
     relevant to a month it was alive for, and the expectation rule — not a
     pre-filter — decides whether it was. Nothing is ever excluded merely
-    for being inactive today. A purchase platform is a documentary source,
-    not a source of bank files, so no month expects a file from it
-    (BANK_PURCHASE_PLATFORM_SOURCE_001).
+    for being inactive today.
     """
     return list(session.scalars(
-        select(m.PaymentInstrument)
-        .where(m.PaymentInstrument.instrument_type.in_(m.PAYMENT_SOURCE_TYPES))
-        .order_by(m.PaymentInstrument.institution, m.PaymentInstrument.display_name)
+        select(m.PaymentInstrument).order_by(
+            m.PaymentInstrument.institution, m.PaymentInstrument.display_name,
+        )
     ).all())
 
 
@@ -948,36 +942,6 @@ def resolve_coverage(
 
     session.flush()
     return coverage
-
-
-def set_source_active(
-    session: Session, *, instrument: "m.PaymentInstrument", active: bool,
-) -> "m.PaymentInstrument":
-    """Set a Source ACTIVE or INACTIVE directly from the Source page
-    (BANK_FINAL_RELEASE_BLOCKERS_002, Product Owner decision).
-
-    The same lifecycle fields the Check Sources resolutions use — no second
-    status model:
-
-      INACTIVE  as a CLOSED resolution: status INACTIVE, end reason CLOSED,
-                end date DERIVED from the last eligible posting date (None
-                means UNKNOWN; nothing is invented);
-      ACTIVE    the Source is alive again: status ACTIVE, end reason and end
-                date cleared. Identity (name, last four, identifier) and any
-                recorded replacement are never touched.
-
-    Months already resolved keep their resolutions; completeness reads the
-    instrument as it is now."""
-    if active:
-        instrument.status = "ACTIVE"
-        instrument.lifecycle_end_reason = None
-        instrument.effective_end_date = None
-    elif instrument.status != "INACTIVE":
-        instrument.status = "INACTIVE"
-        instrument.lifecycle_end_reason = m.RESOLUTION_CLOSED
-        instrument.effective_end_date = last_posting_date(session, instrument.id)
-    session.flush()
-    return instrument
 
 
 def clear_resolution(

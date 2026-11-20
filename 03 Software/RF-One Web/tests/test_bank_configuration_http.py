@@ -4,34 +4,21 @@
 Thirty numbered points, as specified by the Product Owner:
 
    1-5   schema: the SQLite migration, the PostgreSQL path, existing rules
-         surviving, WHO/entity pair uniqueness;
+         surviving, a WHO-only rule with no WHY, WHO/entity pair uniqueness;
    6-7   WHAT: add/edit with metadata derived from the group; refusals;
    8-11  WHY: add/edit, unique generated code, stable code, exactly one WHAT;
   12-18  WHO: COUNTERPARTY creation, possible WHYs, default WHY, WHO never
-         determines WHY, entities served, nothing inferred;
-  19-21  Sources are NOT edited here any more: a "Manage Sources" link to
-         /bank/sources, and the old routes are gone (BANK_FINAL_RELEASE_BLOCKERS_002);
-  22-27  Support: entities; source rules, control months and deduplication
-         are maintained on Source / Check Sources and only linked from here
-         (BANK_FINAL_CLEANUP_001);
+         determines WHY, entities served, recognition rules, nothing inferred;
+  19-21  Accounts & Cards: bank account entity, derived card entity,
+         lifecycle and reference rules;
+  22-27  Support: entities, source rules, control months, card settlement,
+         cardholder, deduplication action;
   28-30  security: BANK access, CSRF, fixed redirects.
 
 Plus the later Product Owner decisions: D10 (COUNTERPARTY seeded by
 migration, idempotently) and D11 (WHAT = P&L WHAT only; an existing WHY on a
 Balance Sheet destination is labelled truthfully and never reclassified).
 D9 (WHO search) is a client-side filter, exercised by the browser test.
-
-BANK_OLD_RULES_REMOVAL_001: Configuration > WHO no longer edits recognition
-rules, so check 4 (a WHO-only rule created from the WHO form) and check 17
-(Exact / Contains / Prefix rules edited from the WHO form) went with them.
-The same task dropped the bank_recognition_rules table at d2b6f8a4c0e7 (the
-new head), so: check 1 now verifies the head revision and the WHO/entity table
-only (the rule-table schema no longer exists at head); check 2 is unchanged (it
-renders the historical PostgreSQL path, which still relaxes the rule WHY);
-check 3 now verifies the legacy rule at the last revision that still has the
-table (a3c7e5b9d1f4), then empties it as BANK_RULES_RESET_001 did before the
-upgrade to head; check 15 no longer reads rule WHYs. The other numbers are
-unchanged.
 
 Runs against DISPOSABLE SQLite databases created here and deleted at the end.
 """
@@ -44,6 +31,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+from datetime import date
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.normpath(os.path.join(BASE_DIR, ".."))
@@ -70,16 +58,13 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import card_configuration  # noqa: E402
+from rfone_data_store.bank_reconciliation import recognition  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 NEW_REVISION = "e5b1d7c3a9f2"
 HEAD_REVISION = "b9e4c2a7d5f3"  # last schema revision rendered offline for PostgreSQL (check 2)
-CURRENT_HEAD = "d5a120261021"  # the single Alembic head a fresh database reaches (check 1): the RF-One owner (ADMIN_PERMISSIONS_001)
-LAST_RULES_REVISION = "a3c7e5b9d1f4"  # last revision with bank_recognition_rules (check 3)
+CURRENT_HEAD = "a7c3e9d5f2b8"  # the single Alembic head a fresh database reaches (check 1)
 PREVIOUS_REVISION = "d4a8c2e6f1b3"
-# The head of the Bank line below the reinstall (c8e4b2a6f0d1 and 84354dc654ce are not reversible): the seed
-# re-run check (D10) goes down and up inside this line, then the database is taken to the head.
-BANK_LINE_HEAD = "a6e2c8f4b0d9"
 
 
 def _alembic_config(url: str, buffer=None):
@@ -210,13 +195,16 @@ def main() -> int:
         # ---------------------------------------------------- page structure
         order = [html.index(f'id="{s}"') for s in ("cp-what", "cp-why", "cp-who", "cp-accounts", "cp-support")]
         check("0. /bank/configuration responds 200 with the approved block order WHAT, WHY, WHO, "
-              "Sources, Support", page.status_code == 200 and order == sorted(order))
-        check("0. the back button leads to Review Transactions (the standalone Reconciliation page is "
-              "retired)", 'href="/bank/review"' in html and 'href="/bank/reconciliation"' not in html)
+              "Accounts & Cards, Support", page.status_code == 200 and order == sorted(order))
+        check("0. the Reconciliation button leads to the real Reconciliation page",
+              'href="/bank/reconciliation"' in html and "/bank/review" not in html)
 
         # ================================================================ 1-5
         conn = sqlite3.connect(_TEST_DB_PATH)
         revision = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        notnull = {row[1]: row[3] for row in conn.execute("PRAGMA table_info(bank_recognition_rules)")}
+        rules_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name='bank_recognition_rules'").fetchone()[0]
         table_sql = conn.execute(
             "SELECT sql FROM sqlite_master WHERE name='bank_occurrence_reporting_entities'").fetchone()
         conn.close()
@@ -226,9 +214,15 @@ def main() -> int:
         check("D10. a fresh migrated database holds exactly one COUNTERPARTY WHO type, seeded by migration",
               len(counterparty) == 1 and counterparty[0].name == "Counterparty"
               and counterparty[0].status == "ACTIVE" and "Supplier is only one possible kind" in (counterparty[0].description or ""))
-        check("1. SQLite migration reaches the head and creates the WHO/entity table",
-              revision == CURRENT_HEAD and table_sql is not None,
-              f"{revision} {table_sql}")
+        check("1. SQLite migration reaches e5b1d7c3a9f2, creates the WHO/entity table and relaxes "
+              "the rule WHY to NULL, keeping every named CHECK",
+              revision == CURRENT_HEAD and table_sql is not None
+              and notnull.get("transaction_reason_id") == 0 and notnull.get("occurrence_id") == 1
+              and all(name in rules_sql for name in (
+                  "ck_bank_recognition_rule_match_type", "ck_bank_recognition_rule_match_field",
+                  "ck_bank_recognition_rule_purpose_scope", "ck_bank_recognition_rule_direction",
+                  "ck_bank_recognition_rule_status")),
+              f"{revision} {notnull} {rules_sql[:200]}")
 
         buffer = io.StringIO()
         pg_error = ""
@@ -266,17 +260,10 @@ def main() -> int:
         conn.commit()
         before = conn.execute("SELECT * FROM bank_recognition_rules").fetchall()
         conn.close()
-        _upgrade(old_url, LAST_RULES_REVISION)
+        _upgrade(old_url, "head")
         conn = sqlite3.connect(old_path)
         after = conn.execute("SELECT * FROM bank_recognition_rules").fetchall()
         who_entities = conn.execute("SELECT COUNT(*) FROM bank_occurrence_reporting_entities").fetchone()[0]
-        # BANK_RULES_RESET_001 emptied the old rule tables before d2b6f8a4c0e7 drops them
-        # (that revision refuses while they hold a row).
-        conn.execute("DELETE FROM bank_recognition_rules")
-        conn.commit()
-        conn.close()
-        _upgrade(old_url, BANK_LINE_HEAD)
-        conn = sqlite3.connect(old_path)
         types_after_upgrade = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
         conn.close()
         from alembic import command
@@ -284,8 +271,7 @@ def main() -> int:
             command.downgrade(_alembic_config(old_url), NEW_REVISION)
         finally:
             os.environ.pop("ALEMBIC_DATABASE_URL_OVERRIDE", None)
-        _upgrade(old_url, BANK_LINE_HEAD)
-        _upgrade(old_url, "head")          # through the reinstall revision: Bank kept, verified
+        _upgrade(old_url, "head")
         conn = sqlite3.connect(old_path)
         types_after_rerun = conn.execute("SELECT id, code, name, description FROM bank_occurrence_types").fetchall()
         conn.close()
@@ -295,19 +281,28 @@ def main() -> int:
               and types_after_rerun == types_after_upgrade, f"{types_after_upgrade} {types_after_rerun}")
         check("3. an existing rule survives the upgrade unchanged, WHY included; the new "
               "WHO/entity table starts empty",
-              # Later additive columns (e.g. f3b7d9a1c5e8's literal_pattern) start NULL.
-              before == [tuple(row[:len(before[0])]) for row in after]
-              and all(value is None for row in after for value in row[len(before[0]):])
-              and after[0][0] == 7 and why_id in after[0] and who_entities == 0,
+              before == after and after[0][0] == 7 and why_id in after[0] and who_entities == 0,
               f"{before} -> {after}")
 
-        # The Cintas WHO is the fixture for checks 5 and 18. Check 4 (a
-        # WHO-only recognition rule from this form) went with
-        # BANK_OLD_RULES_REMOVAL_001.
-        post("/bank/configuration/who", [("name", "Cintas"), ("active", "1"), ("default_why_id", "")])
+        response = post("/bank/configuration/who", [
+            ("name", "Cintas"), ("active", "1"), ("default_why_id", ""),
+            ("rule_id", ""), ("rule_pattern", "cintas corp #22"), ("rule_match", "CONTAINS"), ("rule_active", "1"),
+        ])
         with SessionFactory() as db:
-            cintas = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "CINTAS"))
+            cintas = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Cintas"))
+            rule = db.scalar(select(m.BankRecognitionRule).where(m.BankRecognitionRule.occurrence_id == cintas.id)) if cintas else None
+            matched = recognition.find_candidate_rules(
+                db, normalized_description=recognition.normalize_description_for_recognition(
+                    "POS DEBIT CINTAS CORP 22 ORLANDO"),
+                payment_instrument_id=ids["checking"], direction="DEBIT",
+            ) if rule else []
             ids["cintas"] = cintas.id if cintas else None
+        check("4. a WHO-only rule is stored with NO WHY (NULL), description scope, never "
+              "determining purpose — and it still recognises its WHO",
+              rule is not None and rule.transaction_reason_id is None and rule.match_field == "DESCRIPTION"
+              and rule.determines_purpose is False and rule.normalized_pattern == "CINTAS CORP 22"
+              and [r.id for r in matched] == [rule.id],
+              f"{response.status_code} {rule and (rule.transaction_reason_id, rule.normalized_pattern)}")
 
         with SessionFactory() as db:
             db.add(m.BankOccurrenceReportingEntity(occurrence_id=ids["cintas"], reporting_entity_id=ids["alpha"]))
@@ -409,14 +404,9 @@ def main() -> int:
             after_count = db.scalar(select(func.count(m.BankTransactionReason.id)))
             view_html = client.get("/bank/configuration").data.decode("utf-8")
             assignable_groups = re.findall(r'"assignable": true, "code": "[^"]*", "group"[^}]*"id": %d' % ids["pl_group"], view_html)
-            no_what = db.scalars(select(m.BankTransactionReason).where(m.BankTransactionReason.name == "No what")).first()
-        # BANK_WHY_WITHOUT_WHAT_001: a WHY may be created without a WHAT (no
-        # destination is invented); a WHAT that is given must still be a valid
-        # posting WHAT — a group or an unusable WHAT is refused.
-        check("11. a WHY without a WHAT is created with no destination; a group or an unusable WHAT "
+        check("11. a WHY needs exactly one valid posting WHAT: none, a group or an unusable WHAT "
               "is refused; groups are never offered as assignable",
-              after_count == before_count + 1 and no_what is not None and no_what.accounting_classification_id is None
-              and not assignable_groups, f"{before_count}->{after_count}")
+              before_count == after_count and not assignable_groups, f"{before_count}->{after_count}")
 
         # ================================================================ D11
         import json
@@ -474,7 +464,7 @@ def main() -> int:
         # ================================================================ 12-18
         response = post("/bank/configuration/who", {"name": "Gordon Food Service", "active": "1", "default_why_id": ""})
         with SessionFactory() as db:
-            gfs = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "GORDON FOOD SERVICE"))
+            gfs = db.scalar(select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == "Gordon Food Service"))
             gfs_type = db.get(m.BankOccurrenceType, gfs.occurrence_type_id).code if gfs else None
             ids["gfs"] = gfs.id if gfs else None
         check("12. Add WHO creates a COUNTERPARTY, active, with no WHY, no default and no entity",
@@ -511,10 +501,12 @@ def main() -> int:
             whys_now = {r.id: (r.code, r.name, r.description, r.status, r.accounting_classification_id)
                         for r in db.scalars(select(m.BankTransactionReason))
                         if r.id in baseline_whys and r.id != ids["bs_why"]}
+            rule_whys = db.scalars(select(m.BankRecognitionRule.transaction_reason_id)).all()
         check("15. a WHO may have no WHY at all; saving WHOs never creates, changes or implies a "
-              "WHY (existing WHYs untouched)",
+              "WHY (existing WHYs untouched, rules carry no WHY)",
               gfs_row.default_transaction_reason_id is None
-              and whys_now == {k: v for k, v in baseline_whys.items() if k != ids["bs_why"]})
+              and whys_now == {k: v for k, v in baseline_whys.items() if k != ids["bs_why"]}
+              and all(w is None for w in rule_whys), str(rule_whys))
 
         post(gfs_url, [("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
                        ("entity_ids", ids["alpha"]), ("entity_ids", ids["brand"])])
@@ -527,53 +519,117 @@ def main() -> int:
         with SessionFactory() as db:
             served = {r.reporting_entity_id: r.active for r in db.scalars(select(m.BankOccurrenceReportingEntity).where(
                 m.BankOccurrenceReportingEntity.occurrence_id == ids["gfs"]))}
-            name_kept = db.get(m.BankOccurrence, ids["gfs"]).canonical_name == "GORDON FOOD SERVICE"
+            name_kept = db.get(m.BankOccurrence, ids["gfs"]).canonical_name == "Gordon Food Service"
         check("16. entities served are ReportingEntities; withdrawn = inactive; an inactive or "
               "unknown entity is refused and the whole save is rolled back",
               served == {ids["alpha"]: True, ids["brand"]: False} and name_kept
               and inactive_entity.status_code == 302 and missing_entity.status_code == 302, str(served))
 
-        # Check 17 (recognition rules edited from the WHO form) went with
-        # BANK_OLD_RULES_REMOVAL_001.
+        post(gfs_url, [
+            ("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
+            ("rule_id", ""), ("rule_pattern", "gordon food service"), ("rule_match", "PREFIX"), ("rule_active", "1"),
+            ("rule_id", ""), ("rule_pattern", "GFS STORE 0123"), ("rule_match", "EXACT"), ("rule_active", "1"),
+            ("rule_id", ""), ("rule_pattern", "gfs mkt"), ("rule_match", "CONTAINS"), ("rule_active", "0"),
+        ])
+        with SessionFactory() as db:
+            rules = {r.normalized_pattern: r for r in db.scalars(select(m.BankRecognitionRule).where(
+                m.BankRecognitionRule.occurrence_id == ids["gfs"]))}
+            created = {p: (r.match_type, r.status, r.transaction_reason_id) for p, r in rules.items()}
+            prefix_id = rules["GORDON FOOD SERVICE"].id if "GORDON FOOD SERVICE" in rules else None
+            exact_id = rules["GFS STORE 0123"].id if "GFS STORE 0123" in rules else None
+        post(gfs_url, [
+            ("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
+            ("rule_id", prefix_id), ("rule_pattern", "GORDON FOOD SVC"), ("rule_match", "PREFIX"), ("rule_active", "1"),
+        ])
+        clash = post(f"/bank/configuration/who/{ids['cintas']}", [
+            ("name", "Cintas"), ("active", "1"), ("default_why_id", ""),
+            ("rule_id", ""), ("rule_pattern", "GORDON FOOD SVC"), ("rule_match", "PREFIX"), ("rule_active", "1"),
+        ])
+        bad_match = post(gfs_url, [("name", "Gordon Food Service"), ("active", "1"), ("default_why_id", ""),
+                                   ("rule_id", ""), ("rule_pattern", "X"), ("rule_match", "REGEX"), ("rule_active", "1")])
+        with SessionFactory() as db:
+            after_rules = {r.id: (r.normalized_pattern, r.status) for r in db.scalars(select(m.BankRecognitionRule).where(
+                m.BankRecognitionRule.occurrence_id == ids["gfs"]))}
+            cintas_rules = db.scalar(select(func.count()).where(m.BankRecognitionRule.occurrence_id == ids["cintas"]))
+        check("17. recognition rules: Exact / Contains / Prefix created WHY-less, patterns "
+              "normalised, edited in place, removed = INACTIVE (never deleted); a text another "
+              "WHO recognises and an unknown match are refused",
+              created.get("GORDON FOOD SERVICE") == ("PREFIX", "ACTIVE", None)
+              and created.get("GFS STORE 0123") == ("EXACT_NORMALIZED_DESCRIPTION", "ACTIVE", None)
+              and created.get("GFS MKT") == ("CONTAINS_TEXT", "INACTIVE", None)
+              and after_rules.get(prefix_id) == ("GORDON FOOD SVC", "ACTIVE")
+              and after_rules.get(exact_id) == ("GFS STORE 0123", "INACTIVE")
+              and len(after_rules) == 3 and cintas_rules == 1
+              and "already recognises WHO" in flashes(clash) and bad_match.status_code == 302,
+              f"{created} {after_rules}")
 
         with SessionFactory() as db:
             inferred = db.scalar(select(func.count()).select_from(m.BankOccurrenceReportingEntity).where(
                 m.BankOccurrenceReportingEntity.occurrence_id != ids["gfs"]))
         check("18. nothing is inferred: only the entities a person ticked exist; Cintas (no entity "
               "chosen) serves none, even though accounts of Alpha exist",
-              inferred == 0 and "GORDON FOOD SERVICE" in client.get("/bank/configuration").data.decode("utf-8"))
+              inferred == 0 and "Gordon Food Service" in client.get("/bank/configuration").data.decode("utf-8"))
 
         # ================================================================ 19-21
-        # BANK_FINAL_RELEASE_BLOCKERS_002: Sources (accounts, cards, card
-        # settlement and cardholder) are maintained ONLY on /bank/sources. Their
-        # behaviour is tested there (test_bank_source_and_import_review_http,
-        # test_bank_cardholder_and_dedup_http, test_bank_final_release_blockers_http).
-        page = client.get("/bank/configuration").data.decode("utf-8")
-        block = page[page.index('id="cp-accounts"'):page.index('id="cp-support"')]
-        check("19. Configuration no longer edits Sources: the block is a 'Manage Sources' link to /bank/sources",
-              'href="/bank/sources"' in block and "Manage Sources" in block
-              and 'data-add="account"' not in page and 'data-list="account"' not in page
-              and 'data-list="card"' not in page)
+        response = post("/bank/configuration/account", {
+            "label": "Gamma Payroll", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["beta"],
+            "reference": "4444", "active": "1"})
         with SessionFactory() as db:
-            instruments_before = [(i.id, i.display_name, i.status, i.legal_entity_id, i.last_four)
-                                  for i in db.scalars(select(m.PaymentInstrument).order_by(m.PaymentInstrument.id))]
-        attempts = [
-            post("/bank/configuration/account", {"label": "Sneaky", "instrument_type": "BANK_ACCOUNT",
-                                                 "entity_id": ids["beta"], "reference": "4444", "active": "1"}),
-            post(f"/bank/configuration/account/{ids['operating']}", {"label": "Renamed", "instrument_type": "BANK_ACCOUNT",
-                                                                     "entity_id": ids["beta"], "reference": "2222"}),
-            post(f"/bank/configuration/card/{ids['card']}", {"settlement_account_id": ids["checking"],
-                                                             "settlement_valid_from": "2026-01-01"}),
-        ]
+            payroll = db.scalar(select(m.PaymentInstrument).where(m.PaymentInstrument.display_name == "Gamma Payroll"))
+            ids["payroll"] = payroll.id if payroll else None
+            created_ok = payroll is not None and payroll.legal_entity_id == ids["le_beta"] and payroll.last_four == "4444"
+        post(f"/bank/configuration/account/{ids['payroll']}", {
+            "label": "Beta Payroll", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["alpha"], "reference": "4445"})
         with SessionFactory() as db:
-            instruments_after = [(i.id, i.display_name, i.status, i.legal_entity_id, i.last_four)
-                                 for i in db.scalars(select(m.PaymentInstrument).order_by(m.PaymentInstrument.id))]
-            settlements = card_configuration.settlement_history(db, ids["card"])
-        check("20. the former Accounts & Cards and card-settlement routes are gone (404) and write nothing",
-              all(a.status_code == 404 for a in attempts) and instruments_after == instruments_before
-              and not settlements, str([a.status_code for a in attempts]))
-        check("21. the Configuration page data no longer carries a card editor",
-              "S.cards" not in page and "/configuration/card/" not in page)
+            payroll = db.get(m.PaymentInstrument, ids["payroll"])
+            edit_ok = payroll.display_name == "Beta Payroll" and payroll.legal_entity_id == ids["le_alpha"] \
+                and payroll.last_four == "4445"
+        check("19. a Bank Account's owning entity is chosen by ReportingEntity name and stored as "
+              "PaymentInstrument.legal_entity_id; label, type and reference edit",
+              response.status_code == 302 and created_ok and edit_ok)
+
+        def account_row(account_id):
+            import json
+            body = client.get("/bank/configuration").data.decode("utf-8")
+            data = json.loads(re.search(r'<script type="application/json" id="cp-data">(.*?)</script>', body, re.S).group(1))
+            return next(a for a in data["accounts"] if a["id"] == account_id)
+
+        unconfigured = account_row(ids["card"])
+        with_entity = post(f"/bank/configuration/account/{ids['card']}", {
+            "label": "Ink Card", "instrument_type": "CREDIT_CARD", "entity_id": ids["alpha"], "reference": "3333"})
+        with_entity_msg = flashes(with_entity)
+        post(f"/bank/configuration/card/{ids['card']}", {
+            "settlement_account_id": ids["checking"], "settlement_valid_from": "2026-01-01",
+            "holder_kind": "", "holder_valid_from": ""})
+        derived = account_row(ids["card"])
+        post(f"/bank/configuration/account/{ids['card']}", {
+            "label": "Ink Business", "instrument_type": "CREDIT_CARD", "reference": "3333"})
+        with SessionFactory() as db:
+            own = db.get(m.PaymentInstrument, ids["card"])
+        check("20. a Credit Card's owning entity is DERIVED from its settlement account (none "
+              "before one exists, never its own value); setting it on the card is refused; "
+              "editing the card leaves its own legal entity untouched",
+              unconfigured["entity_name"] is None and unconfigured["derived"] is True
+              and derived["entity_name"] == "Alpha" and derived["derived"] is True
+              and "comes from its settlement account" in with_entity_msg
+              and own.display_name == "Ink Business" and own.legal_entity_id == ids["le_beta"],
+              f"{unconfigured} {derived}")
+
+        status_attempt = post(f"/bank/configuration/account/{ids['operating']}", {
+            "label": "Beta Operating", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["beta"],
+            "reference": "2222", "active": "0"})
+        virtual_owner = post(f"/bank/configuration/account/{ids['operating']}", {
+            "label": "Beta Operating", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["brand"], "reference": "2222"})
+        virtual_msg = flashes(virtual_owner)
+        bad_reference = post(f"/bank/configuration/account/{ids['operating']}", {
+            "label": "Beta Operating", "instrument_type": "BANK_ACCOUNT", "entity_id": ids["beta"], "reference": "22x"})
+        with SessionFactory() as db:
+            operating = db.get(m.PaymentInstrument, ids["operating"])
+        check("21. the Active state is not edited here (lifecycle belongs to Monthly Sources); a "
+              "virtual entity cannot own an account; a reference must be four digits",
+              status_attempt.status_code == 302 and operating.status == "ACTIVE"
+              and operating.legal_entity_id == ids["le_beta"] and operating.last_four == "2222"
+              and "virtual entity" in virtual_msg and bad_reference.status_code == 302)
 
         # ================================================================ 22-27
         post("/bank/configuration/entity", {"name": "Delta", "legal_name": "Delta Pizza, LLC", "active": "1"})
@@ -598,47 +654,78 @@ def main() -> int:
               "editable), a virtual entity never becomes an LLC",
               ok_new and ok_edit and "never becomes an LLC" in flashes(virtual_legal))
 
-        # BANK_FINAL_CLEANUP_001 — file recognition rules, the completeness
-        # control and deduplication each have ONE writable place outside
-        # Configuration (Source; Check Sources on Import and Review). Their
-        # behaviour is tested there (test_bank_instrument_assignment_http,
-        # test_bank_reconciliation_control_start_http,
-        # test_bank_cardholder_and_dedup_http).
+        post("/bank/configuration/source", {"detected_format": "FIRST_CITIZENS", "file_name_key": "AccountHistory",
+                                            "account_hint": "", "payment_instrument_id": ids["checking"], "active": "1"})
         with SessionFactory() as db:
-            profiles_before = db.scalar(select(func.count(m.BankSourceInstrumentProfile.id)))
-            config_before = db.get(m.BankReconciliationControlConfig, 1)
-            config_before = (config_before.control_start_month, config_before.validated_through_month) \
-                if config_before is not None else None
-        retired = [
-            post("/bank/configuration/source", {"detected_format": "FIRST_CITIZENS", "file_name_key": "AccountHistory",
-                                                "account_hint": "", "payment_instrument_id": ids["checking"], "active": "1"}),
-            post("/bank/configuration/source/1", {"detected_format": "FIRST_CITIZENS", "file_name_key": "x",
-                                                  "payment_instrument_id": ids["checking"], "active": "0"}),
-            post("/bank/configuration/control", {"control_start": "2026-01", "validated_through": "2026-05"}),
-            post("/bank/configuration/dedup/recompute", {}),
-        ]
+            profile = db.scalar(select(m.BankSourceInstrumentProfile))
+            ids["profile"] = profile.id
+            created_ok = profile.file_name_key == "accounthistory" and profile.payment_instrument_id == ids["checking"]
+        post(f"/bank/configuration/source/{ids['profile']}", {"detected_format": "FIRST_CITIZENS", "file_name_key": "accounthistory",
+                                                              "account_hint": "x-1111", "payment_instrument_id": ids["operating"], "active": "0"})
+        unknown = post("/bank/configuration/source", {"detected_format": "MADE_UP", "file_name_key": "a",
+                                                      "account_hint": "", "payment_instrument_id": ids["checking"], "active": "1"})
+        post("/bank/configuration/source", {"detected_format": "FIRST_CITIZENS", "file_name_key": "accounthistory",
+                                            "account_hint": "x-1111", "payment_instrument_id": ids["checking"], "active": "1"})
         with SessionFactory() as db:
-            profiles_after = db.scalar(select(func.count(m.BankSourceInstrumentProfile.id)))
-            config_after = db.get(m.BankReconciliationControlConfig, 1)
-            config_after = (config_after.control_start_month, config_after.validated_through_month) \
-                if config_after is not None else None
-        check("23/24/27. the duplicate Configuration actions are gone (404) and write nothing: source rules, "
-              "control settings, deduplication recompute",
-              all(r.status_code == 404 for r in retired) and profiles_after == profiles_before
-              and config_after == config_before, str([r.status_code for r in retired]))
+            profiles = db.scalars(select(m.BankSourceInstrumentProfile)).all()
+            p = profiles[0]
+            edit_ok = (len(profiles) == 1 and p.account_hint == "x-1111" and p.payment_instrument_id == ids["operating"]
+                       and p.status == "INACTIVE")
+        check("23. source rules: add, edit, deactivate; an unknown format and a duplicate are refused",
+              created_ok and edit_ok and unknown.status_code == 302)
+
+        post("/bank/configuration/control", {"control_start": "2026-01", "validated_through": "2026-03"})
+        post("/bank/configuration/control", {"control_start": "2026-01", "validated_through": "2026-05"})
+        bad = post("/bank/configuration/control", {"control_start": "2026-13", "validated_through": "2026-05"})
+        with SessionFactory() as db:
+            config = db.get(m.BankReconciliationControlConfig, 1)
+        check("24. Control start / Validated through are applied through the monthly services; a "
+              "malformed month is refused",
+              config is not None and config.control_start_month == "2026-01"
+              and config.validated_through_month == "2026-05" and "YYYY-MM" in flashes(bad))
+
+        second = post(f"/bank/configuration/card/{ids['card']}", {
+            "settlement_account_id": ids["operating"], "settlement_valid_from": "2026-06-01",
+            "holder_kind": "", "holder_valid_from": ""})
+        second_msg = flashes(second)
+        earlier = post(f"/bank/configuration/card/{ids['card']}", {
+            "settlement_account_id": ids["checking"], "settlement_valid_from": "2025-12-01",
+            "holder_kind": "", "holder_valid_from": ""})
+        with SessionFactory() as db:
+            history = [(h.settlement_bank_account_id, h.valid_from, h.valid_to)
+                       for h in card_configuration.settlement_history(db, ids["card"])]
+        check("25. card settlement keeps its history with Valid from: the new account opens a "
+              "period and closes the previous one; an earlier date is refused; dedup recomputed",
+              history == [(ids["operating"], date(2026, 6, 1), None),
+                          (ids["checking"], date(2026, 1, 1), date(2026, 6, 1))]
+              and "deduplication recomputed" in second_msg
+              and "must start after" in flashes(earlier), str(history))
+
+        post(f"/bank/configuration/card/{ids['card']}", {
+            "settlement_account_id": ids["operating"], "settlement_valid_from": "2026-06-01",
+            "holder_kind": "UNLINKED_PERSON", "holder_name": "Tatiana Ceban", "holder_valid_from": "2026-02-01"})
+        post(f"/bank/configuration/card/{ids['card']}", {
+            "settlement_account_id": ids["operating"], "settlement_valid_from": "2026-06-01",
+            "holder_kind": "UNLINKED_PERSON", "holder_name": "Pino Miraglia", "holder_valid_from": "2026-07-01"})
+        bad_kind = post(f"/bank/configuration/card/{ids['card']}", {
+            "settlement_account_id": ids["operating"], "holder_kind": "ROBOT", "holder_valid_from": "2026-08-01"})
+        bad_kind_msg = flashes(bad_kind)
+        with SessionFactory() as db:
+            holders = [(h.holder_kind, h.holder_display_name, h.valid_from, h.valid_to)
+                       for h in card_configuration.cardholder_history(db, ids["card"])]
         page_now = client.get("/bank/configuration").data.decode("utf-8")
-        elsewhere = page_now[page_now.index('id="cp-elsewhere"'):page_now.index("</details>", page_now.index('id="cp-elsewhere"'))]
-        check("23/24/27. Configuration only links to the authoritative places",
-              'href="/bank/sources#saved-source-rules"' in elsewhere and 'href="/bank#completeness-control"' in elsewhere
-              and 'id="cp-sources"' not in page_now and 'id="cp-control"' not in page_now
-              and 'id="cp-dedup"' not in page_now and "Recompute deduplication" not in page_now)
-        sources_page = client.get("/bank/sources").data.decode("utf-8")
-        home_page = client.get("/bank").data.decode("utf-8")
-        check("23/24/27. the authoritative places offer them: Source (file recognition rules, recompute) and "
-              "Check Sources (control start, validated through)",
-              'id="saved-source-rules"' in sources_page and 'action="/bank/accounting-dedup/recompute"' in sources_page
-              and 'action="/bank/monthly/control-start"' in home_page
-              and ('action="/bank/monthly/validated-through"' in home_page or "Not configured" in home_page))
+        check("26. cardholder with holder type, holder and Valid from: history kept, previous "
+              "holder closed; the table shows \"Surname I.\"; an unknown type is refused",
+              holders == [("UNLINKED_PERSON", "Pino Miraglia", date(2026, 7, 1), None),
+                          ("UNLINKED_PERSON", "Tatiana Ceban", date(2026, 2, 1), date(2026, 7, 1))]
+              and '"cardholder": "Miraglia P."' in page_now and "Holder kind must be" in bad_kind_msg,
+              str(holders))
+
+        get_attempt = client.get("/bank/configuration/dedup/recompute")
+        action = post("/bank/configuration/dedup/recompute", {})
+        check("27. deduplication recompute is an ACTION (POST only) with its outcome reported",
+              get_attempt.status_code == 405 and action.status_code == 302
+              and "Accounting deduplication recomputed" in flashes(action))
 
         # ================================================================ 28-30
         anonymous = web_app.app.test_client()

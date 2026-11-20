@@ -141,7 +141,7 @@ def main() -> int:
                                 "csrf_token": extract_csrf(page.data)})
 
     def set_control_start(value, note="test"):
-        page = client.get("/bank/monthly", follow_redirects=True)
+        page = client.get("/bank/monthly")
         return client.post("/bank/monthly/control-start", data={
             "csrf_token": extract_csrf(page.data),
             "control_start_date": value, "note": note,

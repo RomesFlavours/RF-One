@@ -1,11 +1,8 @@
-"""RF-One Web — Bank Reconciliation row actions (BANK_RECONCILIATION_001).
+"""RF-One Web — Bank Reconciliation (BANK_RECONCILIATION_001).
 
-The reconciliation rows are Review > Reconciled (BANK_TWO_STAGE_REVIEW_001):
-the row editor posts here to Confirm, Reopen and Save. The former
-standalone `/bank/reconciliation` month page and its own WHO modal are
-retired (BANK_FINAL_CLEANUP_001): `/bank/reconciliation` now redirects to
-Review > Reconciled for the same month, and the WHO and WHY of a transaction
-are chosen only in the Select WHO / WHY popup. Every rule lives in
+`/bank/reconciliation` is the approved Reconciliation page on real data:
+one row per bank transaction of the selected month, one WHO modal for the
+whole page. Every rule lives in
 `rfone_data_store.bank_reconciliation.row_reconciliation`; this module
 reads forms, calls one function, commits or rolls back, flashes a plain
 sentence and returns to the SAME row of the SAME month. The month and the
@@ -15,7 +12,10 @@ redirect target can be supplied from outside.
 
 from __future__ import annotations
 
-from flask import abort, flash, redirect, request, url_for
+import calendar
+from datetime import date
+
+from flask import abort, flash, redirect, render_template, request, url_for
 
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import row_reconciliation as recon_service
@@ -31,8 +31,20 @@ def _int(name: str) -> int | None:
         raise ValueError(f"{name} must be a number, got {raw!r}.") from None
 
 
+def _ints(name: str) -> list[int]:
+    values = []
+    for raw in request.form.getlist(name):
+        raw = raw.strip()
+        if raw:
+            try:
+                values.append(int(raw))
+            except ValueError:
+                raise ValueError(f"{name} must hold numbers, got {raw!r}.") from None
+    return values
+
+
 def register_bank_reconciliation_routes(
-    app, *, gate, SessionFactory, load_current_account, require_csrf,
+    app, *, gate, SessionFactory, load_current_account, require_csrf, default_month,
 ):
     def _account_id(db) -> int:
         account = load_current_account(db)
@@ -41,16 +53,11 @@ def register_bank_reconciliation_routes(
         return account.id
 
     def _back_to_row(db, transaction_id: int):
-        # BANK_TWO_STAGE_REVIEW_001 — a row acted on from Review > Reconciled
-        # returns there, with its filters; only a Review address is accepted.
-        back = (request.form.get("return_to") or "").strip()
-        if back.startswith("/bank/review") and not back.startswith("//") and "\\" not in back:
-            return redirect(f"{back}#t-{transaction_id}")
         transaction = db.get(m.FinancialTransaction, transaction_id)
         on_date = (transaction.posting_date or transaction.transaction_date) if transaction else None
         if on_date is None:
-            return redirect(url_for("bank_review", view="reconciled"))
-        return redirect(url_for("bank_review", view="reconciled", year=on_date.year, month=on_date.month,
+            return redirect(url_for("bank_reconciliation"))
+        return redirect(url_for("bank_reconciliation", year=on_date.year, month=on_date.month,
                                 _anchor=f"t-{transaction_id}"))
 
     def _apply(transaction_id: int, action, message: str):
@@ -68,13 +75,39 @@ def register_bank_reconciliation_routes(
     @app.route("/bank/reconciliation")
     @gate
     def bank_reconciliation():
-        """Retired standalone page: kept as a redirect for bookmarks, to
-        Review > Reconciled for the month asked for."""
+        """The month's transactions, one reconcilable row each."""
         year = request.args.get("year", type=int)
         month = request.args.get("month", type=int)
         if year is None or month is None or not (1 <= month <= 12) or not (2000 <= year <= 2100):
-            return redirect(url_for("bank_review", view="reconciled"))
-        return redirect(url_for("bank_review", view="reconciled", year=year, month=month))
+            year, month = default_month()
+        previous = (year - 1, 12) if month == 1 else (year, month - 1)
+        following = (year + 1, 1) if month == 12 else (year, month + 1)
+        with SessionFactory() as db:
+            view = recon_service.month_view(db, year=year, month=month)
+        return render_template(
+            "bank_reconciliation.html", view=view,
+            period_label=f"{calendar.month_name[month]} {year}",
+            previous_month=previous, next_month=following,
+        )
+
+    @app.route("/bank/reconciliation/<int:transaction_id>/who", methods=["POST"])
+    @gate
+    def bank_reconciliation_who(transaction_id: int):
+        """Confirm WHO (and the chosen WHY) for one transaction — optionally
+        creating the WHO first through the Configuration service."""
+        def action(db):
+            new_who = None
+            if request.form.get("new_who") == "1":
+                new_who = recon_service.NewWho(
+                    name=request.form.get("new_name", ""), reason_ids=_ints("new_why_ids"),
+                    default_reason_id=_int("new_default_why_id"),
+                    reporting_entity_ids=_ints("new_entity_ids"),
+                )
+            recon_service.record_who(
+                db, transaction_id=transaction_id, occurrence_id=_int("occurrence_id"),
+                reason_id=_int("why_id"), account_id=_account_id(db), new_who=new_who,
+            )
+        return _apply(transaction_id, action, "WHO recorded. Confirm the row when it is complete.")
 
     @app.route("/bank/reconciliation/<int:transaction_id>/confirm", methods=["POST"])
     @gate
@@ -84,43 +117,36 @@ def register_bank_reconciliation_routes(
             account_id=_account_id(db),
         ), "Transaction confirmed.")
 
+    @app.route("/bank/reconciliation/<int:transaction_id>/standard", methods=["POST"])
+    @gate
+    def bank_reconciliation_standard(transaction_id: int):
+        """Compact-row Set as Standard: confirm this row and approve its
+        current result as a Standard for future matching imports."""
+        return _apply(transaction_id, lambda db: recon_service.set_as_standard(
+            db, transaction_id=transaction_id, reporting_entity_id=_int("for_whom_id"),
+            account_id=_account_id(db),
+        ), "Transaction confirmed and set as Standard: future matching transactions will be Automatic.")
+
     @app.route("/bank/reconciliation/<int:transaction_id>/save", methods=["POST"])
     @gate
     def bank_reconciliation_save(transaction_id: int):
-        """The expanded editor: Save. BANK_RULES_RESET_001 — Reconciliation
-        Standards were removed: a save never approves one."""
+        """The expanded editor: Save — keep Standard unchanged (mode=keep) or
+        Save as New Standard (mode=standard)."""
+        mode = request.form.get("mode")
+        if mode not in ("keep", "standard"):
+            mode = "keep"
+        message = ("Transaction saved and a Standard approved for this variant." if mode == "standard"
+                   else "Transaction saved. Every Standard is unchanged.")
         return _apply(transaction_id, lambda db: recon_service.save_row(
             db, transaction_id=transaction_id, occurrence_id=_int("occurrence_id"),
             reason_id=_int("why_id"), destination_id=_int("what_id"),
             reporting_entity_id=_int("for_whom_id"), account_id=_account_id(db),
-        ), "Transaction saved.")
-
-    @app.route("/bank/reconciliation/<int:transaction_id>/for-whom", methods=["POST"])
-    @gate
-    def bank_reconciliation_for_whom(transaction_id: int):
-        """FOR WHOM, from either Review tab (BANK_REVIEW_FOR_WHOM_001): the
-        Reporting Entity / LLC that benefited. Changes the beneficiary only —
-        never the Source, WHO, WHY, amount or date."""
-        require_csrf()
-        with SessionFactory() as db:
-            try:
-                outcome = recon_service.set_for_whom(
-                    db, transaction_id=transaction_id, reporting_entity_id=_int("for_whom_id"),
-                    account_id=_account_id(db),
-                )
-                db.commit()
-                flash({"unchanged": "For Whom unchanged.",
-                       "saved": "For Whom saved.",
-                       "reopened": "For Whom changed. The transaction needs a new confirmation."}[outcome],
-                      "info")
-            except ValueError as exc:
-                db.rollback()
-                flash(str(exc), "error")
-            return _back_to_row(db, transaction_id)
+            as_standard=mode == "standard",
+        ), message)
 
     @app.route("/bank/reconciliation/<int:transaction_id>/reopen", methods=["POST"])
     @gate
     def bank_reconciliation_reopen(transaction_id: int):
         return _apply(transaction_id, lambda db: recon_service.reopen_row(
             db, transaction_id=transaction_id,
-        ), "Transaction reopened. It needs a new confirmation; its For Whom is kept.")
+        ), "Transaction reopened. It needs a new confirmation.")

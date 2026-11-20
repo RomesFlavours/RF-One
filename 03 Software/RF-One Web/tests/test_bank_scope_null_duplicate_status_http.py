@@ -46,10 +46,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
-import tempfile as _tempfile  # noqa: E402
-web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _tempfile.mkdtemp(prefix="rfoneweb_staging_")  # never the real staging folder
 from db import SessionFactory  # noqa: E402
-from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
@@ -108,10 +105,10 @@ def main() -> int:
             "username": "scope_operator", "password": "OperatorPass123!",
             "csrf_token": extract_csrf(client.get("/login").data),
         })
-        upload_and_confirm(client, {
+        client.post("/bank/upload", data={
             "files": (io.BytesIO(AUGUST_CSV), "chase_0214_august.csv"),
             "payment_instrument_id": str(checking_id), "csrf_token": extract_csrf(client.get("/bank").data),
-        })
+        }, content_type="multipart/form-data")
 
         # The three states of duplicate_status, set directly: NULL as left by
         # the historical bulk load, 'NONE' as set by every normal import,

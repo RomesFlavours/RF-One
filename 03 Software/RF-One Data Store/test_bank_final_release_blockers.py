@@ -2,21 +2,15 @@
 """Bank release blockers B1-B4 (BANK_FINAL_RELEASE_BLOCKERS_001).
 
 B1  A Who never decides a Why: `BankOccurrence.default_transaction_reason_id`
-    drives no live path (Who assignment, Reclassify, the recognition-decision
-    service).
-B2  BANK_RULES_RESET_001: import, reprocess and instrument reassignment make
-    no automatic decision (only AI rules may decide a new movement), so a
-    newly imported movement has NO decision.
-B3  Reprocess never overwrites a decision (human or an existing automatic
-    one), decides nothing new, and is idempotent.
+    drives no live path (Who assignment, receivers Approve, Reclassify, the
+    recognition-decision service).
+B2  ONE automatic WHY engine (`structural_why.recognize_transaction`), used
+    by import, reprocess and instrument reassignment alike.
+B3  Reprocess never overwrites a human decision and is idempotent — shown
+    on a transaction the retired description rules (`deterministic_rules`)
+    and the structural engine disagree about.
 B4  The instrument edit path cannot change the lifecycle state; the monthly
     CLOSED / STILL_ACTIVE workflow still can.
-
-BANK_OLD_RULES_REMOVAL_001: checks 5b, 6, 7, 8, 8b, 8c (the structural WHY
-engine and the retired description rules answering directly) and 2 (the
-receivers Approve of the receiver-candidate list) went with the old rule
-system; B3 and 11 keep only their "no automatic decision" half. The other
-numbers are unchanged.
 
 Every check runs through the real services on a disposable database. Never
 touches AWS, RDS or a production database.
@@ -25,12 +19,16 @@ touches AWS, RDS or a production database.
 from __future__ import annotations
 
 import sys
+from datetime import date
 
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import classification as classification_service
+from rfone_data_store.bank_reconciliation import deterministic_rules
 from rfone_data_store.bank_reconciliation import monthly_source as ms
+from rfone_data_store.bank_reconciliation import receiver_candidates as rc
 from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import service as bank_service
+from rfone_data_store.bank_reconciliation import structural_why as sw
 from rfone_data_store.database import (
     create_configured_engine,
     create_session_factory,
@@ -104,7 +102,7 @@ def main() -> int:
             s.commit()
 
             # =============================================================
-            # 5. Import makes no automatic decision (BANK_RULES_RESET_001)
+            # 5-8. Import runs the structural engine
             # =============================================================
             imported = bank_service.import_csv(
                 s, file_bytes=chase_csv([
@@ -129,18 +127,39 @@ def main() -> int:
             def current(txn):
                 return recognition.get_current_explanation(s, financial_transaction_id=txn.id)
 
-            check("5. import makes no automatic decision (the old engines no longer run at import)",
-                  all(current(t) is None for t in txns.values()),
-                  detail=str({k: current(t) and current(t).decision_status for k, t in txns.items()}))
-            # 5b-8c (the structural engine and the retired description rules
-            # answering directly) went with BANK_OLD_RULES_REMOVAL_001.
+            check("5. import decides through the structural engine (tagged why-v1 decision)",
+                  current(same).decision_status == "AUTO_APPLIED"
+                  and current(same).transaction_reason_id == internal.id
+                  and sw.tag("ONLINE_TRANSFER_SAME_ENTITY") in (current(same).explanation_notes or ""),
+                  detail=f"{current(same).decision_status} {current(same).explanation_notes!r}"[:200])
+            check("6. a different-entity ONLINE TRANSFER becomes RELATED_PARTY, not INTERNAL",
+                  current(cross).transaction_reason_id == related_out.id
+                  and current(cross).transaction_reason_id != internal.id,
+                  detail=str(current(cross).transaction_reason_id))
+            check("7. a transfer to an unregistered account stays unresolved",
+                  current(unknown).transaction_reason_id is None
+                  and current(unknown).decision_status == "NEEDS_HUMAN_REVIEW")
+            check("8. PAYMENT THANK YOU respects direction: a bank-side debit is not a card settlement",
+                  current(debit_thank_you).transaction_reason_id is None)
+            card = instrument("A Card", "9001", le_a, kind="CREDIT_CARD")
+            card_ctx = sw.WhyContext(
+                detected_format="CHASE_CREDIT_CARD_NO_CARD", amount_minor=40000,
+                instrument=sw.InstrumentInfo(card.id, le_a.id, "CREDIT_CARD"),
+                registered_last_four={}, settlement_of=lambda _id: None,
+            )
+            check("8b. ...while the card-side credit IS the settlement",
+                  sw.recognize_why("Payment Thank You - Web", card_ctx).why_code == "CREDIT_CARD_SETTLEMENT")
+            check("8c. the one automatic engine is the only live one: the retired description rules "
+                  "would have called the cross-entity transfer INTERNAL (the disagreement B3 tests)",
+                  deterministic_rules.match("ONLINE TRANSFER TO CHK 3583").rule.why_code == "INTERNAL_BANK_TRANSFER")
 
             # =============================================================
             # 1, 4. Who assignment / recognition decision assign no Why
             # =============================================================
             who_decision = bank_service.record_recognition_decision(
                 s, transaction_id=supplier.id, occurrence_id=who.id,
-                confirmed_by_account_id=None, )
+                confirmed_by_account_id=None, learn_description=False,
+            )
             s.commit()
             check("1. assigning a Who never assigns a Why",
                   who_decision.occurrence_id == who.id and who_decision.transaction_reason_id is None
@@ -163,7 +182,8 @@ def main() -> int:
                   refused)
             human = recognition.record_human_decision(s, recognition.HumanDecisionRequest(
                 transaction_id=cross.id, occurrence_id=who.id, transaction_reason_id=related_out.id,
-                confirmed_by_account_id=None, ))
+                confirmed_by_account_id=None, learn_description=False,
+            ))
             s.commit()
             reclassified = recognition.reclassify_transaction(
                 s, transaction_id=cross.id, confirmed_by_account_id=None,
@@ -174,19 +194,34 @@ def main() -> int:
                   and reclassified.decision_status == "HUMAN_RECLASSIFIED",
                   detail=str(reclassified.transaction_reason_id))
 
-            # 2 (receivers Approve) went with BANK_OLD_RULES_REMOVAL_001.
+            # =============================================================
+            # 2. Receivers Approve names the Who only
+            # =============================================================
+            s.add(m.FinancialTransaction(
+                payment_instrument_id=a_checking.id, bank_source="CHASE_BANK_ACCOUNT",
+                posting_date=date(2026, 9, 8), description_original="ACME PAYEE 77",
+                description_normalized="ACME PAYEE 77", amount_minor=-7700, status="COMPLETED",
+                duplicate_status="NONE", review_status="REQUIRES_REVIEW",
+            ))
+            s.commit()
+            from rfone_data_store.bank_reconciliation import accounting_dedup
+            accounting_dedup.recompute_accounting_dedup(s)
+            s.commit()
+            key = next(c.group_key for c in rc.build_candidates(s) if c.payee_normalized == "ACME PAYEE 77")
+            approved = rc.approve_candidates(
+                s, payee_keys=[key], occurrence_id=who.id, learn_description=False,
+            )
+            s.commit()
+            acme = s.query(m.FinancialTransaction).filter_by(description_original="ACME PAYEE 77").one()
+            check("2. receivers Approve records the Who and derives no Why from its default",
+                  approved.transactions_classified == 1
+                  and current(acme).occurrence_id == who.id
+                  and current(acme).transaction_reason_id is None,
+                  detail=str(current(acme).transaction_reason_id))
 
             # =============================================================
             # 9, 10. Reprocess: human preserved, automatic idempotent
             # =============================================================
-            # An existing automatic decision, as an automatic rule would leave
-            # it (BANK_RULES_RESET_001: imports make none now).
-            recognition._create_decision_row(
-                s, same, occurrence_id=None, transaction_reason_id=internal.id, decision_source="RULE", decision_status="AUTO_APPLIED", confidence=None,
-                explanation_notes="Seeded as an existing automatic decision.",
-                accounting_classification_id=internal.accounting_classification_id,
-            )
-            s.commit()
             rows_before = s.query(m.BankTransactionExplanation).count()
             auto_before = current(same).id
             bank_service.reprocess_batch(s, batch_id=imported.batch.id)
@@ -195,15 +230,14 @@ def main() -> int:
             s.commit()
             check("9. reprocess preserves the human Why (the reclassified decision stays current)",
                   current(cross).id == reclassified.id and current(cross).transaction_reason_id == related_out.id)
-            check("10. reprocess of an existing AUTO_APPLIED Why keeps it: same decision, same Why",
+            check("10. reprocess of an AUTO_APPLIED structural Why keeps it: same decision, same Why",
                   current(same).id == auto_before and current(same).transaction_reason_id == internal.id)
-            check("10a. reprocess decides nothing new: an undecided transaction stays undecided",
-                  current(unknown) is None and current(debit_thank_you) is None)
             check("10b. repeated reprocess appends nothing (deterministic / idempotent)",
                   s.query(m.BankTransactionExplanation).count() == rows_before,
                   detail=f"{rows_before} -> {s.query(m.BankTransactionExplanation).count()}")
 
-            # B3 — a second cross-entity transfer, never decided by anyone.
+            # B3 — the disagreement case, automatic this time: a second
+            # cross-entity transfer decided only by the engine.
             second = bank_service.import_csv(
                 s, file_bytes=chase_csv([
                     ("DEBIT", "09/09/2026", "Online Transfer to CHK ...3583 transaction#: 114", "-150.00"),
@@ -213,26 +247,29 @@ def main() -> int:
             )
             s.commit()
             disputed = s.query(m.FinancialTransaction).filter_by(import_batch_id=second.batch.id).one()
-            decision_before = current(disputed)
+            why_before = current(disputed).transaction_reason_id
             bank_service.reprocess_batch(s, batch_id=second.batch.id)
             s.commit()
-            check("B3. an undecided transfer gets no automatic Why, neither at import nor on reprocess",
-                  decision_before is None and current(disputed) is None,
-                  detail=f"{decision_before} -> {current(disputed)}")
+            check("B3. a transfer the old and new engines disagree on has the SAME Why before and "
+                  "after reprocess (RELATED_PARTY_TRANSFER_OUT)",
+                  why_before == related_out.id and current(disputed).transaction_reason_id == related_out.id,
+                  detail=f"{why_before} -> {current(disputed).transaction_reason_id}")
 
             # =============================================================
-            # 11. Instrument reassignment no longer re-decides
-            # (BANK_RULES_RESET_001)
+            # 11. Instrument reassignment goes through the same engine
             # =============================================================
             bank_service.reassign_transaction_instrument(
                 s, transaction_id=disputed.id, payment_instrument_id=b_other.id,
                 reason="test: the transfer was on Entity B's other account",
             )
             s.commit()
-            check("11. instrument reassignment writes no automatic decision",
-                  current(disputed) is None
-                  and s.get(m.FinancialTransaction, disputed.id).payment_instrument_id == b_other.id,
-                  detail=str(current(disputed)))
+            engine_says = sw.recognize_transaction(s, disputed)
+            check("11. instrument reassignment re-decides through the same engine: now same-entity "
+                  "(B Other -> B Checking) so INTERNAL_BANK_TRANSFER",
+                  engine_says.why_code == "INTERNAL_BANK_TRANSFER"
+                  and current(disputed).transaction_reason_id == internal.id
+                  and current(disputed).decision_source == "RULE",
+                  detail=f"{engine_says.why_code} / {current(disputed).transaction_reason_id}")
 
             # =============================================================
             # 12. The instrument edit path cannot change the lifecycle

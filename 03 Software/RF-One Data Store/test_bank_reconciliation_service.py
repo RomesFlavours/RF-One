@@ -334,15 +334,16 @@ def main() -> int:
                     s, recognition.HumanDecisionRequest(
                         transaction_id=txn.id, occurrence_id=occurrence.id,
                         transaction_reason_id=occurrence.default_transaction_reason_id,
-                        confirmed_by_account_id=None, ),
+                        confirmed_by_account_id=None, learn_description=False,
+                    ),
                 )
                 txn.review_status = "REVIEWED"
             s.commit()
 
             april_blockers_after = export.compute_export_blockers(s, year=2026, month=4)
             check(
-                "A Source with no owner still blocks April 2026 export after the reconciliation decision is complete",
-                any("Missing owner (Company or person)" in b.reason for b in april_blockers_after),
+                "Missing Company/Legal Entity still blocks April 2026 export after the reconciliation decision is complete",
+                any("Missing required Company" in b.reason for b in april_blockers_after),
             )
 
             legal_entity = m.LegalEntity(legal_name="Verification LLC", status="ACTIVE")
@@ -381,10 +382,7 @@ def main() -> int:
             wb = openpyxl.load_workbook(BytesIO(xlsx_bytes))
             ws = wb.active
             header = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
-            # BANK_EXPORT_BY_OWNER_001 — the accountant's 12 columns stay first,
-            # in order; For Whom, Owner and Owner Type follow them.
-            check("Export column order matches the required 12 columns exactly",
-                  header[:12] == list(export.KERMALI_COLUMNS) and header == list(export.EXPORT_COLUMNS))
+            check("Export column order matches the required 12 columns exactly", header == list(export.KERMALI_COLUMNS))
 
             data_rows = list(ws.iter_rows(min_row=2, values_only=True))
             check("Export contains at least one data row", len(data_rows) >= 1)

@@ -7,12 +7,13 @@ caller, mirroring this repository's existing Payroll import convention
 Canonical Financial Model Convergence — Phase 3/4/4B (FINANCIAL_MODEL_
 CONVERGENCE_001): normalization writes canonical `PaymentInstrument`/
 `FinancialTransaction` rows (was `FinancialAccount`/
-`NormalizedFinancialTransaction` on the source branch). The decision row
-written by `recognition` is the ONE canonical reconciliation decision
-(Product Owner Decision 1) — the legacy V1 catalog-style
-`assign_explanation` workflow has been retired (Decision 1/10). Since
-BANK_RULES_RESET_001 the only automatic classification at import is the
-operative AI rules (`ai_rule_operations.apply_to_new_transaction`).
+`NormalizedFinancialTransaction` on the source branch). Every newly
+normalized `FinancialTransaction` row enters the Expert System
+(`recognition.deduce_for_transaction`), which is now the ONE canonical
+reconciliation decision (Product Owner Decision 1) — the legacy V1
+catalog-style `assign_explanation` workflow has been retired (Decision
+1/10); it no longer exists as a second, independent classification
+mechanism.
 
 BANK_RECONCILIATION_INSTRUMENT_ASSIGNMENT_001 (web collaudo findings)
 adds three things to this same module, without a second ledger and
@@ -26,7 +27,7 @@ without ever touching the raw preservation layer:
     `reassign_transaction_instrument` correct an assignment already made,
     updating the existing `FinancialTransaction` rows in place
     (idempotently, never deleting and never re-inserting), re-running
-    duplicate detection and matching, and writing one
+    duplicate detection, Recognition and matching, and writing one
     `BankInstrumentAssignmentAudit` row per correction.
   * **Reuse.** A human's one-off resolution of a source that cannot
     identify itself (First Citizens' `AccountHistory.csv`) can be saved as
@@ -49,10 +50,10 @@ from sqlalchemy.orm import Session
 
 from .. import models as m
 from . import accounting_dedup
-from . import ai_rule_operations
 from . import matching
 from . import parsers
 from . import recognition
+from . import reconciliation_standards
 
 # First Citizens' free-text `Status` column values map into the canonical
 # FinancialTransaction.status vocabulary (COMPLETED/PENDING/REVERSED/
@@ -82,22 +83,6 @@ def normalize_description(raw: str) -> str:
     Description"). `description_original` on the normalized row is never
     replaced by this (spec §5: the raw description must never be lost)."""
     return " ".join((raw or "").strip().upper().split())
-
-
-def comparison_description(txn: "m.FinancialTransaction") -> str:
-    """The normalized description a duplicate comparison uses for a stored
-    transaction. Rows retained from the historical load often carry an empty
-    `description_normalized`; for those it is derived from
-    `description_original` with the SAME normalizer, so a re-downloaded file
-    is recognised as a candidate duplicate (BANK_FINAL_RELEASE_BLOCKERS_002).
-    Nothing is written: the stored row keeps exactly what it has."""
-    return txn.description_normalized or normalize_description(txn.description_original or "")
-
-
-def _first_same_description(rows, description_normalized: str):
-    """The first of `rows` (already ordered by id) whose comparison
-    description equals `description_normalized`, or None."""
-    return next((row for row in rows if comparison_description(row) == description_normalized), None)
 
 
 def compute_row_fingerprint(raw_fields: dict) -> str:
@@ -197,12 +182,8 @@ def _instrument_last_four(instrument: "m.PaymentInstrument") -> str | None:
 
 
 def _active_instruments(session: Session) -> list["m.PaymentInstrument"]:
-    """The ACTIVE payment sources a bank file can resolve to (never a
-    purchase platform)."""
     return list(session.scalars(
-        select(m.PaymentInstrument).where(
-            m.PaymentInstrument.status == "ACTIVE",
-            m.PaymentInstrument.instrument_type.in_(m.PAYMENT_SOURCE_TYPES))
+        select(m.PaymentInstrument).where(m.PaymentInstrument.status == "ACTIVE")
         .order_by(m.PaymentInstrument.id)
     ).all())
 
@@ -510,8 +491,6 @@ def _resolutions_for_rows(
 def import_csv(
     session: Session, *, file_bytes: bytes, original_file_name: str,
     uploaded_by_account_id: int | None, payment_instrument_id: int | None = None,
-    excluded_row_numbers: set[int] | None = None, distinct_row_numbers: set[int] | None = None,
-    import_log: str | None = None,
 ) -> ImportResult:
     """Idempotent by content hash (spec §8, condition 1): re-uploading the
     exact same bytes reuses the existing `BankImportBatch` and creates
@@ -521,12 +500,7 @@ def import_csv(
     never at the file level.
 
     Raises `parsers.UnrecognizedFormatError` for a header matching none of
-    the four known layouts — nothing is persisted in that case.
-
-    BANK_TWO_PASS_IMPORT_001 — the person's import decisions:
-    `excluded_row_numbers` are left out entirely (the stored original file
-    and `import_log` keep them); `distinct_row_numbers` are saved even when
-    they repeat a stored transaction, as CONFIRMED_DISTINCT."""
+    the four known layouts — nothing is persisted in that case."""
     sha256 = parsers.sha256_bytes(file_bytes)
     existing = session.scalars(
         select(m.BankImportBatch).where(m.BankImportBatch.sha256 == sha256)
@@ -556,9 +530,6 @@ def import_csv(
         )
 
     parsed_file = parsers.parse_csv_bytes(file_bytes)  # UnrecognizedFormatError propagates — nothing persisted
-    all_row_count = len(parsed_file.rows)
-    if excluded_row_numbers:
-        parsed_file.rows = [r for r in parsed_file.rows if r.row_number not in excluded_row_numbers]
 
     batch = m.BankImportBatch(
         detected_format=parsed_file.detected_format,
@@ -566,9 +537,8 @@ def import_csv(
         raw_file_bytes=file_bytes,
         sha256=sha256,
         uploaded_by_account_id=uploaded_by_account_id,
-        row_count=all_row_count,
+        row_count=len(parsed_file.rows),
         status="RECEIVED",
-        import_log=import_log,
     )
     session.add(batch)
     session.flush()
@@ -597,8 +567,6 @@ def import_csv(
     forced: "m.PaymentInstrument | None" = None
     if payment_instrument_id is not None:
         forced = session.get(m.PaymentInstrument, payment_instrument_id)
-        if forced is not None:
-            _require_bank_movement_source(forced)
 
     instrument_by_row, batch_instrument, resolution_detail = _resolutions_for_rows(
         session, detected_format=parsed_file.detected_format, original_file_name=original_file_name,
@@ -611,16 +579,6 @@ def import_csv(
     normalized_count, candidate_count = _normalize_rows(
         session, batch, parsed_file.rows, raw_objs, instrument_by_row,
     )
-    if distinct_row_numbers:
-        # Authorized by the person as distinct operations: never a pending
-        # duplicate question, whatever they resemble.
-        for txn in session.scalars(select(m.FinancialTransaction).where(
-                m.FinancialTransaction.import_batch_id == batch.id,
-                m.FinancialTransaction.source_row_number.in_(distinct_row_numbers))):
-            if txn.duplicate_status == "CANDIDATE_DUPLICATE":
-                candidate_count -= 1
-            txn.duplicate_status = "CONFIRMED_DISTINCT"
-        session.flush()
     if batch_instrument is not None:
         batch.overlap_warning = _compute_overlap_warning(session, batch, batch_instrument)
 
@@ -690,17 +648,18 @@ def _recompute_duplicate_state(session: Session, txn: "m.FinancialTransaction") 
         if counterpart is not None and counterpart.payment_instrument_id == txn.payment_instrument_id:
             return False
 
-    earlier = _first_same_description(session.scalars(
+    earlier = session.scalars(
         select(m.FinancialTransaction)
         .where(
             m.FinancialTransaction.payment_instrument_id == txn.payment_instrument_id,
             m.FinancialTransaction.posting_date == txn.posting_date,
             m.FinancialTransaction.amount_minor == txn.amount_minor,
+            m.FinancialTransaction.description_normalized == txn.description_normalized,
             m.FinancialTransaction.id != txn.id,
             m.FinancialTransaction.id < txn.id,
         )
         .order_by(m.FinancialTransaction.id.asc())
-    ), comparison_description(txn))
+    ).first()
 
     if earlier is not None:
         txn.duplicate_status = "CANDIDATE_DUPLICATE"
@@ -713,10 +672,14 @@ def _recompute_duplicate_state(session: Session, txn: "m.FinancialTransaction") 
 
 def _reprocess_transaction(session: Session, txn: "m.FinancialTransaction") -> bool:
     """Everything that must be re-derived after a transaction's instrument
-    changed: identity fingerprint, duplicate state and cross-ledger
-    matching. Idempotent — running it twice on an unchanged transaction
-    produces the same state and creates nothing new. The decision is never
-    re-derived here (BANK_RULES_RESET_001)."""
+    changed: identity fingerprint, duplicate state, Recognition, and
+    cross-ledger matching. Idempotent — running it twice on an unchanged
+    transaction produces the same state and creates nothing new.
+
+    Recognition is re-run ONLY when the current decision was not made by a
+    human: `BankRecognitionRule`s can be scoped to a payment instrument, so
+    the correct rule may genuinely differ after a correction — but a human's
+    own confirmed decision is never overwritten by a rule."""
     if txn.posting_date is not None and txn.amount_minor is not None:
         txn.fingerprint = compute_identity_fingerprint(
             payment_instrument_id=txn.payment_instrument_id,
@@ -730,9 +693,10 @@ def _reprocess_transaction(session: Session, txn: "m.FinancialTransaction") -> b
     is_candidate = _recompute_duplicate_state(session, txn)
     session.flush()
 
-    # BANK_RULES_RESET_001 — the old (non-AI) rule engines no longer decide
-    # anything automatically: a reprocessed movement keeps its decision as it
-    # is (a person or an AI Rule changes it).
+    # The SAME engine as import; a human decision is never touched, and an
+    # unchanged automatic decision is kept rather than re-appended, so this
+    # stays idempotent (BANK_FINAL_RELEASE_BLOCKERS_001).
+    recognition.redecide_for_transaction(session, txn)
 
     matching.on_financial_transaction_acquired(session, txn)
     session.flush()
@@ -841,7 +805,6 @@ def assign_batch_instrument(
     instrument = session.get(m.PaymentInstrument, payment_instrument_id)
     if instrument is None:
         raise ValueError(f"PaymentInstrument {payment_instrument_id} not found")
-    _require_bank_movement_source(instrument)
 
     previous_instrument_id = batch.payment_instrument_id
     is_correction = previous_instrument_id is not None
@@ -973,7 +936,6 @@ def reassign_transaction_instrument(
     instrument = session.get(m.PaymentInstrument, payment_instrument_id)
     if instrument is None:
         raise ValueError(f"PaymentInstrument {payment_instrument_id} not found")
-    _require_bank_movement_source(instrument)
     previous_instrument_id = txn.payment_instrument_id
     if previous_instrument_id == instrument.id:
         raise ValueError(
@@ -1045,10 +1007,8 @@ def save_source_profile(
         raise ValueError(
             "A source rule needs either an in-file identifier or a usable file name to key on."
         )
-    target = session.get(m.PaymentInstrument, payment_instrument_id)
-    if target is None:
+    if session.get(m.PaymentInstrument, payment_instrument_id) is None:
         raise ValueError(f"PaymentInstrument {payment_instrument_id} not found")
-    _require_bank_movement_source(target)
 
     name_condition = (
         m.BankSourceInstrumentProfile.file_name_key.is_(None) if key is None
@@ -1105,10 +1065,8 @@ def update_source_profile_instrument(
     profile = session.get(m.BankSourceInstrumentProfile, profile_id)
     if profile is None:
         raise ValueError(f"BankSourceInstrumentProfile {profile_id} not found")
-    target = session.get(m.PaymentInstrument, payment_instrument_id)
-    if target is None:
+    if session.get(m.PaymentInstrument, payment_instrument_id) is None:
         raise ValueError(f"PaymentInstrument {payment_instrument_id} not found")
-    _require_bank_movement_source(target)
     profile.payment_instrument_id = payment_instrument_id
     session.flush()
     return profile
@@ -1118,22 +1076,7 @@ def update_source_profile_instrument(
 # Payment Instrument configuration
 # ---------------------------------------------------------------------------
 
-VALID_INSTRUMENT_TYPES = m.PAYMENT_SOURCE_TYPES + m.DOCUMENT_SOURCE_TYPES
-
-
-def _require_bank_movement_source(instrument: "m.PaymentInstrument") -> None:
-    """BANK_PURCHASE_PLATFORM_SOURCE_001 — the guard of the BANK MOVEMENT
-    import path only: a bank-statement file, its batch and its rows become
-    FinancialTransactions, which belong to a PAYMENT source. A purchase
-    platform's orders, receipts and invoices must never become payments or
-    spend, so they never enter this path. Nothing else is restricted here:
-    associating documents with a purchase platform is a different path,
-    which this guard does not concern."""
-    if not instrument.is_payment_source:
-        raise ValueError(
-            f"{instrument.display_name!r} is a purchase platform: a file cannot be imported as its bank "
-            "movements (that would duplicate spend). Import the statement on the account or card that paid."
-        )
+VALID_INSTRUMENT_TYPES = ("BANK_ACCOUNT", "CREDIT_CARD", "PAYPAL")
 VALID_INSTRUMENT_STATUSES = ("ACTIVE", "INACTIVE")
 
 _UNSET = object()
@@ -1194,7 +1137,6 @@ def create_payment_instrument(
     last_four: str | None = None, external_account_identifier: str | None = None,
     legal_entity_id: int | None = None, currency: str | None = None,
     linked_instrument_id: int | None = None, status: str = "ACTIVE",
-    owner_reporting_entity_id: int | None = None,
 ) -> "m.PaymentInstrument":
     """Create an instrument with the same server-side validation an edit
     applies — so a conflicting instrument can never be created either."""
@@ -1203,7 +1145,6 @@ def create_payment_instrument(
         instrument_type=instrument_type, last_four=last_four,
         external_account_identifier=external_account_identifier, legal_entity_id=legal_entity_id,
         currency=currency, linked_instrument_id=linked_instrument_id, status=status,
-        owner_reporting_entity_id=owner_reporting_entity_id,
     )
 
 
@@ -1213,7 +1154,6 @@ def update_payment_instrument(
     last_four: str | None = _UNSET, external_account_identifier: str | None = _UNSET,
     legal_entity_id: int | None = _UNSET, currency: str | None = _UNSET,
     linked_instrument_id: int | None = _UNSET, status: str | None = _UNSET,
-    owner_reporting_entity_id: int | None = _UNSET,
 ) -> "m.PaymentInstrument":
     """Edit an existing instrument. Only the fields actually passed are
     changed. The canonical `PaymentInstrument` is edited in place — no
@@ -1230,8 +1170,7 @@ def update_payment_instrument(
         raise ValueError(
             f"{instrument.display_name}: the lifecycle state ({instrument.status}) is not edited "
             "here. Close it (Closed / Lost / Replaced / Other) or confirm it Still active from "
-            "Check Sources on Import and Review, where the end date is derived and the decision "
-            "recorded."
+            "Monthly Sources, where the end date is derived and the decision recorded."
         )
 
     def pick(passed, current):
@@ -1250,7 +1189,6 @@ def update_payment_instrument(
         currency=pick(currency, instrument.currency),
         linked_instrument_id=pick(linked_instrument_id, instrument.linked_instrument_id),
         status=pick(status, instrument.status),
-        owner_reporting_entity_id=pick(owner_reporting_entity_id, instrument.owner_reporting_entity_id),
     )
 
 
@@ -1258,7 +1196,7 @@ def _write_payment_instrument(
     session: Session, *, instrument: "m.PaymentInstrument | None", institution: str | None,
     display_name: str | None, instrument_type: str | None, last_four: str | None,
     external_account_identifier: str | None, legal_entity_id: int | None, currency: str | None,
-    linked_instrument_id: int | None, status: str | None, owner_reporting_entity_id: int | None = None,
+    linked_instrument_id: int | None, status: str | None,
 ) -> "m.PaymentInstrument":
     display_name = _clean(display_name)
     if not display_name:
@@ -1285,17 +1223,6 @@ def _write_payment_instrument(
 
     if legal_entity_id is not None and session.get(m.LegalEntity, legal_entity_id) is None:
         raise ValueError(f"LegalEntity {legal_entity_id} not found")
-    if instrument_type in m.DOCUMENT_SOURCE_TYPES and linked_instrument_id is not None:
-        raise ValueError("A purchase platform is not funded by an account; it has no funding link.")
-    # BANK_SOURCE_EDIT_AND_ENTITIES_001 — one owner: a company OR a person.
-    if owner_reporting_entity_id is not None:
-        if legal_entity_id is not None:
-            raise ValueError("A Source has one owner: a company or a person, not both.")
-        owner = session.get(m.ReportingEntity, owner_reporting_entity_id)
-        if owner is None:
-            raise ValueError(f"Entity {owner_reporting_entity_id} not found")
-        if owner.entity_type != m.REPORTING_ENTITY_PERSONAL:
-            raise ValueError(f"{owner.name!r} is not a personal entity; a company owns a Source as its LLC.")
     if linked_instrument_id is not None:
         if instrument is not None and linked_instrument_id == instrument.id:
             raise ValueError("An instrument cannot be linked to itself.")
@@ -1318,7 +1245,6 @@ def _write_payment_instrument(
     instrument.last_four = last_four
     instrument.external_account_identifier = external_account_identifier
     instrument.legal_entity_id = legal_entity_id
-    instrument.owner_reporting_entity_id = owner_reporting_entity_id
     instrument.currency = currency
     instrument.linked_instrument_id = linked_instrument_id
     instrument.status = status
@@ -1328,27 +1254,13 @@ def _write_payment_instrument(
 
 def instrument_export_warning(instrument: "m.PaymentInstrument") -> str | None:
     """The one configuration gap that does not prevent saving an instrument
-    but keeps its movements out of every Monthly Export — stated here once so
-    the edit form and the instrument list say exactly the same thing.
-
-    BANK_EXPORT_BY_OWNER_001 — a Source owned by a person is a valid owner:
-    it has its own monthly report, and needs no Company / Legal Entity. Only a
-    Source with no owner at all is flagged; its movements are listed as not
-    attributed (`export.unattributed`). A card's owner is its settlement
-    account's, so a card is not judged on its own fields."""
-    if not instrument.is_payment_source:
-        return None  # a documentary source carries no transactions to export
-    if instrument.instrument_type == "CREDIT_CARD":
-        if instrument.linked_instrument_id is None:
-            return (
-                "No settlement account: the card is saved, but its movements belong to no owner's "
-                "Monthly Export and are listed there as not attributed."
-            )
-        return None
-    if instrument.legal_entity_id is None and instrument.owner_reporting_entity_id is None:
+    but DOES block the Monthly Export for every transaction on it
+    (`export.compute_export_blockers`) — stated here once so the edit form
+    and the instrument list say exactly the same thing."""
+    if instrument.legal_entity_id is None:
         return (
-            "No owner (Company or person): the Source is saved, but its movements belong to no "
-            "owner's Monthly Export and are listed there as not attributed."
+            "No Company / Legal Entity: the instrument is saved, but the Monthly Export "
+            "stays blocked for every month containing its transactions."
         )
     return None
 
@@ -1577,22 +1489,6 @@ def reprocess_batch(
 # ---------------------------------------------------------------------------
 
 
-def distinct_proof(balance_a: int | None, reference_a: str | None,
-                   balance_b: int | None, reference_b: str | None) -> str | None:
-    """BANK_POSSIBLE_DUPLICATES_001 — why two rows with the same date,
-    description and amount are proven DISTINCT movements, or None when nothing
-    proves it (they then stay a possible duplicate, "Da verificare"). Proof is
-    a fact the bank itself states: a running balance present on both rows and
-    different, or a bank reference present on both and different. Never a
-    guess: a missing value proves nothing."""
-    if balance_a is not None and balance_b is not None and balance_a != balance_b:
-        return "the running balance differs"
-    ref_a, ref_b = (reference_a or "").strip(), (reference_b or "").strip()
-    if ref_a and ref_b and ref_a != ref_b:
-        return "the bank reference differs"
-    return None
-
-
 def _normalize_rows(
     session: Session, batch: "m.BankImportBatch",
     parsed_rows: list["parsers.ParsedBankRow"], raw_objs: list["m.RawBankTransaction"],
@@ -1623,9 +1519,6 @@ def _normalize_rows(
     instrument_cache: dict[int, "m.PaymentInstrument"] = {}
     normalized_count = 0
     candidate_count = 0
-    # BANK_AI_RULES_006 — operative AI rules enabled "Per il futuro" (None
-    # when there is none: the import then behaves exactly as before).
-    ai_rule_context = ai_rule_operations.import_context(session)
 
     for row in parsed_rows:
         if row.parse_status == "UNREADABLE":
@@ -1646,20 +1539,20 @@ def _normalize_rows(
             balance_minor=row.balance_minor,
         )
 
-        existing_match = _first_same_description(session.scalars(
+        existing_match = session.scalars(
             select(m.FinancialTransaction)
             .where(
                 m.FinancialTransaction.payment_instrument_id == instrument.id,
                 m.FinancialTransaction.posting_date == row.posting_date,
                 m.FinancialTransaction.amount_minor == row.amount_minor,
+                m.FinancialTransaction.description_normalized == description_normalized,
             )
             .order_by(m.FinancialTransaction.id.asc())
-        ), description_normalized)
+        ).first()
 
         duplicate_status = "NONE"
         duplicate_of_id = None
-        if existing_match is not None and distinct_proof(
-                row.balance_minor, row.reference, existing_match.balance_minor, existing_match.reference) is None:
+        if existing_match is not None:
             duplicate_status = "CANDIDATE_DUPLICATE"
             duplicate_of_id = existing_match.id
             candidate_count += 1
@@ -1695,13 +1588,16 @@ def _normalize_rows(
         session.add(normalized)
         session.flush()  # visible to the next row's existing_match query
 
-        # BANK_RULES_RESET_001 — the only automatic classification at import
-        # is the operative AI rules enabled for new movements: only the fields
-        # each rule names, existing protections, conflicts reported (never
-        # settled by order). The old engines (learned / structural
-        # recognition, General Rules, WHY rules, Reconciliation Standards) no
-        # longer run: a new movement is otherwise left to classify.
-        ai_rule_operations.apply_to_new_transaction(session, normalized, ai_rule_context)
+        # Recognition (BANK_RECONCILIATION_EXPERT_SYSTEM_001): the only
+        # point import logic changes to apply the expert system to new
+        # transactions. Runs once, at creation time, before any human has
+        # looked at the row — never re-run for a transaction that already
+        # has a decision (that would risk overwriting a human's choice).
+        recognition.deduce_for_transaction(session, normalized)
+        # BANK_RECONCILIATION_STANDARDS_001 — a new transaction matching one
+        # human-approved Reconciliation Standard is completed by it
+        # (AUTOMATIC). Import time only: nothing already imported is touched.
+        reconciliation_standards.apply_to_transaction(session, normalized)
 
         # Accounting deduplication keying
         # (BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001): the payee
@@ -1728,10 +1624,6 @@ def _normalize_rows(
             raw.normalized_transaction_id = normalized.id
 
         normalized_count += 1
-
-    # BANK_AI_RULES_006 — close the log of the operative AI rules applied
-    # during this pass (no-op when none applies to new movements).
-    ai_rule_operations.finish_import(ai_rule_context)
 
     # Accounting deduplication, resolved ONCE for the whole pass rather
     # than per row: which occurrence is canonical is a property of the
@@ -1798,7 +1690,7 @@ def resolve_duplicate_decision(
 
 def record_recognition_decision(
     session: Session, *, transaction_id: int, occurrence_id: int,
-    confirmed_by_account_id: int | None,
+    confirmed_by_account_id: int | None, learn_description: bool = True,
 ) -> "m.BankTransactionExplanation":
     """Canonical Financial Model Convergence — Phase 4B (Product Owner
     Decisions 1, 6, 7, 10). The ONE human-facing entry point for
@@ -1811,13 +1703,21 @@ def record_recognition_decision(
     The caller supplies the WHO only, so this records WHO the counterparty
     is and leaves the WHY open for a human: a Who's default Why is never
     applied (BANK_FINAL_RELEASE_BLOCKERS_001). The Why step
-    (`/bank/transactions/<id>/why`) is where a Why is decided. No
-    recognition rule is learned (BANK_RULES_RESET_001)."""
+    (`/bank/transactions/<id>/why`) is where a Why is decided.
+
+    `learn_description` controls ONLY whether this confirmation also
+    teaches RF-One that this exact normalized description means this Who
+    (an `EXACT_NORMALIZED_DESCRIPTION` `BankRecognitionRule`). It does
+    not, and can no longer, affect whether the Who -> Why -> What
+    associations persist: those live on the vocabulary itself. Broader
+    `CONTAINS_TEXT`/`PREFIX` rules still require an explicit, separate
+    human choice — a single description never creates one."""
     result = recognition.record_human_decision(
         session,
         recognition.HumanDecisionRequest(
             transaction_id=transaction_id, occurrence_id=occurrence_id,
             confirmed_by_account_id=confirmed_by_account_id,
+            learn_description=learn_description,
         ),
     )
     txn = session.get(m.FinancialTransaction, transaction_id)

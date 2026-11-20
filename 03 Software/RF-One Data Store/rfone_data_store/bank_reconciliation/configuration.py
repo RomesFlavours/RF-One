@@ -1,15 +1,13 @@
-"""Bank Configuration — the one page where the WHAT, WHY and WHO vocabulary
-and the reporting entities are maintained (BANK_CONFIGURATION_001).
-
-Sources (accounts, cards, card settlement and cardholder, file-recognition
-rules, deduplication) are maintained on the Source page and the completeness
-control settings in Check Sources on Import and Review — never here
-(BANK_FINAL_RELEASE_BLOCKERS_002, BANK_FINAL_CLEANUP_001).
+"""Bank Configuration — the one page where WHAT, WHY, WHO, Accounts & Cards
+and their Support settings are maintained (BANK_CONFIGURATION_001).
 
 Every business rule of that page lives here, not in its route or template.
 Wherever a canonical service already owns a rule it is CALLED, never
 copied: `classification` for WHAT / WHY / WHO, `why_catalog.associate` for
-WHO -> WHY, `reporting_entity` and `legal_entity_service` for entities. What this module adds is only what
+WHO -> WHY, `service` for Payment Instruments and source rules,
+`card_configuration` for settlement and cardholder history,
+`monthly_source` for the control months, `reporting_entity` and
+`legal_entity_service` for entities. What this module adds is only what
 the page needs on top of them:
 
 * WHAT means the canonical P&L posting category (decision D11): the WHAT
@@ -21,6 +19,11 @@ the page needs on top of them:
 * a new WHY gets a stable code generated from its name (D7);
 * a new WHO is a COUNTERPARTY (D5);
 * WHO -> served ReportingEntities (D1), stated by a human, never inferred;
+* WHO-only recognition rules (D2): they recognise the WHO and store no WHY,
+  because WHO never determines WHY;
+* a Bank Account's owning entity is its own `legal_entity_id`; a Credit
+  Card's is DERIVED from its settlement account and is never edited on
+  the card (D3);
 * entities are shown and chosen by `ReportingEntity.name` (D8).
 
 Every function flushes and never commits: the caller owns the transaction,
@@ -31,15 +34,23 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import display_format
 from .. import legal_entity_service
 from .. import models as m
 from . import canonical_catalog
+from . import card_configuration
 from . import classification
+from . import monthly_source
+from . import parsers
+from . import recognition
 from . import reporting_entity as reporting_entity_service
+from . import service as bank_service
 from . import why_catalog
 
 # ---------------------------------------------------------------------------
@@ -48,6 +59,36 @@ from . import why_catalog
 
 STATEMENT_LABELS = {"PROFIT_LOSS": "P&L", "BALANCE_SHEET": "Balance Sheet"}
 PROFIT_LOSS = "PROFIT_LOSS"
+
+INSTRUMENT_TYPE_LABELS = {
+    "BANK_ACCOUNT": "Bank Account", "CREDIT_CARD": "Credit Card", "PAYPAL": "PayPal",
+}
+
+# The page's three match words, mapped once onto the stored match types.
+MATCH_TYPES = {
+    "EXACT": recognition.EXACT_NORMALIZED_DESCRIPTION,
+    "CONTAINS": recognition.CONTAINS_TEXT,
+    "PREFIX": recognition.PREFIX,
+}
+MATCH_LABELS = {stored: word for word, stored in MATCH_TYPES.items()}
+
+# The source formats RF-One can actually parse — a source rule naming any
+# other format could never match an import.
+SOURCE_FORMATS = {
+    parsers.CHASE_BANK_ACCOUNT: "Chase bank account CSV",
+    parsers.CHASE_CREDIT_CARD_WITH_CARD: "Chase credit card CSV (with Card column)",
+    parsers.CHASE_CREDIT_CARD_NO_CARD: "Chase credit card CSV (no Card column)",
+    parsers.FIRST_CITIZENS: "First Citizens CSV",
+    parsers.AMEX_CSV: "American Express CSV",
+    parsers.AMEX_XLSX: "American Express XLSX",
+    parsers.AMEX_QBO: "American Express QBO",
+}
+
+HOLDER_KIND_LABELS = {
+    m.CARD_HOLDER_KIND_ACTING_IDENTITY: "RF-One identity",
+    m.CARD_HOLDER_KIND_EMPLOYEE: "Employee",
+    m.CARD_HOLDER_KIND_UNLINKED_PERSON: "Other person",
+}
 
 COUNTERPARTY_TYPE_CODE = "COUNTERPARTY"
 
@@ -175,33 +216,16 @@ def generate_reason_code(session: Session, name: str) -> str:
 
 def create_why(
     session: Session, *, name: str, description: str | None, what_id: int | None,
-    active: bool = True, reason_group_id: int | None = None,
+    active: bool = True,
 ) -> "m.BankTransactionReason":
-    """`reason_group_id` places the new WHY in a navigation group
-    (`BankReasonGroup`) — organisation only, no accounting effect. When given
-    it must be an active group.
-
-    BANK_WHY_WITHOUT_WHAT_001 — the WHAT is OPTIONAL: Bank reconciliation
-    needs WHO + WHY, not bookkeeping. A WHY created without one has no
-    accounting destination yet (never an invented one); when a WHAT is given
-    it must be a P&L WHAT, exactly as before."""
     if not (name or "").strip():
         raise ValueError("A WHY requires a name.")
-    if what_id is not None:
-        _require_pl_what(session, what_id)
-    if reason_group_id is not None:
-        group = session.get(m.BankReasonGroup, reason_group_id)
-        if group is None or not group.active:
-            raise ValueError("Choose an active WHY group for the new WHY.")
-    reason = classification.create_transaction_reason(
+    _require_pl_what(session, what_id)
+    return classification.create_transaction_reason(
         session, code=generate_reason_code(session, name), name=name,
         accounting_classification_id=what_id, description=description,
         status=_status(active),
     )
-    if reason_group_id is not None:
-        reason.reason_group_id = reason_group_id
-        session.flush()
-    return reason
 
 
 def _require_pl_what(session: Session, what_id: int | None) -> None:
@@ -229,9 +253,7 @@ def update_why(
     reason = session.get(m.BankTransactionReason, transaction_reason_id)
     if reason is None:
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
-    # Same destination — or none chosen for a WHY that has none yet
-    # (BANK_WHY_WITHOUT_WHAT_001): only the name and description change.
-    if what_id == reason.accounting_classification_id:
+    if what_id is not None and what_id == reason.accounting_classification_id:
         clean_name = (name or "").strip()
         if not clean_name:
             raise ValueError("A Why requires a name.")
@@ -252,8 +274,17 @@ def update_why(
 
 
 # ---------------------------------------------------------------------------
-# WHO — BankOccurrence, its WHYs, its entities
+# WHO — BankOccurrence, its WHYs, its entities, its recognition rules
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RuleInput:
+    """One row of the WHO modal's recognition-rule table."""
+    rule_id: int | None
+    pattern: str
+    match: str          # EXACT | CONTAINS | PREFIX
+    active: bool
 
 
 def counterparty_type_id(session: Session) -> int:
@@ -287,9 +318,7 @@ def _set_who_reasons(session: Session, occurrence: "m.BankOccurrence", reason_id
         reason = session.get(m.BankTransactionReason, reason_id)
         if reason is None:
             raise ValueError(f"WHY {reason_id} does not exist.")
-        # A WHY needs no WHAT to be a WHO's possible WHY: Bank reconciliation
-        # is WHO + WHY, bookkeeping is optional (BANK_WHY_WITHOUT_WHAT_001).
-        if reason.status != "ACTIVE":
+        if reason.status != "ACTIVE" or reason.accounting_classification_id is None:
             raise ValueError(f"WHY {reason.name!r} is inactive and cannot be added to a WHO.")
         if row is not None:
             row.active = True
@@ -336,10 +365,89 @@ def _set_who_entities(
     session.flush()
 
 
+def _who_rules(session: Session, occurrence_id: int) -> list["m.BankRecognitionRule"]:
+    """The WHO's description rules — the ones that recognise it. MEMO rules
+    carry purpose wording, not identity, and are not edited here."""
+    return list(session.scalars(
+        select(m.BankRecognitionRule)
+        .where(
+            m.BankRecognitionRule.occurrence_id == occurrence_id,
+            m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
+        )
+        .order_by(m.BankRecognitionRule.id)
+    ))
+
+
+def _set_who_rules(session: Session, occurrence: "m.BankOccurrence", rules: list[RuleInput]) -> None:
+    """Create, edit and (de)activate the WHO's recognition rules.
+
+    A new rule is WHO-only (D2): DESCRIPTION scope, `determines_purpose`
+    false, no WHY stored, no instrument or direction scope. A rule removed
+    from the list is DEACTIVATED, never deleted — decisions may already
+    cite it. A pattern that another WHO already recognises with the same
+    match is refused: the two rules would contradict each other."""
+    current = {rule.id: rule for rule in _who_rules(session, occurrence.id)}
+    seen: set[tuple[str, str]] = set()
+    kept: set[int] = set()
+    for item in rules:
+        pattern = recognition.normalize_description_for_recognition(item.pattern)
+        if not pattern:
+            raise ValueError("A recognition rule needs a text or code pattern.")
+        match_type = MATCH_TYPES.get((item.match or "").upper())
+        if match_type is None:
+            raise ValueError(f"Match must be Exact, Contains or Prefix, got {item.match!r}.")
+        if (match_type, pattern) in seen:
+            raise ValueError(f"The rule {MATCH_LABELS[match_type].title()} {pattern!r} is listed twice.")
+        seen.add((match_type, pattern))
+
+        if item.active:
+            clash = session.scalar(
+                select(m.BankRecognitionRule).where(
+                    m.BankRecognitionRule.match_type == match_type,
+                    m.BankRecognitionRule.normalized_pattern == pattern,
+                    m.BankRecognitionRule.match_field == recognition.DESCRIPTION,
+                    m.BankRecognitionRule.status == "ACTIVE",
+                    m.BankRecognitionRule.occurrence_id != occurrence.id,
+                )
+            )
+            if clash is not None:
+                other = session.get(m.BankOccurrence, clash.occurrence_id)
+                raise ValueError(
+                    f"{MATCH_LABELS[match_type].title()} {pattern!r} already recognises WHO "
+                    f"{other.canonical_name if other else clash.occurrence_id!r}. One text cannot "
+                    "recognise two WHOs; change or deactivate that rule first."
+                )
+
+        if item.rule_id is not None:
+            rule = current.get(item.rule_id)
+            if rule is None:
+                raise ValueError(f"Recognition rule {item.rule_id} does not belong to this WHO.")
+            rule.match_type = match_type
+            rule.normalized_pattern = pattern
+            if item.active:
+                rule.status = "ACTIVE"
+            elif rule.status == "ACTIVE":
+                rule.status = "INACTIVE"
+            kept.add(rule.id)
+        else:
+            session.add(m.BankRecognitionRule(
+                match_type=match_type, normalized_pattern=pattern,
+                match_field=recognition.DESCRIPTION, determines_purpose=False,
+                payment_instrument_id=None, direction=None,
+                occurrence_id=occurrence.id, transaction_reason_id=None,
+                priority=0, status=_status(item.active), auto_apply_enabled=True,
+                human_confirmations=0, created_from_transaction_id=None,
+            ))
+    for rule_id, rule in current.items():
+        if rule_id not in kept and rule.status == "ACTIVE":
+            rule.status = "INACTIVE"
+    session.flush()
+
+
 def save_who(
     session: Session, *, occurrence_id: int | None, name: str, active: bool,
     reason_ids: list[int], default_reason_id: int | None,
-    reporting_entity_ids: list[int],
+    reporting_entity_ids: list[int], rules: list[RuleInput],
 ) -> "m.BankOccurrence":
     """Create (`occurrence_id` None) or edit a WHO with everything the modal
     shows. The default WHY, when given, must be one of the possible WHYs:
@@ -380,9 +488,103 @@ def save_who(
             optional_notes=occurrence.optional_notes,
         )
     _set_who_entities(session, occurrence, list(dict.fromkeys(reporting_entity_ids)))
-    # BANK_WHO_SINGLE_DEFAULT_WHY_001 — one possible WHY is the default.
-    why_catalog.sync_single_default(session, occurrence.id)
+    _set_who_rules(session, occurrence, rules)
     return occurrence
+
+
+# ---------------------------------------------------------------------------
+# Accounts & Cards — PaymentInstrument
+# ---------------------------------------------------------------------------
+
+
+def _legal_entity_id_for(session: Session, reporting_entity_id: int | None, *, current: int | None) -> int | None:
+    """A Bank Account's owning entity is chosen as a ReportingEntity (D8)
+    and stored as that entity's LegalEntity — the column that owns it (D3).
+    Only a LEGAL entity has one; a VIRTUAL entity cannot own an account."""
+    if reporting_entity_id is None:
+        return None
+    entity = session.get(m.ReportingEntity, reporting_entity_id)
+    if entity is None:
+        raise ValueError(f"Entity {reporting_entity_id} does not exist.")
+    if entity.legal_entity_id is None:
+        raise ValueError(
+            f"{entity.name!r} is a virtual entity, not an LLC, and cannot own a bank account."
+        )
+    if entity.status != "ACTIVE" and entity.legal_entity_id != current:
+        raise ValueError(f"Entity {entity.name!r} is inactive.")
+    return entity.legal_entity_id
+
+
+def create_account(
+    session: Session, *, label: str, instrument_type: str, reporting_entity_id: int | None,
+    reference: str | None, active: bool = True,
+) -> "m.PaymentInstrument":
+    """A Credit Card never receives an owning entity here: it is derived
+    from the account the card settles to (D3), configured under Support."""
+    if instrument_type == card_configuration.CREDIT_CARD and reporting_entity_id is not None:
+        raise ValueError(
+            "A credit card's owning entity comes from its settlement account. Leave it empty "
+            "and set the settlement account under Support."
+        )
+    return bank_service.create_payment_instrument(
+        session, institution=None, display_name=label, instrument_type=instrument_type,
+        last_four=reference,
+        legal_entity_id=_legal_entity_id_for(session, reporting_entity_id, current=None),
+        status=_status(active),
+    )
+
+
+def update_account(
+    session: Session, *, instrument_id: int, label: str, instrument_type: str,
+    reporting_entity_id: int | None, reference: str | None,
+) -> "m.PaymentInstrument":
+    """Edit label, type, reference and — for a non-card — owning entity.
+    The lifecycle state is not edited here: it changes only through the
+    Monthly Sources resolutions, which `service.update_payment_instrument`
+    enforces. A card's own `legal_entity_id` is left exactly as it is."""
+    instrument = session.get(m.PaymentInstrument, instrument_id)
+    if instrument is None:
+        raise ValueError(f"Account / Card {instrument_id} does not exist.")
+    values = {"display_name": label, "instrument_type": instrument_type, "last_four": reference}
+    if instrument_type == card_configuration.CREDIT_CARD:
+        if reporting_entity_id is not None:
+            raise ValueError(
+                "A credit card's owning entity comes from its settlement account and cannot be "
+                "set on the card. Change its settlement account under Support instead."
+            )
+    else:
+        values["legal_entity_id"] = _legal_entity_id_for(
+            session, reporting_entity_id, current=instrument.legal_entity_id,
+        )
+    return bank_service.update_payment_instrument(session, instrument_id=instrument_id, **values)
+
+
+def owning_entity(session: Session, instrument: "m.PaymentInstrument", on_date: date) -> dict:
+    """What the Accounts & Cards table shows as Owning entity.
+
+    Bank Account: its own LegalEntity. Credit Card: the LegalEntity of the
+    account it settles to on `on_date`, and NOTHING when it has none — the
+    card's own value is never used as a fallback (D3)."""
+    derived = instrument.instrument_type == card_configuration.CREDIT_CARD
+    if derived:
+        legal = card_configuration.legal_entity_for(session, instrument=instrument, on_date=on_date)
+        legal_entity_id = legal.id if legal is not None else None
+    else:
+        legal_entity_id = instrument.legal_entity_id
+    entity = None
+    if legal_entity_id is not None:
+        entity = reporting_entity_service.reporting_entity_for_legal_entity(
+            session, legal_entity_id=legal_entity_id,
+        )
+    if entity is not None:
+        name = entity.name
+    elif legal_entity_id is not None:
+        # An LLC with no ReportingEntity yet: shown by its legal name rather
+        # than hidden, and not chosen for anything.
+        name = session.get(m.LegalEntity, legal_entity_id).legal_name
+    else:
+        name = None
+    return {"entity": entity.id if entity is not None else None, "entity_name": name, "derived": derived}
 
 
 # ---------------------------------------------------------------------------
@@ -390,31 +592,12 @@ def save_who(
 # ---------------------------------------------------------------------------
 
 
-# BANK_SOURCE_EDIT_AND_ENTITIES_001 — the kinds a person chooses when
-# creating an Entity, and how each stored type is named on screen.
-ENTITY_COMPANY = "COMPANY"
-ENTITY_PERSONAL = "PERSONAL"
-ENTITY_KIND_LABELS = {
-    m.REPORTING_ENTITY_LEGAL: "Company / LLC",
-    m.REPORTING_ENTITY_PERSONAL: "Personal",
-    m.REPORTING_ENTITY_VIRTUAL: "Management entity",
-}
-_DASHES = re.compile(r"[\u2010-\u2015\u2212-]")
-
-
-def entity_key(name: str | None) -> str:
-    """The comparison key of an Entity name: case, dashes, punctuation and
-    repeated spaces do not make a different Entity — "Personal — Pino",
-    "Personal - Pino", "PERSONAL — PINO" and "Personal  Pino" are one."""
-    text = _DASHES.sub(" ", unicodedata.normalize("NFKC", name or "")).casefold()
-    return " ".join(re.sub(r"[^\w]+", " ", text).split())
-
-
 def _assert_entity_name_free(session: Session, name: str, *, exclude_id: int | None) -> None:
-    key = entity_key(name)
-    for entity in session.scalars(select(m.ReportingEntity)):
-        if entity.id != exclude_id and entity_key(entity.name) == key:
-            raise ValueError(f"An entity named {entity.name!r} already exists.")
+    query = select(m.ReportingEntity).where(func.lower(m.ReportingEntity.name) == name.lower())
+    if exclude_id is not None:
+        query = query.where(m.ReportingEntity.id != exclude_id)
+    if session.scalar(query) is not None:
+        raise ValueError(f"An entity named {name!r} already exists.")
 
 
 def create_entity(
@@ -475,144 +658,129 @@ def update_entity(
     return entity
 
 
-def find_or_create_entity(
-    session: Session, *, name: str, kind: str, active: bool = True,
-) -> tuple["m.ReportingEntity", bool]:
-    """+ New Entity, from the Source modal (BANK_SOURCE_EDIT_AND_ENTITIES_001):
-    the Entity named `name`, created only when no equivalent exists.
-    Returns (entity, created).
+# ---------------------------------------------------------------------------
+# Support — source / file recognition
+# ---------------------------------------------------------------------------
 
-    An ACTIVE Entity whose name has the same `entity_key` — or a company
-    whose LLC carries that legal name — is reused, never duplicated; an
-    INACTIVE one is refused with the way back (reactivate it). A Company /
-    LLC is created exactly as Configuration creates one (a LegalEntity and
-    its LEGAL ReportingEntity); a Personal one is a PERSONAL ReportingEntity
-    and never a LegalEntity."""
-    name = (name or "").strip()
-    if not name:
-        raise ValueError("The entity name is required.")
-    if kind not in (ENTITY_COMPANY, ENTITY_PERSONAL):
-        raise ValueError("Choose the entity type: Company / LLC or Personal.")
-    key = entity_key(name)
-    if not key:
-        raise ValueError("The entity name needs at least one letter or digit.")
-    legal_names = dict(session.execute(select(m.LegalEntity.id, m.LegalEntity.legal_name)).all())
-    for entity in session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.id)):
-        if key in (entity_key(entity.name), entity_key(legal_names.get(entity.legal_entity_id))):
-            if entity.status != "ACTIVE":
-                raise ValueError(
-                    f"{entity.name!r} already exists but is inactive. Reactivate it in "
-                    "Configuration (Entities / LLCs) instead of creating it again."
-                )
-            return entity, False
-    if kind == ENTITY_COMPANY:
-        # An LLC already registered without a ReportingEntity gets one —
-        # never a second LegalEntity for the same company.
-        for legal in session.scalars(select(m.LegalEntity).where(m.LegalEntity.status == "ACTIVE")):
-            if entity_key(legal.legal_name) == key:
-                entity = reporting_entity_service.create_legal_entity_reporting_entity(
-                    session, code=_unique_code(session, m.ReportingEntity.code, "RE_" + (_slug(name) or "ENTITY")),
-                    name=name, legal_entity_id=legal.id,
-                )
-                break
-        else:
-            entity = create_entity(session, name=name, legal_name=name, active=True)
-    else:
-        entity = reporting_entity_service.create_personal_entity(
-            session, code=_unique_code(session, m.ReportingEntity.code, "RE_" + (_slug(name) or "PERSONAL")),
-            name=name,
-        )
-    if not active:
-        entity.status = "INACTIVE"
+
+def _source_values(
+    session: Session, *, detected_format: str, file_name_key: str | None,
+    account_hint: str | None, payment_instrument_id: int | None,
+) -> dict:
+    if detected_format not in SOURCE_FORMATS:
+        raise ValueError(f"Unknown source format {detected_format!r}.")
+    key = (file_name_key or "").strip().lower() or None
+    hint = (account_hint or "").strip() or None
+    if key is None and hint is None:
+        raise ValueError("A source rule needs a file name key or an in-file identifier.")
+    if payment_instrument_id is None or session.get(m.PaymentInstrument, payment_instrument_id) is None:
+        raise ValueError("Choose the Account / Card this source belongs to.")
+    return {"detected_format": detected_format, "file_name_key": key, "account_hint": hint,
+            "payment_instrument_id": payment_instrument_id}
+
+
+def _assert_source_free(session: Session, values: dict, *, exclude_id: int | None) -> None:
+    profile = m.BankSourceInstrumentProfile
+    query = select(profile).where(
+        profile.detected_format == values["detected_format"],
+        profile.file_name_key.is_(None) if values["file_name_key"] is None
+        else profile.file_name_key == values["file_name_key"],
+        profile.account_hint.is_(None) if values["account_hint"] is None
+        else profile.account_hint == values["account_hint"],
+    )
+    if exclude_id is not None:
+        query = query.where(profile.id != exclude_id)
+    if session.scalar(query) is not None:
+        raise ValueError("A source rule with the same format, file name key and identifier already exists.")
+
+
+def create_source(
+    session: Session, *, detected_format: str, file_name_key: str | None,
+    account_hint: str | None, payment_instrument_id: int | None, active: bool = True,
+    created_by_account_id: int | None = None,
+) -> "m.BankSourceInstrumentProfile":
+    values = _source_values(
+        session, detected_format=detected_format, file_name_key=file_name_key,
+        account_hint=account_hint, payment_instrument_id=payment_instrument_id,
+    )
+    _assert_source_free(session, values, exclude_id=None)
+    profile = m.BankSourceInstrumentProfile(
+        **values, status=_status(active), created_by_account_id=created_by_account_id,
+        notes="Created on the Bank Configuration page.",
+    )
+    session.add(profile)
     session.flush()
-    return entity, True
+    return profile
+
+
+def update_source(
+    session: Session, *, profile_id: int, detected_format: str, file_name_key: str | None,
+    account_hint: str | None, payment_instrument_id: int | None, active: bool,
+) -> "m.BankSourceInstrumentProfile":
+    profile = session.get(m.BankSourceInstrumentProfile, profile_id)
+    if profile is None:
+        raise ValueError(f"Source rule {profile_id} does not exist.")
+    values = _source_values(
+        session, detected_format=detected_format, file_name_key=file_name_key,
+        account_hint=account_hint, payment_instrument_id=payment_instrument_id,
+    )
+    _assert_source_free(session, values, exclude_id=profile.id)
+    for field_name, value in values.items():
+        setattr(profile, field_name, value)
+    bank_service.set_source_profile_status(session, profile_id=profile.id, status=_status(active))
+    return profile
 
 
 # ---------------------------------------------------------------------------
-# Source owner — a company (LegalEntity) or a person (PERSONAL entity)
-# (BANK_SOURCE_EDIT_AND_ENTITIES_001)
-#
-# The Source modal offers ONE list, the active Entities that may own a
-# Source: companies and people, by name. A choice is sent as "re:<id>" (an
-# Entity) or "le:<id>" (an LLC registered without an Entity yet) and stored
-# where ownership already lives: a company in `legal_entity_id`, so every
-# derivation that reads it is unchanged; a person in
-# `owner_reporting_entity_id`.
+# Support — control settings
 # ---------------------------------------------------------------------------
 
 
-def owner_choices(session: Session) -> list[dict]:
-    """The active Entities that may own a Source, alphabetical: companies
-    (LEGAL) and people (PERSONAL). A management (VIRTUAL) entity owns no
-    account. An active LLC with no ReportingEntity yet is offered too, so
-    no existing owner disappears from the list."""
-    choices = [
-        {"value": f"re:{e.id}", "label": e.name, "kind": ENTITY_KIND_LABELS[e.entity_type]}
-        for e in session.scalars(select(m.ReportingEntity).where(
-            m.ReportingEntity.status == "ACTIVE",
-            m.ReportingEntity.entity_type.in_((m.REPORTING_ENTITY_LEGAL, m.REPORTING_ENTITY_PERSONAL))))
-    ]
-    represented = set(session.scalars(select(m.ReportingEntity.legal_entity_id).where(
-        m.ReportingEntity.legal_entity_id.is_not(None))))
-    choices += [
-        {"value": f"le:{legal.id}", "label": legal.legal_name, "kind": ENTITY_KIND_LABELS[m.REPORTING_ENTITY_LEGAL]}
-        for legal in session.scalars(select(m.LegalEntity).where(m.LegalEntity.status == "ACTIVE"))
-        if legal.id not in represented
-    ]
-    return sorted(choices, key=lambda c: (c["label"].casefold(), c["value"]))
+def _month(value: str | None, label: str) -> tuple[int, int] | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    match = re.fullmatch(r"(\d{4})-(\d{2})", text)
+    if not match or not 1 <= int(match.group(2)) <= 12:
+        raise ValueError(f"{label} must be a month written YYYY-MM, got {text!r}.")
+    return int(match.group(1)), int(match.group(2))
 
 
-def owner_values(session: Session, instruments: list["m.PaymentInstrument"]) -> dict[int, str]:
-    """Each Source's own owner, as the modal's select value ("" when none)."""
-    by_legal = dict(session.execute(select(m.ReportingEntity.legal_entity_id, m.ReportingEntity.id).where(
-        m.ReportingEntity.legal_entity_id.is_not(None))).all())
-    values = {}
-    for instrument in instruments:
-        if instrument.owner_reporting_entity_id is not None:
-            values[instrument.id] = f"re:{instrument.owner_reporting_entity_id}"
-        elif instrument.legal_entity_id is not None:
-            entity_id = by_legal.get(instrument.legal_entity_id)
-            values[instrument.id] = f"re:{entity_id}" if entity_id else f"le:{instrument.legal_entity_id}"
-        else:
-            values[instrument.id] = ""
-    return values
-
-
-def resolve_owner(
-    session: Session, value: str | None, *, current: "m.PaymentInstrument | None" = None,
-) -> tuple[int | None, int | None]:
-    """A Source owner choice -> (legal_entity_id, owner_reporting_entity_id).
-    An inactive Entity is refused unless it already owns this Source."""
-    value = (value or "").strip()
-    if not value:
-        return None, None
-    kind, _, raw = value.partition(":")
-    if not raw.isdigit():
-        raise ValueError("The owning entity could not be read; reload the page and try again.")
-    if kind == "le":
-        legal = session.get(m.LegalEntity, int(raw))
-        if legal is None:
-            raise ValueError("The owning company does not exist.")
-        return legal.id, None
-    if kind != "re":
-        raise ValueError("The owning entity could not be read; reload the page and try again.")
-    entity = session.get(m.ReportingEntity, int(raw))
-    if entity is None:
-        raise ValueError("The owning entity does not exist.")
-    if entity.entity_type == m.REPORTING_ENTITY_VIRTUAL:
-        raise ValueError(f"{entity.name!r} is a management entity: it cannot own a Source.")
-    owned_now = current is not None and (
-        current.owner_reporting_entity_id == entity.id
-        or (entity.legal_entity_id is not None and current.legal_entity_id == entity.legal_entity_id))
-    if entity.status != "ACTIVE" and not owned_now:
-        raise ValueError(f"{entity.name!r} is inactive; choose an active entity.")
-    if entity.entity_type == m.REPORTING_ENTITY_LEGAL:
-        return entity.legal_entity_id, None
-    return None, entity.id
+def update_control(
+    session: Session, *, control_start: str | None, validated_through: str | None,
+    account_id: int | None,
+) -> list[str]:
+    """Apply what changed, through the same services Monthly uses. Returns
+    one plain sentence per change for the page's feedback."""
+    config = monthly_source.get_control_config(session)
+    start = _month(control_start, "Control start")
+    validated = _month(validated_through, "Validated through")
+    if start is None:
+        raise ValueError("Control start is required (YYYY-MM).")
+    messages: list[str] = []
+    start_key = f"{start[0]:04d}-{start[1]:02d}"
+    if config is None or config.control_start_month != start_key:
+        monthly_source.activate_control_start(
+            session, year=start[0], month=start[1], account_id=account_id,
+            note="Set on the Bank Configuration page.",
+        )
+        messages.append(f"Control starts with {start_key}.")
+    config = monthly_source.get_control_config(session)
+    if validated is None:
+        if config.validated_through_month is not None:
+            raise ValueError("Validated through cannot be emptied once set; choose a month.")
+    else:
+        validated_key = f"{validated[0]:04d}-{validated[1]:02d}"
+        if config.validated_through_month != validated_key:
+            monthly_source.activate_validated_through(
+                session, year=validated[0], month=validated[1], account_id=account_id,
+            )
+            messages.append(f"Bank data validated through {validated_key}.")
+    return messages
 
 
 # ---------------------------------------------------------------------------
-# Cardholder candidates — used by the Source page's Source modal
+# Support — card settlement and cardholder
 # ---------------------------------------------------------------------------
 
 
@@ -647,12 +815,80 @@ def cardholder_candidates(session: Session) -> list[dict]:
     return candidates
 
 
+def _open_settlement(session: Session, card_id: int) -> "m.BankCardSettlementAccount | None":
+    return session.scalar(
+        select(m.BankCardSettlementAccount).where(
+            m.BankCardSettlementAccount.credit_card_payment_instrument_id == card_id,
+            m.BankCardSettlementAccount.valid_to.is_(None),
+        )
+    )
+
+
+def save_card(
+    session: Session, *, card_id: int, settlement_account_id: int | None,
+    settlement_valid_from: date | None, holder_kind: str | None, holder_id: int | None,
+    holder_name: str | None, holder_valid_from: date | None, account_id: int | None,
+) -> list[str]:
+    """Record a NEW settlement period and/or a NEW cardholder period, each
+    only when it actually differs from the current one. History is kept by
+    the card services: the open period is closed on the new Valid from,
+    never overwritten. A settlement change re-derives the card's entity and
+    accounting identity, so deduplication is recomputed with it."""
+    card = session.get(m.PaymentInstrument, card_id)
+    if card is None or card.instrument_type != card_configuration.CREDIT_CARD:
+        raise ValueError(f"Card {card_id} does not exist.")
+    messages: list[str] = []
+
+    current_account = card_configuration.current_settlement_account(session, card.id)
+    if settlement_account_id is not None and (
+        current_account is None or current_account.id != settlement_account_id
+    ):
+        if settlement_valid_from is None:
+            raise ValueError("Give the date from which the card settles to the new account.")
+        card_configuration.assign_settlement_account(
+            session, credit_card_payment_instrument_id=card.id,
+            settlement_bank_account_id=settlement_account_id, valid_from=settlement_valid_from,
+            notes="Set on the Bank Configuration page.", created_by_account_id=account_id,
+        )
+        outcome = bank_service.recompute_accounting_deduplication(session)
+        messages.append(
+            f"{card.display_name} settles to a new account from {settlement_valid_from.isoformat()}; "
+            f"deduplication recomputed ({outcome.suppressed_transactions} excluded, "
+            f"{outcome.unresolved_transactions} without a settlement account)."
+        )
+
+    if holder_kind:
+        values = {
+            "holder_kind": holder_kind,
+            "holder_acting_identity_id": holder_id if holder_kind == m.CARD_HOLDER_KIND_ACTING_IDENTITY else None,
+            "holder_employee_id": holder_id if holder_kind == m.CARD_HOLDER_KIND_EMPLOYEE else None,
+            "holder_display_name": holder_name if holder_kind == m.CARD_HOLDER_KIND_UNLINKED_PERSON else None,
+        }
+        current = card_configuration.current_cardholder(session, card.id)
+        unchanged = current is not None and current.holder_kind == holder_kind and (
+            current.holder_acting_identity_id == values["holder_acting_identity_id"]
+            and current.holder_employee_id == values["holder_employee_id"]
+            and (holder_kind != m.CARD_HOLDER_KIND_UNLINKED_PERSON
+                 or current.holder_display_name == (holder_name or "").strip())
+        )
+        if not unchanged:
+            if holder_valid_from is None:
+                raise ValueError("Give the date from which the new cardholder holds the card.")
+            card_configuration.assign_cardholder(
+                session, credit_card_payment_instrument_id=card.id,
+                valid_from=holder_valid_from, notes="Set on the Bank Configuration page.",
+                created_by_account_id=account_id, **values,
+            )
+            messages.append(f"{card.display_name}: cardholder recorded from {holder_valid_from.isoformat()}.")
+    return messages
+
+
 # ---------------------------------------------------------------------------
 # The page
 # ---------------------------------------------------------------------------
 
 
-def configuration_view(session: Session) -> dict:
+def configuration_view(session: Session, *, today: date) -> dict:
     """Everything the page renders, as plain JSON-able values, read with a
     fixed number of queries whatever the number of WHOs."""
     classifications = session.scalars(
@@ -723,10 +959,21 @@ def configuration_view(session: Session) -> dict:
         .where(m.BankOccurrenceReportingEntity.active.is_(True))
     ):
         entities_by_who.setdefault(occurrence_id, []).append(entity_id)
+    rules_by_who: dict[int, list[dict]] = {}
+    for rule in session.scalars(
+        select(m.BankRecognitionRule)
+        .where(m.BankRecognitionRule.match_field == recognition.DESCRIPTION)
+        .order_by(m.BankRecognitionRule.id)
+    ):
+        rules_by_who.setdefault(rule.occurrence_id, []).append({
+            "id": rule.id, "pattern": rule.normalized_pattern,
+            "match": MATCH_LABELS.get(rule.match_type, rule.match_type).title(),
+            "active": rule.status == "ACTIVE", "status": rule.status,
+        })
     whos = [
         {"id": o.id, "name": o.canonical_name, "whys": reasons_by_who.get(o.id, []),
          "default_why": o.default_transaction_reason_id,
-         "entities": entities_by_who.get(o.id, []),
+         "entities": entities_by_who.get(o.id, []), "rules": rules_by_who.get(o.id, []),
          "active": o.status == "ACTIVE"}
         for o in session.scalars(select(m.BankOccurrence).order_by(m.BankOccurrence.canonical_name))
     ]
@@ -734,12 +981,65 @@ def configuration_view(session: Session) -> dict:
     legal_names = dict(session.execute(select(m.LegalEntity.id, m.LegalEntity.legal_name)).all())
     entities = [
         {"id": e.id, "name": e.name, "legal_name": legal_names.get(e.legal_entity_id, ""),
-         "legal": e.legal_entity_id is not None, "active": e.status == "ACTIVE",
-         "personal": e.entity_type == m.REPORTING_ENTITY_PERSONAL}
+         "legal": e.legal_entity_id is not None, "active": e.status == "ACTIVE"}
         for e in session.scalars(select(m.ReportingEntity).order_by(m.ReportingEntity.name))
     ]
+
+    instruments = session.scalars(
+        select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
+    ).all()
+    accounts = []
+    for i in instruments:
+        accounts.append({
+            "id": i.id, "label": i.display_name, "type_code": i.instrument_type,
+            "type": INSTRUMENT_TYPE_LABELS.get(i.instrument_type, i.instrument_type),
+            "reference": i.last_four or "", "active": i.status == "ACTIVE",
+            **owning_entity(session, i, today),
+        })
+
+    sources = [
+        {"id": p.id, "format_code": p.detected_format,
+         "format": SOURCE_FORMATS.get(p.detected_format, p.detected_format),
+         "file_key": p.file_name_key or "", "in_file": p.account_hint or "",
+         "account": p.payment_instrument_id, "active": p.status == "ACTIVE"}
+        for p in session.scalars(
+            select(m.BankSourceInstrumentProfile)
+            .order_by(m.BankSourceInstrumentProfile.detected_format, m.BankSourceInstrumentProfile.id)
+        )
+    ]
+
+    config = monthly_source.get_control_config(session)
+    control = {
+        "control_start": config.control_start_month if config is not None else "",
+        "validated_through": (config.validated_through_month or "") if config is not None else "",
+    }
+
+    cards = []
+    for i in instruments:
+        if i.instrument_type != card_configuration.CREDIT_CARD:
+            continue
+        settles_to = card_configuration.current_settlement_account(session, i.id)
+        open_period = _open_settlement(session, i.id)
+        holder = card_configuration.current_cardholder(session, i.id)
+        cards.append({
+            "account": i.id,
+            "settles_to": settles_to.id if settles_to is not None else None,
+            "settles_from": open_period.valid_from.isoformat() if open_period is not None else "",
+            "cardholder": display_format.employee_short_name(holder.holder_display_name, empty="")
+            if holder is not None else "",
+            "holder_kind": holder.holder_kind if holder is not None else "",
+            "holder_id": (holder.holder_acting_identity_id or holder.holder_employee_id)
+            if holder is not None else None,
+            "holder_name": holder.holder_display_name if holder is not None else "",
+            "holder_from": holder.valid_from.isoformat() if holder is not None else "",
+        })
 
     return {
         "whats": whats, "groups": groups, "whys": whys,
         "balance_sheet_destinations": balance_sheet_destinations, "whos": whos, "entities": entities,
+        "accounts": accounts, "sources": sources, "control": control, "cards": cards,
+        "formats": [[code, label] for code, label in SOURCE_FORMATS.items()],
+        "holder_kinds": [[code, label] for code, label in HOLDER_KIND_LABELS.items()],
+        "holders": cardholder_candidates(session),
+        "today": today.isoformat(),
     }

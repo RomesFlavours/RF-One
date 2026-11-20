@@ -1,11 +1,7 @@
 """RF-One Web — Bank Configuration (BANK_CONFIGURATION_001).
 
 One page, `/bank/configuration`, in the approved order: WHAT, WHY, WHO,
-Sources (a link only: every Source, including a card's settlement account and
-cardholder, is maintained on `/bank/sources` — BANK_FINAL_RELEASE_BLOCKERS_002),
-then Support (entities; Balance Sheet destinations, read-only). File
-recognition rules and deduplication live on Source, the completeness control
-in Check Sources — Support only links there (BANK_FINAL_CLEANUP_001). Each modal on the page posts to one of the
+Accounts & Cards, then Support. Each modal on the page posts to one of the
 routes below. Every route:
 
 * is behind the BANK gate and `require_csrf()`;
@@ -23,11 +19,12 @@ own collaborators; this module never imports `app.py`.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 
-from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 
 from rfone_data_store.bank_reconciliation import configuration as config_service
-from rfone_data_store.bank_reconciliation import who_merge
+from rfone_data_store.bank_reconciliation import service as bank_service
 
 
 def _int(name: str) -> int | None:
@@ -61,9 +58,46 @@ def _text(name: str) -> str:
     return (request.form.get(name) or "").strip()
 
 
+def _date(name: str) -> date | None:
+    raw = _text(name)
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{raw!r} is not a valid date (expected YYYY-MM-DD).") from None
+
+
+def _rules() -> list[config_service.RuleInput]:
+    ids = request.form.getlist("rule_id")
+    patterns = request.form.getlist("rule_pattern")
+    matches = request.form.getlist("rule_match")
+    actives = request.form.getlist("rule_active")
+    if not (len(ids) == len(patterns) == len(matches) == len(actives)):
+        raise ValueError("The recognition rules were sent incompletely; reload the page and try again.")
+    rules = []
+    for rule_id, pattern, match, active in zip(ids, patterns, matches, actives):
+        if not pattern.strip():
+            continue  # an empty row the person added and left blank
+        try:
+            parsed_id = int(rule_id) if rule_id.strip() else None
+        except ValueError:
+            raise ValueError(f"Unknown recognition rule {rule_id!r}.") from None
+        rules.append(config_service.RuleInput(
+            rule_id=parsed_id, pattern=pattern, match=match, active=active == "1",
+        ))
+    return rules
+
+
 def register_bank_configuration_routes(
     app, *, gate, SessionFactory, load_current_account, require_csrf,
 ):
+    def _account_id(db) -> int:
+        account = load_current_account(db)
+        if account is None:
+            abort(403)
+        return account.id
+
     def _back(section: str):
         return redirect(url_for("bank_configuration", _anchor=section))
 
@@ -72,10 +106,6 @@ def register_bank_configuration_routes(
         receives the session and returns what `success` turns into the
         feedback sentence(s)."""
         require_csrf()
-        # BANK_WHO_EDIT_SAVE_001 — a modal saving with fetch gets JSON: a
-        # refusal is shown INSIDE the modal (values kept), never only as a
-        # message on a reloaded page.
-        wants_json = request.headers.get("X-Requested-With") == "fetch"
         with SessionFactory() as db:
             try:
                 result = action(db)
@@ -83,14 +113,10 @@ def register_bank_configuration_routes(
                 db.commit()
             except ValueError as exc:
                 db.rollback()
-                if wants_json:
-                    return jsonify({"ok": False, "error": str(exc)}), 400
                 flash(str(exc), "error")
                 return _back(section)
         for message in ([messages] if isinstance(messages, str) else messages):
             flash(message, "info")
-        if wants_json:
-            return jsonify({"ok": True, "redirect": url_for("bank_configuration", _anchor=section)})
         return _back(section)
 
     @app.route("/bank/configuration")
@@ -98,7 +124,7 @@ def register_bank_configuration_routes(
     def bank_configuration():
         """The single Bank Configuration page."""
         with SessionFactory() as db:
-            view = config_service.configuration_view(db)
+            view = config_service.configuration_view(db, today=date.today())
         return render_template("bank_configuration.html", config=view)
 
     # ------------------------------------------------------------------ WHAT
@@ -143,39 +169,8 @@ def register_bank_configuration_routes(
         return _apply("cp-who", lambda db: config_service.save_who(
             db, occurrence_id=occurrence_id, name=_text("name"), active=_flag("active"),
             reason_ids=_ints("why_ids"), default_reason_id=_int("default_why_id"),
-            reporting_entity_ids=_ints("entity_ids"),
+            reporting_entity_ids=_ints("entity_ids"), rules=_rules(),
         ), lambda who: f"WHO {who.canonical_name!r} saved.")
-
-    # BANK_WHO_MERGE_001 — merge two WHO: a preview (writes nothing), then
-    # the merge itself, one database transaction, back to the WHO section.
-    @app.route("/bank/configuration/who/merge/preview", methods=["POST"])
-    @gate
-    def bank_configuration_who_merge_preview():
-        require_csrf()
-        with SessionFactory() as db:
-            try:
-                return jsonify(who_merge.preview(db, keep_id=_int("keep_id"), absorb_id=_int("absorb_id")))
-            except ValueError as exc:
-                return jsonify({"error": str(exc)}), 400
-
-    @app.route("/bank/configuration/who/merge", methods=["POST"])
-    @gate
-    def bank_configuration_who_merge():
-
-        def action(db):
-            account = load_current_account(db)
-            return who_merge.merge(
-                db, keep_id=_int("keep_id"), absorb_id=_int("absorb_id"), default_reason_id=_int("default_why"),
-                account_id=account.id if account is not None else None)
-
-        def success(result):
-            moved = result.moved
-            return (f"WHO {result.absorb_name!r} merged into {result.keep_name!r}: "
-                    f"{moved.get('decisions', 0)} decision(s), "
-                    f"{moved.get('aliases', 0)} alias(es), {moved.get('possible_why', 0)} possible WHY moved"
-                    f". {result.absorb_name!r} is now inactive and an alias of {result.keep_name!r}.")
-
-        return _apply("cp-who", action, success)
 
     @app.route("/bank/configuration/who", methods=["POST"])
     @gate
@@ -187,8 +182,31 @@ def register_bank_configuration_routes(
     def bank_configuration_who_edit(occurrence_id: int):
         return _save_who(occurrence_id)
 
-    # Accounts & Cards are no longer edited here (BANK_FINAL_RELEASE_BLOCKERS_002):
-    # every Source is maintained on the Source page (`/bank/sources`).
+    # ------------------------------------------------------ Accounts & Cards
+
+    @app.route("/bank/configuration/account", methods=["POST"])
+    @gate
+    def bank_configuration_account_new():
+        return _apply("cp-accounts", lambda db: config_service.create_account(
+            db, label=_text("label"), instrument_type=_text("instrument_type"),
+            reporting_entity_id=_int("entity_id"), reference=_text("reference") or None,
+            active=_flag("active"),
+        ), lambda instrument: f"{instrument.display_name!r} created.")
+
+    @app.route("/bank/configuration/account/<int:instrument_id>", methods=["POST"])
+    @gate
+    def bank_configuration_account_edit(instrument_id: int):
+        def done(instrument):
+            messages = [f"{instrument.display_name!r} saved."]
+            warning = bank_service.instrument_export_warning(instrument)
+            if warning and instrument.instrument_type != "CREDIT_CARD":
+                messages.append(f"{instrument.display_name}: {warning}")
+            return messages
+        return _apply("cp-accounts", lambda db: config_service.update_account(
+            db, instrument_id=instrument_id, label=_text("label"),
+            instrument_type=_text("instrument_type"), reporting_entity_id=_int("entity_id"),
+            reference=_text("reference") or None,
+        ), done)
 
     # --------------------------------------------------------------- Support
 
@@ -207,3 +225,53 @@ def register_bank_configuration_routes(
             legal_name=_text("legal_name"), active=_flag("active"),
         ), lambda entity: f"Entity {entity.name!r} saved.")
 
+    @app.route("/bank/configuration/source", methods=["POST"])
+    @gate
+    def bank_configuration_source_new():
+        def action(db):
+            return config_service.create_source(
+                db, detected_format=_text("detected_format"), file_name_key=_text("file_name_key"),
+                account_hint=_text("account_hint"), payment_instrument_id=_int("payment_instrument_id"),
+                active=_flag("active"), created_by_account_id=_account_id(db),
+            )
+        return _apply("cp-sources", action, lambda profile: f"Source rule #{profile.id} created.")
+
+    @app.route("/bank/configuration/source/<int:profile_id>", methods=["POST"])
+    @gate
+    def bank_configuration_source_edit(profile_id: int):
+        return _apply("cp-sources", lambda db: config_service.update_source(
+            db, profile_id=profile_id, detected_format=_text("detected_format"),
+            file_name_key=_text("file_name_key"), account_hint=_text("account_hint"),
+            payment_instrument_id=_int("payment_instrument_id"), active=_flag("active"),
+        ), lambda profile: f"Source rule #{profile.id} saved.")
+
+    @app.route("/bank/configuration/control", methods=["POST"])
+    @gate
+    def bank_configuration_control():
+        return _apply("cp-control", lambda db: config_service.update_control(
+            db, control_start=_text("control_start"),
+            validated_through=_text("validated_through"), account_id=_account_id(db),
+        ), lambda messages: messages or ["Control settings unchanged."])
+
+    @app.route("/bank/configuration/card/<int:card_id>", methods=["POST"])
+    @gate
+    def bank_configuration_card(card_id: int):
+        return _apply("cp-dedup", lambda db: config_service.save_card(
+            db, card_id=card_id, settlement_account_id=_int("settlement_account_id"),
+            settlement_valid_from=_date("settlement_valid_from"),
+            holder_kind=_text("holder_kind") or None, holder_id=_int("holder_id"),
+            holder_name=_text("holder_name"), holder_valid_from=_date("holder_valid_from"),
+            account_id=_account_id(db),
+        ), lambda messages: messages or ["Card settings unchanged."])
+
+    @app.route("/bank/configuration/dedup/recompute", methods=["POST"])
+    @gate
+    def bank_configuration_dedup_recompute():
+        """An ACTION, not a setting: re-derive accounting deduplication from
+        the current transactions and card configuration."""
+        return _apply("cp-dedup", bank_service.recompute_accounting_deduplication, lambda outcome: (
+            f"Accounting deduplication recomputed: {outcome.canonical_transactions} canonical, "
+            f"{outcome.duplicate_groups} duplicate group(s), {outcome.suppressed_transactions} "
+            f"excluded from accounting, {outcome.unresolved_transactions} without a settlement "
+            f"account. {outcome.raw_rows_preserved} raw rows preserved."
+        ))

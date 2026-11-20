@@ -15,11 +15,6 @@ statement about the P&L, not a gap.
 And the productivity model the whole thing exists for: associating a Why
 with a Who teaches "Amazon has been this", never "Amazon means this".
 
-BANK_OLD_RULES_REMOVAL_001: check 31 no longer inspects recognition rules
-(their table is gone, so no rule can claim a Who proves a Why — it holds
-by construction) and check 34 no longer counts learned rules, for the same
-reason. Every other check and all numbering are unchanged.
-
 Never touches AWS, RDS, a production database, Clover, ADP or Mercury.
 """
 
@@ -45,7 +40,7 @@ from rfone_data_store.database import (
 EXPECTED_WHY = 81
 EXPECTED_PL_WHY = 60
 EXPECTED_NON_PL_WHY = 21
-EXPECTED_GROUPS = 15  # the navigation groups (e2c6a9f4b7d1, BANK_WHY_NAVIGATION_GROUPS_001)
+EXPECTED_GROUPS = 14
 EXPECTED_WHAT = 73
 EXPECTED_ACCOUNTS = 137
 
@@ -218,7 +213,7 @@ def main() -> int:
             s.commit()
 
             def who(name: str, default_why: str | None = None):
-                existing = s.query(m.BankOccurrence).filter_by(canonical_name=name.strip().upper()).first()
+                existing = s.query(m.BankOccurrence).filter_by(canonical_name=name).first()
                 if existing is not None:
                     return existing
                 return classification_service.create_occurrence(
@@ -295,7 +290,7 @@ def main() -> int:
                 "7. the same WHY may belong to many WHO — Food Purchases reaches both",
                 {o.canonical_name for o in
                  wc.occurrences_for_reason(s, reasons["FOOD_PURCHASES"].id)}
-                == {"AMAZON", "COSTCO"},  # WHO names are stored upper case (BANK_WHO_UPPERCASE_001)
+                == {"Amazon", "Costco"},
             )
             check(
                 "20§. re-associating an existing pair counts a confirmation rather than "
@@ -333,13 +328,9 @@ def main() -> int:
             )
             grouped = wc.catalog_by_group(s)
             check(
-                "12. the modal groups WHY by management group, groups alphabetical by name and WHY "
-                "alphabetical inside each (Product Owner 2026-10-05; stored display order unchanged)",
-                [g.name for g, _ in grouped] == sorted((g.name for g, _ in grouped), key=str.casefold)
-                and all([r.name for r in items] == sorted((r.name for r in items), key=str.casefold)
-                        for _, items in grouped)
-                and [g.code for g in sorted((g for g, _ in grouped), key=lambda g: g.display_order)][:4]
-                == ["PRODUCT_COST", "PAYROLL", "OCCUPANCY", "UTILITIES"]
+                "12. the modal groups WHY by management group, in display order",
+                [g.code for g, _ in grouped][:4]
+                == ["KITCHEN_LABOR", "FOH_LABOR", "PEOPLE", "PRODUCT_COST"]
                 and len(grouped) == EXPECTED_GROUPS,
                 detail=str([g.code for g, _ in grouped][:4]),
             )
@@ -361,7 +352,8 @@ def main() -> int:
             decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=first.id, occurrence_id=cleaner.id,
-                    confirmed_by_account_id=None, transaction_reason_id=reasons["JANITORIAL_CLEANING"].id,
+                    confirmed_by_account_id=None, learn_description=False,
+                    transaction_reason_id=reasons["JANITORIAL_CLEANING"].id,
                 ),
             )
             s.commit()
@@ -384,7 +376,8 @@ def main() -> int:
             recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=second.id, occurrence_id=cleaner.id,
-                    confirmed_by_account_id=None, transaction_reason_id=reasons["FACILITY_MAINTENANCE"].id,
+                    confirmed_by_account_id=None, learn_description=False,
+                    transaction_reason_id=reasons["FACILITY_MAINTENANCE"].id,
                 ),
             )
             s.commit()
@@ -408,13 +401,15 @@ def main() -> int:
             tips_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=tips_txn.id, occurrence_id=worker.id,
-                    confirmed_by_account_id=None, transaction_reason_id=reasons["TIPS_SETTLEMENT"].id,
+                    confirmed_by_account_id=None, learn_description=False,
+                    transaction_reason_id=reasons["TIPS_SETTLEMENT"].id,
                 ),
             )
             labor_decision = recognition.record_human_decision(
                 s, recognition.HumanDecisionRequest(
                     transaction_id=labor_txn.id, occurrence_id=worker.id,
-                    confirmed_by_account_id=None, transaction_reason_id=reasons["BOH_CONTRACT_LABOR"].id,
+                    confirmed_by_account_id=None, learn_description=False,
+                    transaction_reason_id=reasons["BOH_CONTRACT_LABOR"].id,
                 ),
             )
             s.commit()
@@ -439,7 +434,11 @@ def main() -> int:
             check(
                 "31. no WHO identity alone proves WHY — the association is a shortcut, and "
                 "no recognition rule claims otherwise",
-                len(wc.reasons_for_occurrence(s, worker.id)) == 2,
+                len(wc.reasons_for_occurrence(s, worker.id)) == 2
+                and not [
+                    r for r in s.query(m.BankRecognitionRule).all()
+                    if r.determines_purpose and r.match_field == "DESCRIPTION"
+                ],
             )
 
             # =============================================================
@@ -453,9 +452,10 @@ def main() -> int:
                 and not cc.what_catalog_problems(s),
             )
             check(
-                "34. this suite created no raw rows and no import batches",
+                "34. this suite created no raw rows, no import batches and no learned rules",
                 s.query(m.RawBankTransaction).count() == 0
-                and s.query(m.BankImportBatch).count() == 0,
+                and s.query(m.BankImportBatch).count() == 0
+                and s.query(m.BankRecognitionRule).count() == 0,
             )
             check(
                 "§20 `default_transaction_reason_id` is not required for any of this — the "

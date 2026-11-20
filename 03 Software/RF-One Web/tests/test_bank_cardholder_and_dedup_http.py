@@ -123,14 +123,14 @@ def main() -> int:
         # -----------------------------------------------------------------
         # Payment Instruments list.
         # -----------------------------------------------------------------
-        listing = operator_client.get("/bank/sources").data
+        listing = operator_client.get("/bank/instruments").data
         check(
-            "the Source list shows the required columns (BANK_SOURCE_AND_IMPORT_REVIEW_001)",
+            "the Payment Instruments list shows the required columns",
             all(
                 col in listing for col in (
-                    b"<th>Source</th>", b"<th>Institution / Provider</th>", b"<th>Type</th>",
-                    b"<th>Account</th>", b"<th>Owning entity</th>",
-                    b"<th>Settlement / Funding</th>", b"<th>State</th>",
+                    b"<th>Name</th>", b"<th>Institution</th>", b"<th>Type</th>",
+                    b"<th>Last 4</th>", b"<th>Company</th>", b"<th>Settlement Account</th>",
+                    b"<th>Current Cardholder</th>", b"<th>State</th>",
                 )
             ),
         )
@@ -160,17 +160,13 @@ def main() -> int:
             "username": "no_bank_user", "password": "NoBankPass123!",
             "csrf_token": extract_csrf(resp.data),
         })
-        # BANK_SOURCE_EDIT_AND_ENTITIES_001: a card's settlement account and
-        # cardholder are saved by the Source modal's one Save (the edit route);
-        # the former separate assign routes are retired.
         check(
-            "the Source Save (settlement account, cardholder) is behind the BANK domain gate",
-            ungated.post(f"/bank/instruments/{mother_id}/edit").status_code == 403,
+            "the settlement-account route is behind the BANK domain gate",
+            ungated.post(f"/bank/instruments/{mother_id}/settlement").status_code == 403,
         )
         check(
-            "the former separate settlement / cardholder assign routes are retired",
-            operator_client.post(f"/bank/instruments/{mother_id}/settlement").status_code in (404, 405)
-            and operator_client.post(f"/bank/instruments/{mother_id}/cardholder").status_code in (404, 405),
+            "the cardholder route is behind the BANK domain gate",
+            ungated.post(f"/bank/instruments/{mother_id}/cardholder").status_code == 403,
         )
         check(
             "the recompute route is behind the BANK domain gate",
@@ -179,51 +175,56 @@ def main() -> int:
         check(
             "a settlement assignment without a CSRF token is refused",
             operator_client.post(
-                f"/bank/instruments/{mother_id}/edit",
-                data={"settlement_bank_account_id": str(checking_id), "settlement_valid_from": "2026-01-01"},
+                f"/bank/instruments/{mother_id}/settlement",
+                data={"settlement_bank_account_id": str(checking_id), "valid_from": "2026-01-01"},
             ).status_code in (400, 403),
         )
 
         # -----------------------------------------------------------------
         # Settlement account and cardholder, over HTTP.
         # -----------------------------------------------------------------
-        edit_page = operator_client.get("/bank/sources").data
-        modal = edit_page[edit_page.index(b'id="source-dialog"'):]
-        check("the card's Source modal offers a settlement account", b"Settlement / Funding account" in modal)
-        check("the card's Source modal offers a cardholder", b'name="cardholder"' in modal)
-        settlement_select = modal[modal.index(b'name="settlement_bank_account_id"'):]
-        settlement_select = settlement_select[:settlement_select.index(b"</select>")]
+        edit_page = operator_client.get(f"/bank/instruments/{mother_id}/edit").data
+        check("the card edit page offers a settlement account panel", b"Settlement account" in edit_page)
+        check("the card edit page offers a cardholder panel", b"Cardholder" in edit_page)
         check(
             "only bank accounts are offered as settlement accounts, never another card",
-            b"Chase Checking 1234" in settlement_select and b"Chase Card 4482" not in settlement_select,
+            b"Chase Checking 1234" in edit_page and b"<option" in edit_page
+            and edit_page.count(b"Chase Card 4482") <= 1,
         )
 
-        def card_save(card_id, **fields):
-            """The Source modal's one Save for a card: its current fields
-            plus the card settings being changed."""
-            with SessionFactory() as s:
-                card = s.get(m.PaymentInstrument, card_id)
-                data = {"display_name": card.display_name, "instrument_type": card.instrument_type,
-                        "institution": card.institution or "", "last_four": card.last_four or "",
-                        "keep_external_account_identifier": "1", "currency": card.currency or "",
-                        "status": card.status}
-            data.update(fields)
-            data["csrf_token"] = extract_csrf(operator_client.get("/bank/sources").data)
-            return operator_client.post(f"/bank/instruments/{card_id}/edit", data=data)
-
+        csrf = extract_csrf(edit_page)
         for card_id in (mother_id, child_id):
-            resp = card_save(card_id, settlement_bank_account_id=str(checking_id),
-                             settlement_valid_from="2026-01-01", settlement_notes="QA synthetic assignment")
+            page = operator_client.get(f"/bank/instruments/{card_id}/edit").data
+            resp = operator_client.post(
+                f"/bank/instruments/{card_id}/settlement",
+                data={
+                    "settlement_bank_account_id": str(checking_id),
+                    "valid_from": "2026-01-01", "notes": "QA synthetic assignment",
+                    "csrf_token": extract_csrf(page),
+                },
+            )
             check(f"assigning a settlement account to instrument {card_id} redirects back",
                   resp.status_code in (302, 303))
 
-        resp = card_save(mother_id, cardholder="other", cardholder_name="QA Test Holder",
-                         cardholder_valid_from="2026-01-01")
+        page = operator_client.get(f"/bank/instruments/{mother_id}/edit").data
+        resp = operator_client.post(
+            f"/bank/instruments/{mother_id}/cardholder",
+            data={
+                "holder_kind": "UNLINKED_PERSON", "holder_display_name": "QA Test Holder",
+                "valid_from": "2026-01-01", "csrf_token": extract_csrf(page),
+            },
+        )
         check("assigning a cardholder redirects back", resp.status_code in (302, 303))
 
-        resp = card_save(mother_id, cardholder="other", cardholder_name="QA Second Holder",
-                         cardholder_valid_from="2026-06-01")
-        history_page = operator_client.get("/bank/sources").data
+        page = operator_client.get(f"/bank/instruments/{mother_id}/edit").data
+        resp = operator_client.post(
+            f"/bank/instruments/{mother_id}/cardholder",
+            data={
+                "holder_kind": "UNLINKED_PERSON", "holder_display_name": "QA Second Holder",
+                "valid_from": "2026-06-01", "csrf_token": extract_csrf(page),
+            },
+        )
+        history_page = operator_client.get(f"/bank/instruments/{mother_id}/edit").data
         check(
             "the cardholder history shows both holders, the previous one closed",
             b"QA Test Holder" in history_page and b"QA Second Holder" in history_page,
@@ -237,7 +238,7 @@ def main() -> int:
             FULL_ACCOUNT_NUMBER.encode() not in history_page,
         )
 
-        listing = operator_client.get("/bank/sources").data
+        listing = operator_client.get("/bank/instruments").data
         check(
             "the instruments list now shows the current cardholder and settlement account",
             # RF-One UI Rules §2: the list shows the holder as "Surname I."
@@ -296,8 +297,8 @@ def main() -> int:
             raw_count_after = s.query(m.RawBankTransaction).count()
             transaction_count_after = len(rows)
 
-        summary_page = operator_client.get("/bank/sources").data
-        check("the Source page reports the deduplication summary",
+        summary_page = operator_client.get("/bank/instruments").data
+        check("the Instruments page reports the deduplication summary",
               b"Accounting deduplication" in summary_page
               and b"Canonical transactions" in summary_page
               and b"Duplicate groups" in summary_page

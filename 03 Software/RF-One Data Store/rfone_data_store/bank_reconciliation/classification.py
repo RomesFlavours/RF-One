@@ -13,7 +13,7 @@ The one place the three-level chain is defined, validated and resolved:
 
 Because the chain is stored on the vocabulary itself, a human
 reconciling a transaction selects **only the WHO** — WHY and WHAT are
-derived. The associations are configured once (Bank > Configuration),
+derived. The associations are configured once (Bank > Classification),
 never re-selected per transaction.
 
 No parallel model is introduced: `BankOccurrence`, `BankTransactionReason`
@@ -84,7 +84,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence,
             blocking_reason=(
                 f"Who {occurrence.canonical_name!r} is INACTIVE and cannot be used for a new "
-                "classification. Reactivate it in Bank > Configuration, or choose another Who."
+                "classification. Reactivate it in Bank > Classification, or choose another Who."
             ),
         )
 
@@ -97,7 +97,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence,
             blocking_reason=(
                 f"Who {occurrence.canonical_name!r} has no default Why. Set one in "
-                "Bank > Configuration before using it in reconciliation."
+                "Bank > Classification before using it in reconciliation."
             ),
         )
     if reason.status != "ACTIVE":
@@ -105,7 +105,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason,
             blocking_reason=(
                 f"Who {occurrence.canonical_name!r} points at the INACTIVE Why {reason.name!r}. "
-                "Reactivate that Why, or point this Who at an active one, in Bank > Configuration."
+                "Reactivate that Why, or point this Who at an active one, in Bank > Classification."
             ),
         )
 
@@ -118,7 +118,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason,
             blocking_reason=(
                 f"Why {reason.name!r} has no What (accounting classification). Assign one in "
-                "Bank > Configuration before using it in reconciliation."
+                "Bank > Classification before using it in reconciliation."
             ),
         )
     if not what.active:
@@ -126,7 +126,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason, accounting_classification=what,
             blocking_reason=(
                 f"Why {reason.name!r} resolves to the INACTIVE What {what.code} — {what.name}. "
-                "Reactivate it, or point the Why at an active What, in Bank > Configuration."
+                "Reactivate it, or point the Why at an active What, in Bank > Classification."
             ),
         )
     if what.statement_type is None:
@@ -134,7 +134,7 @@ def resolve_chain(session: Session, occurrence: "m.BankOccurrence") -> ResolvedC
             occurrence, transaction_reason=reason, accounting_classification=what,
             blocking_reason=(
                 f"What {what.code} — {what.name} is incomplete: it has no statement type "
-                "(Profit & Loss or Balance Sheet) yet. Complete it in Bank > Configuration."
+                "(Profit & Loss or Balance Sheet) yet. Complete it in Bank > Classification."
             ),
         )
 
@@ -432,10 +432,9 @@ def create_transaction_reason(
     session: Session, *, code: str, name: str, accounting_classification_id: int | None,
     description: str | None = None, status: str = "ACTIVE",
 ) -> "m.BankTransactionReason":
-    """A new Why. Its What (accounting destination) is validated when given
-    and may be absent (BANK_WHY_WITHOUT_WHAT_001): Bank reconciliation needs
-    WHO + WHY only; a Why without a destination is shown as such and is never
-    given one by guessing."""
+    """A new Why is refused without a What — the requirement that makes
+    "select only the Who" safe, because every Who leads to a Why that
+    already knows its accounting classification."""
     normalized_code = _normalized_code(code)
     clean_name = (name or "").strip()
     if not clean_name:
@@ -454,8 +453,7 @@ def create_transaction_reason(
         name=clean_name,
         description=(description or "").strip() or None,
         status=status,
-        accounting_classification_id=(_require_usable_what(session, accounting_classification_id)
-                                      if accounting_classification_id is not None else None),
+        accounting_classification_id=_require_usable_what(session, accounting_classification_id),
     )
     session.add(reason)
     session.flush()
@@ -491,6 +489,10 @@ def set_transaction_reason_status(
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
     if status not in ("ACTIVE", "INACTIVE"):
         raise ValueError(f"Why status must be ACTIVE or INACTIVE, got {status!r}.")
+    if status == "ACTIVE" and reason.accounting_classification_id is None:
+        raise ValueError(
+            f"Why {reason.name!r} cannot be activated without a What. Edit it and assign one first."
+        )
     reason.status = status
     session.flush()
     return reason
@@ -534,25 +536,12 @@ def _require_usable_why(session: Session, transaction_reason_id: int | None) -> 
         raise ValueError(f"Why {transaction_reason_id} does not exist.")
     if reason.status != "ACTIVE":
         raise ValueError(f"Why {reason.name!r} is inactive and cannot be a Who's default Why.")
-    # A WHY with no WHAT yet may be the default (BANK_WHY_WITHOUT_WHAT_001:
-    # reconciliation is WHO + WHY, bookkeeping comes later; Product Owner,
-    # 2026-10-10 — "Rent Veicles" as ACURA PMT's default was refused here).
+    if reason.accounting_classification_id is None:
+        raise ValueError(
+            f"Why {reason.name!r} has no What yet and cannot be a Who's default Why. "
+            "Assign its What first."
+        )
     return reason.id
-
-
-def normalize_who_name(name: str | None) -> str:
-    """BANK_WHO_UPPERCASE_001 — THE stored form of a WHO name, wherever it is
-    created or edited: outer spaces removed, upper case."""
-    return (name or "").strip().upper()
-
-
-def _name_taken(session: Session, clean_name: str, occurrence_id: int | None = None) -> "m.BankOccurrence | None":
-    """Another WHO whose name is the same once case and outer spaces are
-    ignored — a duplicate is refused, whatever its spelling."""
-    for other in session.scalars(select(m.BankOccurrence)):
-        if other.id != occurrence_id and normalize_who_name(other.canonical_name) == clean_name:
-            return other
-    return None
 
 
 def create_occurrence(
@@ -561,10 +550,8 @@ def create_occurrence(
     status: str = "ACTIVE",
 ) -> "m.BankOccurrence":
     """A new Who is refused without a default Why — which is what lets the
-    Review show one `Select Who` control and derive everything else.
-    The name is stored in upper case without outer spaces, and a WHO that
-    differs only by case or outer spaces is refused (BANK_WHO_UPPERCASE_001)."""
-    clean_name = normalize_who_name(canonical_name)
+    Review show one `Select Who` control and derive everything else."""
+    clean_name = (canonical_name or "").strip()
     if not clean_name:
         raise ValueError("A Who requires a canonical name.")
     if status not in ("ACTIVE", "INACTIVE"):
@@ -572,9 +559,11 @@ def create_occurrence(
     if session.get(m.BankOccurrenceType, occurrence_type_id) is None:
         raise ValueError(f"Who type {occurrence_type_id} does not exist.")
 
-    existing = _name_taken(session, clean_name)
+    existing = session.scalars(
+        select(m.BankOccurrence).where(m.BankOccurrence.canonical_name == clean_name)
+    ).first()
     if existing is not None:
-        raise ValueError(f"A Who named {existing.canonical_name!r} already exists.")
+        raise ValueError(f"A Who named {clean_name!r} already exists.")
 
     occurrence = m.BankOccurrence(
         canonical_name=clean_name,
@@ -598,15 +587,20 @@ def update_occurrence(
     occurrence = session.get(m.BankOccurrence, occurrence_id)
     if occurrence is None:
         raise ValueError(f"Who {occurrence_id} does not exist.")
-    clean_name = normalize_who_name(canonical_name)
+    clean_name = (canonical_name or "").strip()
     if not clean_name:
         raise ValueError("A Who requires a canonical name.")
     if session.get(m.BankOccurrenceType, occurrence_type_id) is None:
         raise ValueError(f"Who type {occurrence_type_id} does not exist.")
 
-    clash = _name_taken(session, clean_name, occurrence_id)
+    clash = session.scalars(
+        select(m.BankOccurrence).where(
+            m.BankOccurrence.canonical_name == clean_name,
+            m.BankOccurrence.id != occurrence_id,
+        )
+    ).first()
     if clash is not None:
-        raise ValueError(f"A Who named {clash.canonical_name!r} already exists.")
+        raise ValueError(f"A Who named {clean_name!r} already exists.")
 
     occurrence.canonical_name = clean_name
     occurrence.occurrence_type_id = occurrence_type_id

@@ -441,7 +441,8 @@ def main() -> int:
             s.flush()
             explanation_before = service.record_recognition_decision(
                 s, transaction_id=pre_recognized_bank.id, occurrence_id=occurrence.id,
-                confirmed_by_account_id=None, )
+                confirmed_by_account_id=None, learn_description=False,
+            )
             s.commit()
             explanation_before_id = explanation_before.id
 
@@ -560,7 +561,8 @@ def main() -> int:
                     s, recognition.HumanDecisionRequest(
                         transaction_id=txn.id, occurrence_id=occurrence.id,
                         transaction_reason_id=occurrence.default_transaction_reason_id,
-                        confirmed_by_account_id=None, ),
+                        confirmed_by_account_id=None, learn_description=False,
+                    ),
                 )
                 txn.review_status = "REVIEWED"
             # BANK_RECONCILIATION_STANDARDS_001: a person confirms each row.
@@ -579,7 +581,7 @@ def main() -> int:
             header = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
             result.check(
                 "workbook columns are unchanged by Phase 6B (§26)",
-                header[:12] == list(export.KERMALI_COLUMNS) and header == list(export.EXPORT_COLUMNS),
+                header == list(export.KERMALI_COLUMNS),
             )
             data_rows = list(ws.iter_rows(min_row=2, values_only=True))
             descriptions_in_export = {row[2] for row in data_rows}

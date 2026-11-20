@@ -49,10 +49,7 @@ from rfone_data_store.database import run_migrations_to_head  # noqa: E402
 run_migrations_to_head(os.environ["RFONE_DATABASE_URL"])
 
 import app as web_app  # noqa: E402
-import tempfile as _tempfile  # noqa: E402
-web_app.app.config["BANK_IMPORT_STAGING_DIR"] = _tempfile.mkdtemp(prefix="rfoneweb_staging_")  # never the real staging folder
 from db import SessionFactory  # noqa: E402
-from _bank_upload_helper import upload_and_confirm  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store.bank_reconciliation import service as bank_service  # noqa: E402
@@ -127,10 +124,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         # 1. Three-tab navigation, active state, and no misleading link.
         # =================================================================
         pages = {
-            "/bank": "import", "/bank/sources": "source",
+            "/bank": "import", "/bank/instruments": "instruments",
             "/bank/review": "review", "/bank/export": "export",
         }
-        tab_labels = ("Import and Review", "Review Transactions", "Monthly Export", "Source")
+        tab_labels = ("Import and Review", "Instruments", "Review Transactions", "Monthly Export")
         for path in pages:
             html = client.get(path).data.decode("utf-8")
             check(
@@ -162,7 +159,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         # nav block itself, since "Monthly Export" also appears in <title>.
         for path in pages:
             html = client.get(path).data.decode("utf-8")
-            nav_start = html.index('<nav class="module-tabs')
+            nav_start = html.index('<nav class="module-tabs"')
             nav = html[nav_start:html.index("</nav>", nav_start)]
             positions = [nav.index(label) for label in tab_labels]
             check(f"{path} keeps the tabs in the same order", positions == sorted(positions))
@@ -253,36 +250,26 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
                   None not in (card_2915, card_3144, checking))
             check("a new instrument starts with no Legal Entity", card_2915.legal_entity_id is None)
 
-        # BANK_SOURCE_EDIT_AND_ENTITIES_001: one Edit per Source, in the
-        # Source modal; the former Card settings page lands there.
         resp = client.get(f"/bank/instruments/{card_2915_id}/edit")
-        check("the retired Card settings page opens the Source modal for that Source",
-              resp.status_code == 302 and resp.headers["Location"].endswith(f"/bank/sources?edit={card_2915_id}"))
-        edit_html = client.get("/bank/sources").data.decode("utf-8")
-        # BANK_EXPORT_BY_OWNER_001 — a Source with no owner is flagged: its
-        # movements belong to no owner's Monthly Export.
-        check("the Source list warns that a Source with no owner is left out of the export",
-              "Not configured" in edit_html and "Monthly Export" in edit_html and "not attributed" in edit_html)
+        check("an Edit page exists for a Payment Instrument", resp.status_code == 200)
+        edit_html = resp.data.decode("utf-8")
+        check("the Edit page warns that a missing Company blocks the export",
+              "Monthly Export" in edit_html and "blocked" in edit_html)
 
         # Now that tables actually have rows, check the responsive markup
         # the stacked narrow-viewport layout depends on.
-        home_html = client.get("/bank/sources").data.decode("utf-8")
-        with SessionFactory() as s:
-            source_count = s.scalar(select(func.count(m.PaymentInstrument.id)))
-        check("/bank/sources lists exactly one Edit button per Source, and no Card settings",
-              home_html.count("data-source-edit") == source_count
-              and "Card settings" not in home_html
-              and f'href="/bank/instruments/{card_2915_id}/edit"' not in home_html,
-              f"{home_html.count('data-source-edit')} vs {source_count}")
+        home_html = client.get("/bank/instruments").data.decode("utf-8")
+        check("/bank/instruments lists an Edit button per instrument",
+              f'href="/bank/instruments/{card_2915_id}/edit"' in home_html)
         check(
-            "/bank/sources tables use the compact + stackable table classes",
+            "/bank/instruments tables use the compact + stackable table classes",
             'class="table-compact table-stack"' in home_html,
         )
-        check("/bank/sources table cells carry a data-label for the stacked layout",
+        check("/bank/instruments table cells carry a data-label for the stacked layout",
               home_html.count("data-label=") >= 9)
 
         # Edit every editable field at once, including the Legal Entity.
-        csrf = csrf_from("/bank/sources")
+        csrf = csrf_from(f"/bank/instruments/{card_2915_id}/edit")
         client.post(f"/bank/instruments/{card_2915_id}/edit", data={
             "display_name": "Chase Visa ··2915", "institution": "CHASE",
             "instrument_type": "CREDIT_CARD", "last_four": "2915",
@@ -303,7 +290,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
                       m.PaymentInstrument.display_name == "Chase Card 2915")) is None)
 
         # Changing the Legal Entity again is a normal edit.
-        csrf = csrf_from("/bank/sources")
+        csrf = csrf_from(f"/bank/instruments/{card_2915_id}/edit")
         client.post(f"/bank/instruments/{card_2915_id}/edit", data={
             "display_name": "Chase Visa ··2915", "institution": "CHASE",
             "instrument_type": "CREDIT_CARD", "last_four": "2915",
@@ -316,7 +303,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
                   s.get(m.PaymentInstrument, card_2915_id).legal_entity_id == entity_b_id)
 
         # A conflicting configuration is refused, not silently accepted.
-        csrf = csrf_from("/bank/sources")
+        csrf = csrf_from(f"/bank/instruments/{card_3144_id}/edit")
         resp = client.post(f"/bank/instruments/{card_3144_id}/edit", data={
             "display_name": "Chase Card 3144", "institution": "Chase",
             "instrument_type": "CREDIT_CARD", "last_four": "2915",
@@ -345,7 +332,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         check("the Edit endpoint rejects a request with no CSRF token", resp.status_code == 400)
 
         # The full account number is never rendered.
-        csrf = csrf_from("/bank/sources")
+        csrf = csrf_from(f"/bank/instruments/{checking_id}/edit")
         client.post(f"/bank/instruments/{checking_id}/edit", data={
             "display_name": "Chase Checking 0214", "institution": "Chase",
             "instrument_type": "BANK_ACCOUNT", "last_four": "",
@@ -353,10 +340,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "legal_entity_id": str(entity_a_id), "currency": "USD",
             "linked_instrument_id": "", "status": "ACTIVE", "csrf_token": csrf,
         })
-        listing = client.get("/bank/sources").data.decode("utf-8")
+        listing = client.get("/bank/instruments").data.decode("utf-8")
         check("the instrument list never shows a full account number",
               "000123456789214" not in listing)
-        check("the instrument list shows only the last four digits", ">··9214<" in listing.replace(" ", "").replace("\n", ""))
+        check("the instrument list shows only the last four digits", ">9214<" in listing.replace(" ", "").replace("\n", ""))
 
         # =================================================================
         # 4. Chase recognition by file name: date and (1)/(2) ignored.
@@ -385,10 +372,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "05/04/2026,05/05/2026,SYNTHETIC MERCHANT B,Food,Sale,-31.50,\n"
         ).encode("utf-8")
         csrf = csrf_from("/bank")
-        upload_and_confirm(client, {
+        client.post("/bank/upload", data={
             "csrf_token": csrf,
             "files": (io.BytesIO(no_card_csv), "Chase2915_Activity_20260920 (1).csv"),
-        })
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             check(
@@ -400,22 +387,19 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
                   s.scalar(select(m.BankImportBatch.row_count).where(m.BankImportBatch.id == batch.id)) == 2)
             name_batch_id = batch.id
 
-        def service_import(content: bytes, name: str):
-            with SessionFactory() as s:
-                result = bank_service.import_csv(s, file_bytes=content, original_file_name=name,
-                                                 uploaded_by_account_id=None)
-                s.commit()
-                return result.batch.id
-
         # =================================================================
-        # 5. Per-row recognition through the `Card` column (service level).
+        # 5. Per-row recognition through the `Card` column.
         # =================================================================
         mixed_card_csv = chase_card_csv(
             "XXXX XXXX XXXX 2915,05/06/2026,05/07/2026,SYNTHETIC CARD A ROW,Food,Sale,-10.00,\n",
             "XXXX XXXX XXXX 3144,05/06/2026,05/07/2026,SYNTHETIC CARD B ROW,Food,Sale,-20.00,\n",
             "XXXX XXXX XXXX 3144,05/08/2026,05/09/2026,SYNTHETIC CARD B ROW TWO,Food,Sale,-30.00,\n",
         )
-        service_import(mixed_card_csv, "Chase9999_Activity_20260920.csv")
+        csrf = csrf_from("/bank")
+        client.post("/bank/upload", data={
+            "csrf_token": csrf,
+            "files": (io.BytesIO(mixed_card_csv), "Chase9999_Activity_20260920.csv"),
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             mixed_batch_id = batch.id
@@ -433,21 +417,6 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             check("the Card column wins over the file name",
                   len(by_instrument.get(card_3144_id, [])) == 2)
             mixed_txn_id = by_instrument[card_2915_id][0].id
-
-        web_mixed = chase_card_csv(
-            "XXXX XXXX XXXX 2915,05/16/2026,05/17/2026,SYNTHETIC WEB MIXED A,Food,Sale,-11.00,\n",
-            "XXXX XXXX XXXX 3144,05/16/2026,05/17/2026,SYNTHETIC WEB MIXED B,Food,Sale,-21.00,\n",
-        )
-        csrf = csrf_from("/bank")
-        upload_and_confirm(client, {"csrf_token": csrf,
-                                    "files": (io.BytesIO(web_mixed), "Chase3144_Activity_20260921.csv")})
-        with SessionFactory() as s:
-            web_batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
-            web_instruments = {t.payment_instrument_id for t in s.scalars(select(m.FinancialTransaction).where(
-                m.FinancialTransaction.import_batch_id == web_batch.id))}
-        check("web Import: a multi-card file goes whole to the Source its file name names; in-file cards never block",
-              web_batch.payment_instrument_id == card_3144_id and web_instruments == {card_3144_id},
-              f"{web_batch.payment_instrument_id} {web_instruments}")
 
         # Assigning such a batch as a whole is refused with a usable message.
         csrf = csrf_from("/bank")
@@ -470,7 +439,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "institution": "First Citizens", "display_name": "First Citizens Operating",
             "instrument_type": "BANK_ACCOUNT", "csrf_token": csrf,
         })
-        service_import(first_citizens_csv(*fc_rows), "AccountHistory.csv")
+        client.post("/bank/upload", data={
+            "csrf_token": csrf,
+            "files": (io.BytesIO(first_citizens_csv(*fc_rows)), "AccountHistory.csv"),
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             fc_one = s.scalars(select(m.PaymentInstrument).where(
                 m.PaymentInstrument.display_name == "First Citizens Operating")).first()
@@ -491,30 +463,13 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         ambiguous_csv = first_citizens_csv(
             "XXXXXX7470,06/02/2026,,SYNTHETIC FC SECOND MONTH,75.00,,Posted,5265.00\n",
         )
-        # BANK_EXPORT_ACTIONABLE_BLOCKERS_001: a file whose own Source cannot
-        # be identified no longer becomes an unresolved batch through Import —
-        # its Confirm is refused, and nothing is imported.
-        with SessionFactory() as s:
-            batches_before = s.scalar(select(func.count(m.BankImportBatch.id)))
-        refused = upload_and_confirm(client, {
+        client.post("/bank/upload", data={
             "csrf_token": csrf,
             "files": (io.BytesIO(ambiguous_csv), "AccountHistory.csv"),
-        })
-        with SessionFactory() as s:
-            check("an ambiguous First Citizens file is a blocking Import issue: Confirm imports nothing",
-                  s.scalar(select(func.count(m.BankImportBatch.id))) == batches_before,
-                  str(refused.status_code))
-        # Such batches exist from before (legacy data): the resolution below
-        # is the authoritative fix the Monthly Export links to.
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             fc_two_id = s.scalar(select(m.PaymentInstrument.id).where(
                 m.PaymentInstrument.display_name == "First Citizens Payroll"))
-            bank_service.import_csv(
-                s, file_bytes=ambiguous_csv, original_file_name="AccountHistory.csv",
-                uploaded_by_account_id=None,
-            )
-            s.commit()
-        with SessionFactory() as s:
             ambiguous_batch = s.scalars(
                 select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             ambiguous_batch_id = ambiguous_batch.id
@@ -549,7 +504,11 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         reuse_csv = first_citizens_csv(
             "XXXXXX7470,07/02/2026,,SYNTHETIC FC THIRD MONTH,60.00,,Posted,5205.00\n",
         )
-        service_import(reuse_csv, "AccountHistory.csv")
+        csrf = csrf_from("/bank")
+        client.post("/bank/upload", data={
+            "csrf_token": csrf,
+            "files": (io.BytesIO(reuse_csv), "AccountHistory.csv"),
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             reused_batch = s.scalars(
                 select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
@@ -578,17 +537,16 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "XXXXXX7470,08/02/2026,,SYNTHETIC FC FOURTH MONTH,45.00,,Posted,5160.00\n",
         )
         csrf = csrf_from("/bank")
-        with SessionFactory() as s:
-            batches_before = s.scalar(select(func.count(m.BankImportBatch.id)))
-        upload_and_confirm(client, {
+        client.post("/bank/upload", data={
             "csrf_token": csrf,
             "files": (io.BytesIO(disabled_csv), "AccountHistory.csv"),
-        })
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
-            # Without the rule the file is ambiguous again: its Source cannot
-            # be identified, so its Confirm is refused (nothing imported).
+            after_disable = s.scalars(
+                select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             check("a disabled rule is no longer applied",
-                  s.scalar(select(func.count(m.BankImportBatch.id))) == batches_before)
+                  after_disable.payment_instrument_id is None,
+                  f"instrument={after_disable.payment_instrument_id}")
 
         # =================================================================
         # 7. REQUIRES_REVIEW is explained, and offers the RIGHT action.
@@ -601,9 +559,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "DEBIT,05/05/2026,SYNTHETIC IDENTICAL ROW,-42.00,ACH_DEBIT,9000.00,\n",
         )
         csrf = csrf_from("/bank")
-        # Candidate duplicates left for later review arise at service level
-        # (the web Import has them decided before Confirm).
-        service_import(dup_csv, "Chase9214_Activity_20260920.csv")
+        client.post("/bank/upload", data={
+            "csrf_token": csrf,
+            "files": (io.BytesIO(dup_csv), "Chase9214_Activity_20260920.csv"),
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             dup_batch = s.scalars(select(m.BankImportBatch).order_by(m.BankImportBatch.id.desc())).first()
             dup_batch_id = dup_batch.id
@@ -686,9 +645,9 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
 
         check("the current assignment is shown after the change",
               b"Chase Card 3144" in client.get("/bank?batches=all").data)
-        html = client.get("/bank/sources").data.decode("utf-8")
+        html = client.get("/bank/instruments").data.decode("utf-8")
         check("the assignment history is visible in the UI",
-              "Source assignment history" in html and "card 3144" in html)
+              "Instrument assignment history" in html and "card 3144" in html)
 
         # A reassignment with no reason is refused.
         csrf = csrf_from("/bank")
@@ -699,10 +658,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
               b"reason is required" in resp.data)
 
         # =================================================================
-        # 9. Single-transaction reassignment — NOT a Review action any more
-        #    (BANK_REVIEW_FOR_WHOM_001). A transaction's Source is provenance,
-        #    corrected upstream (Change Source on the file, above). The
-        #    service capability is kept and exercised directly.
+        # 9. Single-transaction reassignment.
         # =================================================================
         with SessionFactory() as s:
             before_total = s.scalar(select(func.count(m.FinancialTransaction.id)))
@@ -711,15 +667,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "payment_instrument_id": str(card_3144_id),
             "reason": "Collaudo: this row's card was misread.",
             "csrf_token": csrf,
-        })
-        check("Review offers no per-transaction Source reassignment: the route is gone (404)",
-              resp.status_code == 404, str(resp.status_code))
-        with SessionFactory() as s:
-            bank_service.reassign_transaction_instrument(
-                s, transaction_id=mixed_txn_id, payment_instrument_id=card_3144_id,
-                reason="Collaudo: this row's card was misread.", changed_by_account_id=None,
-            )
-            s.commit()
+        }, follow_redirects=True)
         with SessionFactory() as s:
             txn = s.get(m.FinancialTransaction, mixed_txn_id)
             check("a single transaction can be reassigned",
@@ -739,21 +687,15 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             check("the raw row still points at the same normalized transaction",
                   raw is not None and raw.normalized_transaction_id == mixed_txn_id)
 
-        with SessionFactory() as s:
-            try:
-                bank_service.reassign_transaction_instrument(
-                    s, transaction_id=mixed_txn_id, payment_instrument_id=card_2915_id,
-                    reason="", changed_by_account_id=None,
-                )
-                refused = False
-            except ValueError as exc:
-                refused = "reason" in str(exc).lower()
-            s.rollback()
-        check("reassigning a transaction without a reason is refused", refused)
+        resp = client.post(f"/bank/transactions/{mixed_txn_id}/reassign-instrument", data={
+            "payment_instrument_id": str(card_2915_id), "csrf_token": csrf_from("/bank/review"),
+        }, follow_redirects=True)
+        check("reassigning a transaction without a reason is refused",
+              b"reason" in resp.data.lower())
 
         review_html = client.get("/bank/review").data.decode("utf-8")
-        check("Review shows the current Source read-only, with no Reassign control",
-              "Reassign" not in review_html and "Move to" not in review_html)
+        check("Review shows the current instrument and that it was reassigned",
+              "Reassigned" in review_html)
         check("Review's transaction table is compact and stackable",
               'class="table-compact table-stack"' in review_html)
         check("Review's table cells carry a data-label for the stacked layout",
@@ -787,9 +729,10 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
 
         # Re-uploading the identical file is still idempotent after all this.
         csrf = csrf_from("/bank")
-        # Candidate duplicates left for later review arise at service level
-        # (the web Import has them decided before Confirm).
-        service_import(dup_csv, "Chase9214_Activity_20260920.csv")
+        client.post("/bank/upload", data={
+            "csrf_token": csrf,
+            "files": (io.BytesIO(dup_csv), "Chase9214_Activity_20260920.csv"),
+        }, content_type="multipart/form-data")
         with SessionFactory() as s:
             check("re-uploading identical bytes still creates no second batch",
                   s.scalar(select(func.count(m.BankImportBatch.id)).where(
@@ -812,6 +755,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         for path in (
             f"/bank/instruments/{card_2915_id}/edit",
             f"/bank/batches/{dup_batch_id}/reprocess",
+            f"/bank/transactions/{mixed_txn_id}/reassign-instrument",
             f"/bank/source-profiles/{profile_id}",
         ):
             resp = outsider.get(path) if path.endswith("/edit") else outsider.post(path)

@@ -1,61 +1,67 @@
-"""RF-One Web — Bank Reconciliation: the module's pages and their routes.
+"""RF-One Web — Bank Reconciliation V1 (manual CSV import & normalization).
 
-The Bank tabs, in the Product Owner's order:
+Scope is exactly BANK_RECONCILIATION_MANUAL_IMPORT_NORMALIZATION_001: upload
+Chase/First Citizens CSVs, detect format, preserve the original file,
+normalize into the canonical `FinancialTransaction` ledger, and surface
+duplicate candidates and already-imported files for review. No connector,
+no invoice matching, no general ledger.
 
-  Import and Review    `/bank`: upload staged and reviewed before anything is
-                       imported (Confirm / Cancel), Check Sources (source
-                       completeness for the month), Automatic WHO, Review
-                       Missing (BANK_SOURCE_AND_IMPORT_REVIEW_001);
-  Review Transactions  `/bank/review`: To Reconcile / Reconciled
-                       (BANK_TWO_STAGE_REVIEW_001); WHO + WHY decided by a
-                       person (`bank_manual_reconciliation_routes`);
-  Monthly Export       `/bank/export`;
-  Source               `/bank/sources`: the expected financial sources —
-                       accounts, cards, PayPal — create / edit / active
-                       (canonical `PaymentInstrument`); card settings;
-  AI Rules             `/bank/ai-rules` (`bank_ai_rule_routes`). The old
-                       non-AI rules page (`/bank/classification`) was removed
-                       by BANK_RULES_RESET_001;
-  Instructions         `/bank/instructions`.
+Canonical Financial Model Convergence — Phase 3/4/4B/6 (FINANCIAL_MODEL_
+CONVERGENCE_001): every route here uses the canonical `PaymentInstrument`/
+`FinancialTransaction` models. Per Product Owner Decisions 1/7/10, human
+reconciliation review is ONE action inside this same Bank Review
+workflow — confirm/correct the canonical Occurrence (WHO) and Reason
+(WHY) Recognition proposed, with an explicit reuse-for-future choice.
+There is no separate legacy Supplier/Receiving classification action.
 
-`/bank/instruments` and `/bank/monthly` are retired pages kept only as
-redirects for bookmarks. WHAT / WHY / WHO vocabulary is maintained on
-Bank Configuration (`bank_configuration_routes`).
+Phase 6 adds one further, minimal action to the same page: confirming a
+cross-ledger internal-transfer match (`bank_reconciliation/matching.py`)
+when RF-One's own AUTO criteria found insufficient/ambiguous evidence —
+no new page, no general matching application.
 
-Every mutating route is behind `require_domain_access("BANK")` and
-`require_csrf()`, and calls straight into `rfone_data_store.bank_reconciliation`
-— no business logic lives here. Registered from `app.py` via
-`register_bank_routes(app, ...)`; this module never imports `app.py`."""
+BANK_RECONCILIATION_WHO_WHY_WHAT_001 makes the classification
+hierarchical and moves its configuration out of the Review. Review now
+offers exactly ONE control per unclassified transaction — `Select Who` —
+because the WHY and the WHAT are derived from the chosen WHO through the
+associations stored on the vocabulary itself. Those associations are
+configured on the new `Classification` tab (`/bank/classification`,
+fourth and last, after `Monthly Export`), which owns the WHAT catalog,
+the WHY -> WHAT links and the WHO -> WHY links. Every mutating route here
+is behind `require_domain_access("BANK")` and `require_csrf()`, exactly
+like every Bank route that came before it.
+
+Every route calls straight into `rfone_data_store.bank_reconciliation`
+(`service`/`export`/`parsers`) — no business logic is duplicated here.
+Registered from `app.py` via `register_bank_routes(app, ...)`, mirroring
+`compensation_routes.py`'s "pass in collaborators explicitly" convention:
+this module never imports `app.py` itself."""
 
 from __future__ import annotations
 
+import base64
 import calendar
 import json
-import os
 from datetime import date, datetime, timedelta, timezone
 
-from flask import Response, abort, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import Response, abort, current_app, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, or_, select
 
 from rfone_data_store import display_format
 from rfone_data_store import models as m
 from rfone_data_store.bank_reconciliation import accounting_dedup
 from rfone_data_store.bank_reconciliation import card_configuration
+from rfone_data_store.bank_reconciliation import canonical_catalog
+from rfone_data_store.bank_reconciliation import why_catalog
+from rfone_data_store.bank_reconciliation import receiver_candidates
+from rfone_data_store.bank_reconciliation import what_catalog_import
+from rfone_data_store.bank_reconciliation import classification as classification_service
 from rfone_data_store.bank_reconciliation import configuration as configuration_service
 from rfone_data_store.bank_reconciliation import export as export_service
-from rfone_data_store.bank_reconciliation import export_readiness
-from rfone_data_store.bank_reconciliation import import_session
 from rfone_data_store.bank_reconciliation import matching as matching_service
 from rfone_data_store.bank_reconciliation import monthly_source
 from rfone_data_store.bank_reconciliation import parsers
 from rfone_data_store.bank_reconciliation import recognition
 from rfone_data_store.bank_reconciliation import service as bank_service
-from rfone_data_store.bank_reconciliation import review_queues
-from rfone_data_store.bank_reconciliation import row_reconciliation as reconciliation_rows
-
-import bank_import_staging
-import bank_import_session_routes as import_session_routes
-from bank_who_rule_routes import register_bank_who_rule_routes
 
 
 def _parse_optional_date(value: str | None) -> date | None:
@@ -93,9 +99,8 @@ def _months_spanned(batch) -> set[tuple[int, int]]:
 def _flash_control_outcome(outcome) -> None:
     """Say what bringing months under control found, in the operator's words.
 
-    Missing accounts become visible and have to be explained in Check
-    Sources on Import and Review; nothing is closed, deactivated or resolved
-    here."""
+    Missing accounts become visible and have to be explained on Monthly
+    Sources; nothing is closed, deactivated or resolved here."""
     for control in outcome.blocked:
         report = control.report
         flash(
@@ -116,8 +121,8 @@ def _flash_control_outcome(outcome) -> None:
         )
     if outcome.blocked:
         flash(
-            "Resolve them in Check Sources on Import and Review — nothing was closed or "
-            "deactivated by this import.",
+            "Resolve them on Monthly Sources — nothing was closed or deactivated by this "
+            "import.",
             "info",
         )
 
@@ -148,7 +153,7 @@ def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
                 "NO RECONCILIATION CONTROL START is configured, so no month was placed under "
                 "completeness control. The transactions were imported and kept; RF-One simply "
                 "has not been told from which month it is responsible for proving a month "
-                "complete. Set it in Check Sources on Import and Review.",
+                "complete. Set it on Monthly Sources.",
                 "error",
             )
         return
@@ -170,10 +175,7 @@ def _report_missing_accounts(db, covered_months: set[tuple[int, int]]) -> None:
 # and the route redirects exactly as it did before, so no caller can turn a
 # Bank form into a redirect to an address of its choosing.
 RETURN_IMPORT_REVIEW = "import_review"
-# "instruments" is the value forms sent before the Source page replaced
-# Instruments; both lead to Source.
 RETURN_INSTRUMENTS = "instruments"
-RETURN_SOURCES = "sources"
 
 _MIN_YEAR, _MAX_YEAR = 2000, 2100
 
@@ -201,9 +203,9 @@ def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
 
 
 def _monthly_sources_view(db, period) -> dict:
-    """The selected-month source-completeness facts shown by Check Sources
-    on `/bank` (BANK_SOURCE_AND_IMPORT_REVIEW_001 retired the separate
-    Monthly Sources page; its logic lives here, unchanged).
+    """The selected-month Monthly Sources facts, for `/bank/monthly` and for
+    the Check Sources section of `/bank` alike — one implementation, so the
+    two pages can never disagree about a month.
 
     An OPEN month re-evaluates on every view, so the screen is never stale;
     a COMPLETE one is history and is read as-is (`refresh_coverage` leaves
@@ -251,8 +253,8 @@ def _source_attention(coverages) -> list[dict]:
 
     Exactly the rows `monthly_source.evaluate` turns into blockers: no
     source file received and no human resolution. Accounts and cards that
-    are already covered or resolved are not listed — the full table is the
-    Check Sources detail on the same page."""
+    are already covered or resolved are not listed — the full table stays
+    on Monthly Sources."""
     items = []
     for coverage in coverages:
         if coverage.source_received or coverage.is_resolved:
@@ -278,9 +280,8 @@ def _source_attention(coverages) -> list[dict]:
 
 # The WHO status of a month's transactions, read from their CURRENT
 # decision and nothing else. Only the WHO is looked at: never the Why, the
-# What or the decision status, which also speaks about purpose. (The
-# "learned rule" source went with the old rule system, BANK_RULES_RESET_001:
-# an automatic WHO now comes from an AI rule.)
+# What or the decision status, which also speaks about purpose.
+WHO_FROM_LEARNED_RULE = "learned_rule"
 WHO_FROM_HUMAN = "human"
 WHO_FROM_OTHER_AUTOMATIC = "other_automatic"
 WHO_MISSING = "missing"
@@ -291,13 +292,15 @@ def _who_source(explanation) -> str:
         return WHO_MISSING
     if explanation.decision_source == "HUMAN":
         return WHO_FROM_HUMAN
+    if explanation.decision_source == "RULE" and explanation.recognition_rule_id is not None:
+        return WHO_FROM_LEARNED_RULE
     return WHO_FROM_OTHER_AUTOMATIC
 
 
 def _who_status_counts(db, transactions) -> dict[str, int]:
     """How many of `transactions` have a WHO, and where it came from."""
     counts = dict.fromkeys(
-        (WHO_FROM_HUMAN, WHO_FROM_OTHER_AUTOMATIC, WHO_MISSING), 0,
+        (WHO_FROM_LEARNED_RULE, WHO_FROM_HUMAN, WHO_FROM_OTHER_AUTOMATIC, WHO_MISSING), 0,
     )
     explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
     explanations = {
@@ -331,18 +334,18 @@ def register_bank_routes(
             select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
         ).all()
 
-    def _payment_instruments(db):
-        """The PAYMENT sources — the only ones a bank file, a transaction or a
-        file recognition rule can be assigned to. A purchase platform is a
-        documentary source (BANK_PURCHASE_PLATFORM_SOURCE_001)."""
-        return [i for i in _instruments(db) if i.is_payment_source]
+    def _active_legal_entities(db):
+        return db.scalars(
+            select(m.LegalEntity).where(m.LegalEntity.status == "ACTIVE")
+            .order_by(m.LegalEntity.legal_name)
+        ).all()
 
     def _return_redirect(default, *, year: int | None = None, month: int | None = None):
         """Where a Bank POST goes when it is done.
 
         `return_to` may name one of two Bank pages and nothing else: Import
         and Review (for the month given, when it is a real month) or
-        Source. Without it — or with any other value — the route's own
+        Instruments. Without it — or with any other value — the route's own
         `default` redirect is returned unchanged."""
         target = request.form.get("return_to")
         if target == RETURN_IMPORT_REVIEW:
@@ -350,8 +353,8 @@ def register_bank_routes(
             if selected is None:
                 return redirect(url_for("bank_home"))
             return redirect(url_for("bank_home", year=selected[0], month=selected[1]))
-        if target in (RETURN_INSTRUMENTS, RETURN_SOURCES):
-            return redirect(url_for("bank_sources"))
+        if target == RETURN_INSTRUMENTS:
+            return redirect(url_for("bank_instruments"))
         return default
 
     def _form_month() -> dict:
@@ -380,16 +383,7 @@ def register_bank_routes(
         show_all_batches = request.args.get("batches") == "all"
 
         with SessionFactory() as db:
-            # The Import Set Review of a file set waiting for Confirm or
-            # Cancel — only the uploader's own, and only while undecided.
-            staged = bank_import_staging.load(
-                _staging_root(), request.args.get("staged"), account_id=_current_account(db).id,
-            )
-            if staged is not None:
-                # BANK_TWO_PASS_IMPORT_001: a staged set is handled on its
-                # import session page.
-                return redirect(url_for("bank_import_session", token=staged.token))
-            instruments = _payment_instruments(db)  # upload / resolve / Change Source choices
+            instruments = _instruments(db)
             instruments_by_id = {i.id: i for i in instruments}
 
             # --- 1 Import: this month's source files, plus any file of any
@@ -413,8 +407,7 @@ def register_bank_routes(
                 elif state is not None and state.action is not None:
                     pending_batches.append(batch)
 
-            # --- 2 Check Sources: the month's source completeness (the
-            # former Monthly Sources page, now only here).
+            # --- 2 Check Sources: the same facts as Monthly Sources.
             period = monthly_source.get_period(db, year, month)
             monthly = _monthly_sources_view(db, period)
             source_attention = _source_attention(monthly["coverages"])
@@ -450,9 +443,6 @@ def register_bank_routes(
                 unresolved_count=unresolved_count,
                 source_attention=source_attention,
                 RETURN_IMPORT_REVIEW=RETURN_IMPORT_REVIEW,
-                monthly_return_to=RETURN_IMPORT_REVIEW,
-                staged_token=staged.token if staged else None,
-                import_review=staged.manifest.get("review") if staged else None,
                 **monthly,
             )
 
@@ -465,108 +455,39 @@ def register_bank_routes(
     @app.route("/bank/instruments")
     @gate
     def bank_instruments():
-        """Retired page (BANK_SOURCE_AND_IMPORT_REVIEW_001): Instruments is
-        now Source. Kept so bookmarks and old links land on Source."""
-        return redirect(url_for("bank_sources"))
-
-    def _source_page_context(db, instruments, *, open_source_id=None) -> dict:
-        """Everything the ONE Source modal needs, and each Source's Edit data
-        (BANK_TWO_PASS_IMPORT_001): shared by the Source page and the import
-        session, so the modal behaves identically on both."""
-        settlement_accounts, cardholders, derived_owners, card_warnings, card_histories = {}, {}, {}, {}, {}
-        for instrument in instruments:
-            # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001 /
-            # BANK_SOURCE_EDIT_AND_ENTITIES_001 — the owning Entity (company
-            # or person), derived as the Company always was: for a card,
-            # through its settlement account, never its own value or holder.
-            owner = card_configuration.owner_entity_for(db, instrument=instrument, on_date=date.today())
-            if owner is None:
-                # An LLC with no ReportingEntity yet is still its owner.
-                legal = card_configuration.legal_entity_for(db, instrument=instrument, on_date=date.today())
-                owner = {"name": legal.legal_name, "entity_type": "LEGAL"} if legal is not None else None
-            derived_owners[instrument.id] = owner
-            if instrument.instrument_type == "CREDIT_CARD":
-                settlement_accounts[instrument.id] = card_configuration.current_settlement_account(db, instrument.id)
-                cardholders[instrument.id] = card_configuration.current_cardholder(db, instrument.id)
-                card_warnings[instrument.id] = card_configuration.configuration_warning(db, instrument)
-                card_histories[instrument.id] = {
-                    "settlement": [
-                        {"id": row.id, "account_id": row.settlement_bank_account_id,
-                         "valid_from": row.valid_from.isoformat(),
-                         "valid_to": row.valid_to.isoformat() if row.valid_to else "",
-                         "notes": row.notes or ""}
-                        for row in card_configuration.settlement_history(db, instrument.id)
-                    ],
-                    "holder": [
-                        {"id": row.id, "kind": row.holder_kind,
-                         "identity_id": row.holder_acting_identity_id or "",
-                         "employee_id": row.holder_employee_id or "",
-                         "name": row.holder_display_name, "valid_from": row.valid_from.isoformat(),
-                         "valid_to": row.valid_to.isoformat() if row.valid_to else "",
-                         "notes": row.notes or ""}
-                        for row in card_configuration.cardholder_history(db, instrument.id)
-                    ],
-                }
-        owner_values = configuration_service.owner_values(db, instruments)
-        source_edit_data = {}
-        for instrument in instruments:
-            settlement = settlement_accounts.get(instrument.id)
-            holder = cardholders.get(instrument.id)
-            owner = derived_owners.get(instrument.id)
-            owner_name = (owner.get("name") if isinstance(owner, dict) else owner.name) if owner else ""
-            if holder is None:
-                holder_choice = ""
-            elif holder.holder_kind == "ACTING_IDENTITY":
-                holder_choice = f"identity:{holder.holder_acting_identity_id}"
-            elif holder.holder_kind == "EMPLOYEE":
-                holder_choice = f"employee:{holder.holder_employee_id}"
-            else:
-                holder_choice = "other"
-            identifier = instrument.external_account_identifier
-            source_edit_data[instrument.id] = {
-                "id": instrument.id,
-                "url": url_for("bank_instrument_edit", instrument_id=instrument.id),
-                "display_name": instrument.display_name,
-                "instrument_type": instrument.instrument_type,
-                "institution": instrument.institution or "",
-                "last_four": instrument.last_four or "",
-                "account_hint": ("··" + identifier[-4:]) if identifier else "",
-                "owner_entity": owner_values.get(instrument.id, ""),
-                "derived_owner": owner_name,
-                "currency": instrument.currency or "",
-                "linked_instrument_id": instrument.linked_instrument_id or "",
-                "status": instrument.status,
-                "settlement_bank_account_id": settlement.id if settlement else "",
-                "cardholder": holder_choice,
-                "cardholder_name": holder.holder_display_name if holder else "",
-                "history": card_histories.get(instrument.id),
-            }
-        return {
-            "instruments": instruments, "instruments_by_id": {i.id: i for i in instruments},
-            "settlement_accounts": settlement_accounts, "cardholders": cardholders,
-            "derived_owners": derived_owners, "card_warnings": card_warnings, "card_histories": card_histories,
-            "owner_choices": configuration_service.owner_choices(db), "owner_values": owner_values,
-            "cardholder_candidates": _cardholder_candidates(db),
-            "bank_accounts": [i for i in instruments if i.instrument_type == "BANK_ACCOUNT"],
-            "today": date.today().isoformat(), "open_source_id": open_source_id,
-            "source_edit_data": source_edit_data,
-        }
-
-    @app.route("/bank/sources")
-    @gate
-    def bank_sources():
-        """Source — the stable setup list of every source RF-One expects
-        financial data from (bank accounts, cards, PayPal, ...). One row per
-        canonical `PaymentInstrument`; the page says Source, the model keeps
-        its name. Create and edit happen in one modal on this page; the
-        file-recognition rules, the assignment history and the accounting
-        deduplication summary stay available, collapsed, below the list."""
+        """Instruments — the permanent configuration the monthly work relies
+        on: Payment Instruments, saved source rules, the assignment history
+        and the accounting deduplication summary."""
         with SessionFactory() as db:
             instruments = _instruments(db)
+            legal_entities = _active_legal_entities(db)
             instrument_warnings = {
                 i.id: bank_service.instrument_export_warning(i) for i in instruments
             }
 
+            # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001. Resolved
+            # server-side so the template states facts instead of deriving
+            # them: for a card, the Company comes through its settlement
+            # account, never from the card's own value and never from its
+            # holder.
+            settlement_accounts = {}
+            cardholders = {}
+            derived_companies = {}
+            card_warnings = {}
+            for instrument in instruments:
+                derived_companies[instrument.id] = card_configuration.legal_entity_for(
+                    db, instrument=instrument, on_date=date.today(),
+                )
+                if instrument.instrument_type == "CREDIT_CARD":
+                    settlement_accounts[instrument.id] = (
+                        card_configuration.current_settlement_account(db, instrument.id)
+                    )
+                    cardholders[instrument.id] = card_configuration.current_cardholder(
+                        db, instrument.id,
+                    )
+                    card_warnings[instrument.id] = card_configuration.configuration_warning(
+                        db, instrument,
+                    )
             dedup = accounting_dedup.summarize(db)
 
             source_profiles = db.scalars(
@@ -581,13 +502,12 @@ def register_bank_routes(
             ).all()
 
             return render_template(
-                "bank_sources.html",
-                instrument_warnings=instrument_warnings,
+                "bank_instruments.html", instruments=instruments,
+                legal_entities=legal_entities, instrument_warnings=instrument_warnings,
                 source_profiles=source_profiles, assignment_audits=assignment_audits,
+                settlement_accounts=settlement_accounts, cardholders=cardholders,
+                derived_companies=derived_companies, card_warnings=card_warnings,
                 dedup=dedup,
-                # Opens the Source modal on this Source — where the retired
-                # Card settings page and "Open Source" links now land.
-                **_source_page_context(db, instruments, open_source_id=request.args.get("edit", type=int)),
             )
 
     # -----------------------------------------------------------------
@@ -616,238 +536,117 @@ def register_bank_routes(
             "status": form.get("status") or "ACTIVE",
         }
 
-    def _wants_json() -> bool:
-        """The Source modal saves with fetch and stays open on an error;
-        a plain form post keeps the redirect behaviour it always had."""
-        return request.headers.get("X-Requested-With") == "fetch"
-
-    def _save_card_settings(db, card, form, account_id) -> bool:
-        """A card's settlement account and cardholder, from the Source modal
-        — each a historized fact with its effective date, written ONLY
-        through the card configuration service (a change closes the previous
-        period, never overwrites it). Returns whether the settlement account
-        changed (the caller then recomputes accounting deduplication).
-        Nothing is committed here."""
-        changed_settlement = False
-        if "settlement_bank_account_id" in form:
-            target = form.get("settlement_bank_account_id", type=int) or None
-            current = card_configuration.current_settlement_account(db, card.id)
-            if target is None and current is not None:
-                raise ValueError(
-                    "A card's settlement account is never removed: choose the account it settles to "
-                    "from a date instead."
-                )
-            if target is not None and (current is None or current.id != target):
-                card_configuration.assign_settlement_account(
-                    db, credit_card_payment_instrument_id=card.id, settlement_bank_account_id=target,
-                    valid_from=_form_date("settlement_valid_from"),
-                    notes=form.get("settlement_notes"), created_by_account_id=account_id,
-                )
-                changed_settlement = True
-        choice = (form.get("cardholder") or "").strip()
-        if choice:
-            kind, _, raw = choice.partition(":")
-            holder = {"holder_kind": m.CARD_HOLDER_KIND_UNLINKED_PERSON, "holder_acting_identity_id": None,
-                      "holder_employee_id": None,
-                      "holder_display_name": (form.get("cardholder_name") or "").strip() or None}
-            if kind == "identity" and raw.isdigit():
-                holder.update(holder_kind=m.CARD_HOLDER_KIND_ACTING_IDENTITY,
-                              holder_acting_identity_id=int(raw), holder_display_name=None)
-            elif kind == "employee" and raw.isdigit():
-                holder.update(holder_kind=m.CARD_HOLDER_KIND_EMPLOYEE,
-                              holder_employee_id=int(raw), holder_display_name=None)
-            elif kind != "other":
-                raise ValueError("The cardholder could not be read; reload the page and try again.")
-            current = card_configuration.current_cardholder(db, card.id)
-            unchanged = current is not None and current.holder_kind == holder["holder_kind"] and (
-                (kind == "identity" and current.holder_acting_identity_id == holder["holder_acting_identity_id"])
-                or (kind == "employee" and current.holder_employee_id == holder["holder_employee_id"])
-                or (kind == "other" and current.holder_display_name == holder["holder_display_name"]))
-            if not unchanged:
-                card_configuration.assign_cardholder(
-                    db, credit_card_payment_instrument_id=card.id,
-                    valid_from=_form_date("cardholder_valid_from"),
-                    notes=form.get("cardholder_notes"), created_by_account_id=account_id, **holder,
-                )
-        return changed_settlement
-
-    def _save_source(db, instrument, form, account_id):
-        """THE one Source Save (BANK_SOURCE_EDIT_AND_ENTITIES_001), for New
-        and Edit: the Source's own fields, its owner (a company or a person),
-        its Active / Inactive state and — for a card — its settlement
-        account and cardholder, all in the caller's ONE transaction. Any
-        refusal raises before anything is committed, so a Source is never
-        half saved. Every write goes through the service that owns it."""
-        values = _instrument_form_values(form)
-        legacy_link = values.pop("linked_instrument_id", None)
-        values.pop("status", None)
-        # The owner: one choice among companies and people ("owner_entity");
-        # a post that only knows the former LLC select is still understood.
-        if "owner_entity" in form:
-            legal, personal = configuration_service.resolve_owner(
-                db, form.get("owner_entity"), current=instrument,
-            )
-            values["legal_entity_id"], values["owner_reporting_entity_id"] = legal, personal
-        elif "legal_entity_id" in form:
-            if values["legal_entity_id"] is not None:
-                values["owner_reporting_entity_id"] = None
-        else:
-            values.pop("legal_entity_id")
-
-        if instrument is None:
-            # A card's settlement account is a historized fact: it is taken
-            # from its own field below, never from the legacy link.
-            values["linked_instrument_id"] = None if values["instrument_type"] == "CREDIT_CARD" else legacy_link
-            instrument = bank_service.create_payment_instrument(db, **values)
-        else:
-            # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: for a CREDIT_CARD,
-            # `linked_instrument_id` is a PROJECTION of the historized
-            # settlement assignment, never an independent input — a legacy
-            # value is routed through the canonical service.
-            if instrument.instrument_type == "CREDIT_CARD":
-                current = card_configuration.current_settlement_account(db, instrument.id)
-                if legacy_link is not None and (current is None or current.id != legacy_link):
-                    card_configuration.assign_settlement_account(
-                        db, credit_card_payment_instrument_id=instrument.id,
-                        settlement_bank_account_id=legacy_link, valid_from=date.today(),
-                        notes="Set from the instrument form (routed through the canonical service).",
-                        created_by_account_id=account_id,
-                    )
-                    bank_service.recompute_accounting_deduplication(db)
-            else:
-                values["linked_instrument_id"] = legacy_link
-            # Active / Inactive (BANK_FINAL_RELEASE_BLOCKERS_002): only when
-            # the form carries it, and always through the lifecycle service.
-            requested_status = form.get("status") if "status" in form else None
-            if requested_status in ("ACTIVE", "INACTIVE") and requested_status != instrument.status:
-                monthly_source.set_source_active(
-                    db, instrument=instrument, active=requested_status == "ACTIVE",
-                )
-            # The modal never receives the stored identifier, so an
-            # untouched field means "keep it", not "clear it".
-            if form.get("keep_external_account_identifier"):
-                values.pop("external_account_identifier", None)
-            bank_service.update_payment_instrument(db, instrument_id=instrument.id, **values)
-
-        if instrument.instrument_type == "CREDIT_CARD" and _save_card_settings(db, instrument, form, account_id):
-            bank_service.recompute_accounting_deduplication(db)
-        return instrument
-
-    def _import_file_target(db):
-        """BANK_COMPLETE_SOURCE_ALL_ROWS_001 — the import-session file a
-        Source modal's Save is for (`import_token` + `import_file_index`), or
-        None when the modal was opened anywhere else. Read BEFORE anything is
-        saved, so a gone session or file refuses the Save as a whole."""
-        token = request.form.get("import_token")
-        if not token:
-            return None
-        staged = bank_import_staging.load(_staging_root(), token, account_id=_current_account(db).id)
-        if staged is None:
-            raise ValueError("This import session no longer exists (confirmed, cancelled or expired): "
-                             "nothing was saved.")
-        state = import_session_routes.ensure_state(staged)
-        index = request.form.get("import_file_index", type=int)
-        f = next((x for x in state["files"] if x["index"] == index), None)
-        return staged, state, f
-
-    def _check_import_target(db, target, instrument, created: bool):
-        """The saved Source must fit its file, and a Source created from a
-        file must not repeat one that exists (choose it instead)."""
-        if target is None:
-            return
-        import_session_routes.check_link(target[2], instrument)
-        if created:
-            db.flush()
-            same = import_session.duplicate_of(db, instrument)
-            if same is not None:
-                raise ValueError(f"This Source already exists: {same.display_name}. "
-                                 "Choose it in \u201cSource of this file\u201d instead of creating it again.")
-
-    def _source_saved(db, instrument, created: bool, target=None):
-        warning = bank_service.instrument_export_warning(instrument)
-        display_name, instrument_id = instrument.display_name, instrument.id
-        db.commit()
-        if target is not None:
-            staged, state, f = target
-            import_session_routes.link_file(staged, state, f["index"], instrument, created=created)
-        flash(f"Source {display_name!r} {'created' if created else 'updated'}.", "info")
-        if warning:
-            flash(f"{display_name}: {warning}", "error")
-        if _wants_json():
-            return jsonify({"ok": True, "id": instrument_id})
-        # A plain form post keeps the redirect it always had (`return_to`).
-        return _return_redirect(redirect(url_for("bank_home")))
-
-    def _source_refused(db, exc, instrument_id=None):
-        db.rollback()
-        if _wants_json():
-            return jsonify({"ok": False, "error": str(exc)}), 400
-        flash(str(exc), "error")
-        if instrument_id:
-            return redirect(url_for("bank_sources", edit=instrument_id))
-        return _return_redirect(redirect(url_for("bank_home")))
-
     @app.route("/bank/instruments/new", methods=["POST"])
     @gate
     def bank_instrument_new():
-        """Create a Source — the New Source modal's one Save. A card's
-        settlement account and cardholder may be given at once; each is
-        recorded with its effective date in the same transaction."""
         require_csrf()
+        values = _instrument_form_values(request.form)
         with SessionFactory() as db:
             try:
-                target = _import_file_target(db)
-                instrument = _save_source(db, None, request.form, _current_account(db).id)
-                _check_import_target(db, target, instrument, created=True)
-                return _source_saved(db, instrument, created=True, target=target)
+                instrument = bank_service.create_payment_instrument(db, **values)
+                warning = bank_service.instrument_export_warning(instrument)
+                display_name = instrument.display_name
+                db.commit()
             except ValueError as exc:
-                return _source_refused(db, exc)
+                db.rollback()
+                flash(str(exc), "error")
+                return _return_redirect(redirect(url_for("bank_home")))
+        flash(f"Payment Instrument {display_name!r} created.", "info")
+        if warning:
+            flash(f"{display_name}: {warning}", "error")
+        return _return_redirect(redirect(url_for("bank_home")))
 
     @app.route("/bank/instruments/<int:instrument_id>/edit", methods=["GET", "POST"])
     @gate
     def bank_instrument_edit(instrument_id: int):
-        """POST: the Source modal's one Save (general fields, owner, state
-        and, for a card, settlement account and cardholder), atomic.
-
-        GET: the former Card settings page is retired — one Edit per Source
-        (BANK_SOURCE_EDIT_AND_ENTITIES_001). An old link lands on the Source
-        page with this Source's modal open."""
         with SessionFactory() as db:
             instrument = db.get(m.PaymentInstrument, instrument_id)
             if instrument is None:
                 abort(404)
-            if request.method == "GET":
-                return redirect(url_for("bank_sources", edit=instrument_id))
-            require_csrf()
-            try:
-                target = _import_file_target(db)
-                instrument = _save_source(db, instrument, request.form, _current_account(db).id)
-                _check_import_target(db, target, instrument, created=False)
-                return _source_saved(db, instrument, created=False, target=target)
-            except ValueError as exc:
-                return _source_refused(db, exc, instrument_id)
 
-    # BANK_SOURCE_EDIT_AND_ENTITIES_001 — + New Entity, from the Source modal:
-    # the Entity is created (or an equivalent active one reused) and
-    # committed on its own; the Source is saved later by its own Save.
-    @app.route("/bank/entities/new", methods=["POST"])
-    @gate
-    def bank_entity_new():
-        require_csrf()
-        with SessionFactory() as db:
-            try:
-                entity, created = configuration_service.find_or_create_entity(
-                    db, name=request.form.get("name") or "", kind=request.form.get("kind") or "",
-                    active=request.form.get("active", "1") not in ("0", "", "off"),
-                )
-                db.commit()
-            except ValueError as exc:
-                db.rollback()
-                return jsonify({"ok": False, "error": str(exc)}), 400
-            return jsonify({"ok": True, "created": created, "entity": {
-                "value": f"re:{entity.id}", "label": entity.name,
-                "kind": configuration_service.ENTITY_KIND_LABELS[entity.entity_type],
-                "active": entity.status == "ACTIVE"}})
+            if request.method == "POST":
+                require_csrf()
+                values = _instrument_form_values(request.form)
+
+                # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: for a CREDIT_CARD,
+                # `linked_instrument_id` is a PROJECTION of the historized
+                # settlement assignment, never an independent input. The page
+                # no longer offers the legacy control for a card, but a stale
+                # tab or a scripted post still can — so any value arriving
+                # here is routed through the canonical service, which writes
+                # the historized row, closes the previous period and keeps
+                # the projection in step. Writing the column directly is what
+                # produced the split configuration this task repairs.
+                legacy_link = values.pop("linked_instrument_id", None)
+                if instrument.instrument_type == "CREDIT_CARD":
+                    current = card_configuration.current_settlement_account(db, instrument_id)
+                    if legacy_link is not None and (current is None or current.id != legacy_link):
+                        try:
+                            card_configuration.assign_settlement_account(
+                                db, credit_card_payment_instrument_id=instrument_id,
+                                settlement_bank_account_id=legacy_link,
+                                valid_from=date.today(),
+                                notes="Set from the instrument form (routed through the canonical service).",
+                                created_by_account_id=_current_account(db).id,
+                            )
+                            bank_service.recompute_accounting_deduplication(db)
+                        except ValueError as exc:
+                            db.rollback()
+                            flash(str(exc), "error")
+                            return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+                else:
+                    values["linked_instrument_id"] = legacy_link
+
+                # The lifecycle state is never edited from this form: it
+                # changes only through the Monthly Sources resolutions.
+                values.pop("status", None)
+                try:
+                    bank_service.update_payment_instrument(db, instrument_id=instrument_id, **values)
+                    warning = bank_service.instrument_export_warning(instrument)
+                    display_name = instrument.display_name
+                    db.commit()
+                except ValueError as exc:
+                    db.rollback()
+                    flash(str(exc), "error")
+                    return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+                flash(f"Payment Instrument {display_name!r} updated.", "info")
+                if warning:
+                    flash(f"{display_name}: {warning}", "error")
+                return _return_redirect(redirect(url_for("bank_home")))
+
+            all_instruments = _instruments(db)
+            return render_template(
+                "bank_instrument_edit.html",
+                instrument=instrument,
+                legal_entities=_active_legal_entities(db),
+                instruments=[i for i in all_instruments if i.id != instrument_id],
+                instruments_by_id={i.id: i for i in all_instruments},
+                # A card settles to a BANK_ACCOUNT and never to another card,
+                # so only bank accounts are offered — the UI never proposes a
+                # choice the service layer would then refuse.
+                bank_accounts=[
+                    i for i in all_instruments
+                    if i.instrument_type == "BANK_ACCOUNT" and i.id != instrument_id
+                ],
+                current_settlement=card_configuration.current_settlement_account(db, instrument_id),
+                settlement_history=card_configuration.settlement_history(db, instrument_id),
+                settlement_warning=card_configuration.configuration_warning(db, instrument),
+                current_cardholder=card_configuration.current_cardholder(db, instrument_id),
+                cardholder_history=card_configuration.cardholder_history(db, instrument_id),
+                # BANK_SETTLEMENT_UI_AND_MODAL_REPAIR_001: only HUMAN_USER
+                # identities are offered. A card is held by a person, and
+                # listing SYSTEM / AI_AGENT / EXTERNAL_SERVICE identities —
+                # which is what an unfiltered list showed in QA, where the
+                # only identity is "RF-One System" — offers a choice that is
+                # never correct.
+                cardholder_candidates=_cardholder_candidates(db),
+                today=date.today().isoformat(),
+                export_warning=bank_service.instrument_export_warning(instrument),
+                transaction_count=db.scalar(
+                    select(func.count(m.FinancialTransaction.id))
+                    .where(m.FinancialTransaction.payment_instrument_id == instrument_id)
+                ) or 0,
+            )
 
     # -----------------------------------------------------------------
     # Card configuration — settlement account and cardholder
@@ -871,17 +670,42 @@ def register_bank_routes(
         except ValueError:
             raise ValueError(f"{raw!r} is not a valid date (expected YYYY-MM-DD).") from None
 
-    # BANK_SOURCE_EDIT_AND_ENTITIES_001 — a new settlement account or
-    # cardholder is recorded by the Source modal's one Save
-    # (`_save_card_settings`); the former separate assign routes are retired.
-    # The two correction routes below remain: they fix a past row of the
-    # history, which the modal's History section offers.
+    @app.route("/bank/instruments/<int:instrument_id>/settlement", methods=["POST"])
+    @gate
+    def bank_instrument_settlement_assign(instrument_id: int):
+        """Assign or re-assign the bank account a card settles to.
 
-    def _correction_done(instrument_id, message=None, error=None):
-        if _wants_json():
-            return (jsonify({"ok": True}) if error is None else (jsonify({"ok": False, "error": error}), 400))
-        flash(error or message, "error" if error else "info")
-        return redirect(url_for("bank_sources", edit=instrument_id))
+        A re-assignment closes the previous period rather than overwriting
+        it, and the deduplication recompute that follows is what turns the
+        card's previously un-deduplicable transactions into resolvable
+        ones."""
+        require_csrf()
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                card_configuration.assign_settlement_account(
+                    db,
+                    credit_card_payment_instrument_id=instrument_id,
+                    settlement_bank_account_id=request.form.get(
+                        "settlement_bank_account_id", type=int,
+                    ),
+                    valid_from=_form_date("valid_from"),
+                    notes=request.form.get("notes"),
+                    created_by_account_id=account.id,
+                )
+                outcome = bank_service.recompute_accounting_deduplication(db)
+                db.commit()
+                flash(
+                    "Settlement account saved. Accounting deduplication recomputed: "
+                    f"{outcome.canonical_transactions} canonical, "
+                    f"{outcome.suppressed_transactions} excluded, "
+                    f"{outcome.unresolved_transactions} still without a settlement account.",
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
 
     @app.route(
         "/bank/instruments/<int:instrument_id>/settlement/<int:assignment_id>",
@@ -906,10 +730,41 @@ def register_bank_routes(
                 )
                 bank_service.recompute_accounting_deduplication(db)
                 db.commit()
+                flash("Settlement assignment corrected and deduplication recomputed.", "info")
             except ValueError as exc:
                 db.rollback()
-                return _correction_done(instrument_id, error=str(exc))
-        return _correction_done(instrument_id, "Settlement assignment corrected and deduplication recomputed.")
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
+
+    @app.route("/bank/instruments/<int:instrument_id>/cardholder", methods=["POST"])
+    @gate
+    def bank_instrument_cardholder_assign(instrument_id: int):
+        """Record who holds this card from a given date. Deliberately does
+        NOT recompute deduplication: the holder has no accounting
+        consequence whatsoever."""
+        require_csrf()
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                card_configuration.assign_cardholder(
+                    db,
+                    credit_card_payment_instrument_id=instrument_id,
+                    holder_kind=request.form.get("holder_kind", ""),
+                    holder_acting_identity_id=request.form.get(
+                        "holder_acting_identity_id", type=int,
+                    ) or None,
+                    holder_employee_id=request.form.get("holder_employee_id", type=int) or None,
+                    holder_display_name=request.form.get("holder_display_name"),
+                    valid_from=_form_date("valid_from"),
+                    notes=request.form.get("notes"),
+                    created_by_account_id=account.id,
+                )
+                db.commit()
+                flash("Cardholder recorded.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
 
     @app.route(
         "/bank/instruments/<int:instrument_id>/cardholder/<int:assignment_id>",
@@ -933,10 +788,11 @@ def register_bank_routes(
                     notes=request.form.get("notes"),
                 )
                 db.commit()
+                flash("Cardholder assignment corrected.", "info")
             except ValueError as exc:
                 db.rollback()
-                return _correction_done(instrument_id, error=str(exc))
-        return _correction_done(instrument_id, "Cardholder assignment corrected.")
+                flash(str(exc), "error")
+        return redirect(url_for("bank_instrument_edit", instrument_id=instrument_id))
 
     @app.route("/bank/accounting-dedup/recompute", methods=["POST"])
     @gate
@@ -966,144 +822,100 @@ def register_bank_routes(
         return _return_redirect(redirect(url_for("bank_home")))
 
     # -----------------------------------------------------------------
-    # Import Set Review (BANK_SOURCE_AND_IMPORT_REVIEW_001). The upload is
-    # two steps with a human decision between them:
-    #
-    #   /bank/upload                 stage the files (outside the database),
-    #                                run them through the real import inside
-    #                                a transaction that is rolled back, and
-    #                                show the result in one modal;
-    #   /bank/upload/<token>/confirm import the staged set — once, in one
-    #                                transaction;
-    #   /bank/upload/<token>/cancel  discard it. Nothing was ever written.
+    # Upload — multiple files, format recognition, instrument confirmation.
     # -----------------------------------------------------------------
-
-    def _staging_root() -> str:
-        return bank_import_staging.staging_root(current_app.config.get("BANK_IMPORT_STAGING_DIR"))
-
-    def _staged_redirect(options: dict, **extra):
-        """Back to Import and Review, to the month the upload came from when
-        it came from that page — the same rule `_return_redirect` applies."""
-        if options.get("return_to") == RETURN_IMPORT_REVIEW:
-            selected = _valid_month(options.get("year"), options.get("month"))
-            if selected is not None:
-                return redirect(url_for("bank_home", year=selected[0], month=selected[1], **extra))
-        return redirect(url_for("bank_home", **extra))
 
     @app.route("/bank/upload", methods=["POST"])
     @gate
     def bank_upload():
-        """Stage the selected files and review them. Writes NOTHING to the
-        Bank data: the import is only rehearsed, and rolled back."""
         require_csrf()
+        payment_instrument_id = request.form.get("payment_instrument_id", type=int) or None
         uploaded_files = [f for f in request.files.getlist("files") if f and f.filename]
         if not uploaded_files:
             flash("Select at least one CSV file to upload.", "error")
             return _return_redirect(redirect(url_for("bank_home")), **_form_month())
-        options = {
-            "payment_instrument_id": request.form.get("payment_instrument_id", type=int) or None,
-            "return_to": request.form.get("return_to"),
-            **_form_month(),
-        }
-        files = [(f.filename, f.read()) for f in uploaded_files]
-        root = _staging_root()
-        with SessionFactory() as db:
-            account_id = _current_account(db).id
-        token = bank_import_staging.stage(root, account_id=account_id, files=files, options=options)
-        # BANK_TWO_PASS_IMPORT_001 — the set is handled on its import session:
-        # Pass 1 prepares the Sources file by file, Pass 2 reads and checks
-        # the rows; nothing reaches the Bank data before Confirm.
-        return redirect(url_for("bank_import_session", token=token))
 
-    @app.route("/bank/upload/<token>/confirm", methods=["POST"])
-    @gate
-    def bank_upload_confirm(token: str):
-        """The human's Confirm of an import session (BANK_TWO_PASS_IMPORT_001):
-        every bank file is imported with its Source and the person's row
-        decisions, in ONE transaction — all of it or nothing.
-
-        Only a session whose two passes are complete and whose every row has
-        its decision can be confirmed. The set is CLAIMED first, so a double
-        click or a replayed request finds nothing to import the second time.
-        Purchase files held for their future importer are kept aside."""
-        require_csrf()
-        root = _staging_root()
         with SessionFactory() as db:
-            account_id = _current_account(db).id
-        pending = bank_import_staging.load(root, token, account_id=account_id)
-        if pending is None:
-            flash("This file set was already imported or cancelled, or it has expired. "
-                  "Nothing was imported.", "error")
-            return redirect(url_for("bank_home"))
-        state = import_session_routes.ensure_state(pending)
-        with SessionFactory() as db:
-            incomplete = import_session_routes.incomplete_sources(db, state)
-        ready, why_not = import_session_routes.ready_to_confirm(state, incomplete=incomplete)
-        if not ready:
-            flash(f"Import not confirmed — {why_not}", "error")
-            return redirect(url_for("bank_import_session", token=token))
-        staged = bank_import_staging.claim(root, token, account_id=account_id)
-        if staged is None:
-            flash("This file set was already imported or cancelled. Nothing was imported again.", "error")
-            return redirect(url_for("bank_home"))
-        options = staged.manifest.get("options") or {}
-        contents = {i: content for i, (_name, content) in enumerate(staged.files())}
-        files = [{"index": f["index"], "file_name": f["file_name"], "content": contents[f["index"]],
-                  "source_id": f["source_id"]} for f in import_session_routes.bank_files(state)]
-        try:
-            with SessionFactory() as db:
+            account = _current_account(db)
+            covered_months: set[tuple[int, int]] = set()
+            for uploaded in uploaded_files:
+                data = uploaded.read()
                 try:
-                    results = import_session.import_confirmed(
-                        db, files=files, issues=state["check"]["issues"], decisions=state.get("decisions") or {},
-                        uploaded_by_account_id=account_id,
+                    result = bank_service.import_csv(
+                        db, file_bytes=data, original_file_name=uploaded.filename,
+                        uploaded_by_account_id=account.id, payment_instrument_id=payment_instrument_id,
                     )
-                    db.commit()
-                except Exception as exc:  # noqa: BLE001 — reported, and rolled back whole
+                except parsers.UnrecognizedFormatError as exc:
                     db.rollback()
-                    current_app.logger.exception("Confirmed Bank import failed")
-                    flash(f"IMPORT FAILED — nothing of this file set was imported: {exc}", "error")
-                    return _staged_redirect(options)
-                covered_months = set()
-                for result in results:
-                    covered_months |= _months_spanned(result.batch)
-                    flash(f"{result.batch.original_file_name}: {result.normalized_row_count} transaction(s) "
-                          f"imported to {result.batch.payment_instrument.display_name if result.batch.payment_instrument else '—'}"
-                          + ("" if result.created else " (this exact file was already imported: nothing new)"),
-                          "info")
-                _report_missing_accounts(db, covered_months)
-            held = [f for f in state["files"] if f["status"] == import_session_routes.HELD]
-            if held:
-                kept = os.path.join(root, "held", token)
-                os.makedirs(kept, exist_ok=True)
-                for f in held:
-                    with open(os.path.join(kept, f["file_name"]), "wb") as handle:
-                        handle.write(contents[f["index"]])
-                with open(os.path.join(kept, "sources.json"), "w", encoding="utf-8") as handle:
-                    json.dump({f["file_name"]: f.get("source_id") for f in held}, handle, indent=2)
-                flash("Kept for their importer (not imported): " + ", ".join(f["file_name"] for f in held)
-                      + f" — in {kept}", "info")
-        finally:
-            bank_import_staging.discard(staged)
-        return _staged_redirect(options)
+                    flash(f"{uploaded.filename}: rejected — {exc}", "error")
+                    continue
 
-    @app.route("/bank/upload/<token>/cancel", methods=["POST"])
-    @gate
-    def bank_upload_cancel(token: str):
-        """The human's Cancel: the staged set is deleted. Nothing had been
-        written to the Bank data, so there is nothing to undo."""
-        require_csrf()
-        root = _staging_root()
-        with SessionFactory() as db:
-            account_id = _current_account(db).id
-        staged = bank_import_staging.load(root, token, account_id=account_id)
-        options = (staged.manifest.get("options") if staged else None) or {}
-        bank_import_staging.discard(staged)
-        flash("Import cancelled. Nothing was imported; select the files again to start over.", "info")
-        return _staged_redirect(options)
+                db.commit()
+                if not result.created:
+                    # BANK_MONTHLY_SOURCE_COMPLETENESS_001 §10 — the same
+                    # bytes were already imported, so the normal duplicate
+                    # import STOPS here: no second batch, no duplicate
+                    # transactions. The message names the four facts the
+                    # operator needs to recognise what they already have,
+                    # rather than a bare batch number. Identity is content,
+                    # not file name: a renamed identical file lands here
+                    # too, and a same-named file with different bytes does
+                    # not.
+                    existing = result.batch
+                    instrument = existing.payment_instrument
+                    covered = (
+                        f"{existing.date_range_start} to {existing.date_range_end}"
+                        if existing.date_range_start and existing.date_range_end
+                        else "date range unknown"
+                    )
+                    period_note = ""
+                    if existing.date_range_start is not None:
+                        period_note = (
+                            f", month {existing.date_range_start.strftime('%Y-%m')}"
+                        )
+                    flash(
+                        f"SOURCE FILE ALREADY IMPORTED — {uploaded.filename}: "
+                        f"instrument {instrument.display_name if instrument else 'NOT RESOLVED'}"
+                        f"{period_note}, original batch #{existing.id} "
+                        f"({existing.original_file_name}, {covered}), "
+                        f"imported {existing.uploaded_at:%Y-%m-%d %H:%M}. "
+                        "Nothing was imported again.",
+                        "info",
+                    )
+                    continue
 
-    # -----------------------------------------------------------------
-    # Batch actions after import.
-    # -----------------------------------------------------------------
+                note = f"{uploaded.filename}: {result.batch.detected_format}, {result.parsed_row_count} row(s)"
+                if result.batch.date_range_start and result.batch.date_range_end:
+                    note += f", {result.batch.date_range_start} to {result.batch.date_range_end}"
+                if result.unreadable_row_count:
+                    note += f", {result.unreadable_row_count} unreadable row(s)"
+                if result.candidate_duplicate_count:
+                    note += f", {result.candidate_duplicate_count} candidate duplicate(s)"
+                category = "info"
+                if result.unresolved_row_count:
+                    # The file names an account/card RF-One has never been
+                    # told about. Say WHICH one: "not resolved" on its own
+                    # leaves the operator hunting through the file.
+                    note += (
+                        f" — {result.unresolved_row_count} row(s) reference an account/card "
+                        f"with NO REGISTERED PAYMENT INSTRUMENT ({result.resolution_detail}). "
+                        "Those rows are kept as evidence and attributed to nothing; register "
+                        "the instrument, or assign the batch below"
+                    )
+                    category = "error"
+                if result.batch.payment_instrument_id is None:
+                    note += " — INSTRUMENT NOT RESOLVED, requires manual resolution below"
+                    category = "error"
+                elif result.unreadable_row_count or result.candidate_duplicate_count:
+                    category = "error"
+                if result.batch.overlap_warning:
+                    note += f" — {result.batch.overlap_warning}"
+                flash(note, category)
+                covered_months |= _months_spanned(result.batch)
+
+            _report_missing_accounts(db, covered_months)
+
+        return _return_redirect(redirect(url_for("bank_home")), **_form_month())
 
     @app.route("/bank/batches/<int:batch_id>/resolve-instrument", methods=["POST"])
     @gate
@@ -1119,7 +931,7 @@ def register_bank_routes(
         reason = (request.form.get("reason") or "").strip() or None
         save_profile = bool(request.form.get("save_as_source_profile"))
         if not payment_instrument_id:
-            flash("Select a Source to resolve this batch.", "error")
+            flash("Select a Payment Instrument to resolve this batch.", "error")
             return _return_redirect(redirect(url_for("bank_home")), **_form_month())
         with SessionFactory() as db:
             account = _current_account(db)
@@ -1166,7 +978,7 @@ def register_bank_routes(
         else:
             flash(
                 f"Batch #{batch_id}: no pending row could be resolved — the in-file identifier "
-                "still matches no configured Source.",
+                "still matches no configured Payment Instrument.",
                 "error",
             )
         return _return_redirect(redirect(url_for("bank_home")), **_form_month())
@@ -1215,19 +1027,7 @@ def register_bank_routes(
         return _return_redirect(redirect(url_for("bank_home")))
 
     # -----------------------------------------------------------------
-    # Review — two queues (BANK_TWO_STAGE_REVIEW_001):
-    #
-    #   To Reconcile  the WHO is not yet resolved: Select Who, Rule,
-    #                 duplicate decisions. A row leaves as soon as its
-    #                 current decision names a WHO — or at once when it is
-    #                 an own-account movement, which has no WHO by design.
-    #   Reconciled    the WHO is resolved: the Reconciliation rows (WHY,
-    #                 WHAT, For Whom, Confirm, Automatic / Confirmed).
-    #
-    # Both are views over persisted facts (`review_queues`); only the
-    # selected queue's rows are loaded. Month, instrument and batch filters
-    # apply to both; the former status filter is gone, because the two tabs
-    # ARE the status split.
+    # Review — filter, resolve duplicates, assign classification.
     # -----------------------------------------------------------------
 
     @app.route("/bank/review")
@@ -1235,48 +1035,35 @@ def register_bank_routes(
     def bank_review():
         year = request.args.get("year", type=int)
         month = request.args.get("month", type=int)
-        if not (year and month and 1 <= month <= 12):
-            year = month = None
         payment_instrument_id = request.args.get("payment_instrument_id", type=int)
+        status = request.args.get("status") or None
         # Deep link target for a batch's "Review issues" action, so a
         # concrete batch reason leads straight to the rows it is about.
         batch_id = request.args.get("batch_id", type=int)
-        view = request.args.get("view")
-        if view not in review_queues.VIEWS:
-            view = review_queues.TO_RECONCILE
-        # BANK_REVIEW_SEARCH_001 — the free search (`q`), outer spaces
-        # ignored; empty means no search at all.
-        search = (request.args.get("q") or "").strip()
-        filters = review_queues.ReviewFilters(
-            year=year, month=month, payment_instrument_id=payment_instrument_id, batch_id=batch_id,
-            search=search or None,
-        )
-        # BANK_REVIEW_SORT_001 — the column and direction chosen by a header,
-        # only from the allowed list; anything else is the default order.
-        sort, direction = review_queues.valid_sort(request.args.get("sort"), request.args.get("dir"))
-        tab_args = {"year": year, "month": month, "payment_instrument_id": payment_instrument_id,
-                    "batch_id": batch_id, "q": search or None, "sort": sort, "dir": direction}
 
         with SessionFactory() as db:
-            queue_counts = review_queues.counts(db, filters)
-            transactions = review_queues.queue(db, view, filters, sort=sort, direction=direction)
-            search_summary = review_queues.search_summary(db, view, filters) if search else None
-            instruments = _payment_instruments(db)
-            filter_batch = db.get(m.BankImportBatch, batch_id) if batch_id else None
-            if view == review_queues.RECONCILED:
-                # The Reconciliation page's own rows and editor, for exactly
-                # this queue: one definition of status, WHY, WHAT, For Whom.
-                return render_template(
-                    "bank_reconciliation.html",
-                    view=reconciliation_rows.rows_view(db, transactions),
-                    review_mode=True, review_view=view, queue_counts=queue_counts, tab_args=tab_args,
-                    instruments=instruments, filter_year=year, filter_month=month,
-                    filter_payment_instrument_id=payment_instrument_id, filter_batch_id=batch_id,
-                    filter_batch=filter_batch, row_limit=review_queues.ROW_LIMIT,
-                    search=search, search_summary=search_summary,
-                    return_to=request.full_path.rstrip("?"),
-                    period_label=(f"{calendar.month_name[month]} {year}" if year and month else "all months"),
+            query = select(m.FinancialTransaction).order_by(
+                m.FinancialTransaction.posting_date.desc(),
+                m.FinancialTransaction.id.desc(),
+            )
+            if year and month:
+                last_day = calendar.monthrange(year, month)[1]
+                start, end = date(year, month, 1), date(year, month, last_day)
+                query = query.where(
+                    m.FinancialTransaction.posting_date >= start,
+                    m.FinancialTransaction.posting_date <= end,
                 )
+            if payment_instrument_id:
+                query = query.where(m.FinancialTransaction.payment_instrument_id == payment_instrument_id)
+            if batch_id:
+                query = query.where(m.FinancialTransaction.import_batch_id == batch_id)
+            if status == "CANDIDATE_DUPLICATE":
+                query = query.where(m.FinancialTransaction.duplicate_status == "CANDIDATE_DUPLICATE")
+            elif status == "REQUIRES_REVIEW":
+                query = query.where(m.FinancialTransaction.review_status == "REQUIRES_REVIEW")
+
+            transactions = db.scalars(query.limit(500)).all()
+            instruments = db.scalars(select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)).all()
             instruments_by_id = {i.id: i for i in instruments}
 
             # Canonical Financial Model Convergence — Phase 4B: the current
@@ -1289,14 +1076,49 @@ def register_bank_routes(
                     select(m.BankTransactionExplanation).where(m.BankTransactionExplanation.id.in_(explanation_ids))
                 ).all()
             } if explanation_ids else {}
-            # BANK_MANUAL_WHO_WHY_001 — the "Select WHO / WHY" popup loads its
-            # WHO list and each WHO's WHY on demand
-            # (bank_manual_reconciliation_routes); the page itself only needs
-            # the ids of the ACTIVE WHO (the Rule button's preselection, and
-            # whether any WHO exists at all).
-            active_who_ids = set(db.scalars(
-                select(m.BankOccurrence.id).where(m.BankOccurrence.status == "ACTIVE")
-            ).all())
+            # BANK_RECONCILIATION_WHO_WHY_WHAT_001: the Review offers the
+            # WHO and nothing else. Each candidate carries its derived
+            # Why/What — or, when its chain is incomplete, the concrete
+            # reason it cannot be selected and where to go and fix it.
+            # INACTIVE Whos are included deliberately: the modal shows
+            # them as unselectable WITH the reason, which is far more
+            # useful than a human hunting for a name that silently is not
+            # in the list.
+            occurrences = classification_service.list_occurrences(db)
+            occurrence_types_by_id = {
+                t.id: t for t in classification_service.list_occurrence_types(db)
+            }
+            chains = classification_service.resolve_chains(db, occurrences)
+            who_options = [
+                {
+                    "id": occurrence.id,
+                    "name": occurrence.canonical_name,
+                    "type": (
+                        occurrence_types_by_id[occurrence.occurrence_type_id].name
+                        if occurrence.occurrence_type_id in occurrence_types_by_id else ""
+                    ),
+                    "status": occurrence.status,
+                    "why": (
+                        chains[occurrence.id].transaction_reason.name
+                        if chains[occurrence.id].transaction_reason is not None else None
+                    ),
+                    "what": (
+                        f"{chains[occurrence.id].accounting_classification.code} — "
+                        f"{chains[occurrence.id].accounting_classification.name}"
+                        if chains[occurrence.id].accounting_classification is not None else None
+                    ),
+                    # BANK_FINAL_RELEASE_BLOCKERS_001 — choosing a Who records
+                    # the Who only, so any ACTIVE Who may be chosen; its usual
+                    # Why above is shown as a suggestion and never applied.
+                    "selectable": occurrence.status == "ACTIVE",
+                    "blocking_reason": (
+                        None if occurrence.status == "ACTIVE" else
+                        f"Who {occurrence.canonical_name!r} is inactive. Reactivate it in "
+                        "Bank > Classification, or choose another Who."
+                    ),
+                }
+                for occurrence in occurrences
+            ]
 
             # Canonical Financial Model Convergence — Phase 6: cross-ledger
             # internal-transfer match state for each in-scope transaction —
@@ -1322,24 +1144,32 @@ def register_bank_routes(
             for match in matches:
                 counterpart_by_transaction_id[match.transaction_a_id] = match.transaction_b
                 counterpart_by_transaction_id[match.transaction_b_id] = match.transaction_a
-            # BANK_TWO_STAGE_REVIEW_001 — the same candidates, asked for every
-            # row at once (it was two queries per row: ~4 s for one month).
-            match_candidates_by_transaction_id = matching_service.find_cross_ledger_candidates_for_many(
-                db, [t for t in transactions if t.id not in counterpart_by_transaction_id],
-                require_linked_instrument=False,
-            )
+            match_candidates_by_transaction_id: dict[int, list[m.FinancialTransaction]] = {}
+            for txn in transactions:
+                if txn.id in counterpart_by_transaction_id:
+                    continue
+                candidates = matching_service.find_cross_ledger_candidates(
+                    db, txn, require_linked_instrument=False,
+                )
+                if candidates:
+                    match_candidates_by_transaction_id[txn.id] = candidates
 
-            # BANK_REVIEW_FOR_WHOM_001 — under each row's Source: FOR WHOM,
-            # the Reporting Entity / LLC that benefited. Same definition as
-            # Reconciled (`row_reconciliation.for_whom_values`). The Source
-            # itself is provenance, set by the import, and is not edited here.
-            for_whom_by_transaction_id = reconciliation_rows.for_whom_values(
-                db, transactions, instruments_by_id,
-            )
-            for_whom_entities = db.scalars(
-                select(m.ReportingEntity).where(m.ReportingEntity.status == "ACTIVE")
-                .order_by(m.ReportingEntity.name)
-            ).all()
+            # Instrument-assignment history for the rows on screen: a
+            # transaction that was moved says so, and says why, instead of
+            # silently showing a different instrument than the file it
+            # came from.
+            reassignments_by_transaction_id: dict[int, list] = {}
+            if transaction_ids:
+                for audit in db.scalars(
+                    select(m.BankInstrumentAssignmentAudit)
+                    .where(m.BankInstrumentAssignmentAudit.financial_transaction_id.in_(transaction_ids))
+                    .order_by(m.BankInstrumentAssignmentAudit.id.desc())
+                ).all():
+                    reassignments_by_transaction_id.setdefault(
+                        audit.financial_transaction_id, []
+                    ).append(audit)
+
+            filter_batch = db.get(m.BankImportBatch, batch_id) if batch_id else None
 
             # BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: the accounting
             # group each visible row belongs to, so a suppressed copy can name
@@ -1375,6 +1205,8 @@ def register_bank_routes(
             batches_by_id = {
                 b.id: b for b in db.scalars(select(m.BankImportBatch)).all()
             }
+            reasons_by_occurrence = why_catalog.reasons_by_occurrence(db)
+
             return render_template(
                 "bank_review.html", transactions=transactions, instruments=instruments,
                 dedup_groups=dedup_groups, canonical_copy_counts=canonical_copy_counts,
@@ -1382,18 +1214,32 @@ def register_bank_routes(
                 DUPLICATE_SUPPRESSED=accounting_dedup.DUPLICATE_SUPPRESSED,
                 UNRESOLVED_NO_SETTLEMENT_ACCOUNT=accounting_dedup.UNRESOLVED_NO_SETTLEMENT_ACCOUNT,
                 instruments_by_id=instruments_by_id, explanations_by_id=explanations_by_id,
+                who_options=who_options,
+                # BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §21-§22.
+                # `why_by_occurrence` is the ORDINARY dropdown: per Who,
+                # only the purposes a human already confirmed for it.
+                # `why_catalog_groups` is the "+ New" modal ONLY — the full
+                # catalog, grouped. Management groups appear nowhere else.
+                # One query for every Who (BANK_PERFORMANCE_N_PLUS_ONE_001).
+                why_by_occurrence={
+                    option["id"]: reasons_by_occurrence.get(option["id"], [])
+                    for option in who_options
+                },
+                # Serialisable form for the page script: Who id -> Why ids.
+                why_ids_by_occurrence={
+                    str(option["id"]): [
+                        reason.id for reason in reasons_by_occurrence.get(option["id"], [])
+                    ]
+                    for option in who_options
+                },
+                why_catalog_groups=why_catalog.catalog_by_group(db),
                 resolved_decision_statuses=recognition.RESOLVED_DECISION_STATUSES,
                 counterpart_by_transaction_id=counterpart_by_transaction_id,
                 match_candidates_by_transaction_id=match_candidates_by_transaction_id,
-                for_whom_by_transaction_id=for_whom_by_transaction_id,
-                for_whom_entities=for_whom_entities,
-                review_return_to=request.full_path.rstrip("?"),
+                reassignments_by_transaction_id=reassignments_by_transaction_id,
                 filter_year=year, filter_month=month,
-                filter_payment_instrument_id=payment_instrument_id,
+                filter_payment_instrument_id=payment_instrument_id, filter_status=status,
                 filter_batch_id=batch_id, filter_batch=filter_batch,
-                review_view=view, queue_counts=queue_counts, tab_args=tab_args,
-                row_limit=review_queues.ROW_LIMIT, search=search, search_summary=search_summary,
-                active_who_ids=active_who_ids,
             )
 
     # -----------------------------------------------------------------
@@ -1415,16 +1261,30 @@ def register_bank_routes(
     @app.route("/bank/monthly")
     @gate
     def bank_monthly():
-        """Retired page (BANK_SOURCE_AND_IMPORT_REVIEW_001). Source
-        completeness is checked where it matters — on Import and Review —
-        so old links land on Check Sources there, for the month they named."""
-        selected = _valid_month(
-            request.args.get("year", type=int), request.args.get("month", type=int),
-        )
-        if selected is None:
-            return redirect(url_for("bank_home", _anchor="step-sources"))
-        return redirect(url_for("bank_home", year=selected[0], month=selected[1],
-                                _anchor="step-sources"))
+        year = request.args.get("year", type=int)
+        month = request.args.get("month", type=int)
+        with SessionFactory() as db:
+            period = None
+            if year and month:
+                try:
+                    period = monthly_source.get_period(db, year, month)
+                except ValueError:
+                    flash("Month must be between 1 and 12.", "error")
+            if period is None:
+                period = db.scalars(
+                    select(m.BankMonthlySourcePeriod)
+                    .order_by(m.BankMonthlySourcePeriod.period_month.desc())
+                ).first()
+
+            monthly = _monthly_sources_view(db, period)
+            return render_template(
+                "bank_monthly.html",
+                periods=monthly_source.list_periods(db),
+                instruments=db.scalars(
+                    select(m.PaymentInstrument).order_by(m.PaymentInstrument.display_name)
+                ).all(),
+                **monthly,
+            )
 
     @app.route("/bank/monthly/control-start", methods=["POST"])
     @gate
@@ -1446,7 +1306,7 @@ def register_bank_routes(
         if typed is None:
             flash("Enter the first day of the first month RF-One should control (YYYY-MM-DD).",
                   "error")
-            return redirect(url_for("bank_home", _anchor="step-sources"))
+            return redirect(url_for("bank_monthly"))
         with SessionFactory() as db:
             account = _current_account(db)
             try:
@@ -1476,7 +1336,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        return redirect(url_for("bank_home", _anchor="step-sources"))
+        return redirect(url_for("bank_monthly"))
 
     @app.route("/bank/monthly/validated-through", methods=["POST"])
     @gate
@@ -1494,7 +1354,7 @@ def register_bank_routes(
             year, month = (int(part) for part in raw.split("-"))
         except ValueError:
             flash("Enter the validated-through month as YYYY-MM.", "error")
-            return redirect(url_for("bank_home", _anchor="step-sources"))
+            return redirect(url_for("bank_monthly"))
         with SessionFactory() as db:
             account = _current_account(db)
             try:
@@ -1513,7 +1373,7 @@ def register_bank_routes(
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
-        return redirect(url_for("bank_home", _anchor="step-sources"))
+        return redirect(url_for("bank_monthly"))
 
     @app.route("/bank/monthly/select", methods=["POST"])
     @gate
@@ -1523,13 +1383,13 @@ def register_bank_routes(
         month = request.form.get("month", type=int)
         if not year or not month or not 1 <= month <= 12:
             flash("Enter a year and a month between 1 and 12.", "error")
-            return _return_redirect(redirect(url_for("bank_home", _anchor="step-sources")), **_form_month())
+            return _return_redirect(redirect(url_for("bank_monthly")), **_form_month())
         with SessionFactory() as db:
             period = monthly_source.get_or_create_period(db, year, month)
             monthly_source.refresh_coverage(db, period)
             db.commit()
         return _return_redirect(
-                redirect(url_for("bank_home", year=year, month=month)), year=year, month=month,
+                redirect(url_for("bank_monthly", year=year, month=month)), year=year, month=month,
             )
 
     @app.route("/bank/monthly/<int:period_id>/coverage/<int:coverage_id>/resolve", methods=["POST"])
@@ -1590,7 +1450,7 @@ def register_bank_routes(
             month = period.period_month
         year_s, month_s = month.split("-")
         return _return_redirect(
-            redirect(url_for("bank_home", year=int(year_s), month=int(month_s))),
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
             year=int(year_s), month=int(month_s),
         )
 
@@ -1613,7 +1473,7 @@ def register_bank_routes(
             month = period.period_month
         year_s, month_s = month.split("-")
         return _return_redirect(
-            redirect(url_for("bank_home", year=int(year_s), month=int(month_s))),
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
             year=int(year_s), month=int(month_s),
         )
 
@@ -1650,7 +1510,7 @@ def register_bank_routes(
             month = period.period_month
         year_s, month_s = month.split("-")
         return _return_redirect(
-            redirect(url_for("bank_home", year=int(year_s), month=int(month_s))),
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
             year=int(year_s), month=int(month_s),
         )
 
@@ -1674,15 +1534,42 @@ def register_bank_routes(
             month = period.period_month
         year_s, month_s = month.split("-")
         return _return_redirect(
-            redirect(url_for("bank_home", year=int(year_s), month=int(month_s))),
+            redirect(url_for("bank_monthly", year=int(year_s), month=int(month_s))),
             year=int(year_s), month=int(month_s),
         )
 
-    # BANK_REVIEW_FOR_WHOM_001 — there is no per-transaction Source
-    # reassignment in Review. A transaction's Source is provenance, set by the
-    # import's file -> Source mapping; a wrong mapping is corrected upstream
-    # (Import and Review: Change Source on the file, with its reason and
-    # assignment history; Source: file recognition rules).
+    @app.route("/bank/transactions/<int:transaction_id>/reassign-instrument", methods=["POST"])
+    @gate
+    def bank_transaction_reassign_instrument(transaction_id: int):
+        """Correct ONE transaction's instrument — the case of a source file
+        carrying several cards. The row is moved, not recreated; its raw
+        row and the batch's original file are untouched."""
+        require_csrf()
+        payment_instrument_id = request.form.get("payment_instrument_id", type=int)
+        reason = (request.form.get("reason") or "").strip()
+        if not payment_instrument_id:
+            flash("Select the Payment Instrument this transaction really belongs to.", "error")
+            return redirect(request.referrer or url_for("bank_review"))
+        if not reason:
+            flash("State a short reason for the reassignment.", "error")
+            return redirect(request.referrer or url_for("bank_review"))
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                txn = bank_service.reassign_transaction_instrument(
+                    db, transaction_id=transaction_id, payment_instrument_id=payment_instrument_id,
+                    reason=reason, changed_by_account_id=account.id,
+                )
+                note = (
+                    f"Transaction {transaction_id} reassigned to "
+                    f"{txn.payment_instrument.display_name!r}."
+                )
+                db.commit()
+                flash(note, "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(request.referrer or url_for("bank_review"))
 
     @app.route("/bank/transactions/<int:transaction_id>/duplicate-decision", methods=["POST"])
     @gate
@@ -1699,6 +1586,93 @@ def register_bank_routes(
                 bank_service.recompute_accounting_deduplication(db)
                 db.commit()
                 flash(f"Duplicate decision recorded ({decision}) and deduplication recomputed.", "info")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(request.referrer or url_for("bank_review"))
+
+    @app.route("/bank/transactions/<int:transaction_id>/why", methods=["POST"])
+    @require_domain_access("BANK")
+    def bank_transaction_why_decision(transaction_id: int):
+        """Assign the WHY an operator chose for one transaction.
+
+        BANK_CANONICAL_WHY_AND_WHO_RELATIONSHIPS_001 §22-§23 — this is the
+        "+ New" path and the ordinary dropdown path, which are the same
+        action: the Why is recorded for THIS transaction, the WHO <-> WHY
+        association is created or reconfirmed so the dropdown offers it
+        next time, and the WHAT is DERIVED from the Why. The operator
+        never picks a What here; if the mapping is wrong the central Why
+        definition is corrected instead."""
+        # BANK_MANUAL_RECONCILIATION_UX_001 — this route writes a
+        # classification decision, so it needs the same CSRF check every
+        # other writing Bank route performs. It was the one POST endpoint
+        # in this module without it, which only went unnoticed while no
+        # browser flow actually reached it.
+        require_csrf()
+        occurrence_id = request.form.get("occurrence_id", type=int)
+        transaction_reason_id = request.form.get("transaction_reason_id", type=int)
+        # The same learning control the Who-only route already exposes, and
+        # the one the checkbox on this form has always described: it decides
+        # whether this confirmation also teaches RF-One that this normalized
+        # DESCRIPTION means this WHO. It is orthogonal to the WHY — the
+        # WHO <-> WHY association below is recorded either way — and it never
+        # teaches a WHO -> WHY recognition.
+        learn_description = bool(request.form.get("learn_description"))
+        if not occurrence_id or not transaction_reason_id:
+            flash("Choose both a Who and a Why.", "error")
+            return redirect(request.referrer or url_for("bank_review"))
+        with SessionFactory() as db:
+            # `_current_account(db)` — the same session-scoped resolution
+            # every other writing route in this module uses. This line
+            # previously called a bare `current_account()`, a name that
+            # exists nowhere here, so the route raised NameError on every
+            # request; nothing reached it while the Why step was unwired.
+            account = _current_account(db)
+            try:
+                recognition.record_human_decision(
+                    db,
+                    recognition.HumanDecisionRequest(
+                        transaction_id=transaction_id,
+                        occurrence_id=occurrence_id,
+                        transaction_reason_id=transaction_reason_id,
+                        confirmed_by_account_id=account.id,
+                        learn_description=learn_description,
+                    ),
+                )
+                reason = db.get(m.BankTransactionReason, transaction_reason_id)
+                label = reason.resolution_label if reason else ""
+                db.commit()
+                flash(f"Classified as {label}.", "success")
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return redirect(request.referrer or url_for("bank_review"))
+
+    @app.route("/bank/transactions/<int:transaction_id>/recognition-decision", methods=["POST"])
+    @gate
+    def bank_transaction_recognition_decision(transaction_id: int):
+        """Record WHO the counterparty is. The Who is the only input, so the
+        Why stays open for a human: a Who's default Why is never applied
+        (BANK_FINAL_RELEASE_BLOCKERS_001). The Why step decides the Why."""
+        require_csrf()
+        occurrence_id = request.form.get("occurrence_id", type=int)
+        # Learning control only — it decides whether this confirmation also
+        # teaches RF-One that this normalized description means this Who.
+        # It has no effect on the Who -> Why -> What associations, which
+        # live on the vocabulary and persist regardless.
+        learn_description = bool(request.form.get("learn_description"))
+        if not occurrence_id:
+            flash("Select a Who for this transaction.", "error")
+            return redirect(request.referrer or url_for("bank_review"))
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                bank_service.record_recognition_decision(
+                    db, transaction_id=transaction_id, occurrence_id=occurrence_id,
+                    confirmed_by_account_id=account.id, learn_description=learn_description,
+                )
+                db.commit()
+                flash("Who recorded. The Why of this transaction still needs a decision.", "info")
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
@@ -1747,113 +1721,548 @@ def register_bank_routes(
         return redirect(request.referrer or url_for("bank_review"))
 
     # -----------------------------------------------------------------
-    # Monthly Accountant Export.
+    # Classification — the WHO -> WHY -> WHAT vocabulary and its links.
     #
-    # BANK_EXPORT_ACTIONABLE_BLOCKERS_001: the page shows the month's status
-    # and its blockers GROUPED by what fixes them (`export_readiness`), each
-    # group with its action; a group's transactions are listed only on
-    # request (`show`). Whether the export may run is still decided by
-    # `export_service.compute_export_blockers` alone.
+    # One tab, three sections, because the three levels are one chain and
+    # splitting them across pages would hide exactly the relationship the
+    # operator needs to see. Every list is searchable from the server, so
+    # none of the three can grow into an unusable menu.
+    # -----------------------------------------------------------------
+
+    @app.route("/bank/classification")
+    @gate
+    def bank_classification():
+        what_search = (request.args.get("what_q") or "").strip()
+        why_search = (request.args.get("why_q") or "").strip()
+        who_search = (request.args.get("who_q") or "").strip()
+
+        with SessionFactory() as db:
+            whats = classification_service.list_accounting_classifications(db, search=what_search)
+            # BANK_WHAT_PL_VOCABULARY_001 — WHAT is the official P&L
+            # posting vocabulary, not the whole chart of accounts. The two
+            # are handed to the template SEPARATELY so the page cannot show
+            # a Balance Sheet account under the WHAT heading.
+            what_catalog = canonical_catalog.what_catalog(db)
+            what_group_nodes = canonical_catalog.what_groups(db)
+            accounting_destinations = canonical_catalog.accounting_destinations(db)
+            whys = classification_service.list_transaction_reasons(db, search=why_search)
+            whos = classification_service.list_occurrences(db, search=who_search)
+
+            # Assignable options are the COMPLETE, POSTABLE ones only — the
+            # UI never offers a choice the service layer would then refuse,
+            # and since BANK_ACCOUNTING_CLASSIFICATION_SEMANTICS_001 a
+            # reporting GROUP is one of those refusals.
+            assignable_whats = [w for w in classification_service.list_accounting_classifications(db)
+                                if w.active and w.statement_type is not None
+                                and w.is_posting_account]
+            assignable_whys = [r for r in classification_service.list_transaction_reasons(db)
+                               if r.status == "ACTIVE" and r.accounting_classification_id is not None]
+
+            whats_by_id = {
+                w.id: w for w in classification_service.list_accounting_classifications(db)
+            }
+            whys_by_id = {r.id: r for r in classification_service.list_transaction_reasons(db)}
+            types_by_id = {t.id: t for t in classification_service.list_occurrence_types(db)}
+
+            # BANK_CLASSIFICATION_BOOTSTRAP_001 — the receiver review.
+            # Derived on every request from the current transactions: there
+            # is no stored candidate that could go stale, and rendering the
+            # page writes nothing.
+            receiver_search = (request.args.get("receiver_q") or "").strip()
+            receiver_status = (request.args.get("receiver_status") or "").strip().upper()
+            receiver_sort = request.args.get("receiver_sort") or "count"
+            receiver_page = max(request.args.get("receiver_page", type=int) or 1, 1)
+            page_size = 25
+
+            all_candidates = receiver_candidates.build_candidates(db)
+            filtered = all_candidates
+            if receiver_search:
+                needle = receiver_search.lower()
+                filtered = [
+                    c for c in filtered
+                    if needle in c.payee_normalized.lower()
+                    or any(needle in d.lower() for d in c.sample_descriptions)
+                ]
+            if receiver_status in (
+                receiver_candidates.STATUS_UNCLASSIFIED,
+                receiver_candidates.STATUS_AMBIGUOUS,
+                receiver_candidates.STATUS_ASSIGNED,
+            ):
+                filtered = [c for c in filtered if c.status == receiver_status]
+            if receiver_sort == "value":
+                filtered = sorted(filtered, key=lambda c: -c.absolute_total_minor)
+            elif receiver_sort == "recent":
+                filtered = sorted(filtered, key=lambda c: (c.last_date is None, c.last_date), reverse=True)
+            else:
+                filtered = sorted(
+                    filtered, key=lambda c: (-c.transaction_count, -c.absolute_total_minor)
+                )
+
+            total_pages = max((len(filtered) + page_size - 1) // page_size, 1)
+            receiver_page = min(receiver_page, total_pages)
+            page_start = (receiver_page - 1) * page_size
+            receiver_page_items = filtered[page_start:page_start + page_size]
+
+            learned_rules = db.scalars(
+                select(m.BankRecognitionRule)
+                .order_by(m.BankRecognitionRule.id.desc())
+                .limit(100)
+            ).all()
+
+            return render_template(
+                "bank_classification.html",
+                whats=whats, whys=whys, whos=whos,
+                # BANK_WHAT_PL_VOCABULARY_001 — the official P&L vocabulary
+                # and the Balance Sheet destinations, kept apart so the page
+                # cannot show one under the other's heading.
+                what_catalog=what_catalog,
+                what_group_nodes=what_group_nodes,
+                accounting_destinations=accounting_destinations,
+                receiver_candidates_page=receiver_page_items,
+                receiver_summary=receiver_candidates.summary(db, all_candidates),
+                receiver_filtered_count=len(filtered),
+                receiver_page=receiver_page, receiver_total_pages=total_pages,
+                receiver_search=receiver_search, receiver_status=receiver_status,
+                receiver_sort=receiver_sort,
+                learned_rules=learned_rules,
+                occurrences_by_id={o.id: o for o in whos},
+                STATUS_UNCLASSIFIED=receiver_candidates.STATUS_UNCLASSIFIED,
+                STATUS_AMBIGUOUS=receiver_candidates.STATUS_AMBIGUOUS,
+                STATUS_ASSIGNED=receiver_candidates.STATUS_ASSIGNED,
+                what_preview=None,
+                whats_by_id=whats_by_id, whys_by_id=whys_by_id, types_by_id=types_by_id,
+                assignable_whats=assignable_whats, assignable_whys=assignable_whys,
+                occurrence_types=classification_service.list_occurrence_types(db),
+                chains=classification_service.resolve_chains(db, whos),
+                usage=classification_service.accounting_classification_usages(db),
+                statement_type_labels=classification_service.STATEMENT_TYPE_LABELS,
+                what_search=what_search, why_search=why_search, who_search=who_search,
+            )
+
+    # --- What catalog import (BANK_CLASSIFICATION_BOOTSTRAP_001) ------
+    #
+    # Upload -> parse -> PREVIEW -> human confirmation -> import. There is
+    # deliberately no route that takes a file and writes accounts in one
+    # step: a chart of accounts is the vocabulary every future decision is
+    # phrased in, and it is not imported on trust.
+
+    @app.route("/bank/classification/what/import", methods=["POST"])
+    @gate
+    def bank_classification_what_import_preview():
+        """Parse an uploaded plan and show what it contains. Writes nothing."""
+        require_csrf()
+        uploaded = request.files.get("catalog_file")
+        if uploaded is None or not uploaded.filename:
+            flash("Choose a .csv or .xlsx chart of accounts to import.", "error")
+            return _redirect_to_classification("what")
+
+        payload = uploaded.read()
+        parsed = what_catalog_import.parse(
+            payload,
+            file_name=uploaded.filename,
+            sheet_name=(request.form.get("sheet_name") or "").strip() or None,
+            default_statement_type=(request.form.get("default_statement_type") or "").strip() or None,
+        )
+
+        with SessionFactory() as db:
+            whats = classification_service.list_accounting_classifications(db)
+            whys = classification_service.list_transaction_reasons(db)
+            whos = classification_service.list_occurrences(db)
+            what_catalog = canonical_catalog.what_catalog(db)
+            what_group_nodes = canonical_catalog.what_groups(db)
+            accounting_destinations = canonical_catalog.accounting_destinations(db)
+            return render_template(
+                "bank_classification.html",
+                whats=whats, whys=whys, whos=whos,
+                what_catalog=what_catalog,
+                what_group_nodes=what_group_nodes,
+                accounting_destinations=accounting_destinations,
+                whats_by_id={w.id: w for w in whats},
+                whys_by_id={r.id: r for r in whys},
+                types_by_id={t.id: t for t in classification_service.list_occurrence_types(db)},
+                assignable_whats=[
+                    w for w in whats if w.active and w.statement_type is not None
+                ],
+                assignable_whys=[
+                    r for r in whys
+                    if r.status == "ACTIVE" and r.accounting_classification_id is not None
+                ],
+                occurrence_types=classification_service.list_occurrence_types(db),
+                chains=classification_service.resolve_chains(db, whos),
+                usage=classification_service.accounting_classification_usages(db),
+                statement_type_labels=classification_service.STATEMENT_TYPE_LABELS,
+                what_search="", why_search="", who_search="",
+                receiver_candidates_page=[], receiver_summary=receiver_candidates.summary(db),
+                receiver_filtered_count=0, receiver_page=1, receiver_total_pages=1,
+                receiver_search="", receiver_status="", receiver_sort="count",
+                learned_rules=[], occurrences_by_id={o.id: o for o in whos},
+                STATUS_UNCLASSIFIED=receiver_candidates.STATUS_UNCLASSIFIED,
+                STATUS_AMBIGUOUS=receiver_candidates.STATUS_AMBIGUOUS,
+                STATUS_ASSIGNED=receiver_candidates.STATUS_ASSIGNED,
+                what_preview=parsed,
+                what_preview_file_name=uploaded.filename,
+                # The PARSED ROWS travel back for confirmation, not the file:
+                # the preview a human approved is exactly what gets imported,
+                # and no uploaded document is retained anywhere.
+                what_preview_token=base64.b64encode(json.dumps({
+                    "file_name": uploaded.filename,
+                    "sheet_name": parsed.sheet_name,
+                    "rows": [
+                        {
+                            "source_row_number": row.source_row_number,
+                            "statement_type": row.statement_type,
+                            "code": row.code,
+                            "code_is_generated": row.code_is_generated,
+                            "name": row.name,
+                            "parent_code": row.parent_code,
+                            "level": row.level,
+                            "row_type": row.row_type,
+                            "source_label": row.source_label,
+                        }
+                        for row in parsed.importable_rows
+                    ],
+                }).encode("utf-8")).decode("ascii"),
+            )
+
+    @app.route("/bank/classification/what/import/confirm", methods=["POST"])
+    @gate
+    def bank_classification_what_import_confirm():
+        """Import exactly the rows the human just saw in the preview."""
+        require_csrf()
+        token = request.form.get("preview_token") or ""
+        try:
+            payload = json.loads(base64.b64decode(token).decode("utf-8"))
+        except Exception:  # noqa: BLE001 — a malformed token is operator error
+            flash("The preview could not be read. Upload the file again.", "error")
+            return _redirect_to_classification("what")
+
+        parsed = what_catalog_import.ParsedWhatCatalog(sheet_name=payload.get("sheet_name"))
+        for row in payload.get("rows", []):
+            parsed.rows.append(what_catalog_import.ParsedWhatRow(
+                source_row_number=row["source_row_number"],
+                statement_type=row["statement_type"],
+                code=row["code"],
+                code_is_generated=row["code_is_generated"],
+                name=row["name"],
+                parent_code=row["parent_code"],
+                level=row["level"],
+                row_type=row["row_type"],
+                source_label=row["source_label"],
+            ))
+
+        with SessionFactory() as db:
+            try:
+                outcome = what_catalog_import.apply_import(
+                    db, parsed,
+                    source_note=f"Confirmed from the preview of {payload.get('file_name')!r}.",
+                )
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("what")
+
+        message = (
+            f"What catalog imported: {len(outcome.created)} created, "
+            f"{len(outcome.unchanged)} already present and unchanged, "
+            f"{outcome.skipped_totals} total row(s) and {outcome.skipped_headings} heading(s) "
+            f"skipped, {outcome.rejected} row(s) rejected."
+        )
+        flash(message, "info")
+        for conflict in outcome.conflicts:
+            flash(f"Conflict, not overwritten — {conflict}", "error")
+        return _redirect_to_classification("what")
+
+    # --- Receiver approval --------------------------------------------
+
+    @app.route("/bank/classification/receivers/approve", methods=["POST"])
+    @gate
+    def bank_classification_receivers_approve():
+        """Approve one or more receiver groups onto one Who.
+
+        Atomic: `approve_candidates` raises before writing anything if the
+        Who's chain is incomplete or a group is ambiguous, and the commit
+        is all-or-nothing."""
+        require_csrf()
+        payee_keys = request.form.getlist("payee_key")
+        with SessionFactory() as db:
+            account = _current_account(db)
+            try:
+                outcome = receiver_candidates.approve_candidates(
+                    db,
+                    payee_keys=payee_keys,
+                    occurrence_id=request.form.get("occurrence_id", type=int) or None,
+                    new_occurrence_name=(request.form.get("new_occurrence_name") or "").strip() or None,
+                    occurrence_type_id=request.form.get("occurrence_type_id", type=int) or None,
+                    default_transaction_reason_id=request.form.get(
+                        "default_transaction_reason_id", type=int,
+                    ) or None,
+                    confirmed_by_account_id=account.id,
+                    learn_description=bool(request.form.get("learn_description")),
+                )
+                db.commit()
+                flash(
+                    f"{outcome.transactions_classified} transaction(s) assigned to Who "
+                    f"{outcome.occurrence_name!r} across {len(outcome.payees)} receiver group(s); "
+                    "each keeps its own Why decision. "
+                    + (
+                        f"{outcome.transactions_skipped_human} left untouched because a human had "
+                        "already decided them. " if outcome.transactions_skipped_human else ""
+                    )
+                    + (
+                        f"{len(outcome.rules_created)} exact-match rule(s) recorded for future "
+                        "imports." if outcome.rules_created else
+                        "No recognition rule was recorded."
+                    ),
+                    "info",
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+        return _redirect_to_classification("receivers")
+
+    def _redirect_to_classification(section: str):
+        return redirect(url_for("bank_classification") + f"#{section}")
+
+    def _commit_or_flash(db, success_message: str, section: str):
+        """The one place every Classification mutation ends, so no branch
+        can forget to roll back or to say what happened."""
+        try:
+            db.commit()
+            flash(success_message, "info")
+        except Exception as exc:  # noqa: BLE001 — surfaced verbatim, never swallowed
+            db.rollback()
+            flash(str(exc), "error")
+        return _redirect_to_classification(section)
+
+    # --- A. WHAT -----------------------------------------------------
+
+    @app.route("/bank/classification/what/new", methods=["POST"])
+    @gate
+    def bank_classification_what_new():
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                classification_service.create_accounting_classification(
+                    db,
+                    code=request.form.get("code", ""),
+                    name=request.form.get("name", ""),
+                    statement_type=request.form.get("statement_type"),
+                    parent_id=request.form.get("parent_id", type=int) or None,
+                    description=request.form.get("description"),
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("what")
+            return _commit_or_flash(db, "What created.", "what")
+
+    @app.route("/bank/classification/what/<int:classification_id>/edit", methods=["POST"])
+    @gate
+    def bank_classification_what_edit(classification_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                classification_service.update_accounting_classification(
+                    db,
+                    classification_id=classification_id,
+                    name=request.form.get("name", ""),
+                    statement_type=request.form.get("statement_type"),
+                    parent_id=request.form.get("parent_id", type=int) or None,
+                    description=request.form.get("description"),
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("what")
+            return _commit_or_flash(db, "What updated.", "what")
+
+    @app.route("/bank/classification/what/<int:classification_id>/status", methods=["POST"])
+    @gate
+    def bank_classification_what_status(classification_id: int):
+        """Activate/deactivate. There is deliberately no delete route: a
+        What referenced by a Why or by a historical decision must stay
+        readable forever."""
+        require_csrf()
+        active = request.form.get("active") == "1"
+        with SessionFactory() as db:
+            try:
+                classification_service.set_accounting_classification_active(
+                    db, classification_id=classification_id, active=active,
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("what")
+            return _commit_or_flash(
+                db, "What activated." if active else "What deactivated.", "what",
+            )
+
+    # --- B. WHY -> WHAT ----------------------------------------------
+
+    @app.route("/bank/classification/why/new", methods=["POST"])
+    @gate
+    def bank_classification_why_new():
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                classification_service.create_transaction_reason(
+                    db,
+                    code=request.form.get("code", ""),
+                    name=request.form.get("name", ""),
+                    accounting_classification_id=request.form.get(
+                        "accounting_classification_id", type=int,
+                    ) or None,
+                    description=request.form.get("description"),
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("why")
+            return _commit_or_flash(db, "Why created.", "why")
+
+    @app.route("/bank/classification/why/<int:transaction_reason_id>/edit", methods=["POST"])
+    @gate
+    def bank_classification_why_edit(transaction_reason_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                classification_service.update_transaction_reason(
+                    db,
+                    transaction_reason_id=transaction_reason_id,
+                    name=request.form.get("name", ""),
+                    accounting_classification_id=request.form.get(
+                        "accounting_classification_id", type=int,
+                    ) or None,
+                    description=request.form.get("description"),
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("why")
+            return _commit_or_flash(
+                db,
+                "Why updated. Future classifications use the new What; confirmed transactions keep "
+                "their own snapshot until an explicit Reclassify.",
+                "why",
+            )
+
+    @app.route("/bank/classification/why/<int:transaction_reason_id>/status", methods=["POST"])
+    @gate
+    def bank_classification_why_status(transaction_reason_id: int):
+        require_csrf()
+        status = "ACTIVE" if request.form.get("active") == "1" else "INACTIVE"
+        with SessionFactory() as db:
+            try:
+                classification_service.set_transaction_reason_status(
+                    db, transaction_reason_id=transaction_reason_id, status=status,
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("why")
+            return _commit_or_flash(db, f"Why set to {status}.", "why")
+
+    # --- C. WHO -> WHY -> WHAT ---------------------------------------
+
+    @app.route("/bank/classification/who/new", methods=["POST"])
+    @gate
+    def bank_classification_who_new():
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                classification_service.create_occurrence(
+                    db,
+                    canonical_name=request.form.get("canonical_name", ""),
+                    occurrence_type_id=request.form.get("occurrence_type_id", type=int) or 0,
+                    default_transaction_reason_id=request.form.get(
+                        "default_transaction_reason_id", type=int,
+                    ) or None,
+                    optional_notes=request.form.get("optional_notes"),
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("who")
+            return _commit_or_flash(db, "Who created.", "who")
+
+    @app.route("/bank/classification/who/<int:occurrence_id>/edit", methods=["POST"])
+    @gate
+    def bank_classification_who_edit(occurrence_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            try:
+                classification_service.update_occurrence(
+                    db,
+                    occurrence_id=occurrence_id,
+                    canonical_name=request.form.get("canonical_name", ""),
+                    occurrence_type_id=request.form.get("occurrence_type_id", type=int) or 0,
+                    default_transaction_reason_id=request.form.get(
+                        "default_transaction_reason_id", type=int,
+                    ) or None,
+                    optional_notes=request.form.get("optional_notes"),
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("who")
+            return _commit_or_flash(
+                db,
+                "Who updated. Future classifications use the new Why; confirmed transactions keep "
+                "their own snapshot until an explicit Reclassify.",
+                "who",
+            )
+
+    @app.route("/bank/classification/who/<int:occurrence_id>/status", methods=["POST"])
+    @gate
+    def bank_classification_who_status(occurrence_id: int):
+        """Activate/deactivate. A Who already used by a decision or a
+        recognition rule is never physically deleted."""
+        require_csrf()
+        status = "ACTIVE" if request.form.get("active") == "1" else "INACTIVE"
+        with SessionFactory() as db:
+            try:
+                classification_service.set_occurrence_status(
+                    db, occurrence_id=occurrence_id, status=status,
+                )
+            except ValueError as exc:
+                db.rollback()
+                flash(str(exc), "error")
+                return _redirect_to_classification("who")
+            return _commit_or_flash(db, f"Who set to {status}.", "who")
+
+    # -----------------------------------------------------------------
+    # Kermali Monthly Accountant Export.
     # -----------------------------------------------------------------
 
     @app.route("/bank/export", methods=["GET", "POST"])
     @gate
     def bank_export():
-        """BANK_EXPORT_BY_OWNER_001 — one report per Owning Entity of the
-        Sources (a Company or a person). The owner is required before Check
-        and Download, and both read the same scope: the same blockers
-        (`compute_export_blockers(owner_key=…)`) and the same rows
-        (`export_content`)."""
         year = request.values.get("year", type=int)
         month = request.values.get("month", type=int)
-        if not (year and month and 1 <= month <= 12):
-            year = month = None
-        owner_key = (request.values.get("owner") or "").strip() or None
-        show = request.args.get("show")
-        if show not in export_readiness.GROUPS:
-            show = None
-        readiness = None
+        blockers = []
 
-        with SessionFactory() as db:
-            owners = export_service.owner_choices(db)
-            known = {o.key: o for o in owners}
-            if owner_key is not None and owner_key not in known:
-                flash("Choose the Owning Entity of the report.", "error")
-                owner_key = None
-            if year and month and owner_key is not None:
+        if year and month:
+            with SessionFactory() as db:
+                blockers = export_service.compute_export_blockers(db, year=year, month=month)
                 if request.method == "POST":
                     require_csrf()
-                    blockers = export_service.compute_export_blockers(
-                        db, year=year, month=month, owner_key=owner_key)
-                    content = export_service.export_content(db, year=year, month=month, owner_key=owner_key)
                     if blockers:
-                        flash("Export blocked — resolve the issues shown below first.", "error")
-                    elif not content.count:
-                        flash("No transactions for this owner and month.", "error")
+                        flash("Export blocked — resolve every reason shown below first.", "error")
                     else:
-                        xlsx_bytes = export_service.build_kermali_workbook(
-                            db, year=year, month=month, owner_key=owner_key)
-                        filename = export_service.export_file_name(
-                            year=year, month=month, owner=known[owner_key])
-                        response = Response(
+                        xlsx_bytes = export_service.build_kermali_workbook(db, year=year, month=month)
+                        filename = export_service.export_file_name(year=year, month=month)
+                        return Response(
                             xlsx_bytes,
                             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                            headers={"Content-Disposition": f"attachment; filename={filename}"},
                         )
-                        # Lets the page stop its wait cursor once the file arrived.
-                        token = (request.form.get("download_token") or "")[:40]
-                        if token.isalnum():
-                            response.set_cookie("bank_export_done", token, max_age=60, samesite="Lax")
-                        return response
-                elif request.method == "POST":
-                    require_csrf()
-                readiness = export_readiness.readiness(
-                    db, year=year, month=month, detail=show, owner_key=owner_key)
-            elif request.method == "POST":
-                require_csrf()
-                flash("Choose the year, the month and the Owning Entity first.", "error")
 
-        return render_template(
-            "bank_export.html", year=year, month=month, readiness=readiness, show=show,
-            owners=owners, owner_key=owner_key,
-            download_name=(export_service.export_file_name(year=year, month=month, owner=readiness.owner)
-                           if readiness is not None else None),
-            month_label=date(year, month, 1).strftime("%B %Y") if year and month else None,
-        )
-
-    # BANK_TWO_PASS_IMPORT_001 — the import session (Pass 1 / Pass 2).
-    import_session_routes.register_bank_import_session_routes(
-        app, gate=gate, SessionFactory=SessionFactory, require_csrf=require_csrf,
-        current_account=_current_account, staging_root=_staging_root, instruments=_instruments,
-        source_page_context=_source_page_context,
-    )
-
-    # BANK_RULES_RESET_001 — of the old simple WHO Rule only the WHO lookups
-    # remain (the "new WHO" dialog uses them); no rule is applied any more.
-    register_bank_who_rule_routes(
-        app, gate=gate, SessionFactory=SessionFactory,
-        load_current_account=load_current_account, require_csrf=require_csrf,
-    )
-
-    # The "Select WHO / WHY" popup of Review (BANK_MANUAL_WHO_WHY_001):
-    # WHO + WHY for one transaction, a HUMAN decision; never a rule.
-    from bank_manual_reconciliation_routes import register_bank_manual_reconciliation_routes
-    register_bank_manual_reconciliation_routes(
-        app, gate=gate, SessionFactory=SessionFactory,
-        load_current_account=load_current_account, require_csrf=require_csrf,
-    )
+        return render_template("bank_export.html", year=year, month=month, blockers=blockers)
 
     # The real Bank Configuration page (BANK_CONFIGURATION_001).
     from bank_configuration_routes import register_bank_configuration_routes
     register_bank_configuration_routes(
-        app, gate=gate, SessionFactory=SessionFactory,
-        load_current_account=load_current_account, require_csrf=require_csrf,
-    )
-
-    # Bank > AI Rules (BANK_AI_RULES_001): AI instructions and an AI test that
-    # only proposes — never a classification, a rule or a Standard.
-    from bank_ai_rule_routes import register_bank_ai_rule_routes
-    register_bank_ai_rule_routes(
         app, gate=gate, SessionFactory=SessionFactory,
         load_current_account=load_current_account, require_csrf=require_csrf,
     )
@@ -1863,4 +2272,5 @@ def register_bank_routes(
     register_bank_reconciliation_routes(
         app, gate=gate, SessionFactory=SessionFactory,
         load_current_account=load_current_account, require_csrf=require_csrf,
+        default_month=lambda: _previous_local_month(_site_timezone()),
     )
