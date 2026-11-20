@@ -1,0 +1,30 @@
+{% extends '_kitchen_base.html' %}
+{% set help_section = 'kitchen_menus' %}
+{% set help_title = 'How Menu works' %}
+{% block kitchen_content %}
+<h1>Menu</h1>
+<div id="menu-workspace" data-save-url="{{ url_for('kitchen_menu_save') }}">
+  <p class="kitchen-config-intro">Create menus and arrange dishes and labels under shared Menu Areas.</p>
+  <p class="config-note">Only one menu per restaurant location can be active. Activate a draft to replace the current active menu for that location.</p>
+  <button type="button" id="menu-new" {% if not menu_data.locations %}disabled{% endif %}>+ New menu</button>
+  {% if not menu_data.locations %}<p class="config-note">Create a location before adding a menu.</p>{% endif %}
+  <p id="menu-page-error" class="error" role="alert" hidden></p>
+  <div id="menu-list"></div>
+  <dialog id="menu-dialog" class="recipe-dialog menu-dialog" aria-labelledby="menu-dialog-title">
+    <form id="menu-form">
+      <div class="recipe-dialog-header"><h2 id="menu-dialog-title">Menu</h2><button type="button" class="btn-secondary" id="menu-help-button" aria-label="Help with menu composition">?</button><button type="button" class="recipe-close" data-menu-close aria-label="Close">×</button></div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="menu-name">Name</label><input id="menu-name" maxlength="255" required>
+      <div id="menu-location-field" {% if menu_data.locations|length == 1 %}hidden{% endif %}><label for="menu-location">Restaurant location</label><select id="menu-location" required></select></div>
+      <div class="recipe-composition-toolbar"><button type="button" class="btn-secondary" id="menu-add">+ Add entry</button></div>
+      <div class="config-table-scroll"><table class="config-table menu-entry-table"><thead><tr><th>Area</th><th>Label</th><th>Recipe</th><th></th></tr></thead><tbody id="menu-entry-rows"></tbody></table></div>
+      <p class="config-note">Choose an Area to see recipes with the matching Category. Without a recipe, the entry remains a text label.</p>
+      <p id="menu-form-error" class="error" role="alert" hidden></p>
+      <div class="recipe-dialog-footer"><button type="submit">Save menu</button><button type="button" class="btn-secondary" data-menu-close>Cancel</button></div>
+    </form>
+  </dialog>
+  <dialog id="menu-help-dialog" class="recipe-dialog recipe-context-help" aria-labelledby="menu-help-title"><div class="recipe-dialog-header"><h2 id="menu-help-title">How Menu works</h2><button type="button" class="recipe-close" data-menu-close aria-label="Close">×</button></div><div id="menu-help-body"></div></dialog>
+</div>
+<script id="menu-data" type="application/json">{{ menu_data|tojson }}</script>
+<script defer src="{{ url_for('static',filename='js/kitchen-menus.js',v=2) }}"></script>
+{% endblock %}

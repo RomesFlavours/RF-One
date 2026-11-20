@@ -1,0 +1,18 @@
+{
+  "apps": {
+    "Kitchen": {
+      "root": "03 Software/RF-One Web",
+      "templates": "03 Software/RF-One Web/templates",
+      "pages": {
+        "kitchen_dashboard.html": "help/kitchen_dashboard.html#kitchen-dashboard",
+        "kitchen_recipes.html": "help/kitchen_recipes.html#kitchen-recipes",
+        "kitchen_configuration.html": "help/kitchen_configuration.html#kitchen-configuration",
+        "kitchen_menus.html": "help/kitchen_menus.html#kitchen-menus"
+      },
+      "not_operational": {
+        "base.html": "Shared layout"
+      },
+      "help_missing": {}
+    }
+  }
+}
