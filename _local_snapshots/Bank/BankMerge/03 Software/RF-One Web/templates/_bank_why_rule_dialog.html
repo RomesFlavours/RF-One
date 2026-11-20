@@ -1,0 +1,30 @@
+{#- The ONE WHO WHY rule editor (BANK_WHO_WHY_MODE_001), driven by why_signals.js: on the WHY page and, opened
+    in context from "Riconosci WHO", on the WHO page (BANK_WHO_RECOGNISE_MODAL_001). -#}
+<dialog id="ws-rule" class="ws-wide" aria-labelledby="ws-rule-h">
+  <div class="dialog-heading"><h2 id="ws-rule-h">Define WHO WHY rule</h2><span><button type="button" class="btn-secondary bank-help-q" data-how-works="why-rule-dialog" aria-label="How Define WHO WHY rule works">?</button> <button type="button" class="close-button" data-cancel="ws-rule" aria-label="Close">&times;</button></span></div>
+  <p class="inline-note" id="ws-rule-context" hidden></p>
+  <details id="ws-rule-movements-box" hidden><summary>Movements to distinguish (<span id="ws-rule-movements-count">0</span>)</summary>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Date</th><th>Account or card</th><th>Description</th><th class="num">Amount</th><th>WHY</th></tr></thead><tbody id="ws-rule-movements"></tbody></table></div>
+  </details>
+  <label>WHO (one or more)<select id="ws-rule-who" multiple size="5"></select></label>
+  <h3>Conditions <small class="ws-muted">(all must be true)</small></h3>
+  <div id="ws-conds"></div>
+  <button type="button" class="btn-secondary" id="ws-add-cond">+ Condition</button>
+  <h3>Result</h3>
+  <label><input type="radio" name="ws-result" value="why" checked> WHY <select id="ws-rule-why"></select></label>
+  <label><input type="radio" name="ws-result" value="document"> WHY read from a document <select id="ws-rule-doc"></select></label>
+  <p class="inline-note">WHAT derives from the WHY; WHOM stays the Source owner. A condition that cannot be evaluated (missing information) leaves the movement open with “Serve un documento o un chiarimento”.</p>
+  <p class="ws-error" id="ws-rule-error" role="alert"></p>
+  <div id="ws-sim" hidden>
+    <h3>Simulation <small class="ws-muted">(read-only; the draft counts as active)</small></h3>
+    <p id="ws-sim-text"></p>
+    <div class="ws-sim-summary" id="ws-sim-summary"></div>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Date</th><th>Source</th><th>Description</th><th class="num">Amount</th><th>Rule</th><th>WHY before</th><th>WHY after</th></tr></thead><tbody id="ws-sim-rows"></tbody></table></div>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" class="btn-secondary" data-cancel="ws-rule">Cancel</button>
+    <button type="button" class="btn-secondary" id="ws-simulate">Simulate</button>
+    <button type="button" class="btn-secondary" id="ws-save-inactive" disabled>Save inactive</button>
+    <button type="button" id="ws-save-active" disabled>Save and activate</button>
+  </div>
+</dialog>

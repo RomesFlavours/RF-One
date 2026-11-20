@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Riconciliazione bancaria · Pannello · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('panel') }}
+{#- BANK_LAYOUT_NAVIGATION_001 (Product Owner, 2026-11-05) — Pannello, the first Bank tab and the Bank Home.
+    Read-only, in this order: 1 the state of data and reconciliation, 2 what is pending (only when present), each
+    with a link to the page that already performs the action, 3 the P/L area of the chosen period ("Da
+    implementare": no figure is computed or shown), 4 at the bottom the existing monthly export (bank_export).
+    Every figure comes from the functions Carica e riconcilia already uses (intake.readiness, run_view,
+    results_view); nothing is started, written or recomputed from here. -#}
+{%- set c = check %}
+{%- set MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'] %}
+{%- macro day(value) %}{% if value %}{{ value.strftime('%d/%m/%Y') if value.strftime is defined else value }}{% else %}—{% endif %}{% endmacro %}
+{%- set st = results.states if results else {} %}
+{%- set open_cases = (st.get('to_confirm', 0) + st.get('manual', 0)) if results else 0 %}
+{%- set to_confirm_proposals = st.get('proposal', 0) if results else 0 %}
+{%- set guided_url = (url_for('bank_guided', sub='') ~ ('?run=' ~ results.run.id if results else '')) if guided else url_for('bank_review') %}
+
+{{ bank.section_nav([('panel-status', 'Situazione generale'), ('panel-pending', 'Cose in sospeso'), ('panel-pl', 'Conto economico (P/L)')] + ([('panel-export', 'Esportazione mensile')] if may_use_item('BANK', 'export') else [])) }}
+<div class="card" id="panel-status">
+  <h2>1 · Situazione generale</h2>
+  <dl class="export-figures">
+    <div><dt>Movimenti in Bank</dt><dd>{{ movements }}</dd></div>
+    <div><dt>Conti e carte</dt><dd>{{ sources|length }}</dd></div>
+    <div><dt>File ricevuti</dt><dd>{{ files|length }}</dd></div>
+    <div><dt>Periodo controllato</dt><dd class="small">{% if c.has_data %}{{ day(c.window_start) }} – {{ day(c.window_end) }}{% else %}—{% endif %}</dd></div>
+  </dl>
+  {% if not c.has_data %}
+    <p class="work-blocked">Non ci sono ancora file di conti o carte. <a href="{{ url_for('bank_work') }}#upload">Carica i file</a>: Bank ti dirà cosa manca.</p>
+  {% elif ready %}
+    <p class="work-ready">Dati completi: pronti per la riconciliazione.</p>
+  {% else %}
+    <p class="work-blocked">Dati non ancora completi: {{ waiting|length + c.gaps|length }} richieste da completare (vedi le cose in sospeso).</p>
+  {% endif %}
+  {% if running %}
+    <p class="work-ready">Riconciliazione automatica in corso… {{ run.step or 'avvio' }}. Il riepilogo compare al termine.</p>
+  {% elif run and run.status == 'DONE' %}
+    <p class="small muted">Ultima riconciliazione automatica terminata il {{ run.finished_dt|local_dt(tz) if run.finished_dt else '' }}.</p>
+  {% elif not run %}
+    <p class="small muted">Nessuna riconciliazione automatica eseguita finora.</p>
+  {% endif %}
+  {% if results %}
+  <h3>Stato della riconciliazione <span class="muted small">(ultima elaborazione n.{{ results.run.id }}, {{ results.total }} movimenti del periodo controllato)</span></h3>
+  <table class="table-compact"><tbody>
+    {% for code in ['decided', 'matched', 'proposal', 'to_confirm', 'manual'] %}
+    <tr><td>{{ state_titles[code] }}</td><td><strong>{{ st.get(code, 0) }}</strong></td></tr>{% endfor %}
+    <tr><td><strong>Totale</strong></td><td><strong>{{ results.total }}</strong></td></tr>
+  </tbody></table>
+  <p class="small muted">«Risolto automaticamente» è una proposta: diventa decisione solo con la tua conferma.</p>
+  {% endif %}
+</div>
+
+{%- set pending = namespace(n=0) %}
+<div class="card" id="panel-pending">
+  <h2>2 · Cose in sospeso</h2>
+  <ul class="panel-pending">
+  {% if waiting %}{% set pending.n = pending.n + 1 %}
+    <li><strong>{{ waiting|length }} file</strong> richiedono una risposta (conto o carta, righe illeggibili, dati mancanti).
+      <a href="{{ url_for('bank_work') }}#files">Rispondi in Carica e riconcilia</a></li>{% endif %}
+  {% if c.gaps %}{% set pending.n = pending.n + 1 %}
+    <li><strong>{{ c.gaps|length }} richieste di completezza</strong> (estratti mancanti o periodi da chiarire) bloccano la riconciliazione automatica.
+      <a href="{{ url_for('bank_work') }}#check">Completa il controllo</a></li>{% endif %}
+  {% if c.uncertainties %}{% set pending.n = pending.n + 1 %}
+    <li>{{ c.uncertainties|length }} verifiche non bloccanti sulla copertura dei file.
+      <a href="{{ url_for('bank_work') }}#check">Controlla</a></li>{% endif %}
+  {% if run and run.status in ('ERROR', 'INTERRUPTED') %}{% set pending.n = pending.n + 1 %}
+    <li>L’ultima riconciliazione automatica non è terminata.
+      <a href="{{ url_for('bank_work') }}#reconcile">Vai alla riconciliazione automatica</a></li>{% endif %}
+  {% if not research_consent %}{% set pending.n = pending.n + 1 %}
+    <li>La ricerca internet non è autorizzata: senza autorizzazione i movimenti che la richiedono restano da riconciliare a mano.
+      <a href="{{ url_for('bank_work') }}#reconcile">Leggi i dati inviati e decidi</a></li>{% endif %}
+  {% if ready and not run and not running %}{% set pending.n = pending.n + 1 %}
+    <li>I dati sono pronti ma la riconciliazione automatica non è ancora stata avviata.
+      <a href="{{ url_for('bank_work') }}#reconcile">Vai alla riconciliazione automatica</a></li>{% endif %}
+  {% if open_cases %}{% set pending.n = pending.n + 1 %}
+    <li><strong>{{ open_cases }} movimenti</strong> da confermare o da riconciliare a mano.
+      <a href="{{ guided_url }}">Completa nella riconciliazione guidata</a></li>{% endif %}
+  {% if to_confirm_proposals %}{% set pending.n = pending.n + 1 %}
+    <li><strong>{{ to_confirm_proposals }} proposte</strong> risolte automaticamente attendono la tua conferma.
+      <a href="{{ guided_url }}">Controlla e conferma</a></li>{% endif %}
+  {% if results and results.earlier_open %}{% set pending.n = pending.n + 1 %}
+    <li>{{ results.earlier_open }} movimenti precedenti al periodo controllato sono ancora aperti (non bloccano).
+      <a href="{{ url_for('bank_review') }}">Apri Riconcilio</a></li>{% endif %}
+  </ul>
+  {% if not pending.n %}<p class="muted">Nessuna cosa in sospeso nei dati controllati.</p>{% endif %}
+</div>
+
+<div class="card" id="panel-pl">
+  <h2>3 · Conto economico (P/L) per periodo</h2>
+  {#- The period is for consulting and exporting only (BANK_LAYOUT_NAVIGATION_001): uploading never asks for it. -#}
+  <form method="get" action="{{ url_for('bank_panel') }}#panel-pl" class="filter-row">
+    <div class="field-row"><label for="pl-month">Mese</label>
+      <select id="pl-month" name="month">{% for name in MONTHS %}<option value="{{ loop.index }}" {{ 'selected' if loop.index == month }}>{{ name }}</option>{% endfor %}</select></div>
+    <div class="field-row"><label for="pl-year">Anno</label>
+      <input type="number" id="pl-year" name="year" value="{{ year }}" min="2000" max="2100" required></div>
+    <button type="submit" class="btn-secondary">Mostra il periodo</button>
+  </form>
+  <p><strong>P/L di {{ MONTHS[month - 1] }} {{ year }}</strong> <span class="badge warn">Da implementare</span></p>
+  <p class="small muted">Il conto economico per periodo non è ancora disponibile in Bank: nessun importo viene calcolato o mostrato qui.
+    Anche la stampa e l’esportazione in PDF sono da implementare. Il periodo scelto serve alla consultazione e all’esportazione mensile qui sotto; per caricare i file non serve scegliere un mese.</p>
+  <p><button type="button" class="btn-secondary" disabled aria-disabled="true">Stampa / esporta PDF — da implementare</button></p>
+</div>
+
+{% if may_use_item('BANK', 'export') %}
+<div class="card" id="panel-export">
+  <h2>4 · Esportazione mensile per il contabile</h2>
+  <p class="small muted">Un report per titolare dei conti e delle carte (un’azienda o una persona): <code>RfBank_AAAA_MM_&lt;Titolare&gt;.xlsx</code>.
+    Contiene solo i movimenti dei conti e delle carte di quel titolare e si scarica quando nulla lo blocca. Il controllo mostra lo stato del mese, cosa blocca il report e dove risolverlo.</p>
+  <form method="get" action="{{ url_for('bank_export') }}" class="filter-row export-filter">
+    <div class="field-row"><label for="ex-month">Mese</label>
+      <select id="ex-month" name="month">{% for name in MONTHS %}<option value="{{ loop.index }}" {{ 'selected' if loop.index == month }}>{{ name }}</option>{% endfor %}</select></div>
+    <div class="field-row"><label for="ex-year">Anno</label>
+      <input type="number" id="ex-year" name="year" value="{{ year }}" min="2000" max="2100" required></div>
+    <div class="field-row"><label for="ex-owner">Titolare</label>
+      <select id="ex-owner" name="owner" required>
+        <option value="" selected disabled>Scegli…</option>
+        {% for o in owners %}<option value="{{ o.key }}">{{ o.name }} ({{ o.kind }})</option>{% endfor %}
+      </select></div>
+    <button type="submit">Controlla l’esportazione</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

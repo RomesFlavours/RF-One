@@ -1,0 +1,332 @@
+{
+  "kind": "PREVIEW \u2014 nothing was exported or sent to QuickBooks Online",
+  "items": [
+    {
+      "txn_id": 1,
+      "counterpart_id": null,
+      "entity": "Purchase",
+      "owner_id": 1,
+      "owner": "Sample Co, LLC",
+      "date": "2026-10-01",
+      "description": "OFFICE DEPOT 1182",
+      "amount_minor": -4250,
+      "request_id": "rfone-bank-ft-1",
+      "sha256": "f9375eecf08934431609e739201fd2fdc0cf49e4039f85d405410558fddcc22c",
+      "payload": {
+        "TxnDate": "2026-10-01",
+        "PaymentType": "Cash",
+        "AccountRef": {
+          "value": null,
+          "name": "Chase Checking 1001"
+        },
+        "TotalAmt": "42.50",
+        "Line": [
+          {
+            "Amount": "42.50",
+            "Description": "Restaurant Operating Supplies",
+            "DetailType": "AccountBasedExpenseLineDetail",
+            "AccountBasedExpenseLineDetail": {
+              "AccountRef": {
+                "value": null,
+                "name": "Supplies"
+              }
+            }
+          }
+        ],
+        "PrivateNote": "RF-One Bank movement #1 \u00b7 OFFICE DEPOT 1182",
+        "DocNumber": "FT1"
+      },
+      "lines": [
+        {
+          "account": "Chase Checking 1001",
+          "debit": 0,
+          "credit": 4250
+        },
+        {
+          "account": "Supplies",
+          "debit": 4250,
+          "credit": 0,
+          "description": "Restaurant Operating Supplies"
+        }
+      ],
+      "blockers": [],
+      "ready": true,
+      "export_state": null,
+      "changed": false,
+      "exported": false
+    },
+    {
+      "txn_id": 2,
+      "counterpart_id": null,
+      "entity": "Deposit",
+      "owner_id": 1,
+      "owner": "Sample Co, LLC",
+      "date": "2026-10-05",
+      "description": "CATERING DEPOSIT EVENT 7",
+      "amount_minor": 25000,
+      "request_id": "rfone-bank-ft-2",
+      "sha256": "51f22d959a8aaf1d4e862dd50fc9888fd0524bdb498fde3213a7d31201cddc3a",
+      "payload": {
+        "TxnDate": "2026-10-05",
+        "DepositToAccountRef": {
+          "value": null,
+          "name": "Chase Checking 1001"
+        },
+        "TotalAmt": "250.00",
+        "Line": [
+          {
+            "Amount": "250.00",
+            "Description": "Catering Sales (sample)",
+            "DetailType": "DepositLineDetail",
+            "DepositLineDetail": {
+              "AccountRef": {
+                "value": null,
+                "name": "Catering income"
+              }
+            }
+          }
+        ],
+        "PrivateNote": "RF-One Bank movement #2 \u00b7 CATERING DEPOSIT EVENT 7"
+      },
+      "lines": [
+        {
+          "account": "Chase Checking 1001",
+          "debit": 25000,
+          "credit": 0
+        },
+        {
+          "account": "Catering income",
+          "debit": 0,
+          "credit": 25000,
+          "description": "Catering Sales (sample)"
+        }
+      ],
+      "blockers": [],
+      "ready": true,
+      "export_state": null,
+      "changed": false,
+      "exported": false
+    },
+    {
+      "txn_id": 3,
+      "counterpart_id": 5,
+      "entity": "Transfer",
+      "owner_id": 1,
+      "owner": "Sample Co, LLC",
+      "date": "2026-10-08",
+      "description": "ONLINE TRANSFER TO SAV 1002",
+      "amount_minor": -50000,
+      "request_id": "rfone-bank-ft-3",
+      "sha256": "b561782c108833e81ac65eac57ec1f1911d9be37e9335ee1a664433eb52032de",
+      "payload": {
+        "TxnDate": "2026-10-08",
+        "Amount": "500.00",
+        "FromAccountRef": {
+          "value": null,
+          "name": "Chase Checking 1001"
+        },
+        "ToAccountRef": {
+          "value": null,
+          "name": "Chase Savings 1002"
+        },
+        "PrivateNote": "RF-One Bank movements #3 and #5"
+      },
+      "lines": [
+        {
+          "account": "Chase Savings 1002",
+          "debit": 50000,
+          "credit": 0
+        },
+        {
+          "account": "Chase Checking 1001",
+          "debit": 0,
+          "credit": 50000
+        }
+      ],
+      "blockers": [],
+      "ready": true,
+      "export_state": null,
+      "changed": false,
+      "exported": false
+    },
+    {
+      "txn_id": 4,
+      "counterpart_id": 8,
+      "entity": "Transfer",
+      "owner_id": 1,
+      "owner": "Sample Co, LLC",
+      "date": "2026-10-20",
+      "description": "CHASE CREDIT CRD AUTOPAY",
+      "amount_minor": -30000,
+      "request_id": "rfone-bank-ft-4",
+      "sha256": "3344eccd19bf6f31d4dd3ace203a37341040584b66efe601066c223412cc705e",
+      "payload": {
+        "TxnDate": "2026-10-20",
+        "Amount": "300.00",
+        "FromAccountRef": {
+          "value": null,
+          "name": "Chase Checking 1001"
+        },
+        "ToAccountRef": {
+          "value": null,
+          "name": "Ink Card 2001"
+        },
+        "PrivateNote": "RF-One Bank movements #4 and #8"
+      },
+      "lines": [
+        {
+          "account": "Ink Card 2001",
+          "debit": 30000,
+          "credit": 0
+        },
+        {
+          "account": "Chase Checking 1001",
+          "debit": 0,
+          "credit": 30000
+        }
+      ],
+      "blockers": [],
+      "ready": true,
+      "export_state": null,
+      "changed": false,
+      "exported": false
+    },
+    {
+      "txn_id": 6,
+      "counterpart_id": null,
+      "entity": "Purchase",
+      "owner_id": 1,
+      "owner": "Sample Co, LLC",
+      "date": "2026-10-03",
+      "description": "COSTCO WHSE 0123",
+      "amount_minor": -10000,
+      "request_id": "rfone-bank-ft-6",
+      "sha256": "16162747f2f7171007b1ea68f3d0428b9bebbe1d94ea04249dd4d5c59c95822d",
+      "payload": {
+        "TxnDate": "2026-10-03",
+        "PaymentType": "CreditCard",
+        "AccountRef": {
+          "value": null,
+          "name": "Ink Card 2001"
+        },
+        "TotalAmt": "100.00",
+        "Line": [
+          {
+            "Amount": "60.00",
+            "Description": "Paper goods and supplies",
+            "DetailType": "AccountBasedExpenseLineDetail",
+            "AccountBasedExpenseLineDetail": {
+              "AccountRef": {
+                "value": null,
+                "name": "Supplies"
+              }
+            }
+          },
+          {
+            "Amount": "40.00",
+            "Description": "Cleaning products",
+            "DetailType": "AccountBasedExpenseLineDetail",
+            "AccountBasedExpenseLineDetail": {
+              "AccountRef": {
+                "value": null,
+                "name": "Cleaning"
+              }
+            }
+          }
+        ],
+        "PrivateNote": "RF-One Bank movement #6 \u00b7 COSTCO WHSE 0123",
+        "DocNumber": "FT6"
+      },
+      "lines": [
+        {
+          "account": "Ink Card 2001",
+          "debit": 0,
+          "credit": 10000
+        },
+        {
+          "account": "Supplies",
+          "debit": 6000,
+          "credit": 0,
+          "description": "Paper goods and supplies"
+        },
+        {
+          "account": "Cleaning",
+          "debit": 4000,
+          "credit": 0,
+          "description": "Cleaning products"
+        }
+      ],
+      "blockers": [],
+      "ready": true,
+      "export_state": null,
+      "changed": false,
+      "exported": false
+    },
+    {
+      "txn_id": 7,
+      "counterpart_id": null,
+      "entity": "Purchase",
+      "owner_id": 1,
+      "owner": "Sample Co, LLC",
+      "date": "2026-10-10",
+      "description": "HOME DEPOT RETURN 44",
+      "amount_minor": 1599,
+      "request_id": "rfone-bank-ft-7",
+      "sha256": "c1cc1d35972affa3a47ec59cadb4fea7269a18f6e0c2ed72cc8da0fa1f6ba68b",
+      "payload": {
+        "TxnDate": "2026-10-10",
+        "PaymentType": "CreditCard",
+        "AccountRef": {
+          "value": null,
+          "name": "Ink Card 2001"
+        },
+        "TotalAmt": "15.99",
+        "Line": [
+          {
+            "Amount": "15.99",
+            "Description": "Restaurant Operating Supplies",
+            "DetailType": "AccountBasedExpenseLineDetail",
+            "AccountBasedExpenseLineDetail": {
+              "AccountRef": {
+                "value": null,
+                "name": "Supplies"
+              }
+            }
+          }
+        ],
+        "PrivateNote": "RF-One Bank movement #7 \u00b7 HOME DEPOT RETURN 44",
+        "DocNumber": "FT7",
+        "Credit": true
+      },
+      "lines": [
+        {
+          "account": "Ink Card 2001",
+          "debit": 1599,
+          "credit": 0
+        },
+        {
+          "account": "Supplies",
+          "debit": 0,
+          "credit": 1599,
+          "description": "Restaurant Operating Supplies"
+        }
+      ],
+      "blockers": [],
+      "ready": true,
+      "export_state": null,
+      "changed": false,
+      "exported": false
+    }
+  ],
+  "excluded": {},
+  "need": {},
+  "ready": 6,
+  "blocked": 0,
+  "exported": 0,
+  "changed": 0,
+  "by_entity": {
+    "Purchase": 3,
+    "Deposit": 1,
+    "Transfer": 2
+  }
+}

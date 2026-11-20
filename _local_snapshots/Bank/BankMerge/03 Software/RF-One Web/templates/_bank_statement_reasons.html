@@ -1,0 +1,5 @@
+{% if reasons %}
+<table class="cp-table"><thead><tr><th>Banca</th><th>Verso</th><th>Causale</th><th>WHY</th><th></th></tr></thead><tbody>
+{% for key, why in reasons.items() %}<tr><td>{{ key[0] }}</td><td>{{ 'Uscita' if key[1]=='OUT' else 'Entrata' }}</td><td>{{ key[2] }}</td><td><select aria-label="WHY">{% for w in whys %}<option value="{{ w.id }}" {% if w.id==why %}selected{% endif %}>{{ w.name }}</option>{% endfor %}</select></td><td><button type="button" data-bank-key='{{ key|tojson }}' data-previous="{{ why }}">Salva</button></td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p>Nessuna causale bancaria salvata.</p>{% endif %}

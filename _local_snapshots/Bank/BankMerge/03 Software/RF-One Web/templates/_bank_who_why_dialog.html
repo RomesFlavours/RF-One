@@ -1,0 +1,44 @@
+{#- BANK_WHO_WHY_CONFIG_001: the Edit window of one WHO (why_signals.js), on the WHY page and, opened with the
+    context of an upload, on Carica e riconcilia (BANK_WHO_WHY_UPLOAD_CHECK_001). Choose how the WHY is determined, the WHYs
+    (their WHAT shown next to them), company exceptions, then Simulate (read-only) and Save (explicit confirmation). -#}
+<dialog id="wc-dialog" class="ws-wide" aria-labelledby="wc-h">
+  <div class="dialog-heading"><h2 id="wc-h">WHO → WHY</h2><span><button type="button" class="btn-secondary bank-help-q" data-how-works="why-who-dialog" aria-label="How this window works">?</button> <button type="button" class="close-button" data-cancel="wc-dialog" aria-label="Close">&times;</button></span></div>
+  <p class="inline-note"><strong translate="no" id="wc-who"></strong></p>
+  <p class="ws-error" id="wc-conflict" hidden></p>
+  <p class="inline-note" id="wc-proposal" hidden></p>
+  <div class="inline-note" id="wc-context" hidden></div>
+  <fieldset><legend>How the WHY is determined</legend>
+    <label><input type="radio" name="wc-behaviour" value="SINGLE"> Single WHY</label>
+    <label><input type="radio" name="wc-behaviour" value="BY_SUBJECT"> Personal / Company</label>
+    <label><input type="radio" name="wc-behaviour" value="RULE"> From rule</label>
+  </fieldset>
+  <div id="wc-single" hidden><label>Single WHY <select id="wc-why"></select></label> <small class="ws-muted">WHAT: <span id="wc-why-what" translate="no">—</span></small></div>
+  <div id="wc-subject" hidden>
+    <div><label>Personal WHY <select id="wc-personal"></select></label> <small class="ws-muted">WHAT: <span id="wc-personal-what" translate="no">—</span></small></div>
+    <div><label>Company WHY <select id="wc-company"></select></label> <small class="ws-muted">WHAT: <span id="wc-company-what" translate="no">—</span></small></div>
+    <p class="inline-note">Personal or Company is read from the owner of the account or card at the movement date. An unknown owner is not Company: the movement stays open.</p>
+  </div>
+  <div id="wc-rule" hidden><p class="inline-note">The WHY is decided movement by movement by the WHO WHY rules of this WHO: <strong id="wc-rule-count">0</strong> <span>active.</span></p></div>
+  <p class="inline-note">WHOM: the owner of the account or card at the movement date, unless an exception names another one.</p>
+  <details id="wc-exc-box"><summary>Company exceptions (<span id="wc-exc-count">0</span>)</summary>
+    <p class="inline-note">An exception applies when the owner of the account or card at the movement date is that company. It replaces: <strong id="wc-replaces">—</strong>.</p>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Company</th><th>WHY</th><th>WHAT</th><th>WHOM</th><th></th></tr></thead><tbody id="wc-exc-rows"></tbody></table></div>
+    <button type="button" class="btn-secondary" id="wc-exc-add">+ Exception</button>
+  </details>
+  <p class="inline-note"><span>When these criteria are not enough:</span> <button type="button" class="btn-secondary" id="wc-define-rule">Define rule</button></p>
+  <details id="wc-pairs-box" hidden><summary>Former WHY per account or card (<span id="wc-pairs-count">0</span>)</summary>
+    <p class="inline-note">Kept unchanged for reference. A WHO without a configuration still uses them.</p>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Account or card</th><th>Owner</th><th>WHY</th></tr></thead><tbody id="wc-pairs-rows"></tbody></table></div>
+  </details>
+  <p class="ws-error" id="wc-error" role="alert"></p>
+  <div id="wc-sim" hidden>
+    <h3>Simulation <small class="ws-muted">(read-only; nothing is saved)</small></h3>
+    <div class="ws-sim-summary" id="wc-sim-summary"></div>
+    <div class="who-scroll"><table class="who-table"><thead><tr><th>Date</th><th>Account or card</th><th>Description</th><th class="num">Amount</th><th>WHY before</th><th>WHY after</th><th>WHOM before</th><th>WHOM after</th></tr></thead><tbody id="wc-sim-rows"></tbody></table></div>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" class="btn-secondary" data-cancel="wc-dialog">Cancel</button>
+    <button type="button" class="btn-secondary" id="wc-simulate">Simulate</button>
+    <button type="button" id="wc-save" disabled>Save</button>
+  </div>
+</dialog>

@@ -1,0 +1,53 @@
+{# BANK_REVIEW_SORT_001 — a sortable header of the Review lists (To Reconcile
+   and Reconciled): Instrument, Date, Description, Amount only. A link (so
+   usable from the keyboard) to the same list with every filter and the
+   search kept: first click ascending, then it alternates. The server sorts
+   (after the filters, before the row limit). Import WITH CONTEXT: needs
+   `review_view` and `tab_args`.
+
+   BANK_REVIEW_COLUMN_FILTERS_001 — under the title of a data column (`filter`
+   = its key): "Search" opens the column's search dialog
+   (bank-review-column-filters.js), "All" removes only that column's filter,
+   and the active filter's text is shown. Needs `column_filters`,
+   `clear_links` and `instrument_target`. #}
+{% macro column_filter(label, key) -%}
+  {%- if key and column_filters is defined -%}
+    {%- set active = column_filters.get(key) %}
+    <span class="col-filter">
+      <a href="#" class="col-filter-link" data-col-filter="{{ key }}" data-col-label="{{ label|striptags }}"
+         data-col-value="{{ active or '' }}"{% if key == 'instrument' %} data-col-target="{{ instrument_target }}"{% endif %}
+         title="Search in {{ label|striptags }} only">Filter</a>
+      {% if active %}<span class="col-filter-sep" aria-hidden="true">&middot;</span>
+      <a class="col-filter-link{% if not active %} is-idle{% endif %}" data-col-nav
+         href="{{ url_for('bank_review', view=review_view, **(clear_links[key] if active else tab_args)) }}"
+         title="Remove the filter of {{ label|striptags }} only">Clear</a>{% endif %}
+      {%- if active %}
+        <span class="col-filter-active" data-col-active="{{ key }}">
+          {%- if key == 'instrument' %}{{ 'For Whom' if instrument_target == 'for_whom' else 'Account / Card' }}: {% endif -%}
+          &ldquo;{{ active }}&rdquo;</span>
+      {%- endif %}
+    </span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro sort_th(label, key, cls='', filter=None) -%}
+  {%- if tab_args is defined and review_view is defined -%}
+    {%- set active = tab_args.get('sort') == key %}
+    {%- set ascending = active and tab_args.get('dir') == 'asc' %}
+    {%- set args = dict(tab_args, sort=key, dir=('desc' if ascending else 'asc')) %}
+    <th{% if cls %} class="{{ cls }}"{% endif %}{% if active %} aria-sort="{{ 'ascending' if ascending else 'descending' }}"{% endif %}>
+      <a class="review-sort-link{% if active %} is-active{% endif %}" data-rf-busy data-sort="{{ key }}"
+         href="{{ url_for('bank_review', view=review_view, **args) }}"
+         title="Sort by {{ label|striptags }} ({{ 'descending' if ascending else 'ascending' }})">{{ label }}
+        {%- if active %} <span class="review-sort-arrow" aria-hidden="true">{{ '↑' if ascending else '↓' }}</span>{% endif %}</a>
+      {{ column_filter(label, filter) }}
+    </th>
+  {%- else -%}
+    <th{% if cls %} class="{{ cls }}"{% endif %}>{{ label }}</th>
+  {%- endif -%}
+{%- endmacro %}
+
+{# A data column that is not sortable, with its Search / All. #}
+{% macro filter_th(label, key, cls='') -%}
+  <th{% if cls %} class="{{ cls }}"{% endif %}>{{ label }}{{ column_filter(label, key) }}</th>
+{%- endmacro %}

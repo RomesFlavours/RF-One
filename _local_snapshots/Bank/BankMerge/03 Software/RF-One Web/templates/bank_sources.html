@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Source · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('source') }}
+{#- BANK_CONFIGURATIONS_SECTIONS_001 (2026-11-05): Conti e carte is a section of Configurazioni; this
+    stand-alone page remains only for an account that may use Conti e carte but not Configurazioni
+    (`bank_routes.bank_sources`). One content for both: `_bank_sources_section.html`. -#}
+{% include "_bank_sources_section.html" %}
+{% endblock %}

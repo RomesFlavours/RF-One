@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="{{ 'it' if ui_language == 'it' else 'en' }}">
+<head>
+  <meta charset="utf-8"><meta name="bank-csrf" content="{{ csrf_token() if csrf_token is defined else '' }}"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WHO</title>
+  <link rel="icon" href="/static/bank-assistant/rf-one.png"><link rel="stylesheet" href="/static/css/rf-one.css?v=29"><link rel="stylesheet" href="/static/bank-assistant/preview.css?v=who-search-text2">
+  <style>.st-filters{display:flex;gap:12px;flex-wrap:nowrap;align-items:center}.st-filters label{display:flex;align-items:center;gap:.4rem;margin:0;white-space:nowrap}.st-scroll{max-height:70vh}.st-null{color:var(--muted)}.st-fields td:first-child{color:var(--muted);white-space:nowrap}.st-whys{max-height:16rem;overflow:auto;border:1px solid var(--olive-300);border-radius:6px;padding:.3rem .5rem;margin-top:.4rem}.st-whys label{display:flex!important;gap:.4rem;margin:.2rem 0!important;font-size:.85rem}.st-whys small{color:var(--muted)}.st-error{color:var(--bad)}.rw-dialog{width:min(760px,96vw)}.rw-mv{margin:.2rem 0 .6rem}.rw-muted{color:var(--muted);font-size:.85rem}.rw-kind{display:flex;gap:1.2rem;border:1px solid var(--olive-150);border-radius:6px;padding:.3rem .7rem;margin:.4rem 0}.rw-kind legend{font-size:.85rem;padding:0 .3rem}.rw-kind label{display:flex;gap:.3rem;align-items:center;margin:0}.rw-row{margin:.4rem 0}.rw-ai{border-left:3px solid var(--olive-300);padding:.3rem .6rem;margin:.3rem 0;font-size:.9rem}.rw-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}.rw-why{margin:.4rem 0;font-weight:600}@media (max-width:640px){.rw-grid{grid-template-columns:1fr}}.ws-cond{display:grid;grid-template-columns:minmax(10rem,1.2fr) minmax(8rem,.8fr) minmax(10rem,1.5fr) auto;gap:.4rem;align-items:end;margin:.3rem 0}.ws-cond label{margin:0!important}.ws-sim-summary{display:flex;gap:1rem;flex-wrap:wrap;margin:.4rem 0}.ws-muted{color:var(--muted)}.ws-error{color:var(--bad)}dialog.ws-wide{width:min(1000px,96vw)}</style>
+  <script defer src="/static/bank-assistant/flow_i18n.js?v=ui-it3"></script><script defer src="/static/bank-assistant/flow.js?v=who-why-existing4"></script><script defer src="/static/bank-assistant/who_search_text.js?v=6"></script><script defer src="/static/bank-assistant/why_signals.js?v=2"></script>
+</head>
+<body>
+<div class="wrap wrap-wide">
+  <header class="site-header">
+    <a class="brand" href="/" rel="noopener"><span class="brand-name-group"><span class="brand-wordmark">Rome's Flavours · WP</span><span class="brand-suffix">RF-ONE</span></span></a>
+    <img class="brand-logo" src="/static/bank-assistant/rf-one.png" alt="RF-One">
+  </header>
+  {% import "_bank_macros.html" as bank %}{{ bank.module_nav('who_rules') }}
+  {#- BANK_WHO_WHY_FINAL_LOGIC_001 + BANK_LAYOUT_NAVIGATION_001 (Product Owner, 2026-11-05): the WHO page gathers the
+      existing ways to recognise WHO, in four sections: 1 patterns and extraction (WHO Pattern Training, its own page),
+      2 text rules, 3 WHO Status (names and aliases; formerly WHO Search Text), 4 AI research. Rules, their versions and the conventional WHO identities
+      approved by the Product Owner (e.g. PINO PERSONAL, COMPANY CAR, VARIOUS RESTAURANT) are kept as they are. -#}
+  <div class="page-heading"><div><h2>WHO Recognition</h2></div></div>
+  {{ bank.section_nav([('who-patterns', 'Patterns and extraction'), ('who-text-rules', 'Text rules'), ('who-status', 'WHO Status'), ('who-ai', 'AI research'), ('who-known', 'Known WHO & Rules')]) }}
+  <section class="card" id="who-patterns" aria-labelledby="who-patterns-h"><div class="section-heading"><div><h2 id="who-patterns-h">Patterns and extraction</h2></div>
+    <div class="flow-actions"><a class="btn-secondary" href="/bank/who-training">Open WHO Pattern Training</a></div></div>
+  </section>
+  {#- BANK_WHO_SEARCH_TEXT_001: WHO recognition rules, run BEFORE the WHO names and aliases. The same AI rules,
+      editor and routes as Rules and profiles (flow.js): describe the rule with the AI, preview the movements, save;
+      Discuss / Rename / Delete on each saved rule. -#}
+  <section class="card" id="who-text-rules" aria-labelledby="extractors-heading"><div class="section-heading"><div><h2 id="extractors-heading">Text rules <span class="badge" id="rules-count">—</span></h2></div><div class="flow-actions"><button id="new-extractor" class="btn-secondary" hidden>+ AI rule</button></div></div><label class="search-label">Search rules<input id="rule-search" type="search"></label><div id="rules-list"></div></section>
+  {#- BANK_WHO_SEARCH_TEXT_001: the second recognition, WHO Search Text — the name or an alias of a registered WHO
+      found in the description, only where no rule above read a WHO. "Text" on a movement saves a text to search. -#}
+  <section class="card" id="who-status" aria-labelledby="st-list-h"><div class="section-heading"><div><h2 id="st-list-h">WHO Status <span class="badge" id="st-count">—</span></h2></div></div>
+    <div class="st-filters">
+      <label>Search<input id="st-q" type="search" placeholder="Description or WHO"></label>
+      <label>Show<select id="st-show"><option value="null" selected>WHO not recognised</option><option value="">All</option><option value="RULE">Recognised by a rule</option><option value="TEXT">Recognised by name or alias</option><option value="review">To review (several WHO)</option></select></label>
+    </div>
+    <div class="who-scroll st-scroll"><table class="who-table"><thead><tr><th>Source</th><th>Date</th><th>Description</th><th>Amount</th><th>WHO recognised</th><th>By</th><th></th></tr></thead><tbody id="st-rows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
+  </section>
+  <section class="card" id="who-ai" aria-labelledby="who-ai-h"><div class="section-heading"><div><h2 id="who-ai-h">AI research</h2></div></div>
+    <p><a href="/bank/review">AI on a single movement: Riconcilio</a> · <a href="/bank/work#reconcile">Internet research in the automatic reconciliation: Carica e riconcilia</a></p>
+  </section>
+  {#- BANK-2026-11-04 (2026-11-04): layout only — the Known WHO list and its "+ AI" buttons have no behaviour yet. -#}
+  <section class="card" id="who-known" aria-labelledby="known-h"><div class="section-heading"><div><h2 id="known-h">Known WHO &amp; Rules <span class="badge" id="known-count">—</span></h2></div></div>
+    <div class="who-scroll st-scroll"><table class="who-table"><thead><tr><th>WHO</th><th>Rules</th><th></th></tr></thead><tbody id="known-rows"><tr><td colspan="3">Loading…</td></tr></tbody></table></div>
+  </section>
+</div>
+
+{#- Riconosci WHO (BANK_WHO_RECOGNISE_MODAL_001, Product Owner, 2026-11-05), opened by "By Text" in WHO Status. Layout
+    approved by the Product Owner: movement, 1 kind, 2 AI suggestion, 3 WHO, 4 another / new WHO, 5 text, 6 WHO -> WHY state,
+    7 contextual rule action, 8 Cancel / Save association. Explanations are in the guide (the "?"). The former
+    WHO-WHY-WHAT association window is replaced by 6-7; possible WHYs stay editable in Configuration > WHO. -#}
+<dialog id="st-text" class="rw-dialog" aria-labelledby="st-text-h">
+  <div class="dialog-heading"><h2 id="st-text-h">Recognise WHO</h2><span><button type="button" class="btn-secondary bank-help-q" data-how-works="who-text-dialog" aria-label="How this window works">?</button> <button type="button" class="close-button" data-cancel="st-text" aria-label="Close">&times;</button></span></div>
+  <div class="rw-mv"><strong id="rw-desc" translate="no"></strong><div class="rw-muted" id="rw-meta" translate="no"></div></div>
+  <fieldset class="rw-kind"><legend>WHO type</legend><label><input type="radio" name="rw-kind" value="SPECIFIC" checked> Specific</label><label><input type="radio" name="rw-kind" value="GENERIC"> Generic</label></fieldset>
+  <div class="rw-row"><button type="button" class="btn-secondary" id="rw-ai">Ask the AI for a suggestion</button> <span class="rw-muted" id="rw-ai-status" role="status"></span></div>
+  <div class="rw-ai" id="rw-ai-result" hidden></div>
+  <p class="rw-who" id="rw-who-line" hidden>WHO: <strong id="rw-who-name" translate="no"></strong> <span class="badge" id="rw-who-badge"></span></p>
+  <div class="rw-grid"><label>Choose another WHO<select id="st-who"></select></label><label>or a new WHO<input id="rw-new" maxlength="120" autocomplete="off" placeholder="e.g. Acquisti vari"></label></div>
+  <label>Text to recognise in the next transactions<input id="st-input" maxlength="200" autocomplete="off"></label>
+  <p class="rw-why" id="rw-why" role="status"></p>
+  <div class="rw-row"><button type="button" class="btn-secondary" id="rw-define" hidden></button></div>
+  <p class="st-error" id="st-text-error" role="alert"></p>
+  <div class="dialog-actions"><button type="button" class="btn-secondary" data-cancel="st-text">Cancel</button><button type="button" id="st-save">Save association</button></div>
+</dialog>
+{% include "_bank_why_rule_dialog.html" %}
+{% include "_bank_flow_rule_dialogs.html" %}
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

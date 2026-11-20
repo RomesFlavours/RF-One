@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% import "_bank_review_sort.html" as sorting with context %}
+{% block page_title %}Bank Reconciliation · Review · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('review') }}
+
+{% include "_bank_review_header.html" %}
+{% if not period_needed %}
+
+
+<div class="card">
+  <section aria-label="Reconciliation" style="margin:16px 0">
+    <button type="button" id="bank-run-start">Reconcile pending</button>
+    <button type="button" id="bank-run-stop" class="btn-secondary" hidden>Stop</button>
+    <button type="button" id="bank-run-continue" class="btn-secondary" hidden>Continue</button>
+    <p id="bank-run-status" role="status"></p>
+    <div id="bank-run-preview"></div>
+    <details><summary>Reconciliation history</summary><div id="bank-run-history"></div></details>
+  </section>
+  {% if transactions %}
+    {#- BANK_REVIEW_BULK_WHO_WHY_001 — the rows ticked on this page; ticking
+        writes nothing. Leaving the page (search, filters, tab) clears it. -#}
+    <div class="review-selection" id="review-selection" hidden>
+      <strong id="review-selected-count">0 transactions selected</strong>
+      <button type="button" class="btn-secondary btn-inline" id="review-selection-clear">Clear selection</button>
+    </div>
+    <p class="cell-note review-selection-note" id="review-selection-note" role="status" hidden></p>
+    <div class="table-scroll">
+      <table class="table-compact table-stack">
+        <thead>
+          <tr>
+            {{ sorting.sort_th('Account', 'instrument', filter='instrument') }}{{ sorting.sort_th('Date', 'date', filter='date') }}{{ sorting.sort_th('Description', 'description', filter='description') }}{{ sorting.sort_th('Amount', 'amount', filter='amount') }}{{ sorting.filter_th('Source', 'source') }}
+            {{ sorting.filter_th('Duplicates', 'duplicate') }}{{ sorting.filter_th('WHO / WHY'|safe, 'classification') }}<th>Transfer</th>
+            <th class="col-complete"><span class="sr-only">Complete</span></th>
+          </tr>
+        </thead>
+        <tbody id="review-body">
+{% include "_bank_unresolved_rows.html" %}
+        </tbody>
+      </table>
+    </div>
+    {% include "_bank_review_more.html" %}
+  {% else %}
+    <p class="empty">Nothing to reconcile here: every transaction in this view has its WHO.</p>
+  {% endif %}
+</div>
+
+{# BANK_MANUAL_WHO_WHY_001 — "Select WHO / WHY": manual reconciliation of
+   ONE transaction, WHO + WHY together. The Rule button teaches recognition. #}
+{% include "_bank_who_why_modal.html" %}
+
+{#- Once per page, after both modals it serves. #}
+{% include "_bank_why_create_dialog.html" %}
+{% include "_bank_who_create_dialog.html" %}
+<style>
+  .review-selection { display: flex; align-items: center; gap: .6rem; margin: 0 0 .5rem; }
+  .review-selection[hidden] { display: none; }
+  .review-selection button { width: auto; margin: 0; }
+  .col-select { width: 1.8rem; text-align: center; }
+  .col-complete { width: 1%; white-space: nowrap; }
+  .col-complete .bank-complete-open { margin: 0; }
+  .col-select input { margin: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+<script>
+// BANK_REVIEW_FOR_WHOM_001 — choosing For Whom saves it at once (the form
+// still works without JavaScript through its Save button).
+document.querySelectorAll("[data-for-whom-select]").forEach(function (select) {
+  select.addEventListener("change", function () {
+    if (select.value) { select.form.submit(); }
+  });
+});
+</script>
+<script defer src="{{ url_for('static',filename='js/bank-import-pipeline.js') }}?v=en1"></script>
+{% include '_bank_example_choice.html' %}
+<style>
+#bank-research-dialog{width:95vw;max-width:1500px;height:92vh;max-height:96vh;padding:0;border:1px solid var(--olive-300);border-radius:12px;overflow:hidden}
+#bank-research-dialog[open]{display:flex;flex-direction:column}
+.bank-research-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 18px;border-bottom:1px solid var(--olive-150)}
+#bank-research-position{margin-left:auto;color:var(--muted)}
+#bank-research-frame{width:100%;flex:1;min-height:0;border:0}
+</style>
+<dialog id="bank-research-dialog" aria-label="Guided reconciliation"><div class="bank-research-toolbar"><button type="button" id="bank-research-close">Stop</button><button type="button" id="bank-run-skip" class="btn-secondary">Skip this transaction</button><span id="bank-research-position" role="status"></span><button type="button" class="rf-modal-x" style="margin:0 0 0 auto;float:none" aria-label="Close" onclick="document.getElementById('bank-research-close').click()">&times;</button></div><iframe id="bank-research-frame" title="Current transaction and recognition profile"></iframe></dialog>
+<script defer src="{{ url_for('static',filename='js/bank-profile-research.js') }}?v=transaction-context1"></script>
+{% include '_bank_movement_research.html' %}
+{#- BANK_COMPLETE_MODAL_001 (2026-11-06): the one "Completa" window. -#}
+{% include "_bank_complete_modal.html" %}
+{% endif %}
+{% endblock %}

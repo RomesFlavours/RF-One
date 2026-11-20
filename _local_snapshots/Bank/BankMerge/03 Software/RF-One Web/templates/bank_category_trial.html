@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Categorie di transazione · BankMerge{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('category_rules',None,('category-trial','Categorie di transazione')) }}
+<style>
+.ct{max-width:72rem}.ct h2{margin-bottom:.4rem}.ct details,.ct fieldset,.ct-result{background:white;border:1px solid #cbd2b5;border-radius:.5rem;padding:.8rem 1rem;margin:.6rem 0}.ct summary{cursor:pointer;font-weight:650}.ct .fields{display:flex;align-items:end;gap:.65rem;flex-wrap:wrap}.ct label{display:grid;gap:.25rem}.ct input,.ct select{max-width:100%;padding:.4rem}.ct .actions{display:flex;gap:.5rem;flex-wrap:wrap;margin:.6rem 0}.ct table{width:100%;border-collapse:collapse}.ct td,.ct th{text-align:left;padding:.4rem;border-bottom:1px solid #ddd}.ct [role=status]{padding:.3rem 0}.ct .fields label{flex:1 1 22rem}.ct textarea{padding:.5rem;width:100%;box-sizing:border-box;font:inherit}.ct [hidden]{display:none}
+
+.ct .category-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem 0;border-bottom:1px solid #d8ddce}
+.ct .category-row h3,.ct .category-row p{margin:.15rem 0}.ct .category-row p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ct .category-row button{flex:none}
+.ct .rule-dialog{box-sizing:border-box;width:96vw;max-width:96vw;max-height:90dvh;padding:0;border:1px solid #bbc4a4;border-radius:.6rem;color:inherit}
+.ct .rule-dialog::backdrop{background:rgb(30 36 20 / 36%)}.ct .rule-head{position:sticky;top:0;display:flex;align-items:center;gap:.5rem;background:white;border-bottom:1px solid #d8ddce;padding:.7rem 1rem;z-index:1}
+.ct .rule-head h2{flex:1;margin:0}.ct .rule-body{padding:1rem}.ct textarea[readonly]{background:#f6f7f1}
+.ct .rule-body{padding:.55rem .8rem}.ct .rule-body fieldset{margin:.35rem 0;padding:.35rem .65rem;min-width:0}
+.ct .rule-dialog .fields,.ct .clarification{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.2rem .55rem}
+.ct .fields label{grid-column:1/-1}.ct .fields textarea,.ct .fields button{align-self:center;margin:0}.ct .clarification{margin:.25rem 0}
+.ct .clarification[hidden],.ct [role=status]:empty{display:none}.ct .rule-body [role=status]{margin:.15rem 0;padding:0}
+.ct .rule-body textarea{padding:.3rem .45rem}.ct .rule-body button{padding:.35rem .65rem}.ct .clarification input{min-width:0}
+.ct .step-actions{display:flex;flex-direction:column;gap:.4rem;align-self:start}.ct .step-actions button{width:100%}
+.ct .why-dialog{width:min(42rem,92vw)}.ct .why-dialog select{display:block;width:100%;margin-top:.6rem}.ct .why-dialog input{width:100%;box-sizing:border-box}
+.ct .step-chat{max-height:32vh;overflow:auto;padding:.6rem;border:1px solid #d8ddce;border-radius:.5rem;margin:.6rem 0}
+.ct .step-chat p{white-space:pre-wrap;margin:.25rem 0}.ct .step-chat>div{padding:.6rem;margin:.3rem 0;border-radius:.4rem}
+.ct .chat-user{background:#eef1e4}.ct .chat-assistant{background:#f7f8f3}.ct .step-editor{border-top:1px solid #cbd2b5;margin:.8rem 0;padding:.7rem 0}
+</style>
+<main class="ct"><h2>Categorie di transazione</h2>
+
+<div id="categories"></div>
+<button type="button" class="btn-secondary" id="add">Aggiungi categoria</button>
+<p role="status" id="storage-message"></p>
+</main>
+<script type="application/json" id="trial-data">{{ dict(defaults=defaults,whys=whys,csrf=csrf_token())|tojson }}</script>
+<script defer src="{{ url_for('static', filename='js/bank-category-trial.js') }}?v=16"></script>
+{% endblock %}

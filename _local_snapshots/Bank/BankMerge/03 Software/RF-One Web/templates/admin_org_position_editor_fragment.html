@@ -1,0 +1,5 @@
+<div class="modal-header">
+  <h2 style="margin:0;">{{ position.name }}</h2>
+  <a href="{{ url_for('admin_org_position_detail', position_id=position.id) }}" class="muted" style="font-size:.78rem;">Open full page &rarr;</a>
+</div>
+{% include "_position_editor_body.html" %}

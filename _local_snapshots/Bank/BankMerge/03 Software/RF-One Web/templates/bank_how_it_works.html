@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Come funziona Bank · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('panel', leaf='Come funziona Bank', how_works=False) }}
+<div class="bank-guide">
+<h1>Come funziona Bank</h1>
+<nav class="bank-guide-nav small" aria-label="Sezioni della guida">
+<a href="#bank">Bank e Pannello</a><a href="#upload-and-reconcile">Carica e riconcilia</a><a href="#review">Riconcilio</a><a href="#category-trial">Regole</a><a href="#who">WHO</a><a href="#why">WHY</a><a href="#configuration">Configurazioni</a><a href="#sources">Conti e carte</a><a href="#export">Esportazione mensile</a><a href="#quickbooks-online">QuickBooks Online</a><a href="#rules-and-profiles">Regole e profili</a><a href="#guided">Riconciliazione guidata</a><a href="#import-by-month">Import per mese</a>
+</nav>
+<section class="card" id="bank">
+<h2>Come funziona Bank</h2>
+<p>Bank riconcilia i movimenti di conti e carte: per ogni movimento stabilisce <strong>WHO</strong> (chi è la controparte), <strong>WHY</strong> (perché il denaro si è mosso) e, dal WHY, il <strong>WHAT</strong> (la categoria contabile); il <strong>WHOM</strong> deriva dal titolare del conto o della carta. Il percorso è uno solo: carichi i file, Bank controlla che siano completi, riconcilia automaticamente con le regole approvate, tu completi o confermi i casi aperti, poi esporti.</p>
+<h3 id="bank-navigation">Le schede</h3>
+<table class="table-compact"><thead><tr><th>Scheda</th><th>A cosa serve</th></tr></thead><tbody>
+<tr><td>Pannello</td><td>Situazione dei dati, cose in sospeso, area P/L, esportazione mensile. È la pagina iniziale di Bank (<code>/bank</code>).</td></tr>
+<tr><td>Carica e riconcilia</td><td>Caricamento dei file, controllo di completezza, riconciliazione automatica.</td></tr>
+<tr><td>Riconcilio</td><td>Elenco dei movimenti, nelle viste Senza WHO e Con WHO; ogni riga da completare ha il solo comando «Completa».</td></tr>
+<tr><td>Regole</td><td>Definisci e simula i passaggi per ogni categoria di transazione.</td></tr>
+<tr><td>WHO</td><td>Gli strumenti che riconoscono il WHO.</td></tr>
+<tr><td>WHY</td><td>Associazioni WHO → WHY (una configurazione per WHO), regole di disambiguazione, ripartizioni, collegamenti WHY → WHAT.</td></tr>
+<tr><td>Configurazioni</td><td>Cataloghi WHO, WHY, WHOM e WHAT, con i WHY e le eccezioni per titolare, e i conti e le carte (sezione Conti e carte).</td></tr>
+</tbody></table>
+<p>Sotto le schede, le pagine con più sezioni mostrano gli <strong>ovali</strong>: sono segnalibri che portano alla sezione nella stessa pagina. Non aprono altre pagine, non avviano elaborazioni e non cambiano dati; filtri e contenuti restano come sono. All’estrema destra della barra c’è l’aiuto: qui «Come funziona Bank», nelle altre pagine «Come funziona questa pagina». Si apre in questa finestra sopra la pagina; nelle finestre il pulsante <strong>?</strong> apre la spiegazione di quella finestra. Chiudendo l’aiuto ritrovi la pagina o la finestra com’era.</p>
+<h3 id="panel">Pannello</h3>
+<ol>
+<li><strong>Situazione generale</strong>: movimenti in Bank, conti e carte, file ricevuti, periodo controllato, se i dati sono completi e, dopo una riconciliazione automatica, quanti movimenti sono in ciascuno stato (deciso, applicato automaticamente, risolto automaticamente, da confermare, da riconciliare a mano).</li>
+<li><strong>Cose in sospeso</strong>: compaiono solo quando ci sono (file da chiarire, estratti mancanti, ricerca internet non autorizzata, movimenti da completare o da confermare). Ogni voce porta alla pagina dove si svolge l’azione; dal Pannello non si avvia nulla.</li>
+<li><strong>Conto economico (P/L) per periodo</strong>: scegli mese e anno. Il P/L e la sua stampa/esportazione PDF sono <strong>da implementare</strong>: non viene mostrato alcun importo.</li>
+<li><strong>Esportazione mensile</strong>: scegli mese, anno e titolare, poi «Controlla l’esportazione» (vedi <a href="#export">Esportazione mensile</a>).</li>
+</ol>
+<p>Il periodo scelto serve solo a consultare ed esportare: per caricare i file non si sceglie mai un mese. Il Pannello legge soltanto: non modifica dati, regole o classificazioni.</p>
+</section>
+<section class="card" id="upload-and-reconcile">
+<h2>Carica e riconcilia</h2>
+<p>È la seconda scheda di Bank (<code>/bank/work</code>); la pagina iniziale è il Pannello. La pagina ha tre passaggi: <strong>carica i file → controlla la completezza → riconcilia automaticamente</strong>. I passaggi «Completa a mano» e «QuickBooks Online» non sono mostrati in questa pagina. Non devi scegliere un mese, un periodo o una sessione.</p>
+<h3 id="work-upload">1. Quali file caricare</h3>
+<ul>
+<li>Carica gli estratti CSV dei conti e delle carte Chase e First Citizens, i report Excel ADP «Payroll Summary» e i report ordini Amazon Business con il campo <em>Charge Identifier</em>, tutti nello stesso punto e in qualsiasi ordine.</li>
+<li>Bank riconosce il tipo dal contenuto e il conto o carta dal nome del file, quando possibile. Chiede solo ciò che non riesce a ricavare: conto di origine, dati mancanti, righe illeggibili o file già presenti su un altro conto. I file attività PayPal sono conservati ma non utilizzati.</li>
+<li>Quando il file è <em>Integrato</em>, i nuovi movimenti sono già salvati in Bank. Ricaricare lo stesso file non li duplica; un file più completo aggiunge soltanto quelli mancanti. Gli acquisti reali ripetuti restano distinti e le decisioni precedenti sono conservate.</li>
+<li>Caricare un file non avvia la riconciliazione.</li>
+</ul>
+<h3 id="work-check">2. Come Bank rileva ciò che manca</h3>
+<ul>
+<li>Il controllo parte dalla data di inizio configurata oppure dal primo giorno dei file. Ogni conto o carta viene controllato fino all’ultimo giorno coperto dai propri file, senza richiedere giorni successivi. Se si ferma prima degli altri viene segnalato in <em>Da verificare</em>.</li>
+<li>Il periodo è quello dichiarato nel nome del file, quando disponibile. Altrimenti sono noti soltanto primo e ultimo movimento: questo non prova che l’intero estratto sia completo. Puoi confermare il periodo effettivo dall’elenco dei file.</li>
+<li>Bank richiede una risposta quando non ci sono file per un conto, quando la data iniziale di utilizzo non è nota o quando rimangono intervalli non coperti tra i file. Carica gli estratti richiesti o indica un fatto verificabile: nessun movimento, conto non in uso fino a nuovo avviso, data di inizio utilizzo o chiusura.</li>
+<li>Tra due estratti con periodo dichiarato, qualsiasi intervallo scoperto segnala un estratto mancante. Se il periodo non è dichiarato, intervalli oltre 31 giorni o un mese intero richiedono chiarimento; i buchi più brevi sono segnalazioni non bloccanti. Giorni senza movimenti non dimostrano da soli che manchi un file.</li>
+<li>Sotto «Copertura per conto o carta», «Report per la riconciliazione» mostra i file ADP con le date paga e gli ordini Amazon con il periodo disponibile. Carica i report mancanti nello stesso selettore degli estratti. Nella successiva riconciliazione Bank verifica i movimenti interessati: un report mancante lascia aperto il movimento che ne ha bisogno, mentre gli altri proseguono. Per ADP il confronto usa nominativo, netto e data paga.</li>
+<li>Le risposte sono registrate con utente e data; il controllo si aggiorna dopo ogni risposta o caricamento. Non c’è un pulsante generico per ignorare i file mancanti.</li>
+<li>La classificazione incompleta di un singolo movimento non blocca l’avvio: quel caso viene completato al passaggio 4.</li>
+</ul>
+<h3 id="work-who-why">Configurazioni WHO → WHY dopo il caricamento</h3>
+<p>Dopo ogni caricamento — un file di un solo giorno come mesi o anni di estratti — Bank esamina i <strong>movimenti nuovi</strong> dell’ultimo caricamento (compresi i file completati dopo una tua risposta). Per ogni WHO riconosciuto confronta questi movimenti con tutto lo storico di quel WHO e con le configurazioni esistenti, usando il motore di riconciliazione in sola lettura; l’analisi richiede qualche secondo e non modifica WHY, WHOM, regole o decisioni. Ricaricare un file già presente non aggiunge movimenti nuovi e quindi non ripropone le stesse domande.</p>
+<ul>
+<li><strong>Configurazione applicabile</strong>: se tutti i movimenti nuovi del WHO ottengono il WHY (configurazione, regola o ripartizione), il WHO non compare. Le configurazioni già sufficienti non vengono richieste di nuovo.</li>
+<li><strong>WHY mancante</strong>: nessuna configurazione dà il WHY personale o aziendale necessario. «Gestisci» apre la finestra del WHO (WHY unico, Personale / Aziendale, Da regola).</li>
+<li><strong>Differenze tra aziende</strong>: aziende diverse hanno WHY diversi, quindi un solo WHY aziendale non basta. «Gestisci» apre la stessa finestra con le differenze rilevate in alto e le eccezioni per azienda aperte.</li>
+<li><strong>Differenze dentro la stessa azienda</strong> (o tra i movimenti personali), WHO «Da regola» senza regola applicabile, regole in conflitto: serve una regola di disambiguazione. «Gestisci» apre l’editor delle regole WHO WHY con i movimenti da distinguere. Bank non deduce una regola dalla sola differenza tra carte.</li>
+<li><strong>Informazioni insufficienti</strong>: il motivo dice concretamente cosa manca (titolare del conto o carta alla data, report ordini Amazon, importi di dettaglio di una ripartizione); «Gestisci» porta alla pagina dove completarlo.</li>
+</ul>
+<p><strong>Gestisci apre la finestra <a href="#complete">Completa</a></strong> sul primo movimento ancora aperto di quel WHO nel caricamento: è l’unica procedura di completamento, e dentro Completa Bank sceglie lo strumento adatto (configurazione WHO → WHY con eccezioni, regola WHO WHY, documento da fornire). Solo se non trova movimenti aperti del WHO, «Gestisci» apre direttamente la finestra indicata sopra.</p>
+<p>L’elenco ha una riga per WHO con WHO, motivo, numero di movimenti aperti del WHO (tra parentesi quanti sono nuovi) e un solo pulsante <strong>Gestisci</strong>. Se un WHO ha più questioni, compare la prima; la successiva appare dopo averla risolta. Nessuna finestra si apre da sola e se ne apre una alla volta. Chiudendo la finestra torni alla stessa riga dell’elenco; dopo un salvataggio (che richiede sempre simulazione e conferma esplicita nella finestra) le questioni vengono rivalutate e l’elenco si aggiorna. Le decisioni confermate da una persona restano protette. L’elenco non blocca la riconciliazione automatica.</p>
+<h3 id="work-reconcile">3. Riconciliazione automatica</h3>
+<p><strong>Avvia riconciliazione automatica</strong> si abilita quando compare <em>Dati pronti per la riconciliazione</em>. Il controllo protegge anche gli avvii dalle pagine secondarie. Lettura, configurazione e decisioni manuali sui singoli movimenti restano disponibili.</p>
+<p>L’elaborazione prosegue in background anche se lasci la pagina:</p>
+<ul>
+<li>propone il WHY degli articoli Amazon tramite ChatGPT, secondo le autorizzazioni registrate;</li>
+<li>esegue abbinamenti di giroconti e pagamenti carta, regole WHO, ricerca dei nomi e alias, regole WHY per WHO univoci o multipli, collegamenti Amazon e ripartizioni;</li>
+<li>ricava sempre il WHAT dal WHY e il WHOM dalla titolarità del conto o carta alla data del movimento;</li>
+<li>se autorizzata, ricerca online i movimenti ancora aperti, anche con WHO noto e WHY mancante. Un WHO certo viene mantenuto. Regole in conflitto, documenti mancanti, pagamenti carta e rapporti tra titolari da decidere restano da esaminare;</li>
+<li>per ristoranti, bar e caffetterie usa il criterio approvato: conto o carta personale → Owner Personal — Restaurant; aziendale → Business Meals &amp; Entertainment.</li>
+</ul>
+<h4 id="work-research-authorization">Autorizzazione della ricerca internet</h4>
+<p>La pagina elenca i dati inviabili e chiede l’autorizzazione: descrizione con numeri lunghi mascherati, data, direzione, tipo di conto o carta, titolarità personale o aziendale, WHO noto o candidati e catalogo WHY. Non invia importi né numeri di conto. Le richieste contengono al massimo tre movimenti.</p>
+<p>L’autorizzazione è registrata con utente e data su questo PC. Senza consenso la fase internet viene saltata e i casi sono indicati come <em>Ricerca internet non autorizzata</em>, non come esiti negativi di una ricerca.</p>
+<p>Le risposte sono riutilizzate solo se il contesto rilevante non cambia: descrizione mascherata, direzione, tipo di conto, titolare alla data, cataloghi, modalità WHO e regole WHY. Una risposta su una carta personale non vale per una aziendale. Errori del provider o risposte incomplete sono segnalati separatamente e ritentati al prossimo avvio.</p>
+<p><strong>Al termine dell’elaborazione</strong> (avviata da te), se nel periodo restano casi da riconciliare a mano o da confermare, la pagina si ricarica e si apre la finestra <a href="#complete">Completa</a> sul primo caso. Non si apre mentre l’elaborazione è in corso e non avvia altre riconciliazioni; puoi chiuderla e riprendere da Riconcilio.</p>
+<p>Se l’elaborazione si interrompe, avviala di nuovo: le risposte riuscite e ancora valide sono riutilizzate. Non vengono applicate due volte decisioni già confermate.</p>
+<h3 id="work-complete">Risultati e casi da completare</h3>
+<p>Il riepilogo dei risultati è mostrato nel Pannello, non in questa pagina. I casi aperti si completano con la finestra <a href="#complete">Completa</a> (che si apre al termine della riconciliazione e da Riconcilio) oppure in Riconciliazione guidata (<code>/bank/reconcile/</code>), raggiungibile dalle cose in sospeso del Pannello, come descritto qui sotto.</p>
+<p>Ogni movimento appartiene a un solo stato:</p>
+<ul>
+<li><strong>Deciso</strong>: decisione registrata da una persona o confermata da te.</li>
+<li><strong>Applicato automaticamente</strong>: giroconto o pagamento carta già abbinato e registrato come abbinamento.</li>
+<li><strong>Risolto automaticamente</strong>: proposta completa, ancora da confermare prima di registrare la decisione.</li>
+<li><strong>Da confermare</strong>: proposta della ricerca internet o caso che richiede una scelta. Se il WHO è generico, l’identità esatta non è verificata.</li>
+<li><strong>Da riconciliare a mano</strong>: WHO sconosciuto, WHY mancante, conflitto tra regole, ripartizione incompleta o ricerca non eseguita/non riuscita.</li>
+</ul>
+<p>Un secondo riepilogo mostra l’origine del WHO. Entrambi i conteggi devono quadrare sul totale. WHO senza WHY e ripartizioni incomplete non sono riconciliazioni complete. Prima della conferma compare il riepilogo per WHY; le decisioni già prese nel frattempo non vengono sovrascritte. I periodi precedenti ancora aperti sono conteggiati separatamente.</p>
+<h4 id="work-guided-group">Completare un gruppo in Riconciliazione guidata</h4>
+<p>Nel riepilogo ogni gruppo (motivo e WHO) ha un solo pulsante, <strong>Controlla</strong>; anche il clic sulla riga apre la stessa finestra. La finestra mostra WHO, numero di movimenti, motivo concreto e tutte le occorrenze con data, descrizione, importo e conto/carta.</p>
+<ul>
+<li><strong>Analizza il gruppo e proponi una regola</strong> esamina tutte le occorrenze e lo storico del WHO e propone regole con condizioni verificabili, WHY e WHAT, movimenti risolti, sottogruppi ed esclusi. Non salva e non applica nulla. File mancanti di altri conti/carte non la bloccano; sono segnalati solo i dati mancanti dei conti/carte del gruppo.</li>
+<li><strong>Definisci regola</strong> (o «Definisci regola con questa proposta») apre nella stessa finestra l’editor delle regole WHY: ambito (solo questo WHO, categoria del WHO, generale), WHY dall’elenco con il WHAT che ne deriva, condizioni ed eccezioni. <strong>Simula</strong> confronta la regola con quelle degli altri ambiti (equivalenti, complementari, in contrasto) e mostra i movimenti prima → dopo senza salvare. <strong>Salva bozza</strong> la salva non attiva; <strong>Salva e applica ora</strong>, solo senza conflitti aperti e dopo conferma con il numero di movimenti che cambiano, la attiva anche per i caricamenti futuri, sostituisce soltanto le regole che hai scelto (con storico e ripristino) e rivaluta i movimenti aperti; poi torni allo stesso gruppo con i conteggi aggiornati.</li><li>Nello stesso riquadro: la <strong>categoria del WHO</strong> (proposta dall’AI con ricerca internet sul solo nome, con evidenze e certezza, usata solo dopo la tua conferma) e le <strong>dichiarazioni contestuali</strong> (per esempio «Io uso UBER soltanto per trasporto»), valide solo sulle Source indicate. L’editor dei profili di riconoscimento resta raggiungibile, ma si applica solo ai movimenti con WHO letto da una regola di estrazione e ancora da riconciliare.</li><li>Ogni finestra ha il suo «?», che apre la sezione della guida di quella finestra sopra di essa: campi, bozza, selezioni e posizione restano come sono.</li>
+<li>L’avvio della riconciliazione automatica complessiva e l’indagine AI sui movimenti selezionati (nei Dettagli avanzati) richiedono ancora dati completi.</li>
+</ul>
+<h3 id="work-saving">Quando vengono salvati dati e decisioni</h3>
+<ul><li>I file si salvano al caricamento; le risposte al controllo quando le registri; le risposte internet quando arrivano.</li><li>I risultati del motore e dell’AI sono proposte: diventano decisioni alla tua conferma o quando completi manualmente un caso. Gli abbinamenti automatici sono indicati separatamente.</li></ul>
+</section>
+<section class="card" id="review">
+<h2>Riconcilio</h2>
+<p>Riconcilio (prima «Controlla movimenti») è l’elenco dei movimenti, in due viste: <strong>Senza WHO</strong> e <strong>Con WHO</strong>. In alto, su una sola riga: <strong>Anno</strong>, <strong>Mese</strong>, <strong>Conto</strong> e <strong>Filtra</strong>, poi il campo di ricerca e <strong>Cerca</strong> (× cancella solo la ricerca). Le intestazioni delle colonne ordinano e filtrano l’elenco. Per gli addebiti ACH PayPal, se la regola specifica estrae il commerciante, il movimento compare in Con WHO anche quando il WHY richiede ancora verifica.</p>
+<ul>
+<li>Ogni riga mostra conto o carta con il WHOM, data, descrizione, importo e, secondo la vista, origine, duplicati, WHO / WHY / WHAT, giroconto e stato. Queste informazioni sono in sola lettura.</li>
+<li>L'anno corrente viene preselezionato se contiene movimenti. Premi Filtra, oppure scegli un altro anno dal menu. Con Tutti i mesi vedi dal primo gennaio a oggi per l'anno corrente o l'intero anno per gli anni passati. Per limitare entrambe le viste a un mese, selezionane il nome. I pagamenti carta abbinati in modo univoco e completamente classificati rimangono visibili senza richiedere Completa. Una controparte ambigua, un possibile duplicato o un rapporto tra titolari da decidere richiedono ancora verifica. Le prime 100 righe appaiono subito dopo il filtro. In fondo, Visualizza altre aggiunge fino a 100 movimenti alla volta e scompare dopo l'ultimo gruppo.</li>
+<li>Le righe <strong>da completare</strong> (vista <em>Senza WHO</em>: ogni riga non esclusa dalla contabilità; vista <em>Con WHO</em>: ogni riga non ancora completa) hanno un solo comando: <strong>Completa</strong>, nella colonna delle azioni a destra. Apre la finestra <a href="#complete">Completa</a> su quel movimento. Sulla riga non ci sono altri comandi (scelta del WHOM, WHO / WHY, AI, Usa come esempio, duplicati, abbinamento giroconto, Conferma). Duplicati, abbinamento di giroconti e pagamenti carta e WHOM, quando servono, si sistemano dentro la finestra.</li>
+<li>Chiudendo la finestra dopo una modifica, l’elenco si ricarica e torna alla riga lavorata con lo stato aggiornato.</li>
+<li>Nella vista <em>Con WHO</em> le righe già complete mantengono i loro comandi: apertura del dettaglio, WHOM, modifica di WHO e WHY, AI, Usa come esempio, Riapri.</li>
+<li><strong>Reconcile pending</strong> avvia la riconciliazione dei movimenti in sospeso (con Stop / Continue e la cronologia delle riconciliazioni); come ogni avvio, richiede dati completi.</li>
+</ul>
+<p>In Configurazioni → WHO, apri Operazioni della banca per vedere o modificare i WHY salvati per banca, causale e verso. In Completa scegli il WHY una volta per le occorrenze equivalenti. Per una descrizione sconosciuta puoi indicare che si tratta di un’operazione della banca. Un pagamento carta senza contropartita resta in attesa dell’estratto. Se ci sono più contropartite possibili, Completa chiede di scegliere.</p>
+<h3 id="complete">Completa: completare i movimenti rimasti aperti</h3>
+<p>Se regole e ricerca testuale lasciano il WHO incerto, Bank verifica l’esercente su internet. Per TST* cerca il nome dopo l’asterisco. Quando una fonte identifica un ristorante, Bank assegna VARIOUS RESTAURANT e il WHY del titolare della carta alla data del pagamento. In Completa restano i movimenti per cui serve ancora una decisione.</p>
+<p>Per un WHO con WHY aperto puoi analizzare insieme i suoi movimenti. La finestra mostra le regole proposte e quanti movimenti coprono. Una causale esplicita può suggerire un WHY del catalogo. I conflitti fra metodi richiedono una decisione.</p>
+<p>Una sola finestra per risolvere i movimenti che le regole e la riconciliazione automatica non hanno chiuso. Si apre in due modi, sempre uguale: dal pulsante <strong>Completa</strong> di una riga aperta di Riconcilio, oppure da sola sul primo caso quando termina una riconciliazione automatica avviata in Carica e riconcilia e restano casi aperti (anche «Gestisci» della verifica dopo il caricamento apre questa finestra). Completare non blocca il motore, che continua a riconciliare i movimenti già risolvibili.</p>
+<p>La finestra mostra:</p>
+<ul>
+<li><strong>Movimento</strong>: data, importo, descrizione, conto o carta e titolare alla data, personale o aziendale.</li>
+<li><strong>Cosa Bank ha già riconosciuto</strong>: WHO e come è stato riconosciuto, WHY e come è stato determinato, WHAT e WHOM.</li>
+<li><strong>Cosa manca</strong>: per esempio WHO non riconosciuto, WHY del WHO non configurato, regole in conflitto, documento mancante.</li>
+<li><strong>Da sistemare in questa finestra</strong>, solo quando Bank lo rileva: <em>possibile duplicato</em> (con il movimento gemello; «Movimenti distinti» o «È un duplicato»); <em>abbinamento</em> di un giroconto o di un pagamento carta (ambiguo, in attesa dell’estratto della carta o possibile giroconto: scegli la controparte tra quelle trovate e «Conferma l’abbinamento»; se non ce n’è, carica l’estratto mancante. L’abbinamento richiede la stessa valuta configurata sui due conti o carte: se manca, la finestra indica quale e porta a Conti e carte per impostarla); <em>WHOM</em> non impostato («Salva WHOM»). Sono le stesse operazioni che prima stavano sulla riga e salvano subito; poi la finestra rilegge il caso. Un abbinamento confermato da una persona vale per la riconciliazione automatica sui due movimenti abbinati.</li>
+<li><strong>Proposta</strong>, quando c’è, con la sua origine e una breve motivazione: ricerca internet dell’ultima riconciliazione, risultato del motore (configurazione del WHO, regola), WHY già confermati per quel WHO con lo stesso tipo di titolare, WHY precedente per conto o carta. È sempre una proposta: non è una decisione finché non confermi.</li>
+</ul>
+<p>Cosa puoi fare:</p>
+<ul>
+<li><strong>Confermare</strong> la proposta, oppure <strong>correggerla</strong> scegliendo WHO e WHY dal catalogo esistente (il WHAT segue dal WHY e non si sceglie a parte). Un WHO nuovo viene creato alla conferma, senza duplicati.</li>
+<li><strong>Chiedi all’AI</strong>: scrivi in parole tue cosa desideri (per esempio «sulle carte personali è personale») e ChatGPT propone WHO, WHY ed estensione; funziona solo se su questo PC è approvata la condivisione del contesto Bank con ChatGPT, invia la descrizione con i numeri lunghi mascherati e non salva nulla. Se le informazioni non bastano, pone una domanda concreta o indica il documento necessario.</li>
+<li><strong>Caso successivo</strong> passa al caso aperto seguente senza modificare quello corrente; <strong>Chiudi</strong> (o ×) chiude la finestra: riprendi quando vuoi dall’elenco.</li>
+<li><strong>Conferma</strong> registra; <strong>Conferma e passa al successivo</strong> registra e apre il caso aperto seguente. I casi già risolti non vengono riproposti.</li>
+</ul>
+<h4 id="complete-scope">Un solo movimento o un criterio riutilizzabile</h4>
+<p>Sotto «Vale anche per altri movimenti?» la scelta predefinita è <strong>Solo questo movimento</strong>: viene registrata la tua decisione su quel movimento (WHO, WHY, WHAT dal WHY, WHOM dal titolare del conto o carta) e <strong>non viene creata alcuna regola generale</strong>.</p>
+<p>Se la soluzione può valere per altri movimenti, Bank propone il criterio adatto al caso, senza chiederti quale strumento usare:</p>
+<ul>
+<li>WHO riconosciuto senza WHY: <strong>tutti i movimenti del WHO con un solo WHY</strong>, oppure <strong>per titolare</strong>, con un WHY personale e un WHY aziendale (il lato di questo movimento è il WHY scelto). È la configurazione WHO → WHY della pagina WHY; le eccezioni per azienda restano.</li>
+<li>WHY che dipende dal singolo movimento (WHO «Da regola», regole mancanti o in conflitto): <strong>Definisci la regola</strong> apre l’editor delle regole WHO WHY con il movimento come contesto, con la sua simulazione e il salvataggio inattivo o attivo.</li>
+<li>WHO non riconosciuto: <strong>riconoscere il WHO nei prossimi movimenti con un testo</strong> (alias). Se il WHO non ha ancora una configurazione WHO → WHY, salvando il criterio si imposta anche il WHY scelto per i suoi movimenti con lo stesso tipo di titolare.</li>
+</ul>
+<p><strong>Mostra i movimenti che cambierebbero</strong> calcola l’anteprima in sola lettura (può richiedere una ventina di secondi): elenca i movimenti con il WHY prima e dopo; quelli decisi da una persona sono protetti e non cambiano. Poi due domande esplicite e separate:</p>
+<ul>
+<li><strong>Applicalo anche a questi movimenti</strong>: ognuno diventa una tua decisione, come il movimento corrente;</li>
+<li><strong>Salva il criterio per i movimenti futuri</strong>: salva la configurazione WHO → WHY (o il testo) che il motore userà sui prossimi movimenti, che restano proposte fino alla conferma.</li>
+</ul>
+<p>Senza queste due scelte viene completato solo il movimento corrente. Un movimento deciso da una persona nel frattempo non viene sovrascritto e viene indicato come non modificato.</p>
+<p>Dopo la conferma la riga si aggiorna («Completato» con WHO → WHY), i conteggi delle schede si aggiornano e, alla chiusura della finestra, l’elenco si ricarica tornando all’ultima riga lavorata.</p>
+<p>Quando mancano informazioni che la finestra non può raccogliere (titolare del conto o carta alla data, report ordini Amazon, ripartizione, WHAT del WHY, rapporto economico tra titolari), la finestra lo dice e, quando esiste, offre il collegamento alla pagina che se ne occupa: nessuna classificazione viene forzata.</p>
+</section>
+<section class="card" id="sources">
+<h2>Conti e carte</h2>
+<p>È la sezione 5 di <a href="#configuration">Configurazioni</a> (non è più una scheda a sé; i vecchi collegamenti portano a questa sezione). Elenca i conti, le carte e le altre Source finanziarie con titolare, conto di addebito delle carte e intestatario. <strong>+ Nuovo conto o carta</strong> aggiunge un conto o una carta; <strong>Edit</strong> su una riga apre la finestra del conto o della carta, dove si salvano anche conto di addebito e intestatario con la loro data. Le <strong>regole di riconoscimento dei file</strong> ricordano la scelta fatta per un file che non identifica da solo il proprio conto e la riusano all’import successivo; la <strong>cronologia delle assegnazioni</strong> mostra queste scelte. La <strong>deduplicazione contabile</strong> individua lo stesso movimento presente su due Source (per esempio carta e conto) e si ricalcola con il suo pulsante.</p>
+<h4 id="sources-window">Finestra del conto o della carta</h4>
+<p>Si apre con «+ Nuovo conto o carta» o con «Modifica» su una riga. Indica nome, tipo, istituto, ultime 4 cifre, identificativo come scritto nel file (mai il numero completo), entità titolare e valuta; per una carta il titolare deriva dal conto di addebito, e conto di addebito e intestatario si registrano ciascuno da una data, conservando i periodi precedenti nella cronologia della carta (<strong>Correggi</strong> modifica un periodo registrato male). «+ Nuova entità» crea un titolare senza lasciare la finestra. <strong>Salva</strong> registra tutto insieme oppure niente: in caso di errore il motivo resta nella finestra; dopo il salvataggio la pagina torna su questa sezione e sulla riga. Annulla o × chiudono senza salvare.</p>
+<h4 id="sources-entity-window">Finestra «Nuova entità»</h4>
+<p>Crea un’entità titolare (società / LLC o persona) oppure riusa quella equivalente già attiva, e la seleziona nella finestra del conto o della carta. Il conto o la carta si salvano poi con il loro Salva.</p>
+</section>
+<section class="card" id="who">
+<h2>WHO Riconoscimento</h2>
+<p>La pagina (WHO Riconoscimento) risponde a una sola domanda: <strong>quale WHO assegnare</strong>. Il WHY si decide nella pagina WHY. Gli ovali sotto il titolo sono segnalibri delle sezioni — Pattern ed estrazione, Regole testuali, WHO Status, Ricerca AI, WHO noti e regole: portano alla sezione nella stessa pagina senza cambiare filtri o dati.</p>
+<p>Ordine del riconoscimento, uguale qui e nel motore di riconciliazione: prima le <strong>regole testuali</strong> approvate; poi, solo dove nessuna regola ha letto un WHO, il <strong>nome o un alias</strong> di un WHO registrato trovato nella descrizione come parole intere. Più WHO o regole in disaccordo: il movimento va in verifica. Un WHO confermato da una persona non viene sostituito; un WHO convenzionale approvato (per esempio PINO PERSONAL, COMPANY CAR, VARIOUS RESTAURANT) non viene sostituito dal nome del commerciante che una regola trova. Risultati diversi vanno esaminati: non sono automaticamente errori della regola.</p>
+<h3 id="who-patterns">Pattern ed estrazione</h3>
+<p><strong>Apri WHO Pattern Training</strong> apre la pagina degli esempi: selezioni movimenti con lo stesso formato, indichi il loro WHO e dove si trova nella descrizione (tra quali testi). RF-One costruisce dagli esempi la regola di estrazione, mostra i movimenti che legge e il WHO che assegnerebbe; tu approvi, correggi o escludi. Le identificazioni movimento per movimento restano decisioni su quei movimenti, non regole.</p>
+<h3 id="who-text-rules">Regole testuali</h3>
+<p>Descrivi la regola a parole all’AI, per esempio «Se trovi PAYPAL, il WHO è il testo dopo IND ID: fino a IND NAME:». L’anteprima mostra i movimenti a cui si applica; poi salvi. Su ogni regola salvata: Discuti, Rinomina, Elimina. Un movimento letto da una regola non viene più cercato per nomi e alias. L’editor e il suo «?» sono descritti in <a href="#rules-editor">L’editor di regole e profili</a>.</p>
+<h3 id="who-status">WHO Status</h3>
+<p>Elenca i movimenti con il WHO riconosciuto e il modo (regola, nome o alias, da verificare). <strong>Si apre sui movimenti con WHO non riconosciuto</strong>; con il filtro «Mostra» consulti anche gli altri stati (tutti, riconosciuti da una regola, da nome o alias, da verificare) e con «Cerca» filtri per descrizione o WHO. Il conteggio accanto al titolo («X of Y») segue il filtro attivo. Su ogni riga: <strong>+ AI Rule</strong> apre l’editor delle regole testuali con quel movimento come esempio; <strong>By Text</strong> apre la finestra «Riconosci WHO».</p>
+<h4 id="who-text-dialog">Finestra «Riconosci WHO»</h4>
+<p>Associa la descrizione del movimento a un WHO e salva il testo che riconoscerà i movimenti successivi. In alto: descrizione originale, data, importo, conto o carta e titolare.</p>
+<ol>
+<li><strong>Specifico / Generico</strong>: specifico è la controparte vera (il negozio, il fornitore); generico è un WHO contenitore per acquisti occasionali in cui il negozio non conta, per esempio «Acquisti vari» o VARIOUS RESTAURANT. Per CITY PHENOMENAL @MCO 456 puoi scegliere «Acquisti vari»: è una scelta consentita, non una regola applicata da sola a tutti gli acquisti in aeroporto.</li>
+<li><strong>Chiedi un suggerimento all’AI</strong>: solo quando lo premi, ChatGPT interpreta la descrizione (numeri lunghi mascherati, senza importi né numeri di conto) e, se utile, cerca su internet. Per un WHO generico cerca prima tra i WHO già esistenti e propone quello adatto, senza crearne un doppione; altrimenti propone un nome nuovo con una breve motivazione. Il suggerimento non salva e non crea nulla. Se ChatGPT non è autorizzato su questo PC o non risponde, la finestra lo dice e puoi scegliere tu.</li>
+<li>Il <strong>WHO</strong> suggerito o scelto, con l’indicazione «già presente», «nuovo» o «creato ora».</li>
+<li><strong>Scegli un altro WHO</strong> dall’elenco, oppure scrivi il nome di un <strong>nuovo WHO</strong>. Un nome che corrisponde a un WHO esistente riusa quel WHO.</li>
+<li><strong>Testo da riconoscere nelle prossime transazioni</strong>: modificabile; viene salvato come alias del WHO (o è già il suo nome). Un testo che riconosce già un altro WHO viene rifiutato.</li>
+<li>Lo <strong>stato WHO → WHY</strong> per il conto o carta del movimento: il WHY della classificazione WHO + conto/carta, oppure le regole WHO → WHY del WHO, oppure «WHY ancora da definire». Le regole di categoria o generali che potrebbero applicarsi si verificano con Simula nell’editor.</li>
+<li>L’azione per la regola: per un WHO esistente senza WHY né regola, <strong>Definisci regola WHO → WHY</strong>; per un WHO nuovo, <strong>Crea WHO e definisci regola</strong>, che crea il WHO con il testo e apre l’editor. L’editor (vedi <a href="#why-rule-dialog">Finestra «Define WHO WHY rule»</a>) si apre sopra questa finestra con WHO, movimento, conto o carta e titolare come contesto, e una condizione sul conto o carta del movimento: il WHY non viene scelto da RF-One e la regola non si estende da sola ad altri conti o carte. Simula, salva non attiva o attiva come sempre; il WHAT segue dal WHY. Chiudendo l’editor torni qui con i campi come li avevi lasciati. Se annulli la regola, il WHO resta creato e la finestra indica che il WHY è ancora da definire; riprovando non si crea un secondo WHO.</li>
+<li><strong>Annulla</strong> chiude senza salvare (ciò che è già stato creato con «Crea WHO e definisci regola» resta). <strong>Salva associazione</strong> registra il WHO e il testo.</li>
+</ol>
+<p>Salvare WHO e testo non è una riconciliazione: nessun WHY viene registrato sul movimento. La regola WHO → WHY è un passo distinto, e si applica ai movimenti solo con la simulazione e l’attivazione; le decisioni umane restano protette. I WHY possibili di un WHO si modificano in Configurazioni › WHO.</p>
+<h3 id="who-ai">Ricerca AI</h3>
+<p>Per una descrizione che regole, nomi e alias non riconoscono, l’AI può indagare sul web. Non si avvia da questa pagina: è disponibile sul singolo movimento con <strong>Chiedi all’AI</strong> nella finestra Completa di Riconcilio e, solo se autorizzata, come ultima fase della riconciliazione automatica in Carica e riconcilia. I risultati sono proposte.</p>
+<h3 id="who-known">WHO noti e regole</h3>
+<p>Quando salvi un nome, un alias o una regola WHO, Bank verifica le descrizioni esistenti. In caso di conflitto mostra il numero di movimenti e fino a tre esempi con i WHO coinvolti. Correggi il criterio e salva di nuovo.</p>
+<p>Elenca i WHO registrati. La colonna delle regole associate e il pulsante «+ AI» di questa sezione non sono ancora attivi.</p>
+</section>
+<section class="card" id="who-patterns-page">
+<h2>WHO Pattern Training</h2>
+<p>Si raggiunge dalla sezione «Pattern ed estrazione» della pagina WHO. Serve a trovare le ricorrenze nelle descrizioni e a definire la regola WHO di ciascuna, senza dover cercare i formati a mano.</p>
+<ul>
+<li><strong>Cerca pattern</strong> analizza le descrizioni originali di tutti i movimenti caricati e ricalcola ogni volta pattern e conteggi sui dati presenti in Bank. Non legge le regole WHO esistenti, non crea né attiva regole e non modifica alcun movimento.</li>
+<li>L’elenco mostra un pattern per riga, dal più numeroso: <strong>nome</strong>, <strong>struttura comune</strong> (tra parentesi graffe le parti che cambiano), <strong>numero di movimenti</strong> e il pulsante <strong>Definisci regola</strong>. Ogni movimento appartiene a un solo pattern. Si considerano pattern i formati con campi variabili confermati da almeno due descrizioni diverse e le descrizioni identiche ripetute; i casi isolati non compaiono.</li>
+<li><strong>Sottofamiglie</strong>: sotto un pattern, per esempio PAYPAL dentro ACH, ciascuna con i suoi movimenti e il suo «Definisci regola». I loro movimenti sono già compresi nel totale del pattern e non vanno sommati di nuovo.</li>
+<li><strong>Definisci regola</strong> apre l’editor delle regole AI (vedi <a href="#rules-editor">L’editor di regole e profili</a>) già nel contesto del pattern: in cima trovi una descrizione originale completa come esempio, la struttura comune e il numero di movimenti; subito dopo l’AI analizza struttura, esempi e sottofamiglie del pattern (con il consenso alla condivisione del contesto Bank con ChatGPT già previsto) e <strong>propone da sola dove leggere il WHO</strong>, senza chiederti di rispiegare il formato; fa domande solo se c’è un’ambiguità concreta. Se una sottofamiglia ha il WHO in un altro punto — per esempio ACH PayPal, dove PAYPAL è l’intermediario e il WHO sta tra «IND ID:» e «IND NAME:» — partendo dalla famiglia completa propone una <strong>regola generale</strong> che esclude quel formato e una <strong>regola specifica</strong> per quel formato; partendo dalla sottofamiglia propone direttamente la sua regola. Nessuna regola viene creata o attivata finché non la confermi. Chiudendo l’editor torni all’elenco, che resta com’è.</li>
+</ul>
+</section>
+<section class="card" id="why">
+<h2>WHY</h2>
+<p>La pagina WHY decide perché il denaro si è mosso, per un WHO già riconosciuto. Il WHAT deriva sempre dal WHY; il WHOM dal titolare del conto o carta, salvo un’eccezione che indichi esplicitamente un altro WHOM. Gli ovali sotto il titolo — <strong>Associazioni WHO → WHY</strong>, <strong>Regole di disambiguazione</strong>, <strong>Ripartizioni</strong>, <strong>WHY → WHAT</strong> — sono segnalibri delle quattro sezioni e portano alla sezione nella stessa pagina; in alto a destra di ogni sezione il pulsante <strong>↑</strong> («Torna all’inizio») riporta agli ovali. Ovali e frecce non ricaricano la pagina: campi, filtri, selezioni e bozze restano come sono. Aprire la pagina non cambia alcun movimento.</p>
+<h3 id="why-associations">1 · Associazioni WHO → WHY</h3>
+<p>Ogni WHO ha <strong>una sola configurazione</strong>, indipendente dal conto o dalla carta: una nuova carta segue il comportamento previsto per il suo titolare. La tabella mostra una riga per WHO: <strong>WHO · WHY unico · WHY personale · WHY aziendale · Eccezioni · Modifica</strong>. Le colonne che non si applicano restano vuote; per un WHO gestito con le regole compare «Da regola».</p>
+<ul>
+<li><strong>WHY unico</strong>: lo stesso WHY su qualunque conto o carta.</li>
+<li><strong>WHY personale / WHY aziendale</strong>: Personale o Aziendale si ricava dal titolare del conto o carta alla data del movimento (come per il WHOM); ai conti e alle carte non si aggiunge alcuna classificazione e resta nota la singola azienda. Un titolare sconosciuto non è considerato aziendale: il movimento resta aperto. Se il WHY del caso (personale o aziendale) non è impostato, possono decidere le regole WHO WHY attive; altrimenti il movimento resta aperto.</li>
+<li><strong>Da regola</strong>: il WHY lo decidono solo le regole WHO WHY della sezione 2 (è la modalità MULTIPLE).</li>
+<li><strong>Eccezioni</strong>: per una specifica azienda, con il suo WHY ed eventualmente un WHOM diverso dal titolare. Ogni eccezione indica quale comportamento generale sostituisce (WHY unico, WHY aziendale o Da regola) e vale solo finché quello è il comportamento del WHO; altrimenti compare «non applicata».</li>
+<li><strong>Da decidere</strong>: WHO i cui conti o carte avevano WHY diversi che non si possono ricondurre in modo univoco a una sola configurazione. Finché non decidi (Modifica), continuano a usare il WHY registrato per ciascun conto o carta. Il numero di questi WHO è indicato sopra la tabella.</li>
+</ul>
+<p>Ordine di applicazione, dopo il riconoscimento del WHO: (1) l’eccezione approvata per quel WHO e per l’azienda titolare alla data; (2) altrimenti il comportamento configurato; (3) il WHOM è il titolare, salvo eccezione; (4) il WHAT segue dal WHY; (5) con dati insufficienti o regole in conflitto il movimento resta aperto. La ricerca filtra per WHO o WHY. <strong>Modifica</strong> apre la finestra del WHO; dopo il salvataggio la pagina si ricarica e torni sulla stessa riga.</p>
+<h4 id="why-who-dialog">Finestra «WHO → WHY»</h4>
+<p>Mostra il WHO e permette di scegliere come si determina il suo WHY: <strong>WHY unico</strong>, <strong>Personale / Aziendale</strong> oppure <strong>Da regola</strong>. Accanto a ogni WHY scelto compare il suo WHAT, che non si sceglie a parte. La riga WHOM ricorda che il WHOM è il titolare del conto o carta alla data del movimento.</p>
+<ul>
+<li><strong>Eccezioni per azienda</strong> (sezione espandibile): <strong>+ Eccezione</strong> aggiunge una riga con azienda, WHY (con il suo WHAT) e WHOM («Titolare del conto/carta» oppure un’altra entità); × la toglie. In alto è indicato quale comportamento le eccezioni sostituiscono.</li>
+<li><strong>Definisci regola</strong>: quando questi criteri non bastano, apre sopra la finestra l’editor delle regole WHO WHY per questo WHO (vedi <a href="#why-rule-dialog">Finestra «Define WHO WHY rule»</a>); chiudendolo torni qui con le tue scelte. Il numero di regole attive del WHO si aggiorna.</li>
+<li><strong>WHY precedenti per conto o carta</strong>: le classificazioni WHO + conto/carta esistenti, mostrate solo per riferimento e lasciate invariate. Per un WHO «Da decidere» la sezione è aperta e in alto è indicato il motivo.</li>
+<li><strong>Simula</strong>: senza salvare nulla, mostra quanti e quali movimenti di questo WHO cambierebbero (nuovo WHY, WHY o WHOM diverso, invariati, ancora aperti, decisioni umane protette), con WHY e WHOM prima e dopo.</li>
+<li><strong>Salva</strong>: attivo solo dopo la simulazione; ogni modifica successiva richiede una nuova simulazione. Chiede una conferma esplicita e salva soltanto la configurazione del WHO e le sue eccezioni: nessun movimento viene modificato ora; il motore la usa alla sua prossima esecuzione e i movimenti confermati da una persona restano protetti.</li>
+<li><strong>Annulla</strong> o × chiudono senza salvare.</li>
+<li><strong>Aperta da Carica e riconcilia</strong> («Gestisci»): in alto compare il motivo rilevato dopo il caricamento e, per le differenze tra aziende, il WHY di ciascuna azienda con i conti o carte, con le eccezioni per azienda già aperte. Nulla viene precompilato oltre alla configurazione esistente. Dopo il salvataggio la finestra si chiude, la pagina non si ricarica e l’elenco delle questioni viene rivalutato; chiudendo senza salvare torni alla stessa riga dell’elenco.</li>
+</ul>
+<h3 id="why-rules">2 · Regole di disambiguazione</h3>
+<p>Quando il WHO da solo non determina il WHY (per esempio AMAZON, o i pagamenti Zelle ai dipendenti, dove il destinatario non stabilisce lo scopo di ogni pagamento), decide una <strong>regola WHO WHY</strong> con condizioni su conto o carta, titolare alla data, descrizione, importo, direzione, informazioni della Source o documenti. I casi che nessuna regola risolve restano aperti, mai forzati su un valore predefinito.</p>
+<ul>
+<li><strong>Regole WHO WHY</strong>: elenco con stato; Activate / Deactivate. <strong>+ Define rule</strong> apre la finestra della regola.</li>
+<li><strong>MULTIPLE WHO</strong>: MULTIPLE corrisponde alla scelta «Da regola» della finestra del WHO (sezione 1). Ogni altro WHO è UNIQUE: decide il suo WHY unico o il WHY personale / aziendale. Imposta MULTIPLE solo quando il WHY cambia movimento per movimento; «Back to UNIQUE» lo riporta indietro.</li>
+<li><strong>WHY da determinare</strong>: movimenti con WHO riconosciuto ma WHY non determinabile, raggruppati per WHO, conto o carta e motivo. Il calcolo usa il motore di riconciliazione in sola lettura; «Recompute» lo ripete. Il numero apre i movimenti; per «Serve il WHY del WHO», «Modifica WHO → WHY» apre la finestra del WHO; «Define rule» apre la finestra della regola per quel gruppo; «Review rules» mostra le regole del WHO.</li>
+</ul>
+<h4 id="why-rule-dialog">Finestra «Define WHO WHY rule»</h4>
+<p>Scegli uno o più WHO, aggiungi condizioni (devono essere tutte vere) e il risultato: un WHY oppure il WHY letto da un documento. <strong>Simulate</strong> mostra, senza salvare, i movimenti con WHY prima e dopo. Solo dopo la simulazione puoi <strong>Save inactive</strong> (salvata non attiva) o <strong>Save and activate</strong>. Una condizione non valutabile lascia il movimento aperto con «Serve un documento o un chiarimento». Annulla chiude senza salvare.</p>
+<p>Aperta da <strong>Carica e riconcilia</strong> («Gestisci»), la finestra mostra in alto il motivo rilevato e la sezione <strong>Movimenti da distinguere</strong>: i movimenti del WHO per lo stesso titolare, con conto o carta, descrizione, importo e WHY attuale («aperto» se manca). Le condizioni non sono precompilate: la regola la definisci tu. Una regola salvata non attiva non risolve i movimenti; dopo il salvataggio l’elenco delle questioni viene rivalutato e, chiudendo, torni alla stessa riga.</p>
+<h4 id="why-movements-dialog">Finestra «Movimenti»</h4>
+<p>Mostra i movimenti del gruppo con data, descrizione, importo e dettaglio. Non modifica nulla.</p>
+<h3 id="why-split">3 · Ripartizioni</h3>
+<p>Un movimento resta un solo movimento e può avere più righe, ciascuna con importo, WHY, il WHAT di quel WHY e i prodotti o documenti collegati; le righe devono sommare esattamente l’importo. La sezione elenca i movimenti collegati ai report ordini Amazon (Charge Identifier) con lo stato del collegamento, gli addebiti senza movimento bancario e i movimenti già ripartiti. Cliccando un movimento si apre la sua ripartizione: puoi tornare alla proposta, aggiungere righe, <strong>tenerla come bozza</strong> o <strong>confermarla</strong>. Se mancano gli importi per prodotto, la ripartizione resta incompleta: il movimento non viene mai diviso in parti uguali.</p>
+<h4 id="why-split-confirm">Finestra «Confirm split»</h4>
+<p>Riassume le righe da registrare. <strong>Confirm</strong> registra la ripartizione in Bank; <strong>Cancel</strong> chiude senza registrare.</p>
+<h3 id="why-what">4 · Collegamenti WHY → WHAT</h3>
+<p>Ogni WHY attivo appartiene a un solo WHAT: scelto il WHY, il WHAT segue da questa tabella e non si sceglie movimento per movimento. Un WHY senza WHAT è una lacuna di configurazione da risolvere in <strong>Configurazioni › WHY</strong>. Tabella in sola lettura.</p>
+</section>
+<section class="card" id="category-trial">
+<h2>Categorie di transazione · prova</h2>
+<p>Ogni riga riassume una categoria. «Apri regola» apre la sua formulazione.</p>
+<h3 id="category-trial-editor">Regola della categoria</h3>
+<p>La tabella mostra i passaggi ordinati della categoria. «Aggiungi passaggio» o «Modifica» aprono lo stesso editor conversazionale. Sopra la chat trovi il «Passaggio in lavorazione», aggiornato dall’AI in linguaggio umano per mantenere il filo logico. La chat mostra soltanto i messaggi scambiati, senza ripetere automaticamente il passaggio.</p>
+<p>Scrivi nel campo «Messaggio» e premi «Invia»: l’AI spiega cosa ha capito, chiede eventuali chiarimenti e tiene conto dei passaggi precedenti. Puoi correggerla nella stessa chat. Le proposte aggiuntive restano separate dalla tua richiesta fino a quando le accetti. Durante la conversazione non viene generato né eseguito il comando del passaggio.</p>
+<p>Quando il significato corrisponde alla tua intenzione, premi «Salva passaggio»: questo è il tuo OK alla traduzione in istruzioni eseguibili. Si conservano descrizione, codice e conversazione nella bozza di questo browser. Se serve un chiarimento per tradurre, lo trovi nella chat e il passaggio precedente resta intatto. «Modifica» recupera la conversazione; il successivo salvataggio sostituisce la stessa riga, nella stessa posizione. «Chiudi passaggio» abbandona la conversazione non salvata. I passaggi non vengono attivati nel riconcilio né scritti nel database.</p>
+<p>«WHY» apre il catalogo esistente e inserisce il nome scelto nel messaggio, al cursore. Invia il messaggio per discuterlo con l’AI. «Simula» usa soltanto i passaggi salvati e si attiva quando tutti hanno istruzioni eseguibili e i prerequisiti sono presenti, dopo aver chiuso l’editor. La simulazione non modifica i movimenti. «Chiudi» torna all’elenco delle categorie.</p>
+<p>Per un confronto puoi indicare una tabella del database o un file caricato. L’AI consulta il catalogo delle fonti, individua le colonne e genera la ricerca. Puoi confrontare più fonti e riutilizzare il risultato univoco del passaggio precedente. La simulazione segnala le corrispondenze multiple per il controllo manuale.</p>
+<p>Un assegno numerato può passare direttamente al manuale. Per i dipendenti il primo passaggio confronta il WHO con l’anagrafica, oppure cerca il nome completo nella descrizione quando manca il WHO. Conserva l’identità e i ruoli validi alla data. Anche un confronto AI con la tabella dipendenti può fornire questa identità al passaggio ADP: deve restituire un solo dipendente identificato. Se l’identità manca o è ambigua, il movimento resta da verificare. Il secondo cerca un solo pagamento ADP per quella persona, per l’importo netto esatto e nei giorni specificati nel comando. Con un riscontro univoco usa il ruolo del ristorante del pagamento per proporre il WHY payroll. Un importo ambiguo, un ruolo incerto o un pagamento mancante richiedono una decisione. I movimenti già riconciliati, i duplicati esclusi e le decisioni umane restano fuori dalla simulazione.</p>
+<p>Metti per ultime le verifiche internet. La prova riusa gli esiti disponibili e conta una sola volta ogni movimento che richiederebbe una ricerca nuova. Il report mostra la categoria una sola volta e descrive ogni passaggio. «Record riconosciuti» conta le corrispondenze trovate: 0 indica nessuna corrispondenza, mentre — indica un passaggio senza funzione di riconoscimento, per esempio un’assegnazione diretta del WHY. «Risolti» conta invece i movimenti classificati da quel passaggio; «Da verificare» quelli destinati al controllo manuale. Puoi aprire i movimenti per controllare il risultato. La simulazione non esegue nuove ricerche web e non registra decisioni.</p>
+</section>
+<section class="card" id="configuration">
+<p>Durante il caricamento di una sezione, la freccia del mouse mostra un indicatore di attesa.</p>
+<h2>Configurazioni</h2>
+<p>Apri WHO → Operazioni della banca per consultare e modificare il WHY associato a ogni causale in entrata o in uscita.</p>
+<p>Il solo punto in cui si modificano i cataloghi di Bank e i conti e le carte. La pagina è divisa in sezioni.</p>
+<h3 id="configuration-use">Come si usa</h3>
+<ul>
+<li><strong>Ovali</strong>: sotto le schede, un ovale per sezione. Porta all’intestazione della sezione nella stessa pagina; non la apre, non carica dati e non cambia nulla.</li>
+<li><strong>Sezioni chiuse</strong>: all’apertura della pagina ogni sezione mostra solo la sua riga d’intestazione e non è ancora stato letto alcun dato.</li>
+<li><strong>↓</strong> (a sinistra dell’intestazione): carica i dati di quella sola sezione e la apre sotto l’intestazione, con tabella e pulsanti. Durante il caricamento compare un indicatore; se il caricamento non riesce, un messaggio nella sezione con <strong>Riprova</strong>.</li>
+<li><strong>✕</strong> (al posto di ↓ quando la sezione è aperta): la richiude. Riaprendola ritrovi ricerca, selezioni e scelte non ancora salvate come le avevi lasciate, senza un nuovo caricamento. Le altre sezioni restano chiuse finché non le apri tu.</li>
+<li><strong>↑</strong> (a destra dell’intestazione): torna agli ovali, all’inizio della pagina.</li>
+<li>Dopo un salvataggio la pagina si ricarica e riapre la sezione in cui hai lavorato, sulla riga usata; anche ricaricando la pagina ritrovi aperte le sezioni che lo erano.</li>
+<li>Ogni finestra ha in alto a destra <strong>?</strong>, che apre la spiegazione di quella finestra sopra di essa, e × per chiuderla; chiudendo l’aiuto ritrovi la finestra com’era.</li>
+</ul>
+<h3 id="configuration-sections">Le sezioni</h3>
+<ol>
+<li><strong>WHO</strong> mostra una riga per identità. La colonna Movimenti conta le operazioni attribuite al WHO su tutti i conti e le carte, in tutti i periodi, esclusi i duplicati confermati o soppressi. Leggi il WHY unico, i WHY personale e aziendale oppure «Da regola». Le eccezioni attive indicano il titolare, il WHY e l’eventuale WHOM. Per i WHO che dipendono ancora dai singoli strumenti, ogni WHY riporta i conti o le carte a cui si applica. «Nessun WHY fisso» indica che il risultato dipende dal movimento. Per cambiare il criterio usa WHY → Associazioni. Qui puoi cercare il WHO per nome o numero e gestire il catalogo.</li>
+<li><strong>WHY</strong>: i motivi, ciascuno con il suo WHAT.</li>
+<li><strong>WHOM</strong>: entità e LLC.</li>
+<li><strong>WHAT</strong>: le categorie contabili.</li>
+<li><strong>Conti e carte</strong>: conti, carte e altre Source con conto di addebito e intestatario, regole di riconoscimento dei file, cronologia delle assegnazioni e deduplicazione contabile (vedi <a href="#sources">Conti e carte</a>).</li>
+<li><strong>Supporto</strong>: in sola lettura, le destinazioni di Stato patrimoniale (non P&amp;L) su cui si chiudono alcuni WHY.</li>
+</ol>
+<h4 id="configuration-windows">Finestre «Aggiungi» e «Modifica»</h4>
+<p>Si aprono con i pulsanti «+ Aggiungi …» e «Modifica» delle sezioni WHO, WHY, WHOM e WHAT. Compili i campi e premi <strong>Salva</strong>: il server controlla le regole del catalogo; se rifiuta, il motivo compare nella finestra e i valori restano. Dopo il salvataggio la pagina si ricarica sulla sezione e sulla riga usate. <strong>Annulla</strong> o × chiudono senza salvare.</p>
+<h4 id="configuration-merge-window">Finestra «Unisci WHO»</h4>
+<p>Scegli il WHO da assorbire e quello da mantenere (<strong>Scambia</strong> li inverte). L’anteprima, che non salva nulla, indica movimenti, decisioni, alias e altri collegamenti che passano al WHO mantenuto e chiede come risolvere le impostazioni incompatibili. <strong>Unisci</strong> esegue l’unione: il WHO assorbito diventa non attivo e il suo nome un alias. Annulla chiude senza modifiche.</p>
+<h4 id="configuration-delete-window">Finestra «Elimina WHO»</h4>
+<p>Mostra a quanti movimenti è assegnato il WHO e cosa viene eliminato con lui (classificazioni WHO + conto/carta, alias, WHY possibili, entità servite). Confermando, il WHO viene tolto dai movimenti, che restano con il loro WHY e la loro riconciliazione. L’operazione non si annulla.</p>
+<h4 id="configuration-movements-window">Finestra «Movimenti»</h4>
+<p>Elenca i movimenti di una coppia WHO + conto/carta (tutte le date, duplicati confermati esclusi). Su ogni riga puoi scegliere WHY e WHOM del singolo movimento e salvarli con <strong>Salva</strong>: diventano scelte manuali protette. «Torna alla classificazione» o × chiudono la finestra.</p>
+</section>
+<section class="card" id="export">
+<h2>Esportazione mensile</h2>
+<p>Si raggiunge dal fondo del Pannello. Un report per titolare dei conti e delle carte (un’azienda o una persona), <code>RfBank_AAAA_MM_&lt;Titolare&gt;.xlsx</code>, con i soli movimenti dei conti e carte di quel titolare. Scegli anno, mese e titolare e premi <strong>Check</strong>: la pagina mostra lo stato del mese, i conteggi e, raggruppato per azione, cosa blocca il report; «Show» elenca i movimenti di un gruppo e «Open» li apre in Riconcilio. Il pulsante di download compare solo quando nulla blocca il report.</p>
+</section>
+<section class="card" id="quickbooks-online">
+<h2>QuickBooks Online</h2>
+<p>La pagina QuickBooks Online (<code>/bank/work/qbo</code>) non è collegata dalle schede di Bank. <strong>Tutto è separato per azienda</strong>: piano dei conti, corrispondenze e file. Scegli l’azienda nella pagina QBO, non un mese.</p>
+<p>Ogni movimento pronto produce una registrazione: spesa o rimborso con righe per categoria, deposito per un’entrata bancaria, oppure un solo trasferimento per entrambe le gambe di un giroconto o pagamento carta. Questi ultimi non vengono registrati come spese.</p>
+<p>Restano bloccati i movimenti non decisi, i trasferimenti tra aziende, i rapporti economici da chiarire, le ripartizioni che non quadrano e i movimenti senza azienda determinabile. Le origini personali non vengono esportate.</p>
+<ul>
+<li><strong>Piano dei conti</strong>: esporta da QuickBooks dell’azienda il report <em>Account List</em> in CSV e caricalo nella pagina. L’elenco contiene nomi e tipi, non ID QBO. Un nuovo caricamento sostituisce l’elenco: i conti assenti non sono più utilizzabili.</li>
+<li><strong>Corrispondenze</strong>: associa una volta il conto QBO al conto/carta Bank e alla categoria WHAT. Ogni corrispondenza è verificata nel piano dell’azienda. Quelle copiate da altre aziende sono solo proposte finché non le verifichi; quelle globali precedenti restano suggerimenti senza azienda.</li>
+</ul>
+<h3 id="qbo-states">Anteprima, file e importazione sono stati distinti</h3>
+<table class="table-compact"><thead><tr><th>Stato</th><th>Significato</th></tr></thead><tbody>
+<tr><td>Anteprima JSON</td><td>Mostra le registrazioni proposte e i controlli. Non esporta nulla.</td></tr>
+<tr><td>File generato</td><td>CSV per la funzione QBO <em>Import journal entries</em>, una sola azienda e fino a 990 righe. Le registrazioni hanno numero RFB-&lt;movimento&gt;; i movimenti non finiscono in altri lotti.</td></tr>
+<tr><td>File scaricato</td><td>È sempre lo stesso file; i download sono conteggiati. Scaricarlo non dimostra che QBO lo abbia importato.</td></tr>
+<tr><td>Importazione confermata</td><td>Con «Importato in QuickBooks» dichiari l’esito positivo. Se non è stato importato, puoi ritirare il file indicando il motivo; resta nello storico e i movimenti possono entrare in un nuovo lotto. Un file confermato non può essere ritirato.</td></tr>
+<tr><td>Accettato dalle API QBO</td><td>Non disponibile: richiede app Intuit, autorizzazione per azienda, ID dei conti e verifica su ambiente di prova.</td></tr>
+</tbody></table>
+<ul>
+<li><strong>Flusso bancario QBO</strong>: prima di generare il file confermi che i corrispondenti movimenti del bank feed verranno esclusi, non aggiunti, per evitare doppie registrazioni. Il percorso CSV di scritture contabili non equivale all’invio di una spesa tramite API.</li>
+<li><strong>Modifiche successive</strong>: un movimento cambiato dopo l’inclusione in un file è segnalato e non viene riesportato silenziosamente. La rettifica va gestita in QuickBooks.</li>
+<li>Le scritture contabili non riportano il fornitore nei report fornitori QBO. L’importazione reale del CSV in QBO è ancora da verificare.</li>
+</ul>
+</section>
+<section class="card" id="rules-and-profiles">
+<h2>Regole e profili</h2>
+<p>La pagina <strong>Regole e profili</strong> raccoglie le regole AI che leggono il WHO dalla descrizione e i profili di riconoscimento che scelgono WHY e WHAT per un WHO. L’interfaccia locale è in italiano; i nomi WHO, le descrizioni, i nomi del catalogo e i testi delle conversazioni restano come sono registrati.</p>
+<h3 id="rules-editor">L’editor di regole e profili</h3>
+<ul>
+<li>Spieghi nella conversazione come leggere il formato o come scegliere WHY e WHOM; <strong>Ricerca online</strong> propone l’identità del WHO e le liste WHY e WHAT da cui scegliere. Il WHAT segue il WHY: puoi scegliere solo il WHAT dei WHY selezionati, una coppia incoerente è rifiutata.</li>
+<li>Aperto da <strong>Definisci regola</strong> in <a href="#who-patterns-page">WHO Pattern Training</a>, l’editor mostra in cima il <strong>pattern</strong>: un esempio di descrizione originale completa, la struttura comune e il numero di movimenti, con le altre descrizioni del pattern. L’AI riceve già esempi e struttura: non serve ricopiarli né rispiegare il formato.</li>
+<li id="rules-editor-pattern-proposal">Sotto il pattern compare la <strong>Proposta dell’AI</strong>: per ogni regola proposta (generale o specifica) la regola in parole semplici, <strong>Si applica quando</strong> (condizioni), <strong>Esclusioni</strong>, se aggiorna una regola esistente (ne crea una nuova versione, non la cancella) o è una regola nuova, e la <strong>simulazione sui movimenti del pattern</strong>: descrizione originale → WHO estratto (evidenziato), movimenti letti, WHO diversi, movimenti letti dall’altra regola proposta, <strong>casi senza risultato</strong> e <strong>casi in conflitto</strong> con altre regole WHO attive, da esaminare. Il WHO conserva numeri, caratteri speciali e spazi interni: si tolgono solo gli spazi iniziali e finali e si converte in maiuscolo. La regola «In revisione» è quella dell’editor: la confermi con <strong>Simula</strong> (su tutti i movimenti) e <strong>Salva</strong>, oppure la correggi scrivendo in chat (proposta e simulazione si aggiornano). Con <strong>Rivedi e conferma questa regola</strong> passi all’altra proposta; ogni regola si salva separatamente e, una volta salvata, è indicata come «Salvata e attiva». La proposta e la sua simulazione non scrivono nulla.</li>
+<li><strong>Simula</strong> mostra i movimenti interessati senza scrivere nulla. Se cambi la conversazione o i dati cambiano, la simulazione non è più valida e va ripetuta prima di salvare; una simulazione già usata non può essere salvata di nuovo.</li>
+<li><strong>Salva bozza</strong> esiste solo per le regole AI che leggono il WHO: congela la definizione senza pubblicarla. Per i profili di riconoscimento non c’è bozza.</li>
+<li><strong>Salva e applica nel futuro</strong> pubblica la versione per i caricamenti successivi; <strong>Salva e applica agli esistenti</strong> la applica anche ai movimenti ancora da riconciliare indicati nella simulazione. Le decisioni umane confermate restano protette e le applicazioni si possono annullare in Cronologia e ripristino.</li>
+<li>Un profilo di riconoscimento si applica soltanto ai movimenti il cui WHO è letto da una regola AI di estrazione e che sono ancora da riconciliare. Per i gruppi di Riconciliazione guidata con WHO già riconosciuto (per esempio «WHO riconosciuto, WHY da determinare») usa <strong>Definisci regola</strong> nella finestra <strong>Controlla</strong>: le regole WHY per singolo WHO, categoria o generali si simulano e si applicano lì.</li>
+<li>Aprire questa guida dall’editor la apre in una nuova scheda: conversazione, scelte e simulazione restano come sono.</li>
+</ul>
+<h3 id="rules-manage">Rinominare o eliminare</h3>
+<p><strong>Rinomina</strong> cambia soltanto il nome mostrato. <strong>Elimina</strong> chiede conferma nella stessa finestra: per un profilo rimuove profilo, conoscenza e casi del WHO, mentre movimenti e cronologia dei ripristini restano conservati.</p>
+<h3 id="rules-history">Cronologia e ripristino</h3>
+<p>Elenca le applicazioni delle regole. Il ripristino riporta indietro soltanto i movimenti che corrispondono ancora al risultato dell’applicazione; le modifiche successive sono conservate e segnalate.</p>
+<h3 id="rules-catalog">Nuova voce di catalogo</h3>
+<p>Crea un WHY o un WHOM solo dopo la tua conferma esplicita; per un WHY indichi la destinazione contabile da cui deriva il WHAT.</p>
+</section>
+<section class="card" id="guided">
+<h2>Riconciliazione guidata</h2>
+<p>Si apre dalle cose in sospeso del Pannello (<code>/bank/reconcile/</code>) e non è una scheda del menu. Riepiloga i casi da completare per motivo e WHO; ogni gruppo si apre con <strong>Controlla</strong>, descritto in <a href="#work-guided-group">Completare un gruppo in Riconciliazione guidata</a>. Le finestre della pagina hanno il proprio «?», che apre la loro spiegazione.</p>
+</section>
+<section class="card" id="import-by-month">
+<h2>Import per mese</h2>
+<p>La pagina per mese (<code>/bank/by-month</code>) non è nel menu e resta raggiungibile dal suo indirizzo: carica un file in un mese scelto, mostra le Source del mese e i file di altri mesi in attesa di un’azione. Per il lavoro quotidiano usa Carica e riconcilia, che non chiede un mese.</p>
+<h3 id="import-session">Sessione di import</h3>
+<p>Si apre caricando i file nella pagina per mese: in un primo passaggio associ ogni file al suo conto o carta e completi i dati mancanti, poi Bank legge e controlla le righe. Nulla viene salvato come movimento finché non confermi; «Cancel import» annulla la sessione. Puoi includere il report acquisti Amazon con i file del mese.</p>
+</section>
+<section class="card" id="amazon">
+<h2>Amazon</h2>
+<p>Mostra le proposte di WHY ricavate dai prodotti dei report ordini Amazon Business collegati ai movimenti. Se dati Bank, WHOM, catalogo o report sono cambiati dopo l’analisi, la pagina lo segnala: «Retry / refresh Amazon analysis» la ripete prima di usare le proposte. Le proposte non sono decisioni; le ripartizioni si confermano nella pagina WHY, sezione Ripartizioni.</p>
+</section>
+<section class="card" id="rule-check">
+<h2>Verifica delle regole AI</h2>
+<p>Esegue in sola lettura ogni regola operativa su ogni movimento, con lo stesso codice del motore di riconciliazione: riepilogo, movimenti su cui le regole sono in disaccordo, movimenti che nessuna regola legge ed elenco delle regole. Non cambia alcun WHO, WHY o WHAT.</p>
+</section>
+</div>
+{% endblock %}
