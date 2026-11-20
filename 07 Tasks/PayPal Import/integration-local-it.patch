@@ -1,0 +1,126 @@
+--- a/03 Software/RF-One Web/bank_work_routes.py
++++ b/03 Software/RF-One Web/bank_work_routes.py
+@@ -45,7 +45,7 @@
+ from rfone_data_store.bank_reconciliation import import_session, intake, parsers, qbo_books, qbo_export, recognition
+ from rfone_data_store.bank_reconciliation.rule_application_safety import lock_writes
+ 
+-from rfone_data_store.bank_reconciliation import adp_reports
++from rfone_data_store.bank_reconciliation import adp_reports, paypal_reports
+ 
+ import bank_amazon
+ import bank_guided_reconciliation
+@@ -59,6 +59,7 @@
+     "NEEDS_SOURCE", "SOURCE_INCOMPLETE", "UNREADABLE_ROWS", "CHECK_SOURCE", "NOT_RECOGNIZED", "FAILED")
+ BLOCKING = intake.BLOCKING_FILE_STATES   # the gate reads the same states
+ STATE_LABELS = {
++    'PAYPAL_LOADED': 'Report PayPal salvato',
+     'ADP_LOADED': 'Report ADP salvato', 'REPORT_INVALID': 'Report da ricaricare',
+     INTEGRATED: 'Integrato', ALREADY_LOADED: 'Già caricato', AMAZON_LOADED: 'Report Amazon salvato',
+     KEPT_ASIDE: 'Conservato, non utilizzato', NEEDS_SOURCE: 'Quale conto o carta?', SOURCE_INCOMPLETE: 'Dati del conto o carta incompleti',
+@@ -157,6 +158,14 @@
+     try:
+         if len(content) > MAX_FILE_BYTES:
+             raise ValueError("The file is larger than 25 MB.")
++        if content.startswith(b'%PDF-'):
++            saved, created = paypal_reports.ingest(db, file_name, content, account_id)
++            data.update(kind=paypal_reports.KIND, kind_label='Statement PayPal (PDF)',
++                state='PAYPAL_LOADED' if created else ALREADY_LOADED, rows=len(saved['events']),
++                new_rows=saved['new_transactions'], already_stored=saved['already_stored'],
++                period_start=saved['days'][0], period_end=saved['days'][-1], content_b64=None)
++            _save(rec, data)
++            return data
+         if file_name.casefold().endswith(".xlsx") or content.startswith(b"PK\x03\x04"):
+             data.update(kind=adp_reports.KIND, kind_label="Report Excel", content_b64=None)
+             try:
+@@ -178,8 +187,11 @@
+                         rows=len(saved["rows"]), period_start=min(days) if days else None,
+                         period_end=max(days) if days else None, content_b64=None)
+         elif identity.kind == import_session.KIND_PAYPAL:
+-            data.update(state=KEPT_ASIDE, question=None, note="Bank cannot read PayPal activity files yet: the file "
+-                        "is kept here and not used. It does not block the reconciliation.")
++            saved, created = paypal_reports.ingest(db, file_name, content, account_id)
++            data.update(state='PAYPAL_LOADED' if created else ALREADY_LOADED,
++                rows=len(saved['events']), new_rows=saved['new_transactions'],
++                already_stored=saved['already_stored'], period_start=saved['days'][0],
++                period_end=saved['days'][-1], question=None, content_b64=None)
+         elif identity.kind == import_session.KIND_UNRECOGNIZED:
+             data.update(state=NOT_RECOGNIZED, question="Bank does not know this layout. Remove the file, or "
+                         "upload the CSV exported by the bank or card issuer.")
+@@ -667,6 +679,7 @@
+                 return render_template(
+                     "bank_work.html", **state, sources=sources, results=results, qbo=qbo, upload_scope=scope,
+                     adp_reports=adp_reports.reports(db), amazon_reports=intake.amazon_reports(db),
++                      paypal_reports=paypal_reports.reports(db),
+                     report_pending=report_pending(db),
+                     periods={fp.batch_id: fp for sc in state["check"].sources for fp in sc.files},
+                     guided=bank_guided_reconciliation.available(), answer_labels=intake.ANSWER_LABELS,
+--- a/03 Software/RF-One Web/templates/bank_work.html
++++ b/03 Software/RF-One Web/templates/bank_work.html
+@@ -25,10 +25,10 @@
+ 
+ <div class="card" id="upload">
+   <h2>1 · Carica i file</h2>
+-  <p class="muted small">Carica gli estratti di conti e carte (CSV), i report ADP Payroll Summary (Excel) e i report ordini Amazon Business (CSV), così come li hai scaricati, in qualsiasi ordine e momento. Non devi scegliere un mese: Bank legge le date dai file. I file già caricati non creano duplicati. Il caricamento non avvia la riconciliazione.</p>
++  <p class="muted small">Carica gli estratti di conti e carte (CSV), i report ADP Payroll Summary (Excel), i report ordini Amazon Business (CSV) e i report PayPal (CSV attività o statement PDF), così come li hai scaricati, in qualsiasi ordine e momento. Non devi scegliere un mese: Bank legge le date dai file. I file già caricati non creano duplicati. Il caricamento non avvia la riconciliazione.</p>
+   <form method="post" action="{{ url_for('bank_work_upload') }}" enctype="multipart/form-data">
+     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+-    <input type="file" name="files" multiple accept=".csv,.xlsx" required>
++    <input type="file" name="files" multiple accept=".csv,.xlsx,.pdf" required>
+     <button type="submit" class="btn-primary">Carica e controlla</button>
+   </form>
+ </div>
+@@ -66,9 +66,10 @@
+             <span class="muted small">(first and last {{ 'ordine' if f.kind == 'AMAZON_BUSINESS_ORDERS' else ('pagamento' if f.kind == 'ADP_PAYROLL_SUMMARY' else 'movimento') }})</span>
+           {% else %}—{% endif %}</td>
+         <td data-label="Record">{{ f.rows if f.rows is not none else '—' }}
++          {% if f.kind == 'PAYPAL_ACTIVITY' and f.state in ('PAYPAL_LOADED', 'ALREADY_LOADED') %}<br><span class="small muted">{{ f.new_rows or 0 }} ID nuovi · {{ f.already_stored or 0 }} ID già presenti. Stati e dettagli conservati.</span>{% endif %}
+           {% if f.state in ('INTEGRATED', 'ALREADY_LOADED') and f.kind == 'BANK' %}<br><span class="small muted">{{ f.new_rows or 0 }} nuovi · {{ f.already_stored or 0 }} già presenti{% if f.left_out_unreadable %} · {{ f.left_out_unreadable }} righe illeggibili escluse{% endif %}</span>{% endif %}</td>
+         <td data-label="Stato">
+-          <span class="badge {{ 'bad' if f.blocking else ('ok' if f.state in ('INTEGRATED', 'AMAZON_LOADED', 'ADP_LOADED', 'ALREADY_LOADED') else 'warn') }}">{{ f.state_label }}</span>
++          <span class="badge {{ 'bad' if f.blocking else ('ok' if f.state in ('INTEGRATED', 'AMAZON_LOADED', 'ADP_LOADED', 'PAYPAL_LOADED', 'ALREADY_LOADED') else 'warn') }}">{{ f.state_label }}</span>
+           {% if f.question %}<div class="small">{{ f.question|bank_ui_it }}</div>{% elif f.note and f.state == 'KEPT_ASIDE' %}<div class="small muted">{{ f.note|bank_ui_it }}</div>{% endif %}
+           {% if f.blocking %}
+             {% if f.state in ('NEEDS_SOURCE', 'CHECK_SOURCE', 'SOURCE_INCOMPLETE') %}
+@@ -172,13 +173,14 @@
+   {% endif %}
+   <h3>Report per la riconciliazione</h3>
+   <table class="table-compact table-stack"><thead><tr><th>Report</th><th>File e periodo</th><th>Da verificare</th></tr></thead><tbody>
+-  {% for label, reports, key in [('ADP Payroll Summary', adp_reports, 'ADP'), ('Amazon Business', amazon_reports, 'Amazon')] %}
++  {% for label, reports, key in [('ADP Payroll Summary', adp_reports, 'ADP'), ('Amazon Business', amazon_reports, 'Amazon'), ('PayPal', paypal_reports, 'PayPal')] %}
+     <tr><td data-label="Report">{{ label }}</td><td data-label="File e periodo">
+       {% for report in reports %}<details><summary>{{ report.file_name }}</summary>
+-        {% if key == 'ADP' %}Date paga: {{ report.days|join(', ') }}
++        {% if key == 'PayPal' %}{{ report.days[0] }} – {{ report.days[-1] }} · {{ report.events|length }} righe · {{ report.account or 'account non indicato nel CSV' }}
++        {% elif key == 'ADP' %}Date paga: {{ report.days|join(', ') }}
+         {% else %}{{ day(report.start) }} – {{ day(report.end) }} ({{ 'periodo dichiarato' if report.basis == 'DECLARED' else 'date presenti' }}){% endif %}
+       </details>{% else %}Nessun report caricato{% endfor %}</td>
+-      <td data-label="Da verificare">{% if key == 'Amazon' and c.report_gaps %}{% for gap in c.report_gaps %}{{ gap.request }} {% endfor %}{% elif report_pending[key] %}Movimenti in sospeso nell’ultima riconciliazione: {{ report_pending[key]|sort|join(', ') }}{% else %}—{% endif %}</td></tr>
++      <td data-label="Da verificare">{% if key == 'Amazon' and c.report_gaps %}{% for gap in c.report_gaps %}{{ gap.request }} {% endfor %}{% elif report_pending.get(key) %}Movimenti in sospeso nell’ultima riconciliazione: {{ report_pending.get(key)|sort|join(', ') }}{% else %}—{% endif %}</td></tr>
+   {% endfor %}</tbody></table>
+ </div>
+ 
+--- a/03 Software/RF-One Web/templates/bank_how_it_works.html
++++ b/03 Software/RF-One Web/templates/bank_how_it_works.html
+@@ -37,8 +37,8 @@
+ <p>È la seconda scheda di Bank (<code>/bank/work</code>); la pagina iniziale è il Pannello. La pagina ha tre passaggi: <strong>carica i file → controlla la completezza → riconcilia automaticamente</strong>. I passaggi «Completa a mano» e «QuickBooks Online» non sono mostrati in questa pagina. Non devi scegliere un mese, un periodo o una sessione.</p>
+ <h3 id="work-upload">1. Quali file caricare</h3>
+ <ul>
+-<li>Carica gli estratti CSV dei conti e delle carte Chase e First Citizens, i report Excel ADP «Payroll Summary» e i report ordini Amazon Business con il campo <em>Charge Identifier</em>, tutti nello stesso punto e in qualsiasi ordine.</li>
+-<li>Bank riconosce il tipo dal contenuto e il conto o carta dal nome del file, quando possibile. Chiede solo ciò che non riesce a ricavare: conto di origine, dati mancanti, righe illeggibili o file già presenti su un altro conto. I file attività PayPal sono conservati ma non utilizzati.</li>
++<li>Carica gli estratti CSV dei conti e delle carte Chase e First Citizens, i report Excel ADP «Payroll Summary» e i report ordini Amazon Business con il campo <em>Charge Identifier</em>, oltre ai report PayPal CSV e PDF, tutti nello stesso punto e in qualsiasi ordine.</li>
++<li>Bank riconosce il tipo dal contenuto e il conto o carta dal nome del file, quando possibile. Chiede solo ciò che non riesce a ricavare: conto di origine, dati mancanti, righe illeggibili o file già presenti su un altro conto. I CSV attività PayPal e gli statement PDF testuali sono importati come fonte di dettaglio riservata a Bank. Si conservano stati, valute, Transaction ID, conti di finanziamento e Ref ID disponibili. Ricaricare un file identico non lo duplica; gli ID presenti in report sovrapposti vengono confrontati e i nuovi dettagli restano disponibili. Il CSV senza account rimane senza titolare attribuito. Autorizzazioni, trasferimenti, conversioni e rimborsi restano distinti: non sono automaticamente trasformati in spese o classificazioni. Il caricamento PayPal non riconcilia automaticamente i movimenti bancari. I PDF scansionati o con formato non leggibile vengono segnalati senza importazione parziale.</li>
+ <li>Quando il file è <em>Integrato</em>, i nuovi movimenti sono già salvati in Bank. Ricaricare lo stesso file non li duplica; un file più completo aggiunge soltanto quelli mancanti. Gli acquisti reali ripetuti restano distinti e le decisioni precedenti sono conservate.</li>
+ <li>Caricare un file non avvia la riconciliazione.</li>
+ </ul>
+--- a/03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/import_session.py
++++ b/03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/import_session.py
+@@ -117,8 +117,7 @@
+             "that paid them. Reports with Charge Identifier are imported as purchase evidence after bank statements."))
+     if _PAYPAL_HEADERS <= header:
+         return FileIdentity(file_name, KIND_PAYPAL, note=(
+-            "PayPal activity export: PayPal movements (and item details when present). Its importer is "
+-            "not available yet."))
++            "PayPal activity export: PayPal movements (and item details when present). The daily upload imports it as Bank-only evidence."))
+     try:
+         detected = parsers.parse_csv_bytes(content).detected_format
+     except parsers.UnrecognizedFormatError as exc:

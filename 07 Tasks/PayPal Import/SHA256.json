@@ -1,0 +1,11 @@
+{
+  ".gitignore": "01d8d0360f02a0c00e236a4eb2a1d8bdf83377acf442eaafad7a136bf14d6bb0",
+  "integration-local-it.patch": "5013960664e66ef19ae5d0adf385172283d27405e6bbc08d6f749086141dd233",
+  "integration.patch": "2bc00f659772b0f2fdeece8f9c25879d8f8f3d71caac935e85698a900ace4e0f",
+  "README.md": "cabdcd34bde0c9e590dafba0ee423b334cc2eea3dc9829540276a0b550c10c8a",
+  "files/PAYPAL_IMPORT.md": "a08e52b5909403ffeb2a09366beaa8aa95c55b6922aa4d939e5fcf7a3557b8d3",
+  "files/requirements-paypal.txt": "f7512d65eafc9d28919db2abb8364c483a0e7a9fc08a3e62e5591ac6b6049814",
+  "files/test_paypal_import.py": "865930b9acc257c23d6c0ea87cf0d9c5c782d33dc37459413b2a14984bd2c6ea",
+  "files/03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/paypal_reports.py": "abc058ce9d8e82fd566e50d392daf8b36fc5f97ac4d727ff692da94d210d6846",
+  "local-it/03 Software/RF-One Data Store/rfone_data_store/bank_reconciliation/paypal_reports.py": "06012e34d7bbdcb8158f10af991034738832cf2f8d941870c992f7ca235f6af8"
+}
