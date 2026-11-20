@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('session_detail', session_id=job_posting.session_id) }}">&larr; Back to Session</a>
+
+<div class="card">
+  <div class="dossier-section-head">
+    <h1 style="margin-bottom:0;">Job Posting #{{ job_posting.id }}</h1>
+    <span class="badge">{{ job_posting.status }}</span>
+  </div>
+  <div class="meta-row">
+    <div class="meta-item"><div class="label">Role</div><div class="value">{{ job_posting.role }}</div></div>
+    <div class="meta-item"><div class="label">Branch/Location</div><div class="value">{{ job_posting.location_label or '-' }}</div></div>
+    <div class="meta-item"><div class="label">Current version</div><div class="value">v{{ job_posting.current_version }}</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Base Posting Content (v{{ current_version.version }})</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Company and Branch descriptions are independent — editing one never rewrites the other. Compensation/benefits/
+    schedule are descriptive text, never numeric Selection Rules.
+  </p>
+  <form method="post" action="{{ url_for('job_posting_edit', job_posting_id=job_posting.id) }}" class="req-form">
+    <label>Title</label>
+    <input type="text" name="title" value="{{ current_version.title or '' }}">
+    <label>Company/Brand description</label>
+    <textarea name="company_description">{{ current_version.company_description or '' }}</textarea>
+    <label>Branch-specific description</label>
+    <textarea name="branch_description">{{ current_version.branch_description or '' }}</textarea>
+    <label>Role summary</label>
+    <textarea name="role_summary">{{ current_version.role_summary or '' }}</textarea>
+    <label>Major responsibilities</label>
+    <textarea name="responsibilities">{{ current_version.responsibilities or '' }}</textarea>
+    <label>Minimum/public requirements</label>
+    <textarea name="minimum_requirements">{{ current_version.minimum_requirements or '' }}</textarea>
+    <label>Preferred experience/skills</label>
+    <textarea name="preferred_experience">{{ current_version.preferred_experience or '' }}</textarea>
+    <label>Availability expectations</label>
+    <textarea name="availability_expectations">{{ current_version.availability_expectations or '' }}</textarea>
+    <label>Schedule description</label>
+    <textarea name="schedule_description">{{ current_version.schedule_description or '' }}</textarea>
+    <label>Compensation description</label>
+    <textarea name="compensation_description">{{ current_version.compensation_description or '' }}</textarea>
+    <label>Benefits description</label>
+    <textarea name="benefits_description">{{ current_version.benefits_description or '' }}</textarea>
+    <label>Location/context</label>
+    <textarea name="location_context">{{ current_version.location_context or '' }}</textarea>
+    <label>Application instructions</label>
+    <textarea name="application_instructions">{{ current_version.application_instructions or '' }}</textarea>
+    <label>Other public-facing information</label>
+    <textarea name="other_info">{{ current_version.other_info or '' }}</textarea>
+    <label>Your name (author)</label>
+    <input type="text" name="author">
+    <label>Reason for this change (required once the posting has been approved at least once)</label>
+    <input type="text" name="reason">
+    <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save as new version</button>
+  </form>
+
+  {% if job_posting.status != 'APPROVED' or job_posting.approved_version_id != current_version.id %}
+  <form method="post" action="{{ url_for('job_posting_approve', job_posting_id=job_posting.id) }}" class="req-form" style="margin-top:.8rem;">
+    <label>Approve this version (required before channel variants may be generated)</label>
+    <input type="text" name="approved_by" placeholder="Your name" required>
+    <button type="submit" class="btn">Approve Base Posting</button>
+  </form>
+  {% else %}
+  <p style="font-size:.82rem; margin-top:.6rem;"><span class="badge status-completed">Approved</span> by {{ current_version.approved_by }} on {{ current_version.approved_at.strftime('%Y-%m-%d %H:%M') }}</p>
+  {% endif %}
+
+  <details class="edit-toggle">
+    <summary>Version history ({{ versions|length }})</summary>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>v</th><th>Source</th><th>Author</th><th>Reason</th><th>Approved</th></tr></thead>
+      <tbody>
+        {% for v in versions %}
+        <tr>
+          <td>{{ v.version }}</td><td>{{ v.source }}</td><td>{{ v.author or '-' }}</td><td>{{ v.reason or '-' }}</td>
+          <td>{{ v.approved_by or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Channel Variants</h2>
+  <p class="muted" style="font-size:.8rem;">Only available once the base posting is approved. Each variant is edited, reviewed, and approved individually — there is no "Approve All."</p>
+  {% if job_posting.approved_version_id %}
+    {% for row in variant_rows %}
+    <div class="signal-card">
+      <div class="req-title">
+        {{ row.variant.channel.name }}
+        <span class="badge">{{ row.variant.status }}</span>
+        <span class="muted" style="font-size:.72rem;">v{{ row.current_version.version }}</span>
+      </div>
+      {% if row.current_version.title_override %}<p style="font-size:.85rem;"><strong>{{ row.current_version.title_override }}</strong></p>{% endif %}
+      <p style="font-size:.85rem; white-space:pre-wrap;">{{ row.current_version.variant_text }}</p>
+
+      <details class="edit-toggle">
+        <summary>Edit this variant</summary>
+        <form method="post" action="{{ url_for('job_posting_channel_variant_edit', variant_id=row.variant.id) }}" class="req-form">
+          <label>Title override</label>
+          <input type="text" name="title_override" value="{{ row.current_version.title_override or '' }}">
+          <label>Variant text</label>
+          <textarea name="variant_text">{{ row.current_version.variant_text }}</textarea>
+          <label>Author</label>
+          <input type="text" name="author">
+          <label>Reason (required once this variant has been approved)</label>
+          <input type="text" name="reason">
+          <button type="submit" class="btn secondary" style="margin-top:.6rem;">Save new version</button>
+        </form>
+      </details>
+
+      {% if row.variant.status != 'APPROVED' or row.variant.approved_version_id != row.current_version.id %}
+      <form method="post" action="{{ url_for('job_posting_channel_variant_approve', variant_id=row.variant.id) }}" class="inline-form">
+        <input type="text" name="approved_by" placeholder="Your name" style="max-width:10rem;">
+        <button type="submit" class="btn" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">Approve this variant</button>
+      </form>
+      {% else %}
+      <details class="edit-toggle">
+        <summary>Record a manual publication/placement</summary>
+        <form method="post" action="{{ url_for('channel_publication_create', variant_id=row.variant.id) }}" class="req-form">
+          <label>Placement label (e.g. "Facebook Group A", "Branch Facebook Page")</label>
+          <input type="text" name="placement_label" required>
+          <label>External link (optional)</label>
+          <input type="text" name="external_link">
+          <label>Cost (optional, in your currency's major units, e.g. 25.00)</label>
+          <input type="text" name="cost_amount">
+          <label>Currency</label>
+          <input type="text" name="cost_currency" placeholder="USD">
+          <label>Notes</label>
+          <textarea name="notes"></textarea>
+          <label>Created by</label>
+          <input type="text" name="created_by">
+          <button type="submit" class="btn secondary" style="margin-top:.6rem;">Record Publication + Get Tracking Link</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <details class="edit-toggle">
+      <summary>Generate a new channel variant</summary>
+      <form method="post" action="{{ url_for('job_posting_channel_variant_create', job_posting_id=job_posting.id) }}" class="req-form">
+        <label>Channel</label>
+        <select name="channel_id">
+          {% for c in channels %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+        <label>Variant text (must remain semantically consistent with the approved base posting)</label>
+        <textarea name="variant_text">{{ current_version.role_summary or '' }}</textarea>
+        <label>Title override (optional)</label>
+        <input type="text" name="title_override">
+        <label>Created by</label>
+        <input type="text" name="created_by">
+        <button type="submit" class="btn secondary" style="margin-top:.6rem;">Generate Variant</button>
+      </form>
+    </details>
+  {% else %}
+    <p class="empty">Approve the base posting first.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Publications / Tracking Links</h2>
+  {% if publications %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Channel</th><th>Placement</th><th>Status</th><th>Cost</th><th>Tracking Link</th></tr></thead>
+    <tbody>
+      {% for p in publications %}
+      <tr>
+        <td>{{ p.channel.name }}</td>
+        <td>{{ p.placement_label }}</td>
+        <td>{{ p.status }}</td>
+        <td>{{ (p.cost_amount_cents / 100) if p.cost_amount_cents is not none else '-' }} {{ p.cost_currency or '' }}</td>
+        <td>{% if p.tracking_links %}/apply/{{ p.tracking_links[0].token }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No publications recorded yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

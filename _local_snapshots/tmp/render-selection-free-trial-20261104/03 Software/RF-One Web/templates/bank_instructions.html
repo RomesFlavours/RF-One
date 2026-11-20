@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Instructions · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('instructions') }}
+{#- BANK_IMPORT_AND_REVIEW_001 — explanation only. Every statement here
+    describes behaviour the Bank pages already have; the wording comes from
+    those pages and their code. Nothing on this page is a rule of its own. -#}
+
+<div class="card" id="monthly-sequence">
+  <h2>The monthly work</h2>
+  <p>
+    Bank reconciliation is done once a month, for the previous month, on
+    <a href="{{ url_for('bank_home') }}">Import and Review</a>. The page opens on the previous
+    calendar month (local time of the Location); any other month can be chosen there.
+  </p>
+  <ol>
+    <li><strong>Import</strong> &mdash; upload the month's original bank and card downloads.</li>
+    <li><strong>Check Sources</strong> &mdash; confirm that every account and card that should have
+      produced a download for the month did, and explain the ones that did not.</li>
+    <li><strong>Automatic WHO</strong> &mdash; see how many of the month's transactions already have
+      their counterparty (WHO), and where it came from.</li>
+    <li><strong>Review Missing</strong> &mdash; complete, in Review, the transactions RF-One could not
+      resolve automatically.</li>
+  </ol>
+</div>
+
+<div class="card" id="source-files">
+  <h2>What source files to load</h2>
+  <p>
+    The source of truth is the <strong>original monthly download from each issuer</strong>, uploaded
+    as it was downloaded &mdash; bank accounts and cards (Chase, First Citizens, American Express).
+    No spreadsheet is ever consulted.
+  </p>
+  <p>
+    Leave the Payment Instrument on automatic unless RF-One asks. A file that carries its own
+    identifier (First Citizens <code>Account Number</code>, Chase <code>Card</code>) always resolves
+    by that identifier; a file name is only ever a hint, never authoritative.
+  </p>
+  <p>
+    A file whose exact bytes were already imported is recognised and not imported again, whatever
+    its name. The month a file belongs to comes from the dates inside it, never from its name or
+    from the day it was uploaded.
+  </p>
+</div>
+
+<div class="card" id="source-completeness">
+  <h2>Source completeness</h2>
+  <p>
+    One question only: did every bank and card that should have produced an original download this
+    month actually produce one? This is <strong>not</strong> the accounting close, not reconciliation
+    completion and not P&amp;L approval &mdash; a month can be source-complete while every transaction
+    in it is still unclassified.
+  </p>
+  <p>
+    A month can be marked COMPLETE only when every expected account or card is covered by a source
+    file or explicitly resolved by a person. There is no override.
+  </p>
+  <p>
+    A missing source file never closes or deactivates an account or card. Only the explicit
+    Closed / Lost / Replaced / Other decisions do that, and only because an operator chose one by
+    name; they are dated from the instrument's last posting date, which RF-One derives itself. A
+    closed instrument is kept permanently for historical audit and matching &mdash; it is never
+    deleted, and its last four and identity are never rewritten.
+  </p>
+  <p>
+    Overlapping date ranges are allowed &mdash; a corrected or reissued file is legitimate. No
+    transaction is counted twice: that is enforced by the canonical transaction deduplication, not
+    by rejecting the file.
+  </p>
+</div>
+
+<div class="card" id="month-states">
+  <h2>Controlled, historical, provisional</h2>
+  <ul>
+    <li><strong>Controlled</strong> &mdash; the month is on or after the reconciliation control start.
+      Controlled months are opened automatically when an import covers them, and follow the ordinary
+      completeness rules.</li>
+    <li><strong>Historical</strong> &mdash; the month is before the control start. Its transactions are
+      imported and kept, but RF-One does not open it, does not demand its missing accounts, and never
+      certifies it complete just because data exists.</li>
+    <li><strong>Provisional</strong> &mdash; the month is after the validated-through month. Its data is
+      kept and shown, but it is not yet certified complete, so its gaps are shown and not enforced,
+      and it cannot be completed until the validated-through month reaches it.</li>
+    <li><strong>Not under completeness control</strong> &mdash; no control start is configured, so no
+      month is placed under control automatically. Imported data is still kept normally.</li>
+  </ul>
+  <p>
+    Setting the control start for the first time, or moving it earlier, also opens the controlled
+    months covered by files already imported &mdash; no file has to be uploaded again. Moving it
+    later changes nothing that already exists. Both settings are on
+    <a href="{{ url_for('bank_monthly') }}">Monthly Sources</a>.
+  </p>
+</div>
+
+<div class="card" id="who-recognition">
+  <h2>WHO means identity, not purpose</h2>
+  <p>
+    The WHO is the counterparty of a transaction &mdash; who was paid, or who paid. Recognising who
+    was paid says nothing about <em>why</em>: a WHO never determines the WHY or the WHAT of a
+    transaction by itself.
+  </p>
+  <p>
+    When a person confirms a WHO in Review, RF-One can learn that the same bank description means
+    the same WHO. On the next import that learned rule supplies the WHO automatically. It recognises
+    the counterparty only, and leaves the purpose of each transaction to that transaction's own
+    evidence, or to a person.
+  </p>
+  <p>
+    Automatic WHO on Import and Review shows, for the month, how many transactions have a WHO from a
+    learned rule, from a human decision, or none yet. Bulk authorization of automatic WHO completion
+    is not available: it is pending a functional decision.
+  </p>
+</div>
+
+<div class="card" id="manual-review">
+  <h2>Manual review</h2>
+  <p>
+    Transactions RF-One could not resolve automatically are completed in
+    <a href="{{ url_for('bank_review') }}">Review Transactions</a>, one by one. Import and Review
+    counts them for the month and opens Review on that month. A transaction counts as still needing
+    review until it has a resolved decision, or is a confirmed internal transfer &mdash; the same
+    definition the Monthly Export uses to block an export.
+  </p>
+</div>
+
+<div class="card" id="saved-source-rules">
+  <h2>Saved source rules</h2>
+  <p>
+    A source whose own content cannot identify its account (First Citizens'
+    <code>AccountHistory.csv</code>, whose name never changes) is resolved once by a human; that
+    choice is saved and reused on the next import. A rule is always overridden by a reliable
+    identifier inside the file, and disabling one never deletes it. Saved source rules are on
+    <a href="{{ url_for('bank_instruments') }}">Instruments</a>.
+  </p>
+</div>
+
+<div class="card" id="accounting-deduplication">
+  <h2>Accounting deduplication</h2>
+  <p>
+    The same operation can reach the books twice &mdash; from a card and its linked card, from two
+    Chase downloads, twice in one file, or from files saved under different names. Rows that share a
+    <strong>settlement account, posting date, signed amount and normalized payee</strong> are one
+    accounting fact: one canonical transaction feeds accounting, the others are kept, linked and
+    excluded. <strong>No raw row is ever deleted.</strong>
+  </p>
+  <p>
+    A transaction whose card has no settlement account configured for its posting date is not
+    deduplicated and not merged with anything: configure the card's settlement account on
+    <a href="{{ url_for('bank_instruments') }}">Instruments</a>, then recompute.
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: rfone-selection-free-trial
+    runtime: python
+    region: virginia
+    plan: free
+    branch: codex/render-selection-free-trial
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180 --preload trial_wsgi:application
+    healthCheckPath: /trial-health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: RFONE_RENDER_TRIAL
+        value: "1"
+      - key: RFONE_FLASK_SECRET_KEY
+        generateValue: true
+      - key: RFONE_TRIAL_ADMIN_PASSWORD
+        generateValue: true
+      - key: RFONE_DATABASE_URL
+        fromDatabase:
+          name: rfone-selection-free-trial
+          property: connectionString
+
+databases:
+  - name: rfone-selection-free-trial
+    plan: free
+    region: virginia
+    postgresMajorVersion: "18"
+    ipAllowList: []
