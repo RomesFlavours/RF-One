@@ -1,0 +1,38 @@
+{% extends 'workspace/modal_base.html' %}
+{% block title %}Carica Resume{% endblock %}
+{% block content %}
+<h1>Carica Resume</h1>
+<p><b>{{ ROLE_LABEL.get(position.role_code, position.role_code) }}</b> · {{ position.location_label }}{% if position.title %} · {{ position.title }}{% endif %}</p>
+<p>Carica i CV per questa PDL. Vengono salvati i documenti ed estratti i dati; la selezione e l’applicazione di Requisiti e Priorità avvengono in una fase successiva.</p>
+<form method="post" enctype="multipart/form-data" action="{{ url_for('positions.sp_upload', position_id=position.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="modal" value="1">
+<label for="resume-files">Scegli uno o più CV (PDF, DOCX o TXT)</label>
+<input id="resume-files" type="file" name="cv" multiple accept=".pdf,.docx,.txt" required>
+<p><button type="submit" id="resume-submit">Carica ed estrai i dati</button></p>
+</form>
+{% if batch %}
+<div class="card" role="status"><h2>Esito del caricamento</h2>
+<p>{{ batch.received }} file ricevuti · {{ batch.imported|length }} nuovi CV caricati · {{ batch.exact_duplicates|length }} duplicati ignorati · {{ batch.failed|length }} file non caricati.</p>
+{% if not batch.received %}<p>Seleziona almeno un file.</p>{% endif %}
+{% for filename in batch.exact_duplicates %}<p>{{ filename }}: già presente per questa posizione.</p>{% endfor %}
+{% for item in batch.failed %}<p class="error">{{ item.filename }}: {{ item.message }}</p>{% endfor %}
+{% for item in batch.possible_duplicates %}<p>{{ item.filename }}: possibile duplicato da verificare. {{ item.note }}</p>{% endfor %}
+<p>I CV non sono stati valutati né ordinati per priorità.</p>
+</div>
+<script>window.resumeUploadChanged = {{ (batch.imported|length > 0)|tojson }}; if(window.resumeUploadChanged && parent.SelectionModal) parent.SelectionModal.markChanged();</script>
+{% endif %}
+<h2>CV caricati per questa PDL</h2>
+<div class="table-scroll"><table id="resume-list"><thead><tr><th>Candidato</th><th>CV originale</th><th>Data di caricamento</th><th aria-label="Dati estratti"></th></tr></thead><tbody>
+{% for row in rows %}<tr id="resume-{{ row.pc.id }}">
+<td>{{ row.name }}</td>
+<td>{% if row.original_available %}<a href="{{ url_for('positions.candidate_original', position_id=position.id, pc_id=row.pc.id, modal='1') }}" target="_blank" rel="noopener" title="{{ row.filename }}">Apri CV originale</a>{% else %}<span class="muted">Originale non disponibile</span>{% endif %}</td>
+<td data-upload-date="{{ row.pc.added_at.isoformat() }}">{{ row.pc.added_at|local(position.timezone) }}</td>
+<td><a href="{{ url_for('positions.resume_extracted_data', position_id=position.id, pc_id=row.pc.id) }}" data-resume-details data-name="{{ row.name }}">Dati estratti</a></td>
+</tr>{% else %}<tr><td colspan="4">Nessun CV caricato per questa PDL.</td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'workspace/_resume_data_modal.html' %}
+<p><a class="btn btn-secondary" href="{{ url_for('positions.dashboard', _anchor='pdl-' ~ position.id) }}" data-modal-cancel>Chiudi</a></p>
+<script>
+document.querySelector('form').addEventListener('submit', () => {const b=document.getElementById('resume-submit');b.disabled=true;b.textContent='Caricamento ed estrazione in corso…';});
+</script>
+{% endblock %}

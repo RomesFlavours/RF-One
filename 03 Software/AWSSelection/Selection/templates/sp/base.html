@@ -1,0 +1,7 @@
+{# CV Selection SP pages inside the Selection shell (header, breadcrumb, the five tabs, the current Job).
+   The approved SP look is kept and scoped to `.sp`, so it never changes the rest of Selection. #}
+{% extends "workspace/base.html" %}
+{% block head %}
+{% include "sp/_styles.html" %}
+{% endblock %}
+{% block content %}<div class="sp">{% block sp_content %}{% endblock %}</div>{% endblock %}

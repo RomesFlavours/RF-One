@@ -1,0 +1,194 @@
+{% extends "sp/base.html" %}
+{% block title %}Applications · {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}{% endblock %}
+{% set crumbs = [('Applications', None)] %}
+{% set section = 'applications' %}
+{% block sp_content %}
+{% set approved = sp.approved %}
+<h1>Applications</h1>
+<div class="muted">{{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }} · profile {{ sp.requirements_draft[0].source if sp.requirements_draft else '' }}
+  {% if approved %} · requirements v{{ approved.version }} confirmed {{ local_time(approved.approved_at, p.timezone) }}{% endif %}</div>
+
+<!-- 1. Requirements (set in the Job, Selection tab) -->
+<div class="card" id="requirements">
+  <h2><span class="step">1</span>Requirements {% if not approved %}<span class="badge gC">Not confirmed yet</span>{% elif sp.editing %}<span class="badge gC">Changes not confirmed</span> <span class="badge gA">In use: v{{ approved.version }}</span>{% else %}<span class="badge gA">Confirmed v{{ approved.version }}</span>{% endif %}</h2>
+  <details {% if not approved %}open{% endif %}><summary class="small">{{ (approved.requirements if approved else sp.requirements_draft)|length }} requirement(s) in use{% if can_edit %} · change them in the <a href="{{ url_for('positions.job_edit', position_id=p.id) }}#requirements">Job settings</a>{% endif %}</summary>
+  <table>
+    <tr><th>Requirement</th><th class="hide-sm">What the CV should show</th><th>Criticality</th><th>Weight</th></tr>
+    {% for r in (approved.requirements if approved else sp.requirements_draft) %}
+    <tr>
+      <td><b>{{ r.name }}</b>{% if r.computed %}<div class="small muted">Computed from the verified CV dates</div>{% endif %}</td>
+      <td class="hide-sm small">{{ r.look_for }}</td>
+      <td>{{ CRIT[r.criticality] }}</td>
+      <td>{{ r.weight }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">Must-haves define the ranking groups; weights order candidates inside a group. Residence and commute are not used.</p>
+  </details>
+</div>
+
+<!-- 2. CVs (uploaded from the Selection positions page) -->
+<div class="card" id="cvs">
+  <h2><span class="step">2</span>CVs <span class="small muted">({{ cands|length }} for this Job)</span></h2>
+  {% if can_edit %}<p>Per caricare altri CV, usa <b>Carica Resume</b> nella <a href="{{ url_for('positions.dashboard', _anchor='pdl-' ~ p.id) }}">riga della PDL in Selezione</a>.</p>{% endif %}
+
+  {% if last_upload %}
+  <p class="small"><b>Last upload (#{{ last_upload.n }}, {{ local_time(last_upload.at, p.timezone) }}, {{ last_upload.by }}):</b>
+    {{ last_upload.received }} received · <b>{{ last_upload.imported|length }} new imported</b> ·
+    {{ last_upload.exact_duplicates|length }} exact duplicate(s) ignored ·
+    <span class="{{ 'verify' if last_upload.possible_duplicates else '' }}">{{ last_upload.possible_duplicates|length }} possible duplicate(s) to verify</span>
+    {% if last_upload.failed %} · <span class="flag">{{ last_upload.failed|length }} not imported</span>{% endif %}</p>
+  {% for d in last_upload.possible_duplicates %}<div class="small verify">Possible duplicate — {{ d.filename }}: {{ d.note }}</div>{% endfor %}
+  {% for d in last_upload.exact_duplicates %}<div class="small muted">Exact duplicate ignored — {{ d }}</div>{% endfor %}
+  {% for d in last_upload.failed %}<div class="small flag">Not imported — {{ d.filename }}: {{ d.message }}</div>{% endfor %}
+  {% endif %}
+  {% if cands %}
+  <details {% if running or to_analyze or cv_return %}open{% endif %}>
+    <summary class="small">Uploads and analysis status</summary>
+    {% if sp.uploads %}<table class="small">
+      <tr><th>Upload</th><th>When</th><th>Received</th><th>New</th><th>Exact duplicates</th><th>Possible duplicates</th></tr>
+      {% for u in sp.uploads|reverse %}<tr><td>#{{ u.n }}</td><td>{{ local_time(u.at, p.timezone) }} · {{ u.by }}</td><td>{{ u.received }}</td><td>{{ u.imported|length }}</td><td>{{ u.exact_duplicates|length }}</td><td>{{ u.possible_duplicates|length }}</td></tr>{% endfor %}
+    </table>{% endif %}
+    <table class="small" style="margin-top:8px" id="cv-list" data-position="{{ p.id }}"
+           data-added="{{ cv_added|tojson|forceescape }}" data-removed="{{ cv_removed|tojson|forceescape }}">
+      {% for c in cands %}
+      <tr data-pc="{{ c.id }}"><td class="cv-new" style="width:44px">{% if c.id in cv_added %}<span class="badge gB">NEW</span>{% endif %}</td>
+        <td>{{ c.filename }}{% with result=c.pdl_result %}{% include 'workspace/_pdl_rule_result.html' %}{% endwith %}</td>
+        <td class="muted">{% if c.batch %}upload #{{ c.batch }}{% else %}{{ c.channel|replace('_', ' ')|lower }}{% endif %}</td>
+        <td>{% if c.status == 'DONE' %}<span class="s-SHOWN">Analyzed</span>{% elif c.status == 'ERROR' %}<span class="flag">Error: {{ c.error }}</span>{% elif c.status == 'ANALYZING' %}Analyzing…{% elif c.status == 'IN_PROGRESS' %}<span class="muted">Application in progress: analyzed when the candidate completes it</span>{% elif c.status == 'OUTDATED' %}<span class="verify">Analyzed with requirements v{{ c.analyzed_version }}: update recommended</span>{% else %}Waiting for Analyze{% endif %}</td>
+        <td class="muted">{% if c.duplicate_note %}<span class="verify">{{ c.duplicate_note }}</span>{% endif %}</td>
+        <td style="text-align:right">{% if can_edit %}{% if c.delete_blocked %}<button type="button" class="tiny light" style="opacity:.5" title="Cannot be deleted: {{ c.delete_blocked }}"
+            data-msg="“{{ c.filename }}” cannot be deleted: {{ c.delete_blocked }}." onclick="alert(this.dataset.msg)">Delete</button>
+          {% else %}<form method="post" action="{{ url_for('positions.sp_delete_cv', position_id=p.id, pc_id=c.id) }}" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="tiny light" data-msg="Delete the CV “{{ c.filename }}”? It is removed from this Job and cannot be recovered."
+              onclick="return confirm(this.dataset.msg)">Delete</button></form>{% endif %}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    <script>
+      /* NEW marks every CV added during this page's browser-tab session, across successive uploads. */
+      (function () {
+        var list = document.getElementById("cv-list");
+        if (!list) return;
+        var key = "selection-sp-new-cvs-" + list.dataset.position, ids = [];
+        try { ids = JSON.parse(sessionStorage.getItem(key) || "[]"); } catch (e) { ids = []; }
+        var added = JSON.parse(list.dataset.added), removed = JSON.parse(list.dataset.removed);
+        var present = [].map.call(list.querySelectorAll("tr[data-pc]"), function (row) { return +row.dataset.pc; });
+        ids = ids.concat(added).filter(function (id, i, all) {
+          return all.indexOf(id) === i && removed.indexOf(id) < 0 && present.indexOf(id) >= 0;
+        });
+        try { sessionStorage.setItem(key, JSON.stringify(ids)); } catch (e) { /* NEW then lasts one page only */ }
+        ids.forEach(function (id) {
+          var cell = list.querySelector('tr[data-pc="' + id + '"] td.cv-new');
+          if (cell && !cell.firstChild) cell.innerHTML = '<span class="badge gB">NEW</span>';
+        });
+      })();
+    </script>
+  </details>
+  {% endif %}
+</div>
+
+<!-- 3. Analyze -->
+<div class="card">
+  <h2><span class="step">3</span>Analyze</h2>
+  {% if not approved or sp.editing %}
+    <p class="muted">Confirm the Job's requirements first (Selection tab, <a href="{{ url_for('positions.job_edit', position_id=p.id) }}">Job settings</a>).</p>
+  {% elif not ai_allowed %}
+    <p class="verify">AI résumé evaluation is off for this Job. Turn on “AI résumé and answer evaluation” in the
+      <a href="{{ url_for('positions.job_edit', position_id=p.id) }}">Job settings</a>.</p>
+  {% else %}
+  {% if outdated %}<p class="verify small">{{ outdated }} analysis(es) used an earlier version of the requirements and may need an update: Analyze updates them.</p>{% endif %}
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('positions.sp_analyze', position_id=p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button {% if running or not to_analyze %}disabled{% endif %}>Analyze{% if to_analyze %} {{ to_analyze }} CV(s){% endif %}</button>
+  </form>
+  <form method="post" action="{{ url_for('positions.sp_analyze', position_id=p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="all" value="1"><button class="light" {% if running %}disabled{% endif %}>Re-analyze all</button>
+  </form>
+  {% endif %}
+  <span id="progress" class="small muted">{% if running %}Analyzing {{ running }} CV(s)…{% elif not to_analyze %}Every CV is analyzed with the approved requirements.{% endif %}</span>
+  <p class="small muted">One AI reading per CV (AWS Bedrock), checked by code: quotes and dates must be in the CV;
+    durations, gaps and stability are computed; skills only listed count as claims. New uploads are analyzed
+    automatically; earlier analyses are reused while the requirements do not change.</p>
+  {% endif %}
+</div>
+
+<!-- 4. Ranking -->
+<div class="card" id="ranking">
+  <h2><span class="step">4</span>Ranking {% if all_rows %}<span class="small muted">({{ all_rows|length }} candidates)</span>{% endif %}
+    {% if sp.manual_order and can_edit %}<form method="post" action="{{ url_for('positions.sp_move', position_id=p.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="reset" value="1"><button class="tiny light">Back to the proposed order</button></form>{% endif %}</h2>
+  {% if all_rows %}<p class="small">
+    {% if view == 'all' %}<b>All Candidates</b>{% else %}<a href="{{ url_for('positions.sp_page', position_id=p.id) }}#ranking">All Candidates</a>{% endif %} |
+    {% if view == 'last' %}<b>Last Upload</b>{% else %}<a href="{{ url_for('positions.sp_page', position_id=p.id, view='last') }}#ranking">Last Upload</a>{% endif %}
+    {% if last_added %}<span class="muted"> (upload #{{ last_added.n }}: {{ last_added.imported|length }} new{% if last_upload.n != last_added.n %}; upload #{{ last_upload.n }} added no new CV: {{ last_upload.exact_duplicates|length }} exact duplicate(s){% endif %})</span>{% endif %}</p>{% endif %}
+  {% if not rows %}<p class="muted">{% if all_rows and view == 'last' %}No analyzed candidate from the last upload yet.{% else %}No analyzed CV yet.{% endif %}</p>{% else %}
+  <p class="small muted">Preselection priority from the approved requirements: group first (A every must-have shown · B partly shown ·
+    C must-have not documented, to verify · D documented concern), then the documented evidence weighted by the requirements.
+    Not a probability of success. Nobody is excluded automatically. Use ▲▼ to change the order; a click on a name opens Evaluation.</p>
+  <table>
+    <tr><th>#</th><th>Candidate</th><th>Relevant experience</th><th>Demonstrated competences</th><th>Red flags</th><th>To verify</th><th>Why here</th><th>Actions</th></tr>
+    {% for r in rows %}{% set a = r.analysis %}
+    <tr>
+      <td><div class="rank">{{ r.rank }}</div>
+        {% if can_edit %}<form method="post" action="{{ url_for('positions.sp_move', position_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="cid" value="{{ r.id }}"><input type="hidden" name="view" value="{{ view }}">
+          <button class="tiny light" name="dir" value="up" title="Move up">▲</button><button class="tiny light" name="dir" value="down" title="Move down">▼</button></form>{% endif %}</td>
+      <td><b><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b>{% if r.new %} <span class="badge gB">NEW</span>{% endif %}<br>
+        <span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }} · {{ r.assessment.group_label.split(':')[0] }}</span>
+        {% if r.rank_moved %}<div class="small verify">Moved by the manager (proposed #{{ r.proposed_rank }})</div>{% endif %}
+        {% if r.status == 'OUTDATED' %}<div class="small verify">Analyzed with requirements v{{ r.analyzed_version }}: update recommended</div>{% endif %}
+        {% if r.duplicate_note %}<div class="small verify">{{ r.duplicate_note }}</div>{% endif %}</td>
+      <td class="small"><ul class="tight">{% for j in a.jobs if j.relevant %}{% if loop.index <= 3 %}<li>{{ j.title }} · {{ j.employer }}<span class="muted"> · {{ j.duration_label or 'dates to verify' }}</span></li>{% endif %}{% else %}<li class="muted">None documented</li>{% endfor %}</ul></td>
+      <td class="small">{% set demo = a.competences|rejectattr('level', 'equalto', 'claimed')|list %}{% set claimed = a.competences|selectattr('level', 'equalto', 'claimed')|list %}
+        {% for x in demo[:5] %}{{ x.name }} <span class="muted">({{ x.level }})</span>{% if not loop.last %}, {% endif %}{% endfor %}
+        {% if claimed %}<div class="muted">Claimed only: {{ claimed|map(attribute='name')|join(', ') }}</div>{% endif %}</td>
+      <td class="small flag"><ul class="tight">{% for f in a.flags[:3] %}<li>{{ f.flag }}</li>{% endfor %}</ul>{% if a.flags|length > 3 %}<span class="muted">+{{ a.flags|length - 3 }} more</span>{% endif %}</td>
+      <td class="small verify"><ul class="tight">{% for u in a.unknowns[:3] %}<li>{{ u }}</li>{% endfor %}</ul>{% if a.unknowns|length > 3 %}<span class="muted">+{{ a.unknowns|length - 3 }} more</span>{% endif %}</td>
+      <td class="small">{{ summary(r) }}{% if r.why_ahead %}<div class="why">{{ r.why_ahead }}</div>{% endif %}
+      {% with result=r.pdl_result %}{% include 'workspace/_pdl_rule_result.html' %}{% endwith %}</td>
+      <td class="small"><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">Evaluation</a><br><a href="{{ url_for('positions.candidate_original', position_id=p.id, pc_id=r.id) }}" target="_blank">CV</a>
+        {% if can_edit %}<details class="reject"><summary>Reject</summary>
+          <form method="post" action="{{ url_for('positions.record_decision', position_id=p.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pc_id" value="{{ r.id }}">
+            <input type="hidden" name="decision" value="NOT_SELECTED">
+            <input type="hidden" name="back" value="{{ url_for('positions.sp_page', position_id=p.id, **({'view': 'last'} if view == 'last' else {})) }}#ranking">
+            <select name="reason" required><option value="">Reason…</option>{% for code, label in reasons.items() %}<option value="{{ code }}">{{ label|ui }}</option>{% endfor %}</select>
+            <input type="text" name="note" placeholder="Note (required for Other)">
+            <button class="tiny">Reject</button>
+          </form></details>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if rejected %}
+  <h2 style="margin-top:18px">Rejected <span class="small muted">({{ rejected|length }}: CV and analysis kept, reversible)</span></h2>
+  <table>
+    <tr><th>Candidate</th><th>Group</th><th>Rejected</th><th>Reason</th><th></th></tr>
+    {% for r in rejected %}{% set a = r.analysis %}{% set d = r.decision %}
+    <tr class="rejected">
+      <td><b><a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=r.id) }}">{{ a.full_name or r.name or r.filename }}</a></b></td>
+      <td><span class="badge g{{ r.assessment.group }}">{{ r.assessment.group }}</span></td>
+      <td class="small">{{ d.created_at|local(p.timezone) }} · {{ d.actor_name }}</td>
+      <td class="small">{{ NOT_SELECTED_REASONS[d.reason_code] if d.reason_code else '' }}{% if d.note %} · “{{ d.note }}”{% endif %}</td>
+      <td class="small">{% if can_edit %}<form method="post" action="{{ url_for('positions.record_decision', position_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="pc_id" value="{{ r.id }}">
+        <input type="hidden" name="decision" value="UNDECIDED"><input type="hidden" name="note" value="Rejection withdrawn: back in the ranking">
+        <input type="hidden" name="back" value="{{ url_for('positions.sp_page', position_id=p.id) }}#ranking">
+        <button class="tiny light">Restore</button></form>{% endif %}</td>
+    </tr>{% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% if running %}
+<script>
+  (function poll() {
+    fetch("{{ url_for('positions.sp_status', position_id=p.id) }}").then(r => r.json()).then(s => {
+      const busy = s.ANALYZING || 0;
+      document.getElementById("progress").textContent = busy ? `Analyzing… ${s.DONE || 0} done, ${busy} to go` : "Done";
+      if (busy) setTimeout(poll, 2000); else location.reload();
+    }).catch(() => setTimeout(poll, 4000));
+  })();
+</script>
+{% endif %}
+{% endblock %}

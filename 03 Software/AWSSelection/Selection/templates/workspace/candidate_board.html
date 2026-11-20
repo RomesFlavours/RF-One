@@ -1,0 +1,53 @@
+{% extends 'workspace/base.html' %}
+{% set crumbs = [('Candidature', none)] %}
+{% block title %}Candidature{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>
+<h1>Candidature</h1>
+{% if applied and applied.mode=='natural_language' %}<p id="ai-reading-status" role="status">{{ 'Lettura AI in corso…' if applied.state=='RUNNING' else 'Lettura AI completata con alcuni CV da riprovare.' if applied.state=='PARTIAL' else 'Esiti della lettura AI salvati.' }}</p>{% if applied.state=='RUNNING' %}<script>(()=>{const target=document.getElementById('ai-reading-status');let changed=false;document.addEventListener('change',()=>changed=true);async function poll(){try{const response=await fetch({{ url_for('positions.ai_reading_status',position_id=position.id)|tojson }});if(!response.ok||response.redirected)return;const r=await response.json();target.textContent='Lettura AI: '+r.done+' di '+r.total+' CV completati'+(r.errors?' · '+r.errors+' da riprovare':'');if(r.state!=='RUNNING'){if(!changed&&!document.querySelector('dialog[open]')){location.reload();return;}const a=document.createElement('a');a.href=location.href;a.textContent=' Mostra gli esiti aggiornati';target.append(a);return;}}catch(e){}setTimeout(poll,2500);}poll();})();</script>{% endif %}{% endif %}
+<style>
+.candidate-reason {display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4;max-height:7em;margin:.2rem 0;overflow-wrap:anywhere}
+.candidate-board td {vertical-align:top}.candidate-board td:nth-child(2) {width:42%}
+.action-executed[hidden],.candidate-action-button[hidden] {display:none!important}
+</style>
+<div class="card table-scroll"><table class="candidate-board"><thead><tr><th>Candidato</th><th>Motivazioni</th><th>Resumee</th><th>Azione</th><th>Esecuzione</th></tr></thead><tbody>
+{% for row in rows %}<tr id="candidate-{{ row.pc.id }}" data-rr-key="candidate:{{ row.pc.id }}">
+<td><strong><a href="{{ url_for('positions.candidate_review',position_id=position.id,pc_id=row.pc.id) }}" data-review-candidate data-open="candidate-review-dialog" data-name="{{ row.name }}">{{ row.name }}</a></strong>{% if row.result %}<div><span class="badge {{ 'warn' if row.result.unfit else '' }}">{{ row.result.status|ui }}</span>{% if row.result.qualitative_priority %}<span class="small"> · Priorità {{ row.result.qualitative_priority|ui }}</span>{% endif %}</div>{% endif %}</td>
+<td><p class="candidate-reason" title="{{ row.reason }}">{{ row.reason }}</p>
+
+</td>
+<td><a class="btn btn-small" href="{{ url_for('positions.candidate_original',position_id=position.id,pc_id=row.pc.id) }}" target="_blank" rel="noopener" data-original-pdf data-name="{{ row.name }}">Resumee</a></td>
+<td>{% if can_edit %}<select name="action" form="action-{{ row.pc.id }}" aria-label="{{ 'Azione per' }} {{ row.name }}" data-candidate-action data-pc="{{ row.pc.id }}" data-states="{{ row.action_states|tojson|forceescape }}" data-completed="{{ row.completed.keys()|list|tojson|forceescape }}">
+<option value="">Seleziona un’azione</option>{% for code,label in actions.items() %}<option value="{{ code }}" {% if row.selected == code %}selected{% endif %}>{{ label if selection_local_italian else label|ui }}</option>{% endfor %}
+</select>{% else %}<span class="muted">Sola lettura</span>{% endif %}</td>
+<td>{% if can_edit %}<form id="action-{{ row.pc.id }}" method="post" action="{{ url_for('positions.execute_candidate_action',position_id=position.id,pc_id=row.pc.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<button type="submit" class="candidate-action-button btn-small" {% if row.selected in row.completed %}hidden{% endif %} {% if not row.selected %}disabled{% endif %}>Esegui azione selezionata</button>
+<div class="candidate-action-status small" aria-live="polite"></div>
+<span class="action-executed" {% if row.selected not in row.completed %}hidden{% endif %}>Eseguita</span>
+</form>{% endif %}<p><a href="{{ url_for('positions.candidate_action_history',position_id=position.id,pc_id=row.pc.id) }}" data-action-history>Storico azioni</a></p>
+{% if can_edit and row.deletable %}<form method="post" action="{{ url_for('positions.sp_delete_cv',position_id=position.id,pc_id=row.pc.id) }}" data-cv-delete>
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<button type="submit" class="btn-small light" data-msg="{{ 'Eliminare il CV di' }} “{{ row.name }}”? {{ 'Viene rimosso da questa posizione insieme al file e non può essere recuperato.' }}" onclick="return confirm(this.dataset.msg)">Elimina</button>
+</form>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="5">Nessun CV caricato per questa posizione.</td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'workspace/_candidate_review.html' %}
+{% include 'workspace/_resume_data_modal.html' %}
+{% include 'workspace/_action_history.html' %}
+<script>
+document.querySelectorAll('[data-candidate-action]').forEach(select=>{
+ const form=document.getElementById('action-'+select.dataset.pc), button=form.querySelector('button'), done=form.querySelector('.action-executed');
+ function sync(){const state=JSON.parse(select.dataset.states)[select.value],executed=JSON.parse(select.dataset.completed).includes(select.value);button.hidden=executed;done.hidden=!executed;button.disabled=!select.value||!!(state&&['WAITING','PENDING','UNKNOWN'].includes(state.code));button.textContent=state&&state.code==='FAILED'?'Riprova procedura':'Esegui azione selezionata';form.querySelector('.candidate-action-status').textContent=state&&!executed?state.status+(state.error?' · '+state.error:''):'';}
+ select.addEventListener('change',sync);sync();
+ async function refreshStatus(){
+  const states=JSON.parse(select.dataset.states);
+  if(!Object.values(states).some(s=>['WAITING','PENDING','UNKNOWN'].includes(s.code)))return;
+  try {const link=select.closest('tr').querySelector('[data-action-history]');const url=new URL(link.href);url.searchParams.set('status_only','1');const response=await fetch(url);if(response.ok&&!response.redirected){const data=await response.json(),updated={},completed=[];data.runs.forEach(r=>{updated[r.action_code]={code:r.code,status:r.status,error:r.error};if(r.code==='SUCCEEDED')completed.push(r.action_code);});select.dataset.states=JSON.stringify(updated);select.dataset.completed=JSON.stringify(completed);sync();}}
+  catch(error){}finally{if(document.contains(select))setTimeout(refreshStatus,5000);}
+ }
+ setTimeout(refreshStatus,5000);
+ form.addEventListener('submit',()=>{button.disabled=true;button.textContent='Esecuzione in corso…';});
+});
+</script>
+{% endblock %}

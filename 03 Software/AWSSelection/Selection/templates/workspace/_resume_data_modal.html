@@ -1,0 +1,57 @@
+<dialog id="resume-data-dialog" class="resume-data-dialog" aria-labelledby="resume-data-title">
+<header class="resume-data-header"><h2 id="resume-data-title">Dati estratti</h2><button type="button" id="resume-data-close" aria-label="Chiudi dati estratti">×</button></header>
+<div class="resume-data-help-bar"><a href="#resume-data-help" id="resume-data-help-link" data-how-works="resume-extracted-data">Come funziona questa pagina</a></div>
+<div id="resume-data-content" aria-live="polite"></div>
+</dialog>
+<dialog id="resume-data-help" class="resume-data-dialog" aria-labelledby="resume-data-help-title">
+<header class="resume-data-header"><h2 id="resume-data-help-title">Dati estratti dal CV</h2><button type="button" onclick="this.closest('dialog').close()" aria-label="Chiudi aiuto dati estratti">×</button></header>
+<div data-resume-help-kind="data">{% include 'help/resume_extracted_data.html' %}</div>
+<div data-resume-help-kind="pdf" hidden>{% include 'help/original_cv.html' %}</div>
+<div data-resume-help-kind="observations" hidden>{% include 'help/cv_observations.html' %}</div>
+</dialog>
+<style>
+.resume-data-dialog {width:min(1400px,96vw);max-height:94vh;padding:0 1.3rem 1.3rem;border:1px solid var(--line);border-radius:12px;color:var(--ink)}
+.resume-data-dialog::backdrop {background:#0006}
+.resume-data-header {display:flex;align-items:center;justify-content:space-between;gap:1rem;position:sticky;top:0;background:white;border-bottom:1px solid var(--line);z-index:1}
+.resume-data-header button {font-size:1.5rem}
+.resume-data-help-bar {display:flex;justify-content:flex-end;margin:.6rem 0 1rem}
+.resume-data-text {white-space:pre-wrap;overflow-wrap:anywhere}
+.resume-facts {display:grid;grid-template-columns:minmax(120px,1fr) 3fr;gap:.5rem 1rem}
+.resume-facts dt {font-weight:600}.resume-facts dd {margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.resume-data-dialog [hidden]{display:none!important}.resume-data-dialog li{overflow-wrap:anywhere}
+</style>
+<script>
+(() => {
+ const dialog=document.getElementById('resume-data-dialog'), content=document.getElementById('resume-data-content');
+ let origin=null, requestId=0;
+ function helpKind(kind){document.querySelectorAll('[data-resume-help-kind]').forEach(e=>{if(e.closest('#resume-data-help'))e.hidden=e.dataset.resumeHelpKind!==kind;});document.getElementById('resume-data-help-title').textContent=kind==='pdf'?'CV originale':kind==='observations'?'Sintesi e osservazioni CV':'Dati estratti dal CV';}
+ document.querySelectorAll('[data-resume-details]').forEach(link=>link.addEventListener('click',async event=>{
+  event.preventDefault();origin=link;const id=++requestId;
+  helpKind(link.dataset.resumeHelpKind||'data');
+  document.getElementById('resume-data-title').textContent=(link.dataset.label || 'Dati estratti')+' · '+link.dataset.name;
+  content.textContent='Caricamento dei dati…';dialog.showModal();
+  try {
+   const response=await fetch(link.href,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+   if(!response.ok || response.redirected)throw new Error('Dati non disponibili. Chiudi e riprova.');
+   const html=await response.text();if(id===requestId && dialog.open)content.innerHTML=html;
+  }catch(error){if(id===requestId && dialog.open)content.textContent=error.message;}
+ }));
+ document.querySelectorAll('[data-original-pdf]').forEach(link=>link.addEventListener('click',async event=>{
+  event.preventDefault();origin=link;const id=++requestId;helpKind('pdf');
+  document.getElementById('resume-data-title').textContent='CV originale · '+link.dataset.name;
+  content.textContent='Caricamento del PDF originale…';dialog.showModal();
+  try{
+   const response=await fetch(link.href,{method:'HEAD'});
+   if(!response.ok||response.redirected)throw Error('Il CV originale non è disponibile nell’archivio locale.');
+   if(id!==requestId||!dialog.open)return;
+   content.replaceChildren();const p=document.createElement('p'),open=document.createElement('a');open.href=link.href;open.target='_blank';open.rel='noopener';open.textContent='Apri il CV originale in una nuova finestra';p.append(open);content.append(p);
+   if((response.headers.get('content-type')||'').includes('application/pdf')){const frame=document.createElement('iframe');frame.title='CV originale PDF';frame.src=link.href;frame.style.cssText='width:100%;height:76vh;border:1px solid var(--line);box-sizing:border-box';content.append(frame);}
+   else{const notice=document.createElement('p');notice.textContent='Il documento salvato non è in formato PDF. Usa il collegamento per aprire il file originale.';content.append(notice);}
+  }catch(error){if(id===requestId&&dialog.open)content.textContent=error.message;}
+ }));
+ document.getElementById('resume-data-close').onclick=()=>dialog.close();
+ dialog.addEventListener('close',()=>{requestId++;if(origin)origin.focus({preventScroll:true});});
+ document.getElementById('resume-data-help-link').onclick=event=>{event.preventDefault();document.getElementById('resume-data-help').showModal();};
+ [dialog,document.getElementById('resume-data-help')].forEach(el=>el.addEventListener('keydown',event=>{if(event.key==='Escape')event.stopPropagation();}));
+})();
+</script>

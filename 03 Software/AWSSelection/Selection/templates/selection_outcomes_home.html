@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    A Selection Outcome is what operational decision currently applies to an Application (e.g. Hire, Hold, Stop,
+    Withdrawn) — completely separate from Stage (where the Application is in the process). An Outcome may be applied
+    at any moment, and no Outcome is ever permanently irreversible — a closed Application can always be reopened
+    later. RF-One seeds a few common examples below; edit them freely or add your own.
+  </p>
+  <p class="muted" style="font-size:.8rem;"><a href="{{ url_for('selection_queues_home') }}">Manage operational queues/lists &rarr;</a></p>
+</div>
+
+{% macro outcome_form(action, d=None, idpfx='new') %}
+<form method="post" action="{{ action }}" class="req-form">
+  <label>What should this Outcome be called?</label>
+  <input type="text" name="name" value="{{ d.name if d else '' }}" placeholder="e.g. Hire, Hold, Stop, Withdrawn, Not a fit right now" required>
+
+  <label>Describe it in plain language — when would a Selezionatore choose this?</label>
+  <textarea name="description" placeholder="e.g. The candidate communicated they are withdrawing from consideration.">{{ d.description if d else '' }}</textarea>
+
+  <label>What should happen to the Application when this Outcome is chosen?</label>
+  <select name="lifecycle_effect">
+    {% for l in lifecycle_states %}
+    <option value="{{ l }}" {{ 'selected' if d and d.lifecycle_effect == l else '' }}>
+      {{ {'ACTIVE': 'Stays ACTIVE — normal, ongoing consideration', 'SUSPENDED': 'Becomes SUSPENDED — paused, not currently being advanced', 'CLOSED': 'Becomes CLOSED — no longer being actively worked'}[l] }}
+    </option>
+    {% endfor %}
+  </select>
+
+  <label class="checkbox-row" style="margin-top:.6rem;">
+    <input type="checkbox" name="is_reopenable" {{ 'checked' if not d or d.is_reopenable else '' }}> This Outcome is normally expected to be reopenable later (a warning is shown if not, but reopening is never technically blocked)
+  </label>
+
+  <label class="checkbox-row">
+    <input type="checkbox" name="requires_note" {{ 'checked' if d and d.requires_note else '' }}> Require a Note every time this Outcome is chosen
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" name="requires_reason" {{ 'checked' if d and d.requires_reason else '' }}> Require a reason every time this Outcome is chosen
+  </label>
+  <label>Optional: offer a pick-list of reasons (one per line)</label>
+  <textarea name="reason_choices" placeholder="Experience too distant from the target role&#10;Availability incompatible with the role">{{ (d.reason_choices|join('\n')) if d else '' }}</textarea>
+
+  <label>Optional: move the Application into this operational queue/list when chosen</label>
+  <select name="target_queue_id">
+    <option value="">(no queue move)</option>
+    {% for q in queues %}<option value="{{ q.id }}" {{ 'selected' if d and d.target_queue_id == q.id else '' }}>{{ q.name }}{{ '' if q.is_active else ' (inactive)' }}</option>{% endfor %}
+  </select>
+  {% if d and d.target_queue_label and not d.target_queue_id %}
+  <p class="muted" style="font-size:.76rem;">Legacy label on record (display only, no longer editable here): "{{ d.target_queue_label }}"</p>
+  {% endif %}
+
+  <label class="checkbox-row" style="margin-top:.6rem;">
+    <input type="checkbox" name="creates_reminder" {{ 'checked' if d and d.creates_reminder else '' }}> Create a follow-up reminder when this Outcome is chosen
+  </label>
+  <label>Follow up after how many days? (optional)</label>
+  <input type="text" name="reminder_days" value="{{ d.reminder_days if d and d.reminder_days is not none else '' }}" placeholder="e.g. 180">
+
+  <label>Should this restaurant contact the candidate again in the future?</label>
+  <select name="future_contact_policy">
+    {% for p in future_contact_policies %}
+    <option value="{{ p }}" {{ 'selected' if d and d.future_contact_policy == p else '' }}>
+      {{ {'ALLOWED': 'Yes, future contact is fine', 'DISCOURAGED': 'Future contact should be discouraged', 'BLOCKED': 'Future contact should be avoided/blocked'}[p] }}
+    </option>
+    {% endfor %}
+  </select>
+
+  <label class="checkbox-row" style="margin-top:.6rem;">
+    <input type="checkbox" name="creates_candidate_flag" {{ 'checked' if d and d.creates_candidate_flag else '' }}> Create a Candidate Flag (a note that follows this PERSON to future Applications)
+  </label>
+  <label>Flag name (optional — defaults to this Outcome's own name)</label>
+  <input type="text" name="candidate_flag_name" value="{{ d.candidate_flag_name if d else '' }}" placeholder="e.g. DO NOT REHIRE, RECONSIDER AFTER 6 MONTHS">
+  <label>Flag scope</label>
+  <select name="candidate_flag_scope">
+    {% for s in flag_scopes %}<option value="{{ s }}" {{ 'selected' if d and d.candidate_flag_scope == s else '' }}>{{ s|replace('_',' ')|title }}</option>{% endfor %}
+  </select>
+  <label>How seriously should this Flag be treated on a future Application?</label>
+  <select name="candidate_flag_operational_effect">
+    {% for e in flag_operational_effects %}
+    <option value="{{ e }}" {{ 'selected' if d and d.candidate_flag_operational_effect == e else '' }}>
+      {{ {'INFORMATION_ONLY': 'Informational only', 'WARNING': 'Show a prominent warning', 'OPERATIONAL_ACTION': 'Requires Selezionatore attention (never an automatic rejection)'}[e] }}
+    </option>
+    {% endfor %}
+  </select>
+  <label>Default reason recorded on the Flag (optional)</label>
+  <textarea name="candidate_flag_default_reason">{{ d.candidate_flag_default_reason if d else '' }}</textarea>
+  <label>Flag expires after how many days? (optional — leave blank for no expiration)</label>
+  <input type="text" name="candidate_flag_expires_after_days" value="{{ d.candidate_flag_expires_after_days if d and d.candidate_flag_expires_after_days is not none else '' }}">
+
+  <label>Who normally has authority to apply this Outcome? (informational only — e.g. "Selezionatore", "Trainer")</label>
+  <input type="text" name="authority_label" value="{{ d.authority_label if d else '' }}" placeholder="Selezionatore">
+  <label>Is this Outcome normally restaurant-driven or candidate-driven?</label>
+  <select name="driven_by">
+    <option value="">(unspecified)</option>
+    {% for opt in driven_by_options %}<option value="{{ opt }}" {{ 'selected' if d and d.driven_by == opt else '' }}>{{ opt|title }}</option>{% endfor %}
+  </select>
+
+  <button type="submit" class="btn" style="margin-top:.6rem;">{{ 'Save changes' if d else 'Create this Outcome' }}</button>
+</form>
+{% endmacro %}
+
+<div class="card">
+  <h2>Configured Outcomes</h2>
+  {% if definitions %}
+    {% for d in definitions %}
+    <div class="signal-card {{ '' if d.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ d.name }}
+        <span class="badge lifecycle-{{ d.lifecycle_effect|lower }}">&rarr; {{ d.lifecycle_effect }}</span>
+        {% if not d.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+        <span class="muted" style="font-size:.72rem;">v{{ d.version }}</span>
+      </div>
+      {% if d.description %}<p style="font-size:.85rem; margin:.3rem 0;">{{ d.description }}</p>{% endif %}
+      <p class="muted" style="font-size:.78rem;">
+        {% if d.requires_note %}Requires a Note.{% endif %}
+        {% if d.requires_reason %}Requires a reason.{% endif %}
+        {% if not d.is_reopenable %}Not normally reopened.{% endif %}
+        {% if d.creates_reminder %}Creates a follow-up{% if d.reminder_days %} after {{ d.reminder_days }} day(s){% endif %}.{% endif %}
+        Future contact: {{ d.future_contact_policy|replace('_',' ')|title }}.
+        {% if d.creates_candidate_flag %}Creates a Candidate Flag ("{{ d.candidate_flag_name or d.name }}", {{ d.candidate_flag_operational_effect|replace('_',' ')|title }}).{% endif %}
+        {% if d.target_queue %}Moves the Application to the "{{ d.target_queue.name }}" queue.{% endif %}
+        {% if d.authority_label %}Authority: {{ d.authority_label }}.{% endif %}
+        {% if d.driven_by %}{{ d.driven_by|title }}-driven.{% endif %}
+      </p>
+
+      <form method="post" action="{{ url_for('selection_outcome_definition_toggle_active', definition_id=d.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.4rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if d.is_active else 'Reactivate' }}
+        </button>
+      </form>
+
+      <details class="edit-toggle">
+        <summary>Edit this Outcome</summary>
+        {{ outcome_form(url_for('selection_outcome_definition_update', definition_id=d.id), d) }}
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Outcomes configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Create a new Outcome</h2>
+  {{ outcome_form(url_for('selection_outcome_definition_create')) }}
+</div>
+
+{% endblock %}
