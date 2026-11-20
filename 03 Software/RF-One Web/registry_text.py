@@ -129,5 +129,14 @@ LABELS = {'. Opens Domain Access for this account in a separate window. Your uns
  'User': 'Utente',
  'Whole domain': 'Intero dominio'}
 
+LABELS.update({
+ 'Archived roles':'Ruoli archiviati','domains':'domini','Company membership':'Appartenenza aziendale',
+ 'Add company':'Aggiungi azienda','Assign role':'Assegna ruolo','Choose a company':'Scegli un’azienda',
+ 'Identity conflict - review required':'Conflitto di identità: verifica necessaria',
+ 'WP and MD refer to the existing companies. RFGroup is a group context; membership does not automatically include other companies.':'WP e MD identificano le aziende esistenti. RFGroup è un contesto di gruppo: l’appartenenza non include automaticamente le altre aziende.',
+ 'These permissions apply to everyone holding this role in their assigned company. Other roles add their permissions.':'Questi permessi si applicano a chi ricopre il ruolo nell’azienda assegnata. Gli altri ruoli aggiungono i propri permessi.',
+ 'Dialog help':'Aiuto della finestra','Edit role':'Modifica ruolo','Permissions':'Permessi'
+})
+
 def ui(value):
     return LABELS.get(value, value) if os.environ.get("RFONE_UI_LANGUAGE") == "it" else value
