@@ -94,6 +94,17 @@ class _PaginatingClient(Protocol):
 MirrorFn = Callable[..., None]
 
 
+def reconcile_order_line_presence(session: Session, order: m.Order, line_items: list[dict[str, Any]]) -> None:
+    """Apply only after a complete source read; retain absent historical rows.
+
+    A successful empty collection is authoritative. An unavailable or partial
+    collection must raise before calling this function, never retire rows.
+    """
+    current_ids = {row['id'] for row in line_items}
+    for stored in session.scalars(select(m.OrderItem).where(m.OrderItem.order_id == order.id)).all():
+        stored.source_present = stored.source_line_item_id in current_ids
+
+
 def _paginate(client: _PaginatingClient, path: str, *, expand: str | None = None) -> list[dict[str, Any]]:
     """Thin wrapper around the same `clover_explorer.pagination.paginate`
     primitive `acquisition.py` already imports — imported lazily here to
@@ -392,10 +403,9 @@ def ingest_order_detail(
     coverage (not fee lines only), OrderItemModifier, OrderItemTax, and
     Order-level OrderDiscount.
 
-    Uses the dedicated `line_items?expand=modifications` endpoint as the
-    authoritative Order Item source (falling back to the Order's own
-    cheaper nested `lineItems`, without modifications, only if that
-    dedicated fetch fails) — this never conflicts with `_ingest_fee_line_
+    Uses the complete dedicated `line_items?expand=modifications` response
+    as authoritative, including an empty response. Failure raises; it must
+    never fall back to a stale nested snapshot. This never conflicts with `_ingest_fee_line_
     items`' own, separate, unchanged read of `order_raw`'s nested
     `lineItems`: that call writes `OrderFee` rows; this one writes
     `OrderItem`/`OrderItemModifier`/`OrderItemTax` rows. Both are
@@ -405,7 +415,8 @@ def ingest_order_detail(
     li_elements = _paginate(
         client, f"/v3/merchants/{client.merchant_id}/orders/{order_source_id}/line_items", expand="modifications",
     )
-    line_items = li_elements if li_elements else (order_raw.get("lineItems") or {}).get("elements", [])
+    line_items = li_elements
+    reconcile_order_line_presence(session, order, line_items)
 
     for li_raw in line_items:
         oi_values = mapping.map_order_item(li_raw)
@@ -415,7 +426,7 @@ def ingest_order_detail(
 
         order_item = upsert(
             session, m.OrderItem, {"source_system_id": source_system_id, "source_line_item_id": source_line_item_id},
-            {**oi_values, "order_id": order.id, "item_id": item_id},
+            {**oi_values, "order_id": order.id, "item_id": item_id, "source_present": True},
         )
         session.flush()
         mirror_source_record(
@@ -516,7 +527,8 @@ def ingest_order_item_and_modifier_detail(
     li_elements = _paginate(
         client, f"/v3/merchants/{client.merchant_id}/orders/{order_source_id}/line_items", expand="modifications",
     )
-    line_items = li_elements if li_elements else (order_raw.get("lineItems") or {}).get("elements", [])
+    line_items = li_elements
+    reconcile_order_line_presence(session, order, line_items)
 
     for li_raw in line_items:
         oi_values = mapping.map_order_item(li_raw)
@@ -531,7 +543,7 @@ def ingest_order_item_and_modifier_detail(
 
         order_item = upsert(
             session, m.OrderItem, {"source_system_id": source_system_id, "source_line_item_id": source_line_item_id},
-            {**oi_values, "order_id": order.id, "item_id": item_id},
+            {**oi_values, "order_id": order.id, "item_id": item_id, "source_present": True},
         )
         session.flush()
         mirror_source_record(

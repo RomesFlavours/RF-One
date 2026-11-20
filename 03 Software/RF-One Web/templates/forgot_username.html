@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block page_title %}Forgot username · RF-One{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 400px; margin: 2rem auto;">
+  <h1>Forgot your username?</h1>
+  <p class="muted">Enter the email you use for RF-One and we'll email your username to you.</p>
+  <form method="post" action="{{ url_for('forgot_username') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required autofocus maxlength="254">
+    </div>
+    <button type="submit">Email my username</button>
+  </form>
+  <p class="muted"><a href="{{ url_for('login') }}">&larr; Back to log in</a></p>
+</div>
+{% endblock %}

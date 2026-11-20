@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Compensation Run {{ run.id }} · RF-One{% endblock %}
+{% block head_extra %}
+{{ super() }}
+<style>
+  #period-hours button.compensation-incomplete { border: 1px solid #ecd6a5; margin: 0; line-height: inherit; }
+  #period-hours button.compensation-incomplete:hover { background: #f9e8c8; color: #8a5a10; }
+  #period-hours button.compensation-incomplete:focus-visible { outline: 2px solid var(--olive-700); outline-offset: 3px; }
+  #compensation-check-dialog .org-modal-panel { max-width: 42rem; }
+  #compensation-check-dialog li { margin: .5rem 0; line-height: 1.55; }
+</style>
+{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Compensation', url_for('compensation_home')), ('Run #' ~ run.id, None)]) }}
 <h1>Compensation run #{{ run.id }} &mdash; {{ legal_entity.legal_name if legal_entity else run.legal_entity_id }}</h1>
@@ -97,7 +107,7 @@
         <thead>
           <tr>
             <th>Employee</th><th>Regular Hours</th><th>Overtime Hours</th><th>Total Hours</th>
-            <th>Hourly Wage</th><th>Bonus</th><th>Tips</th><th>Hours</th><th>Compensation data</th><th>Missing / to check</th>
+            <th>Hourly Wage</th><th>Bonus</th><th>Tips</th><th>Hours</th><th>Compensation data</th>
           </tr>
         </thead>
         <tbody>
@@ -114,12 +124,8 @@
               </td>
               <td>{{ ('$' ~ p.bonus) if p.bonus is not none else '—' }}</td>
               <td>{{ ('$' ~ p.tips) if p.tips is not none else 'NOT AVAILABLE' }}</td>
-              <td><span class="badge {{ 'ok' if p.hours_status == HOURS_COMPLETE else 'warn' }}">{{ 'COMPLETE' if p.hours_status == HOURS_COMPLETE else 'INCOMPLETE' }}</span></td>
-              <td><span class="badge {{ 'ok' if p.data_status == DATA_COMPLETE else 'warn' }}">{{ 'COMPLETE' if p.data_status == DATA_COMPLETE else 'INCOMPLETE' }}</span></td>
-              <td class="muted">
-                {% for reason in p.hours_reasons %}<div>Hours: {{ reason }}</div>{% endfor %}
-                {% for reason in p.data_reasons %}<div>{{ reason }}</div>{% endfor %}
-              </td>
+              <td>{% if p.hours_status == HOURS_COMPLETE %}<span class="badge ok">COMPLETE</span>{% else %}<button type="button" class="badge warn compensation-incomplete" data-compensation-check="{{ p.employee_id }}" data-person-name="{{ p.display_name or ('Employee ' ~ p.employee_id) }}" aria-haspopup="dialog" aria-controls="compensation-check-dialog" aria-label="Show incomplete details for {{ p.display_name or ('Employee ' ~ p.employee_id) }}">INCOMPLETE</button>{% endif %}</td>
+              <td>{% if p.data_status == DATA_COMPLETE %}<span class="badge ok">COMPLETE</span>{% else %}<button type="button" class="badge warn compensation-incomplete" data-compensation-check="{{ p.employee_id }}" data-person-name="{{ p.display_name or ('Employee ' ~ p.employee_id) }}" aria-haspopup="dialog" aria-controls="compensation-check-dialog" aria-label="Show incomplete details for {{ p.display_name or ('Employee ' ~ p.employee_id) }}">INCOMPLETE</button>{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -129,6 +135,22 @@
     <p class="empty">No Employee has Clover Shifts in this period at a Location of this Legal Entity.</p>
   {% endif %}
 </div>
+
+<div class="org-modal-overlay" id="compensation-check-dialog" hidden aria-hidden="true">
+  <section class="org-modal-panel" role="dialog" aria-modal="true" aria-labelledby="compensation-check-title">
+    <div class="modal-header"><h2 id="compensation-check-title">Items to check</h2><button type="button" class="link-button" data-modal-close aria-label="Close">✕</button></div>
+    <div id="compensation-check-content"></div>
+    <div class="btn-row"><button type="button" data-modal-close>Close</button></div>
+  </section>
+</div>
+{% for p in run_hours.rows %}
+  <template id="compensation-check-{{ p.employee_id }}">
+    {% if p.hours_reasons %}<h3>Hours</h3><ul>{% for reason in p.hours_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>{% endif %}
+    {% if p.data_reasons %}<h3>Compensation data</h3><ul>{% for reason in p.data_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>{% endif %}
+    {% if not p.hours_reasons and not p.data_reasons %}<p>Review the incomplete hours or compensation data for this person.</p>{% endif %}
+  </template>
+{% endfor %}
+<script defer src="{{ url_for('static',filename='js/compensation-checks.js') }}?v=1"></script>
 
 {% for row in employee_rows %}
   <div class="card" id="employee-{{ row.employee_id }}">
