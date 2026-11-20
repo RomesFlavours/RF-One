@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}Anagrafica dipendenti · RF-One{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One',url_for('home')),('Anagrafica dipendenti',none)]) }}
+<h1>Anagrafica dipendenti</h1>
+<p>Controlla le informazioni ricevute da Clover e gestisci i dati verificati in RF1.</p>
+<div class="domain-card">
+  <strong>{{ total }} dipendenti</strong> · {{ pending_count }} da controllare
+  {% if initialized < total %}
+  <form method="post" action="{{ url_for('employee_registry_initialize') }}" style="margin-top:1rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Inizializza dai dati Clover importati</button>
+    <p>Le schede e gli incarichi esistenti vengono conservati.</p>
+  </form>
+  {% endif %}
+</div>
+<form method="get" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:end;margin:1.5rem 0">
+  <label>Cerca per nome o codice<br><input name="q" value="{{ query }}" maxlength="255" placeholder="Nome o codice dipendente"></label>
+  <label>Mostra<br><select name="view">
+    <option value="all" {% if view=='all' %}selected{% endif %}>Tutti</option>
+    <option value="review" {% if view=='review' %}selected{% endif %}>Da controllare</option>
+    <option value="differences" {% if view=='differences' %}selected{% endif %}>Differenze con Clover</option>
+  </select></label>
+  <button type="submit">Cerca</button>
+</form>
+<div style="overflow-x:auto">
+<table style="width:100%">
+<thead><tr><th>Dipendente RF1</th><th>Stato RF1</th><th>Ruolo RF1</th><th>Ruolo Clover · ultima osservazione</th><th>Controllo</th><th></th></tr></thead>
+<tbody>{% for row in rows %}<tr>
+  <td><strong>{{ row.employee.display_name or 'Nome da completare' }}</strong>{% if row.employee.custom_id %}<br>{{ row.employee.custom_id }}{% endif %}</td>
+  <td>{{ 'Attivo' if row.employee.active is sameas true else 'Non attivo' if row.employee.active is sameas false else 'Da definire' }}</td>
+  <td>{{ row.roles|join(', ') or 'Da assegnare' }}</td>
+  <td>{{ row.source_roles if row.source_roles else 'Non disponibile' }}</td>
+  <td>{{ 'Da controllare' if row.pending else 'Verificato' }}{% if row.mismatch %}<br><strong>Differenza con Clover</strong>{% endif %}</td>
+  <td><a href="{{ url_for('employee_registry_detail',employee_id=row.employee.id) }}">Apri scheda →</a></td>
+</tr>{% else %}<tr><td colspan="6">Nessun dipendente corrisponde alla ricerca.</td></tr>{% endfor %}</tbody>
+</table></div>
+<p>Le correzioni salvate in RF1 restano valide durante le importazioni successive. I dati di Clover restano disponibili per il confronto.</p>
+{% endblock %}

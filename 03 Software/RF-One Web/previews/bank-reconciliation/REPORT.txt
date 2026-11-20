@@ -1,0 +1,49 @@
+REPORT
+1. Delivered
+Local interactive preview of the replacement AI Rules page at http://127.0.0.1:5084/index.html?v=2.
+Same RF-One stylesheet, logo, olive palette, shell and Bank navigation.
+Four populated user rules: restaurant meals/card ownership; trip-level personal/business question; official web research per WHO; purpose-first WHY even without detailed composition.
+Unresolved data comes from a read-only snapshot: 76 transactions grouped into 19 WHO, with period filtering, search, transaction details and a single answer covering all or selected group movements.
+Confirmed knowledge includes Prime Line -> Food Purchases and the official source.
+
+2. Interactions and verification
+Browser verified rule content and all initial counts.
+Trip question opens with exactly Personal/Business choices and closes after selection.
+Answer submission in preview removed 8 sample movements from the queue and added one remembered WHO solution.
+Reload retained that preview answer.
+Final preview uses a clean storage version and visibly contains 19 WHO / 76 unresolved movements, without test answers.
+Screenshots verified RF-One styling at narrow and desktop widths.
+
+3. Scope and limitations
+This is a local UI preview, not the live Bank replacement yet.
+Edits and answers persist in browser local storage only. No live Bank transaction, standing AI rule or database schema was changed by this UI work.
+The browser does not execute AI classification or automatically perform web research.
+The Cozumel question is a labeled example, not an asserted detected trip.
+Trip-answer versus card-ownership precedence remains open and is shown on the page.
+The static preview server is bound only to 127.0.0.1 on port 5084.
+
+4. Files and traceability
+index.html, preview.css, app.js, README.md: reviewable preview source.
+snapshot.json: private local read-only data snapshot; excluded from Git.
+rf-one.css and rf-one.png: copied existing visual assets; excluded from Git.
+preview.png: browser screenshot; excluded from Git.
+No restoration is needed for the operational database because it was read only.
+
+5. Local Bank server integration
+User requested the approved preview on the existing local server. Installed gated /bank/ai-rules page and /bank/ai-rules/snapshot GET endpoint, reading the actual database. Existing rule interface preserved at /bank/ai-rules/advanced. Navigation label changed to Regole e chiarimenti. Browser verified four populated rules and 19 WHO / 76 unresolved transactions at port 5080. Answers still persist only in local browser preview storage. Supported launcher close --no-wait and start --accept-code used; no migrations performed. Close prepared generation 11 with an intact database; OneDrive upload not yet confirmed. Server running with the same working database and new code. Prior route and registry files retained in integration_backup. Screenshot: local-server.png.
+
+6. Conversational rule confirmation and full database preview
+Replaced the answer form with a conversation, exact interpreted-rule confirmation, and canonical full-database before/after preview. Installed on the local Bank server at /bank/ai-rules; previous files preserved in integration_chat_backup. No classification application action was added. Conversation state remains local to the browser; preview metadata is recorded by the existing engine.
+Disposable database regression tests passed: 3,234 transactions examined, 12 TEMU matches, 6 proposed updates and 6 conflicts. These are test results, not a real user-approved rule. Verified no operational table writes and no second AI interpretation after confirmation; CSRF, token tampering and account binding checked.
+Real provider smoke test was rejected by automatic approval review because derived financial database context would be sent to Claude Code/Anthropic without explicit destination-specific authorization. No provider call was made. Added a server-side consent gate; explicit user authorization is pending. UI is visible locally; screenshot chat-local.png. Real AI conversation remains unverified and unavailable until authorized.
+
+7. ChatGPT-only conversation (2026-10-17)
+User requires ChatGPT only. Replaced the chat default provider call with an explicit OpenAI Codex adapter using existing ChatGPT authentication; no Claude fallback. Synthetic real-provider smoke test passed. Full-database disposable regression tests still pass with no operational writes. Deployed adapter and routes; backup integration_openai_backup. Persistent financial-context consent activation was rejected by automatic approval review: destination-only wording was deemed insufficient payload authorization. Consent gate remains closed; no real banking context sent. Bank restarted through official tooling. Legacy advanced AI tooling was not migrated by this chat change.
+
+8. Explicit ChatGPT data authorization and activation
+User explicitly authorized messages, WHO, up to three masked descriptions and WHY catalogue to ChatGPT/OpenAI. Saved database-local provider consent for OPENAI_CHATGPT_CODEX. No restart needed: consent is checked dynamically. Browser opened the local Bank chat; real clarification-only smoke test submitted, without proposing or applying a classification.
+Live browser test passed: ChatGPT replied with a relevant TEMU clarification question. No classification proposed, confirmed or applied. Chat left open and screenshot saved as chat-active.png.
+
+9. Rule learning lifecycle
+Confirmed conversational rules are now persisted through existing BankAiRule and version services, displayed in Le tue regole, and refined by their durable identity. Confirmation saves only rule metadata and full-database preview, with apply_future disabled and no financial classifications applied. Current transaction exceptions, conflicts, protection, verification needs and changed preview data stay or return to Parliamone; safe WHY-covered preview items leave that queue. The queue distinguishes these proposed classifications from actual financial writes. New/unmatched movements remain queued for clarification. Existing general guidance retains its previous browser-local editing behavior.
+Regression tests on a fresh disposable database passed: 3,234 examined, 12 matches, 6 proposed updates, 6 conflicts; durable rule retrieval, exception requeue, in-place refinement without duplication, CSRF and token/account validation, no second AI call and no operational writes. Real database was not populated with invented test rules. Installed on port 5080 via supported launcher, generation 12 intact. Backup: integration_lifecycle_backup. Standing instruction recorded in root CLAUDE.md.

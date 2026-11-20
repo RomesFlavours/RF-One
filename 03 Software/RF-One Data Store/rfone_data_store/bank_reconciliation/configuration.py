@@ -788,9 +788,11 @@ def cardholder_candidates(session: Session) -> list[dict]:
     """Real people a cardholder can be linked to: HUMAN_USER identities
     first, then employees not already represented by an identity of the
     same name. A SYSTEM identity is never a valid holder."""
+    from ..student_registry import operational_identity_ids
     identities = session.scalars(
         select(m.ActingIdentity)
-        .where(m.ActingIdentity.is_active.is_(True), m.ActingIdentity.kind == "HUMAN_USER")
+        .where(m.ActingIdentity.is_active.is_(True), m.ActingIdentity.kind == "HUMAN_USER",
+               m.ActingIdentity.id.in_(operational_identity_ids(session)))
         .order_by(m.ActingIdentity.display_name)
     ).all()
     employees = session.scalars(

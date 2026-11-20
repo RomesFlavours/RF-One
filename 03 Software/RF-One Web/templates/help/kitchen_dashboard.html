@@ -1,0 +1,8 @@
+<section id="kitchen-dashboard">
+  <p>Menu creates menus for a location and groups their dishes and text labels under configured Menu Areas. Each dish references an existing Kitchen recipe. Menus may be edited or archived without changing their recipes.</p>
+  <p>Kitchen opens on Dashboard when your account has access to it. The Dashboard is currently empty.</p>
+  <p>Use the tabs to move between the Kitchen pages available to your account. Tabs you cannot access are hidden.</p>
+  {% if 'CONFIGURATION' in kitchen_tabs|map(attribute=0)|list %}<p>Configuration manages Menu Type, Menu Area, Category, Components, Supplier and Recipe Type through expandable lists. Open a section to add, edit or archive its items.</p>{% endif %}
+  {% if 'RECIPES' in kitchen_tabs|map(attribute=0)|list %}<p>Recipes and Preparations opens two expandable lists. You can create or edit names and Category assignments and manage composition, grams, instructions and work minutes in their dialogs.</p>{% endif %}
+  <p>Close this help with the × button or Escape to return to the same page.</p>
+</section>
