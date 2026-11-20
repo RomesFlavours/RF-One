@@ -7,7 +7,7 @@ per-Domain recovery, e.g. never a separate one for Training).
 A "code" here is always a random 6-digit string, valid 10 minutes, capped
 at 5 verify attempts, scoped to exactly one `purpose`
 (`EMAIL_VERIFICATION` or `PASSWORD_RESET` — see
-`models.RFOneAccountVerificationCode`) and to exactly one target email —
+`models.RFOneAccountVerifytionCode`) and to exactly one target email —
 never valid for the other purpose, and never re-targetable to a different
 address after being issued.
 
@@ -51,6 +51,20 @@ RATE_WINDOW = timedelta(hours=1)
 PURPOSE_EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
 PURPOSE_PASSWORD_RESET = "PASSWORD_RESET"
 VALID_PURPOSES = (PURPOSE_EMAIL_VERIFICATION, PURPOSE_PASSWORD_RESET)
+# Personal activation link (Training onboarding): an unpredictable token
+# stored only as HMAC in the same verification-code row, single use, expiring.
+ACTIVATION_LINK_TTL = timedelta(hours=48)
+LINK_TOKEN_MIN_LENGTH = 40
+
+
+def generate_link_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def is_numeric_code(value: str) -> bool:
+    """True for a 6-digit code; link tokens are never accepted as codes."""
+    value = (value or "").strip()
+    return len(value) == CODE_LENGTH and value.isdigit()
 
 _HMAC_KEY_LABEL = b"rfone-account-verification-code-v1"
 _DIGITS = "0123456789"
@@ -105,6 +119,7 @@ def _recent_send_count(session: Session, *, account_id: int | None, request_ip: 
 def issue_code(
     session: Session, *, account: m.RFOneAccount, purpose: str, target_email: str,
     flask_secret_key: str, request_ip: str | None,
+    code: str | None = None, ttl: timedelta = CODE_TTL,
 ) -> str:
     """Creates a new code row for (account, purpose), first invalidating
     any still-active code for that SAME pair (task: "il reinvio invalida
@@ -114,7 +129,11 @@ def issue_code(
     also bounds how many attempts a resend loop could ever accumulate
     (task: "non deve consentire di aggirare i limiti dei tentativi").
     Returns the plaintext code; the caller must send it and never persist
-    or log it."""
+    or log it.
+
+    `code`/`ttl` let a caller issue a long random activation-link token
+    (`generate_link_token`, `ACTIVATION_LINK_TTL`) through this same row,
+    rate limit and single-use mechanism instead of a 6-digit code."""
     if purpose not in VALID_PURPOSES:
         raise ValueError(f"Invalid purpose {purpose!r} — must be one of {VALID_PURPOSES}")
 
@@ -141,18 +160,18 @@ def issue_code(
     if active is not None:
         active.invalidated_at = now
 
-    code = generate_numeric_code()
+    code = code or generate_numeric_code()
     row = m.RFOneAccountVerificationCode(
         account_id=account.id, purpose=purpose, target_email=target_email,
         code_hmac=_hash_code(code, flask_secret_key), request_ip=request_ip,
-        expires_at=now + CODE_TTL,
+        expires_at=now + ttl,
     )
     session.add(row)
     session.flush()
     return code
 
 
-def get_pending_code(session: Session, account_id: int, purpose: str) -> "m.RFOneAccountVerificationCode | None":
+def get_pending_code(session: Session, account_id: int, purpose: str) -> "m.RFOneAccountVerifytionCode | None":
     """The current still-usable code for (account, purpose), if any — used
     to show "a code was sent to X, awaiting confirmation" state (e.g. on
     the profile page) without exposing the code itself."""
@@ -171,11 +190,12 @@ def get_pending_code(session: Session, account_id: int, purpose: str) -> "m.RFOn
 @dataclass(frozen=True)
 class VerifyResult:
     ok: bool
-    code_row: "m.RFOneAccountVerificationCode | None"
+    code_row: "m.RFOneAccountVerifytionCode | None"
 
 
 def verify_and_consume_code(
     session: Session, *, account_id: int, purpose: str, submitted_code: str, flask_secret_key: str,
+    consume: bool = True,
 ) -> VerifyResult:
     """Locks the account's current code row for `purpose`
     (`with_for_update()`) for the rest of the caller's transaction, so two
@@ -231,7 +251,8 @@ def verify_and_consume_code(
         session.flush()
         return VerifyResult(False, None)
 
-    row.consumed_at = now
+    if consume:  # consume=False: validate an activation step, consume at completion
+        row.consumed_at = now
     session.flush()
     return VerifyResult(True, row)
 

@@ -1,0 +1,31 @@
+/* Registry uses the Training workspace shell, navigation and table rhythm. */
+.registry-shell{max-width:1480px;padding:0 18px;min-width:0}
+.registry-shell .site-header{padding:36px 0 30px;margin-bottom:32px}
+.registry-shell .brand-logo{width:88px;height:88px;object-fit:contain}
+.registry-shell .breadcrumb{margin-bottom:25px}
+.registry-navigation{display:flex;justify-content:space-between;align-items:center;gap:15px;border-bottom:1px solid var(--line);margin-bottom:30px}
+.registry-navigation .profile-tabs{display:flex;gap:30px;margin:0;border:0;padding:0}
+.registry-navigation .profile-tabs a{padding:12px 2px;background:none;border-radius:0;border:0;border-bottom:3px solid transparent;color:var(--muted);text-decoration:none}
+.registry-navigation .profile-tabs a[aria-current=page]{background:none;color:var(--olive-700);border-bottom-color:var(--olive-700);font-weight:600}
+.registry-navigation>p{margin:0;flex-shrink:0}
+.registry-navigation [data-how-works]{background:none;border:0;color:var(--muted);padding:12px 0;box-shadow:none}
+.registry-shell h1{font-size:30px;margin:0 0 8px;color:var(--olive-900)}
+.registry-shell .profile-heading-description{margin-bottom:24px;gap:20px;flex-wrap:wrap}
+.registry-shell .profile-heading-description>p{color:var(--muted);font-size:18px}
+.registry-shell table{width:100%;border-collapse:collapse;font-size:15px;background:#fff}
+.registry-shell .table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:14px;padding:20px;background:#fff;box-sizing:border-box}
+.registry-shell th{text-align:left;padding:13px 12px;background:var(--olive-150);color:var(--olive-900);font-size:13px;text-transform:uppercase}
+.registry-shell td{padding:17px 12px;border-bottom:1px solid #edf0e4;vertical-align:middle}
+.registry-shell .profile-toolbar{flex-wrap:wrap}
+.registry-shell .profile-archive{max-width:100%;overflow-x:auto}
+.registry-shell .profile-chip{border-radius:20px;padding:5px 10px;background:#edf3e4;color:#476433;font-size:13px}
+.registry-shell .profile-modal{padding-top:0;border-radius:14px}
+.registry-shell .profile-modal>.profile-toolbar{position:sticky;top:0;background:#fff;z-index:2;padding:14px 0;margin:0 0 22px;border-bottom:1px solid var(--line);flex-wrap:nowrap}
+.registry-shell .profile-modal>.profile-toolbar h2{flex:1;font-size:23px}
+.registry-shell .profile-modal>.profile-toolbar button{flex-shrink:0}
+.registry-shell .profile-modal input:not([type=hidden]):not([type=checkbox]):not([type=radio]),.registry-shell .profile-modal select{max-width:100%;box-sizing:border-box}
+.registry-shell #rf-help{z-index:1200}
+.registry-shell :focus-visible{outline:3px solid #98aa68;outline-offset:3px}
+@media(max-width:700px){.registry-shell{padding:0}.registry-shell .site-header{padding:20px 0}.registry-shell .brand-wordmark{font-size:19px}.registry-shell .brand-logo{width:60px;height:60px}.registry-navigation{flex-wrap:wrap;gap:4px}.registry-navigation .profile-tabs{gap:17px;flex-wrap:wrap}.registry-shell .table-scroll{padding:12px}.registry-shell td{padding:12px 9px}.registry-shell .profile-heading-description{align-items:flex-start}.registry-shell .profile-company-selector{flex-wrap:wrap;max-width:100%}.registry-shell .profile-company-selector select{max-width:100%}.registry-shell .profile-modal>.profile-toolbar h2{font-size:20px}.registry-shell .person-role-row{min-width:0}}
+
+.registry-shell .registry-table-card{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:14px;padding:28px;background:#fff;box-sizing:border-box}.registry-shell .table-scroll>.registry-table-card{padding:0;border:0;border-radius:0}.registry-shell .person-help{margin-left:auto}@media(max-width:700px){.registry-shell .registry-table-card{padding:12px}.registry-shell .table-scroll>.registry-table-card{padding:0}}

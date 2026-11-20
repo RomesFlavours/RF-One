@@ -144,7 +144,7 @@ def _run_forever(
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI wrapper
-    from ....database import create_configured_engine, create_session_factory, get_database_url, run_migrations_to_head
+    from ....database import create_configured_engine, create_session_factory, get_database_url, prepare_new_private_database
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--location-id", type=int, required=True)
@@ -159,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     db_url = get_database_url()
-    run_migrations_to_head(db_url)
+    prepare_new_private_database(db_url)  # never migrates an existing database (MIGRATIONS.md)
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 
