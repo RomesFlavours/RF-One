@@ -1250,7 +1250,8 @@ def record_decision(db, actor, position_id):
                 _cfg.rfone_web_base_url(), position_candidate_id=pc_id, actor_account_id=actor.id)
             if message:
                 name = _first_name(db, _pc(db, position, pc_id)) or "Candidate"
-                flash(f"{name}: {message}")
+                # No invitation went out (Indeed address, no email, Training unreachable): show it in red.
+                flash(f"{name}: {message}", "error" if status in ("skipped", "refused", "error", "created") else "message")
     return redirect(back)
 
 
