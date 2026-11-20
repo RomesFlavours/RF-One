@@ -3,6 +3,8 @@
 {% block page_title %}RF-One · Training — Trainer area{% endblock %}
 {% block page_subtitle %}Trainer area — create students, assign pills, review results.{% endblock %}
 {% block content %}
+{% set help_section='training_legacy_trainer_home' %}
+{% include '_how_works.html' %}
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', None)]) }}
 
 {% with messages = get_flashed_messages(with_categories=True) %}

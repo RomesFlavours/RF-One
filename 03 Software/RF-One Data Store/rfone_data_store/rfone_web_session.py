@@ -90,10 +90,17 @@ def account_for_session(
     if account_id is None:
         return None
     account = account_service.get_account(db_session, account_id)
-    if account is None:
+    if account is None or account.status != ACTIVE_ACCOUNT_STATUS:
         return None
     if session_version != account.session_version:
         return None
+    # A stale ACTIVE account must not keep access after its canonical person
+    # is dismissed. Owner access remains the explicitly approved exception.
+    if not account.is_owner:
+        from . import employee_directory as directory
+        person_id = directory.context_person_id(db_session, "RFONE_ACCOUNT", account.id)
+        if person_id is not None and not directory.employee_is_active(db_session.get(m.Employee, person_id), []):
+            return None
     return account
 
 

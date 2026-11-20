@@ -1,0 +1,42 @@
+{% extends '_visual_menu_base.html' %}
+{% set visual_menu_management=true %}
+{% set help_section='visual_menu_manage' %}
+{% set help_title='How dish card management works' %}
+{% block page_title %}Dish cards · Visual Menu · RF-One{% endblock %}
+{% block menu_content %}
+<p>Manage presentation and sales phrases for each restaurant's dish. Recipe information and photographs come from Kitchen.</p>
+<form method="get" action="{{ url_for('visual_menu_manage') }}" id="vm-restaurant-form" class="vm-manager-filter">
+  <label for="vm-restaurant">Restaurant</label>
+  <select id="vm-restaurant" name="restaurant_id"><option value="">All restaurants</option>{% for restaurant in restaurants %}<option value="{{ restaurant.id }}" {% if restaurant.id==restaurant_id %}selected{% endif %}>{{ restaurant.name }}</option>{% endfor %}</select>
+  <label for="vm-menu-filter">Menu</label>
+  <select id="vm-menu-filter" name="menu_id" {% if not restaurant_id %}disabled{% endif %}>
+    {% if restaurant_id %}<option value="all" {% if menu_filter=='all' %}selected{% endif %}>All menus</option>{% endif %}
+    <option value="kitchen" {% if menu_filter=='kitchen' %}selected{% endif %}>All Kitchen dishes</option>
+    {% for menu in available_menus %}<option value="{{ menu.id }}" {% if menu_filter==menu.id|string %}selected{% endif %}>{{ menu.name }} · {{ 'Archived' if menu.archived else 'Active' if menu.active else 'Draft' }}</option>{% endfor %}
+  </select>
+  <button type="submit" {% if not restaurants %}disabled{% endif %}>Show</button>
+</form>
+<p class="muted">Start with all Kitchen dishes, then filter by restaurant and menu. Choose All Kitchen dishes to include recipes not yet on a menu. Select a restaurant to edit its phrases.</p>
+<p class="error" id="vm-manager-error" role="alert" hidden></p>
+<section class="vm-section"><h2>Dish cards</h2><div class="vm-manager-scroll"><table class="vm-manager-table">
+  <thead><tr><th>Dish</th><th>Category</th><th>Presentation phrases</th><th>Sales phrases</th><th>Actions</th></tr></thead>
+  <tbody>{% for dish in rows %}<tr data-editorial-row="{{ dish.id }}" id="dish-card-{{ restaurant_id or 'all' }}-{{ dish.id }}">
+    <td>{{ dish.name }}</td><td>{{ dish.category or '—' }}</td><td data-description-count>{{ dish.description_count if dish.description_count is not none else '—' }}</td><td data-sales-count>{{ dish.sales_count if dish.sales_count is not none else '—' }}</td>
+    <td><button type="button" class="btn-secondary" {% if restaurant_id %}data-editorial-url="{{ url_for('visual_menu_manage_card',restaurant_id=restaurant_id,recipe_id=dish.id) }}"{% else %}disabled title="Select a restaurant to edit its phrases"{% endif %}>Edit</button></td>
+  </tr>{% else %}<tr><td colspan="5">No dish recipes available.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+<dialog id="vm-editor-dialog" class="vm-manager-dialog" aria-labelledby="vm-editor-title">
+  <form id="vm-editor-form">
+    <div class="vm-manager-dialog-head"><h2 id="vm-editor-title">Dish card</h2><button type="button" class="btn-secondary" id="vm-editor-help" aria-label="Help with dish card phrases">?</button><button type="button" data-editorial-close aria-label="Close">×</button></div>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version">
+    <div class="vm-manager-context"><img id="vm-editor-photo" alt="Current Kitchen recipe photograph" hidden><p id="vm-editor-restaurant" class="muted"></p></div>
+    <p class="muted">The recipe and photo are read-only. Edit only the presentation and sales phrases below.</p>
+    <section><h3>Presentation phrases</h3><label for="vm-presentation">One phrase per line</label><textarea id="vm-presentation" class="vm-editor" name="description_phrases" maxlength="4000"></textarea></section>
+    <section><h3>Sales phrases</h3><label for="vm-sales-editor">One phrase per line</label><textarea id="vm-sales-editor" class="vm-editor" name="sales_phrases" maxlength="4000"></textarea></section>
+    <p class="error" id="vm-editor-error" role="alert" hidden></p>
+    <div class="vm-manager-dialog-footer"><button type="submit">Save phrases</button><button type="button" class="btn-secondary" data-editorial-close>Cancel</button></div>
+  </form>
+</dialog>
+<dialog id="vm-editor-help-dialog" class="vm-manager-dialog" aria-labelledby="vm-editor-help-title"><div class="vm-manager-dialog-head"><h2 id="vm-editor-help-title">Dish card phrases</h2><button type="button" data-editorial-close aria-label="Close">×</button></div><div id="vm-editor-help-body"></div></dialog>
+<script defer src="{{ url_for('static',filename='js/visual-menu-manage.js') }}"></script>
+{% endblock %}

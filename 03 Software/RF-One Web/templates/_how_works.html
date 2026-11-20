@@ -1,0 +1,10 @@
+{% if help_section is defined %}
+<p><button class="btn" data-how-works type="button" onclick="document.getElementById('rf-help').showModal()">{{ ui(help_title|default('How this page works')) }}</button></p>
+<dialog id="rf-help" aria-labelledby="rf-help-title" style="max-width:48rem;max-height:85vh;overflow:auto;border:1px solid #88985e;border-radius:12px;">
+  <div style="position:sticky;top:0;background:white;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+    <h2 id="rf-help-title">{{ ui(help_title|default('How this page works')) }}</h2>
+    <button type="button" aria-label="{{ ui('Close') }}" onclick="this.closest('dialog').close()">×</button>
+  </div>
+  {% include 'help/' ~ help_section ~ '.html' %}
+</dialog>
+{% endif %}

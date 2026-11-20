@@ -18,7 +18,7 @@ from __future__ import annotations
 import secrets
 from functools import wraps
 
-from flask import abort, redirect, request, session as flask_session, url_for
+from flask import g, abort, redirect, request, session as flask_session, url_for
 
 from db import SessionFactory
 from rfone_data_store import models as m
@@ -74,6 +74,11 @@ def current_account_id() -> int | None:
 
 
 def load_current_account(db_session) -> "m.TrainingAccount | None":
+    effective = getattr(g, "rfone_training_account", None)
+    if effective is not None:
+        from rfone_data_store.web_access import AuthorizedTrainingAccount
+        identity = training_service.get_account(db_session, effective.id)
+        return AuthorizedTrainingAccount(identity, effective.role) if identity else None
     account_id = current_account_id()
     if account_id is None:
         return None
