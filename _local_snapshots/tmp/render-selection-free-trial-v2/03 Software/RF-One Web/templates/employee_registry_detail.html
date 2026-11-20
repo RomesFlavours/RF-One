@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% block page_title %}{{ employee.display_name or 'Dipendente' }} · Anagrafica RF-One{% endblock %}
+{% block content %}
+{{ breadcrumb([('RF-One',url_for('home')),('People',url_for('people_home')),(employee.display_name or 'Employee data',none)]) }}
+<h1>{{ employee.display_name or 'Nome da completare' }}</h1>
+<p>{{ 'Da controllare' if profile.needs_review else 'Verificato in RF1' }} · {{ location.name }} · Orari {{ tz or 'UTC' }}</p>
+<div class="domain-card" style="margin-bottom:1.5rem">
+  <h2>Ultimi dati ricevuti da Clover</h2>
+  <p><strong>Nome:</strong> {{ profile.source_name or 'Non disponibile' }}<br>
+  <strong>Codice dipendente:</strong> {{ profile.source_custom_id or 'Non disponibile' }}<br>
+  <strong>Ruolo:</strong> {{ profile.source_roles_signature or 'Non disponibile' }}<br>
+  <strong>Stato occupazionale:</strong> non fornito da Clover.</p>
+  {% if employee.source_available is sameas false %}<p>Il profilo non è attualmente raggiungibile su Clover. Questo non indica una cessazione del rapporto di lavoro.</p>{% endif %}
+</div>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="version" value="{{ profile.version }}">
+  <div class="domain-card">
+    <h2>Dati verificati RF1</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem">
+      <label>Nome completo<br><input name="name" value="{{ employee.display_name or '' }}" required maxlength="255" style="width:100%"></label>
+      <label>Codice dipendente<br><input name="code" value="{{ employee.custom_id or '' }}" maxlength="64" style="width:100%"></label>
+      <label>Stato<br><select name="status">
+        <option value="unknown" {% if employee.active is none %}selected{% endif %}>Da definire</option>
+        <option value="active" {% if employee.active is sameas true %}selected{% endif %}>Attivo</option>
+        <option value="inactive" {% if employee.active is sameas false %}selected{% endif %}>Non attivo</option>
+      </select></label>
+    </div>
+    <h3>Assegnazione del ruolo</h3>
+    <p>Per cambiare o assegnare un ruolo, scegli ristorante, area e decorrenza. Gli incarichi precedenti restano nello storico.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem">
+      <label>Ristorante<br><select name="restaurant_id">{% for r in restaurants %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></label>
+      <label>Ruolo RF1<br><select name="role_id"><option value="">Mantieni gli incarichi attuali</option>{% for r in roles if r.active is not sameas false %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></label>
+      <label>Area operativa<br><select name="area_id">{% for a in areas if a.active is not sameas false %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
+      <label>Decorrenza locale<br><input type="datetime-local" name="effective_at" value="{{ effective_default }}"></label>
+    </div>
+    <p>Il salvataggio conferma nome, codice e stato come dati RF1, protetti dalle successive importazioni Clover.</p>
+    <button type="submit">Verifica e salva in RF1</button>
+    <a href="{{ url_for('employee_registry_home') }}" style="margin-left:1rem">Torna all’anagrafica</a>
+  </div>
+</form>
+<h2>Storico incarichi</h2>
+<div style="overflow-x:auto"><table style="width:100%"><thead><tr><th>Ruolo</th><th>Area</th><th>Dal</th><th>Al · escluso</th><th>Origine</th></tr></thead><tbody>
+{% for a in history %}<tr><td>{{ role_names.get(a.restaurant_role_id,'Ruolo non disponibile') }}</td><td>{{ area_names.get(a.operational_area_id,'Area non disponibile') }}</td><td>{{ a.valid_from|local_dt(tz) }}</td><td>{{ a.valid_to|local_dt(tz) if a.valid_to else 'Senza scadenza' }}</td><td>{{ 'Verificato RF1' if a.assignment_source=='MANUAL' else 'Importato' }}</td></tr>
+{% else %}<tr><td colspan="5">Nessun incarico registrato. Assegna il ruolo con la decorrenza corretta.</td></tr>{% endfor %}
+</tbody></table></div>
+<h2>Registro modifiche</h2>
+{% for c in changes %}<details style="margin:0.7rem 0"><summary>{{ c.changed_at|local_dt(tz) }} · {{ accounts.get(c.account_id,'Importazione Clover') }} · {{ {'DISCOVERED':'Scheda acquisita','REVIEWED':'Scheda verificata','SOURCE_CHANGED':'Dati Clover cambiati','SOURCE_ROLES_CHANGED':'Ruolo Clover cambiato'}.get(c.kind,c.kind) }}</summary>
+{% if c.kind=='DISCOVERED' %}<p>Scheda acquisita dai dati già importati.</p>
+{% elif c.kind=='SOURCE_ROLES_CHANGED' %}<p>Ruolo Clover: {{ c.details.before or 'Non disponibile' }} → {{ c.details.after or 'Non disponibile' }}</p>
+{% else %}
+  {% for field,change in c.details.items() %}
+    {% if field=='assignment' %}<p>Ruolo: {{ change.previous_roles|join(', ') or 'Non assegnato' }} → {{ change.role }} · {{ change.area }}<br>Decorrenza: {{ change_effective[c.id]|local_dt(tz) }}</p>
+    {% else %}<p><strong>{{ {'display_name':'Nome','custom_id':'Codice dipendente','active':'Stato'}.get(field,field) }}:</strong>
+      {% if field=='active' %}{{ 'Attivo' if change.before is sameas true else 'Non attivo' if change.before is sameas false else 'Da definire' }} → {{ 'Attivo' if change.after is sameas true else 'Non attivo' if change.after is sameas false else 'Da definire' }}
+      {% else %}{{ change.before or 'Non disponibile' }} → {{ change.after or 'Non disponibile' }}{% endif %}</p>{% endif %}
+  {% else %}<p>Dati confermati senza variazioni.</p>{% endfor %}
+{% endif %}</details>{% else %}<p>Nessuna modifica registrata.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item"><div class="label">Application</div><div class="value">#{{ application.id }}</div></div>
+    <div class="meta-item"><div class="label">Role</div><div class="value">{{ application.target_role or '-' }}</div></div>
+  </div>
+  <p class="muted" style="font-size:.8rem;"><a href="{{ url_for('application_dossier', application_id=application.id) }}">&larr; Back to Dossier</a></p>
+</div>
+
+<div class="card">
+  <h2>Outbound Communications</h2>
+  {% if communications %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Trigger</th><th>Channels</th><th>Language</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% for c in communications %}
+      <tr>
+        <td>{{ c.created_at.strftime('%Y-%m-%d %H:%M') if c.created_at else '-' }}</td>
+        <td>
+          {{ c.trigger_event|replace('_',' ')|title }}
+          {% if c.is_reminder %}<span class="badge">Reminder #{{ c.reminder_sequence_number }}</span>{% endif %}
+        </td>
+        <td>
+          {% if c.channel_sms_used %}<span class="badge">SMS</span>{% endif %}
+          {% if c.channel_email_used %}<span class="badge">Email</span>{% endif %}
+        </td>
+        <td>{{ c.language_used }}</td>
+        <td>
+          SMS: {{ c.sms_status or '-' }} / Email: {{ c.email_status or '-' }}
+          {% if c.awaiting_response %}<span class="badge">Awaiting response</span>{% endif %}
+          {% if c.response_received_at %}<span class="badge">Responded {{ c.response_received_at.strftime('%Y-%m-%d %H:%M') }}</span>{% endif %}
+          {% if c.no_response_stop_applied %}<span class="badge status-failed">Auto-STOP (NO RESPONSE)</span>{% endif %}
+        </td>
+        <td style="max-width:22rem;">
+          {% if c.rendered_sms_text %}<div style="font-size:.78rem;"><strong>SMS:</strong> {{ c.rendered_sms_text }}</div>{% endif %}
+          {% if c.rendered_email_subject %}<div style="font-size:.78rem;"><strong>Email:</strong> {{ c.rendered_email_subject }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No outbound communications yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Inbound Messages</h2>
+  {% if inbound_messages %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Received</th><th>Channel</th><th>Raw text</th><th>System classification</th><th>Effective classification</th><th>Alert</th></tr></thead>
+    <tbody>
+      {% for i in inbound_messages %}
+      <tr>
+        <td>{{ i.received_at.strftime('%Y-%m-%d %H:%M') if i.received_at else '-' }}</td>
+        <td>{{ i.channel }}</td>
+        <td style="max-width:18rem;">{{ i.raw_text }}</td>
+        <td>{{ i.classification_system }} ({{ '%.0f'|format((i.classification_confidence or 0) * 100) }}%)</td>
+        <td>
+          {{ i.classification_effective }}
+          {% if i.classification_corrected_by %}<span class="badge">Corrected by {{ i.classification_corrected_by }}</span>{% endif %}
+        </td>
+        <td>
+          {% if i.alert_required and not i.alert_acknowledged_at %}<span class="badge status-failed">OPEN</span>{% elif i.alert_required %}<span class="badge">Acknowledged</span>{% else %}-{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No inbound messages yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Record an inbound message</h2>
+  <p class="muted" style="font-size:.78rem;">No real SMS/Email webhook is wired up in this environment — use this to record what a candidate said (by phone, text, or email) so it is classified and preserved.</p>
+  <form method="post" action="{{ url_for('application_record_inbound', application_id=application.id) }}" class="req-form">
+    <label>Channel</label>
+    <select name="channel">
+      <option value="SMS">SMS</option>
+      <option value="EMAIL">Email</option>
+    </select>
+    <label>Message text</label>
+    <textarea name="raw_text" required></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Record Message</button>
+  </form>
+</div>
+
+{% endblock %}

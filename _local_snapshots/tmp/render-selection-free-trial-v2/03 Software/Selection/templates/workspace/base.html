@@ -1,0 +1,41 @@
+{% from "_nav_macros.html" import breadcrumb %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{% block title %}Selection{% endblock %} · RF-One</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/rf-one.png') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rf-one.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/selection.css') }}?v=6">
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+</head>
+<body>
+<div class="wrap">
+  {# RF-One shell header, as on RF-One Web and Tips: it names RF-One, never
+     the Domain (the breadcrumb says "Selection"), and links to RF-One Home. #}
+  <header class="site-header">
+    <a href="{{ rfone_home_url or url_for('positions.dashboard') }}" class="brand">
+      <span class="brand-name-group">
+        <span class="brand-wordmark">Rome's Flavours · WP</span>
+        <span class="brand-suffix">RF-ONE</span>
+      </span>
+    </a>
+    {% if rfone_home_url %}<img class="brand-logo" src="{{ rfone_home_url }}shared-brand/logos/rf-one.png" alt="RF-One">{% endif %}
+  </header>
+  {# RF-One UI Rules §4: RF-One > Selection > [levels set by the page]. #}
+  {% set levels = crumbs if crumbs is defined else [] %}
+  {{ breadcrumb([('RF-One', rfone_home_url), ('Selection', url_for('positions.dashboard') if levels else None)] + levels) }}
+  {% set current_state = status_filter if status_filter is defined else (position.status if position is defined else 'OPEN') %}
+  <nav class="nav-tabs selection-navigation" aria-label="Selection">
+    <a href="{{ url_for('positions.dashboard') }}" class="{{ 'active' if current_state == 'OPEN' }}">Open positions{% if position_counts is defined %} <span class="badge">{{ position_counts.OPEN }}</span>{% endif %}</a>
+    <a href="{{ url_for('positions.dashboard', stato='DRAFT') }}" class="{{ 'active' if current_state == 'DRAFT' }}">Drafts{% if position_counts is defined %} <span class="badge">{{ position_counts.DRAFT }}</span>{% endif %}</a>
+    <a href="{{ url_for('positions.dashboard', stato='CLOSED') }}" class="{{ 'active' if current_state == 'CLOSED' }}">Closed{% if position_counts is defined %} <span class="badge">{{ position_counts.CLOSED }}</span>{% endif %}</a>
+    <a class="selection-help-link" href="{{ url_for('positions.how_it_works') }}">How Selection works</a>
+  </nav>
+  {% for msg in get_flashed_messages() %}<div class="info">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>
