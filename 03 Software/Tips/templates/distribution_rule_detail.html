@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "tips_rule_detail" %}
 {% set crumbs = [('Configuration', url_for('configuration_home')), ('Rule #' ~ rule.id, None)] %}
 {% block content %}
 
@@ -10,31 +11,31 @@
 
 
 <div class="card">
-  <h2>Rule #{{ rule.id }}</h2>
+  <h2>{{ ui("Rule #") }}{{ rule.id }}</h2>
   <div class="meta-row">
-    <div class="meta-item"><div class="label">State</div><div class="value"><span class="badge {{ 'ok' if rule.is_active else 'bad' }}">{{ 'ACTIVE' if rule.is_active else 'INACTIVE' }}</span></div></div>
-    <div class="meta-item"><div class="label">Restaurant</div><div class="value">{{ rule.restaurant_id }}</div></div>
-    <div class="meta-item"><div class="label">Versions</div><div class="value">{{ versions|length }}</div></div>
+    <div class="meta-item"><div class="label">{{ ui("State") }}</div><div class="value"><span class="badge {{ 'ok' if rule.is_active else 'bad' }}">{{ 'ACTIVE' if rule.is_active else 'INACTIVE' }}</span></div></div>
+    <div class="meta-item"><div class="label">{{ ui("Restaurant") }}</div><div class="value">{{ rule.restaurant_id }}</div></div>
+    <div class="meta-item"><div class="label">{{ ui("Versions") }}</div><div class="value">{{ versions|length }}</div></div>
   </div>
   <form method="post" action="{{ url_for('distribution_rule_toggle_active', rule_id=rule.id) }}">
     <input type="hidden" name="next" value="{{ url_for('distribution_rule_detail', rule_id=rule.id) }}">
-    <button type="submit">{{ 'Deactivate' if rule.is_active else 'Activate' }}</button>
+    <button type="submit">{{ ui('Deactivate' if rule.is_active else 'Activate') }}</button>
   </form>
 </div>
 
 <div class="card">
-  <h2>Version History (append-only — never rewritten)</h2>
+  <h2>{{ ui("Version History (append-only — never rewritten)") }}</h2>
   <div class="table-scroll">
   <table>
-    <thead><tr><th>Version</th><th>Source Role</th><th>Recipient Role</th><th>Calculation Base</th><th>Rate</th><th>Effective From</th><th>Effective To</th><th>Created by</th><th>Created at</th></tr></thead>
+    <thead><tr><th>{{ ui("Version") }}</th><th>{{ ui("Source Role") }}</th><th>{{ ui("Recipient Role") }}</th><th>{{ ui("Calculation Base") }}</th><th>{{ ui("Rate") }}</th><th>{{ ui("Aggregation / eligibility / split") }}</th><th>{{ ui("Effective From") }}</th><th>{{ ui("Effective To") }}</th><th>{{ ui("Created by") }}</th><th>{{ ui("Created at") }}</th></tr></thead>
     <tbody>
     {% for v in versions|reverse %}
       <tr>
-        <td>{{ v.version_number }}{% if v.effective_to is none %} <span class="badge ok">current</span>{% endif %}</td>
+        <td>{{ v.version_number }}{% if v.effective_to is none %} <span class="badge ok">{{ ui("current") }}</span>{% endif %}</td>
         <td>{{ v.source_role.name if v.source_role else "Service Owner (Order owner)" }}</td>
         <td>{{ v.recipient_role.name }}</td>
         <td>{{ v.calculation_base }}</td>
-        <td>{{ v.rate }}%</td>
+        <td>{{ v.rate }}%</td><td>{{ v.aggregation_scope }} / {{ v.eligibility_mode }} / {{ v.distribution_method }}</td>
         <td>{{ v.effective_from.strftime('%Y-%m-%d') if v.effective_from else '-' }}</td>
         <td>{{ v.effective_to.strftime('%Y-%m-%d') if v.effective_to else '(open-ended)' }}</td>
         <td>{{ v.created_by or '-' }}</td>
@@ -47,51 +48,52 @@
 </div>
 
 <div class="card">
-  <h2>Edit Rule (creates a new version)</h2>
+  <h2>{{ ui("Edit Rule (creates a new version)") }}</h2>
   <p class="muted" style="font-size:.78rem;">
-    Saving here never modifies any existing version above — it closes the current open version's Effective To
-    at the new version's Effective From, and appends a brand-new version row.
+    {{ ui("Saving here never modifies any existing version above — it closes the current open version's Effective To\n    at the new version's Effective From, and appends a brand-new version row.") }}
   </p>
   {% if not roles %}
   <p class="error">
-    No Roles are defined yet for this Restaurant. <a href="{{ url_for('restaurant_roles_home') }}">Manage Roles</a>
-    first, then come back here.
+    {{ ui("No Roles are defined yet for this Restaurant.") }} <a href="{{ url_for('restaurant_roles_home') }}">{{ ui("Manage Roles") }}</a>
+    {{ ui("first, then come back here.") }}
   </p>
   {% endif %}
   <form method="post" action="{{ url_for('distribution_rule_new_version', rule_id=rule.id) }}">
     <div class="form-row">
       <div>
-        <label for="source_role_id">Source Role</label>
+        <label for="source_role_id">{{ ui("Source Role") }}</label>
         <select id="source_role_id" name="source_role_id" required {{ 'disabled' if not roles else '' }}>
           {% for role in roles %}<option value="{{ role.id }}" {{ 'selected' if versions and role.id == versions[-1].source_role_id else '' }}>{{ role.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label for="recipient_role_id">Recipient Role</label>
+        <label for="recipient_role_id">{{ ui("Recipient Role") }}</label>
         <select id="recipient_role_id" name="recipient_role_id" required {{ 'disabled' if not roles else '' }}>
           {% for role in roles %}<option value="{{ role.id }}" {{ 'selected' if versions and role.id == versions[-1].recipient_role_id else '' }}>{{ role.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label for="calculation_base">Calculation Base</label>
+        <label for="calculation_base">{{ ui("Calculation Base") }}</label>
         <select id="calculation_base" name="calculation_base" required>
           {% for base in calculation_bases %}<option value="{{ base }}" {{ 'selected' if versions and base == versions[-1].calculation_base else '' }}>{{ base }}</option>{% endfor %}
         </select>
       </div>
+      {% set current = versions[-1] if versions is defined and versions else none %}
+      {% include '_rule_calculation_axes.html' %}
       <div>
-        <label for="rate">Rate (%)</label>
+        <label for="rate">{{ ui("Rate (%)") }}</label>
         <input type="text" id="rate" name="rate" value="{{ versions[-1].rate if versions else '' }}" required>
       </div>
       <div>
-        <label for="effective_from">Effective From (new version)</label>
+        <label for="effective_from">{{ ui("Effective From (new version)") }}</label>
         <input type="date" id="effective_from" name="effective_from" required>
       </div>
       <div>
-        <label for="created_by">Created by</label>
+        <label for="created_by">{{ ui("Created by") }}</label>
         <input type="text" id="created_by" name="created_by" placeholder="optional">
       </div>
       <div>
-        <button type="submit" {{ 'disabled' if not roles else '' }}>Save New Version</button>
+        <button type="submit" {{ 'disabled' if not roles else '' }}>{{ ui("Save New Version") }}</button>
       </div>
     </div>
   </form>

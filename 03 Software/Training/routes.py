@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 
+from rfone_data_store import employee_directory as person_directory
+
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from auth import (
@@ -60,7 +62,15 @@ def _group_pills_by_area(pills: list) -> list[tuple[str, list]]:
 
 @training_bp.context_processor
 def _inject_csrf():
-    return {"csrf_token": get_csrf_token}
+    context = {"csrf_token": get_csrf_token}
+    if current_account_id() is not None:
+        from rfone_data_store.employee_directory import context_person_id
+        from rfone_data_store import models as identity_models
+        with SessionFactory() as db:
+            person_id = context_person_id(db, "TRAINING", current_account_id())
+            person = db.get(identity_models.Employee, person_id) if person_id is not None else None
+            context["reference_person_name"] = person.display_name if person else None
+    return context
 
 
 # ---------------------------------------------------------------------------
@@ -431,8 +441,11 @@ def trainer_student_detail(account_id: int):
             for pill in all_pills
         ]
         areas_order = [area for area, _pills in pills_by_area]
+        student_person_id = person_directory.context_person_id(db, "TRAINING", student.id)
+        student_person = db.get(m.Employee, student_person_id) if student_person_id is not None else None
         return render_template(
-            "training/trainer_student_detail.html", account=account, student=student, needs_view=needs_view,
+            "training/trainer_student_detail.html",
+            student_person_name=student_person.display_name if student_person else None, account=account, student=student, needs_view=needs_view,
             all_pills=all_pills, pills_by_area=pills_by_area, overall_history=overall_history,
             all_pills_data=all_pills_data, areas_order=areas_order,
         )

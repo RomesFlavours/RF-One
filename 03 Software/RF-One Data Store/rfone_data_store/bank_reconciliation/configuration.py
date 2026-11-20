@@ -617,33 +617,28 @@ def resolve_owner(
 
 
 def cardholder_candidates(session: Session) -> list[dict]:
-    """Real people a cardholder can be linked to: HUMAN_USER identities
-    first, then employees not already represented by an identity of the
-    same name. A SYSTEM identity is never a valid holder."""
+    """Human acting identities and canonical employee choices.
+
+    Equal names never establish identity. The explicit account/person bridge
+    belongs to the separate identity integration; SYSTEM cannot hold a card.
+    """
     identities = session.scalars(
         select(m.ActingIdentity)
         .where(m.ActingIdentity.is_active.is_(True), m.ActingIdentity.kind == "HUMAN_USER")
         .order_by(m.ActingIdentity.display_name)
     ).all()
-    employees = session.scalars(
-        select(m.Employee)
-        .where((m.Employee.active.is_(True)) | (m.Employee.active.is_(None)))
-        .order_by(m.Employee.display_name)
-    ).all()
+    from ..employee_directory import employee_options, context_person_id
+    employees = employee_options(session)
     candidates = [
         {"kind": m.CARD_HOLDER_KIND_ACTING_IDENTITY, "id": identity.id,
          "name": identity.display_name, "source": "RF-One identity"}
-        for identity in identities
+        for identity in identities if context_person_id(session, "ACTING_IDENTITY", identity.id) is None
     ]
-    seen = {(c["name"] or "").strip().casefold() for c in candidates}
     for employee in employees:
         name = (employee.display_name or "").strip()
-        if name and name.casefold() in seen:
-            continue
         candidates.append({"kind": m.CARD_HOLDER_KIND_EMPLOYEE, "id": employee.id,
-                           "name": name or f"Employee {employee.id}", "source": "Employee"})
-        if name:
-            seen.add(name.casefold())
+                           "name": name or f"Employee {employee.id}", "source": "Employee",
+                           "location_names": employee.location_names})
     return candidates
 
 

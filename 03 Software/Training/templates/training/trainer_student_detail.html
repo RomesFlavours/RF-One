@@ -3,6 +3,7 @@
 {% block page_title %}RF-One · Training — {{ student.acting_identity.display_name }}{% endblock %}
 {% block page_subtitle %}Trainer area — {{ student.acting_identity.display_name }}{% endblock %}
 {% block content %}
+{% if student_person_name %}<p>Persona RF1 dello studente: {{ student_person_name }}</p>{% endif %}
 
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), (student.acting_identity.display_name|short_name, None)]) }}
 

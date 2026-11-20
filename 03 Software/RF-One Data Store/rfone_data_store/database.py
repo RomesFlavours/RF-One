@@ -233,6 +233,42 @@ def resolve_test_database_url(label: str) -> str:
     return create_disposable_test_database_url(label)
 
 
+MIGRATION_TARGET_ENV = "RFONE_SCHEMA_MIGRATION_TARGET"
+
+
+class SharedDatabaseMigrationRefused(RuntimeError):
+    """Raised when a migration would reach a shared (non-SQLite) database
+    without the explicit release-step authorization (MIGRATIONS.md)."""
+
+
+def is_new_private_database(url: str) -> bool:
+    """True only for a SQLite file that does not exist yet or holds no table."""
+    import sqlite3
+    from contextlib import closing
+
+    from sqlalchemy.engine import make_url
+
+    parsed = make_url(url)
+    if parsed.get_backend_name() != "sqlite" or not parsed.database or parsed.database == ":memory:":
+        return False
+    path = Path(parsed.database)
+    if not path.exists() or path.stat().st_size == 0:
+        return True
+    with closing(sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)) as connection:
+        return connection.execute("SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()[0] == 0
+
+
+def prepare_new_private_database(url: str) -> bool:
+    """What a service may do with its database at start (MIGRATIONS.md):
+    create a brand-new private SQLite file at head (tests, first local run).
+    An existing database, and any shared one, is never migrated here.
+    Returns True when it created the schema."""
+    if not is_new_private_database(url):
+        return False
+    run_migrations_to_head(url)
+    return True
+
+
 def run_migrations_to_head(url: str) -> None:
     """Create/upgrade the schema at `url` to the latest Alembic revision.
 
@@ -242,12 +278,24 @@ def run_migrations_to_head(url: str) -> None:
     database, which creates every table from the baseline migration onward.
     Future schema changes should be expressed as new Alembic revisions, not
     by deleting and recreating a populated database.
+
+    It is an explicit operation, never a service's start-up step. A
+    non-SQLite (shared) database is refused unless `RFONE_SCHEMA_MIGRATION_TARGET`
+    names this tree's head, set only by the snapshotted release step.
     """
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
 
     alembic_cfg = Config(str(_MODULE_DIR / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(_MODULE_DIR / "migrations"))
+    if not url.startswith("sqlite"):
+        heads = ScriptDirectory.from_config(alembic_cfg).get_heads()
+        if [os.environ.get(MIGRATION_TARGET_ENV, "")] != heads:
+            raise SharedDatabaseMigrationRefused(
+                f"Refusing to migrate {redact_database_url(url)} to {', '.join(heads)}: a shared database is "
+                f"migrated only by the release step with {MIGRATION_TARGET_ENV}=<head> (see MIGRATIONS.md)."
+            )
     # env.py reads ALEMBIC_DATABASE_URL_OVERRIDE if present; setting it here
     # (rather than only set_main_option) guarantees this exact `url` is used
     # even though env.py resolves its own default independently.

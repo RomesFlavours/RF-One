@@ -132,7 +132,7 @@ def build(session, *, location_ids_subq, start: datetime, end: datetime) -> dict
             incomplete_value += o.total or 0
         orders_rows.append({
             "source_order_id": o.source_order_id,
-            "employee_id": o.source_employee_id,
+            "employee_id": o.employee_id,
             "total": o.total,
             "num_payments": len(ok),
             "gratuity_total": gratuity(o.id),
@@ -166,7 +166,7 @@ def build(session, *, location_ids_subq, start: datetime, end: datetime) -> dict
         payments_rows.append({
             "source_payment_id": p.source_payment_id,
             "source_order_id": source_order_id.get(p.order_id),
-            "employee_id": p.source_employee_id,
+            "employee_id": p.employee_id,
             "amount": p.amount,
             "tip_amount": tip_amount,
             "gratuity": grat,

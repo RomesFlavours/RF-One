@@ -34,6 +34,7 @@ def create_rule(
     distribution_method: str = m.DISTRIBUTION_METHOD_EQUAL,
     no_eligible_recipient_behavior: str = m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS,
     transaction_scope: str = m.TRANSACTION_SCOPE_ALL,
+    aggregation_scope: str = m.AGGREGATION_SCOPE_ORDER,
 ) -> m.TipDistributionRule:
     """Creates a new Tip Distribution Rule identity together with its first
     version (version_number 1). `is_active` defaults to True (task item
@@ -57,6 +58,7 @@ def create_rule(
     _validate_distribution_method(distribution_method)
     _validate_no_eligible_recipient_behavior(no_eligible_recipient_behavior)
     _validate_transaction_scope(transaction_scope)
+    validate_calculation_shape(aggregation_scope, eligibility_mode, distribution_method)
     _validate_source_semantics(source_semantics, source_role_id)
     if source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE:
         _validate_role_belongs_to_restaurant(session, role_id=source_role_id, restaurant_id=restaurant_id, label="Source Role")
@@ -72,7 +74,7 @@ def create_rule(
             recipient_role_id=recipient_role_id,
             calculation_base=calculation_base, rate=rate, effective_from=effective_from, effective_to=effective_to,
             created_by=created_by, eligibility_mode=eligibility_mode, distribution_method=distribution_method,
-            no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope,
+            no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope, aggregation_scope=aggregation_scope,
         )
     )
     session.flush()
@@ -87,6 +89,7 @@ def create_new_version(
     distribution_method: str = m.DISTRIBUTION_METHOD_EQUAL,
     no_eligible_recipient_behavior: str = m.NO_ELIGIBLE_RECIPIENT_SOURCE_RETAINS,
     transaction_scope: str = m.TRANSACTION_SCOPE_ALL,
+    aggregation_scope: str = m.AGGREGATION_SCOPE_ORDER,
 ) -> m.TipDistributionRuleVersion:
     """Task item #9/#11 — "editing a live rule": appends a NEW version row;
     the current open-ended version (the highest `version_number` with
@@ -127,6 +130,7 @@ def create_new_version(
     _validate_distribution_method(distribution_method)
     _validate_no_eligible_recipient_behavior(no_eligible_recipient_behavior)
     _validate_transaction_scope(transaction_scope)
+    validate_calculation_shape(aggregation_scope, eligibility_mode, distribution_method)
     _validate_source_semantics(source_semantics, source_role_id)
     if source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE:
         _validate_role_belongs_to_restaurant(
@@ -149,7 +153,7 @@ def create_new_version(
         recipient_role_id=recipient_role_id, calculation_base=calculation_base, rate=rate,
         effective_from=effective_from, effective_to=effective_to, created_by=created_by,
         eligibility_mode=eligibility_mode, distribution_method=distribution_method,
-        no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope,
+        no_eligible_recipient_behavior=no_eligible_recipient_behavior, transaction_scope=transaction_scope, aggregation_scope=aggregation_scope,
         status=m.TIP_RULE_VERSION_STATUS_ACTIVE,
     )
     session.add(new_version)
@@ -330,6 +334,7 @@ _IMPLEMENTED_ELIGIBILITY_MODES = (
     # authoritative rule, and genuinely implemented by the engine (both
     # modes are, unlike the single-value vocabularies alongside them).
     m.ELIGIBILITY_MODE_ACTIVE_AT_ORDER_OPEN,
+    m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY,
 )
 
 
@@ -342,7 +347,7 @@ def _validate_eligibility_mode(eligibility_mode: str) -> None:
 
 
 def _validate_distribution_method(distribution_method: str) -> None:
-    if distribution_method != m.DISTRIBUTION_METHOD_EQUAL:
+    if distribution_method not in (m.DISTRIBUTION_METHOD_EQUAL, m.DISTRIBUTION_METHOD_HOURS_PROPORTIONAL):
         raise ValueError(
             f"Unknown or not-yet-implemented Distribution Method {distribution_method!r}; expected "
             f"{m.DISTRIBUTION_METHOD_EQUAL!r}"
@@ -363,3 +368,31 @@ def _validate_transaction_scope(transaction_scope: str) -> None:
             f"Unknown or not-yet-implemented Transaction Scope {transaction_scope!r}; expected "
             f"{m.TRANSACTION_SCOPE_ALL!r}"
         )
+
+
+def validate_calculation_shape(aggregation_scope: str, eligibility_mode: str, distribution_method: str) -> None:
+    """Reject incompatible axes before creating or closing any version."""
+    if aggregation_scope not in (m.AGGREGATION_SCOPE_ORDER, m.AGGREGATION_SCOPE_SOURCE_BUSINESS_DAY):
+        raise ValueError(f"Unknown aggregation scope {aggregation_scope!r}.")
+    _validate_eligibility_mode(eligibility_mode)
+    _validate_distribution_method(distribution_method)
+    daily = eligibility_mode == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY
+    if aggregation_scope == m.AGGREGATION_SCOPE_SOURCE_BUSINESS_DAY and not daily:
+        raise ValueError("Daily source aggregation requires worked-during-business-day eligibility.")
+    if distribution_method == m.DISTRIBUTION_METHOD_HOURS_PROPORTIONAL and not daily:
+        raise ValueError("Hours-proportional distribution requires worked-during-business-day eligibility.")
+
+
+def effective_business_date_boundary(session: Session, restaurant_id: int, value: datetime | None) -> datetime | None:
+    """Interpret daily rule dates at the primary location's business-day cutoff."""
+    if value is None:
+        return None
+    from zoneinfo import ZoneInfo
+    location = session.scalars(select(m.Location).join(m.RestaurantLocation,
+        m.RestaurantLocation.location_id == m.Location.id).where(
+        m.RestaurantLocation.restaurant_id == restaurant_id,
+        m.RestaurantLocation.is_primary.is_(True))).first()
+    if location is None or not location.timezone or location.operating_day_cutoff_time is None:
+        raise ValueError("Daily rule dates require the restaurant's primary location timezone and cutoff.")
+    return datetime.combine(value.date(), location.operating_day_cutoff_time,
+        ZoneInfo(location.timezone)).astimezone(timezone.utc)

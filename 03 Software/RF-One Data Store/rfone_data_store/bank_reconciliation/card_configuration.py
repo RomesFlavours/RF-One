@@ -385,6 +385,14 @@ def _validated_holder(
         identity = session.get(m.ActingIdentity, holder_acting_identity_id)
         if identity is None:
             raise ValueError(f"Acting Identity {holder_acting_identity_id} does not exist.")
+        if identity.kind != "HUMAN_USER":
+            raise ValueError("Only a human identity may hold a card.")
+        from ..employee_directory import context_person_id
+        person_id = context_person_id(session, "ACTING_IDENTITY", identity.id)
+        if person_id is not None:
+            return _validated_holder(session, holder_kind=m.CARD_HOLDER_KIND_EMPLOYEE,
+                holder_acting_identity_id=None, holder_employee_id=person_id,
+                holder_display_name=holder_display_name)
         return {
             "holder_kind": holder_kind,
             "holder_acting_identity_id": identity.id,
@@ -395,7 +403,8 @@ def _validated_holder(
     if holder_kind == m.CARD_HOLDER_KIND_EMPLOYEE:
         if holder_employee_id is None:
             raise ValueError("Select the employee holding this card.")
-        employee = session.get(m.Employee, holder_employee_id)
+        from ..employee_directory import resolve_employee_id
+        employee = session.get(m.Employee, resolve_employee_id(session, holder_employee_id))
         if employee is None:
             raise ValueError(f"Employee {holder_employee_id} does not exist.")
         return {
