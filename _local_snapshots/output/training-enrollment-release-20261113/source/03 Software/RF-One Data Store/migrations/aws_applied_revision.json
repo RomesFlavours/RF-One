@@ -1,0 +1,15 @@
+{
+  "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
+  "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
+  "revision": "t9e120261113",
+  "previous_revision": "r9a120261113",
+  "verified_utc": "2026-11-13T14:09:54.125941+00:00",
+  "applied_by": "Training enrollment 11565518412da9c4bf2cb522a6b2535907657fed",
+  "evidence": {
+    "source_key": "training/enrollment/releases/11565518412da9c4bf2cb522a6b2535907657fed/source.zip",
+    "source_sha256": "346246ad39fc5691815f681bbe41335298e1d982469c0afb261f4aa9868e2be0",
+    "snapshot": "rfone-dev-pre-enrollment-20261113t140337z",
+    "protected_data_unchanged": true
+  },
+  "previous_marker_revision": "k9g120261112"
+}
