@@ -124,13 +124,14 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
         # 1. Three-tab navigation, active state, and no misleading link.
         # =================================================================
         pages = {
-            "/bank": "import", "/bank/review": "review", "/bank/export": "export",
+            "/bank": "import", "/bank/instruments": "instruments",
+            "/bank/review": "review", "/bank/export": "export",
         }
-        tab_labels = ("Import &amp; Instruments", "Review Transactions", "Monthly Export")
+        tab_labels = ("Import and Review", "Instruments", "Review Transactions", "Monthly Export")
         for path in pages:
             html = client.get(path).data.decode("utf-8")
             check(
-                f"{path} shows all three module tabs",
+                f"{path} shows the module tabs",
                 all(label in html for label in tab_labels),
                 f"missing: {[l for l in tab_labels if l not in html]}",
             )
@@ -257,14 +258,14 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
 
         # Now that tables actually have rows, check the responsive markup
         # the stacked narrow-viewport layout depends on.
-        home_html = client.get("/bank").data.decode("utf-8")
-        check("/bank lists an Edit button per instrument",
+        home_html = client.get("/bank/instruments").data.decode("utf-8")
+        check("/bank/instruments lists an Edit button per instrument",
               f'href="/bank/instruments/{card_2915_id}/edit"' in home_html)
         check(
-            "/bank tables use the compact + stackable table classes",
+            "/bank/instruments tables use the compact + stackable table classes",
             'class="table-compact table-stack"' in home_html,
         )
-        check("/bank table cells carry a data-label for the stacked layout",
+        check("/bank/instruments table cells carry a data-label for the stacked layout",
               home_html.count("data-label=") >= 9)
 
         # Edit every editable field at once, including the Legal Entity.
@@ -339,7 +340,7 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
             "legal_entity_id": str(entity_a_id), "currency": "USD",
             "linked_instrument_id": "", "status": "ACTIVE", "csrf_token": csrf,
         })
-        listing = client.get("/bank").data.decode("utf-8")
+        listing = client.get("/bank/instruments").data.decode("utf-8")
         check("the instrument list never shows a full account number",
               "000123456789214" not in listing)
         check("the instrument list shows only the last four digits", ">9214<" in listing.replace(" ", "").replace("\n", ""))
@@ -643,8 +644,8 @@ def main() -> int:  # noqa: C901 — one linear scenario, deliberately readable 
                   audit is not None and audit.affected_transaction_count == len(after_batch))
 
         check("the current assignment is shown after the change",
-              b"Chase Card 3144" in client.get("/bank").data)
-        html = client.get("/bank").data.decode("utf-8")
+              b"Chase Card 3144" in client.get("/bank?batches=all").data)
+        html = client.get("/bank/instruments").data.decode("utf-8")
         check("the assignment history is visible in the UI",
               "Instrument assignment history" in html and "card 3144" in html)
 

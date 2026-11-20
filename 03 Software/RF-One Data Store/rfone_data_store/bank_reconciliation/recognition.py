@@ -193,12 +193,32 @@ def find_candidate_rules(
     ).all()
     compatible = [
         rule for rule in rules
-        if (rule.payment_instrument_id is None or rule.payment_instrument_id == payment_instrument_id)
-        and (rule.direction is None or rule.direction == direction)
-        and _rule_matches(rule, normalized_description, normalized_memo)
+        if rule_applies(
+            rule, normalized_description=normalized_description,
+            payment_instrument_id=payment_instrument_id, direction=direction,
+            normalized_memo=normalized_memo,
+        )
     ]
     compatible.sort(key=_specificity_sort_key)
     return compatible
+
+
+def rule_applies(
+    rule: "m.BankRecognitionRule", *, normalized_description: str, payment_instrument_id: int | None,
+    direction: str, normalized_memo: str | None = None,
+) -> bool:
+    """Whether ONE rule is compatible with one transaction: its instrument
+    scope (spec step 3), its direction scope (step 4) and its pattern. The
+    single definition shared by `find_candidate_rules` (import and
+    reprocess) and by the retroactive application of a learned rule, so a
+    rule can never mean one thing on import and another on existing data.
+    Status is not checked here: `find_candidate_rules` only ever passes
+    ACTIVE rules."""
+    return (
+        (rule.payment_instrument_id is None or rule.payment_instrument_id == payment_instrument_id)
+        and (rule.direction is None or rule.direction == direction)
+        and _rule_matches(rule, normalized_description, normalized_memo)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -359,19 +379,17 @@ class _Proposal:
     notes: str
 
 
-def _propose(session: Session, txn: "m.FinancialTransaction") -> _Proposal:
-    """What the automatic engine concludes about one transaction. Writes nothing.
+def recognize_who(
+    session: Session, txn: "m.FinancialTransaction",
+) -> tuple[int | None, int | None, str]:
+    """The WHO the learned recognition rules name for one transaction —
+    `(occurrence_id, rule_id, note)`. Writes nothing.
 
-    Two separate questions, answered separately (BANK_FINAL_RELEASE_BLOCKERS_001):
-
-      WHO — recognition rules name the counterparty (identity only);
-      WHY — the ONE automatic engine, `structural_why.recognize_transaction`,
-            from the transaction's own structure and memo.
-
-    The WHO never gates, suggests or decides the WHY: a Who's default Why is
-    not read at all."""
-    from . import structural_why
-
+    The WHO half of `_propose`, and the only place it is decided: every
+    compatible ACTIVE rule is considered; when they name different Whos the
+    Who is left to a human; otherwise the most specific rule names it. The
+    retroactive application of a learned rule asks exactly this question,
+    so existing transactions get the WHO an import would give them today."""
     normalized = normalize_description_for_recognition(txn.description_original)
     normalized_memo = normalize_memo_for_recognition(txn.source_memo)
     direction = direction_for_amount(txn.amount_minor)
@@ -416,6 +434,23 @@ def _propose(session: Session, txn: "m.FinancialTransaction") -> _Proposal:
                     f" Suggestion only, from this Who's configured usual Why {usual.name!r}: "
                     "it is not evidence about this transaction and was not applied."
                 )
+    return occurrence_id, rule_id, who_note
+
+
+def _propose(session: Session, txn: "m.FinancialTransaction") -> _Proposal:
+    """What the automatic engine concludes about one transaction. Writes nothing.
+
+    Two separate questions, answered separately (BANK_FINAL_RELEASE_BLOCKERS_001):
+
+      WHO — recognition rules name the counterparty (identity only);
+      WHY — the ONE automatic engine, `structural_why.recognize_transaction`,
+            from the transaction's own structure and memo.
+
+    The WHO never gates, suggests or decides the WHY: a Who's default Why is
+    not read at all."""
+    from . import structural_why
+
+    occurrence_id, rule_id, who_note = recognize_who(session, txn)
 
     result = structural_why.recognize_transaction(session, txn)
     reason = structural_why.usable_reason(session, result)
@@ -915,3 +950,201 @@ def reclassify_transaction(
         confidence="HIGH", explanation_notes=" ".join(notes_parts),
         confirmed_by_account_id=confirmed_by_account_id, confirmed_at=datetime.now(UTC),
     )
+
+
+# ---------------------------------------------------------------------------
+# Retroactive application of ONE learned WHO rule
+# (BANK_GLOBAL_WHO_RULE_APPLICATION_001)
+# ---------------------------------------------------------------------------
+#
+# A learned WHO rule is knowledge about the whole Bank dataset, not about the
+# month in which a person taught it. Applying it to the transactions already
+# in the database asks, for each of them, the SAME question import asks
+# (`recognize_who`), and records the answer the same way import does: as a
+# RULE decision naming the Who and the rule. It never decides a Why: the new
+# decision carries the current decision's Why, What, status and snapshots
+# unchanged, so a transaction whose Why is still open stays in human review.
+
+RULE_APPLY_ELIGIBLE = "eligible"
+RULE_APPLY_ALREADY_THIS_RULE = "already_this_rule"
+RULE_APPLY_ALREADY_SAME_WHO = "already_same_who"
+RULE_APPLY_HUMAN_SAME_WHO = "human_same_who"
+RULE_APPLY_HUMAN_CONFLICT = "human_conflict"
+RULE_APPLY_RULES_DISAGREE = "rules_disagree"
+
+# The decision fields that describe PURPOSE (Why, What, Kermali mapping).
+# A retroactive WHO carries them over from the current decision verbatim.
+_PURPOSE_SNAPSHOT_FIELDS = (
+    "food_cost_snapshot", "operative_snapshot", "deductible_snapshot", "what_label_snapshot",
+    "transaction_reason_name_snapshot", "accounting_classification_id",
+    "accounting_classification_code_snapshot", "accounting_classification_name_snapshot",
+    "accounting_statement_type_snapshot",
+)
+
+
+@dataclass
+class RuleApplicationItem:
+    transaction: "m.FinancialTransaction"
+    outcome: str
+    current: "m.BankTransactionExplanation | None"
+    engine_rule_id: int | None = None
+
+
+@dataclass
+class RuleApplicationReport:
+    rule: "m.BankRecognitionRule"
+    items: list
+    applied: int = 0
+
+    def count(self, outcome: str) -> int:
+        return sum(1 for item in self.items if item.outcome == outcome)
+
+    @property
+    def matching(self) -> int:
+        return len(self.items)
+
+    @property
+    def eligible(self) -> int:
+        return self.count(RULE_APPLY_ELIGIBLE)
+
+    @property
+    def protected_human(self) -> int:
+        return self.count(RULE_APPLY_HUMAN_SAME_WHO) + self.count(RULE_APPLY_HUMAN_CONFLICT)
+
+    @property
+    def unchanged(self) -> int:
+        return self.matching - self.applied
+
+
+def retroactive_rule_refusal(rule: "m.BankRecognitionRule | None") -> str | None:
+    """Why this rule cannot be applied to existing transactions, or None.
+
+    Only an ACTIVE rule on the DESCRIPTION that names a Who and no purpose:
+    a rule the engine would not use on import (NEEDS_REVIEW, INACTIVE) must
+    not be used here either, and a MEMO purpose rule is about the Why,
+    which this operation never decides."""
+    if rule is None:
+        return "This recognition rule does not exist."
+    if rule.status != "ACTIVE":
+        return f"Rule #{rule.id} is {rule.status}: only an ACTIVE rule is applied."
+    if rule.match_field != DESCRIPTION or rule.determines_purpose:
+        return f"Rule #{rule.id} is a purpose rule on the memo, not a WHO rule."
+    return None
+
+
+def transactions_matching_rule(
+    session: Session, rule: "m.BankRecognitionRule",
+) -> list["m.FinancialTransaction"]:
+    """Every FinancialTransaction in the Bank database this rule matches —
+    no month, period or control boundary — by `rule_applies`, the same
+    compatibility test import uses. Ordered by posting date, then id."""
+    transactions = session.scalars(
+        select(m.FinancialTransaction)
+        .order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
+    ).all()
+    return [
+        txn for txn in transactions
+        if rule_applies(
+            rule,
+            normalized_description=normalize_description_for_recognition(txn.description_original),
+            payment_instrument_id=txn.payment_instrument_id,
+            direction=direction_for_amount(txn.amount_minor),
+            normalized_memo=normalize_memo_for_recognition(txn.source_memo),
+        )
+    ]
+
+
+def preview_rule_application(session: Session, rule_id: int) -> RuleApplicationReport:
+    """What applying this rule to the existing transactions would do. Writes
+    nothing.
+
+    For each matching transaction, read its CURRENT decision:
+
+    * a HUMAN decision is never touched — the same Who is reported as such,
+      a different Who as a conflict;
+    * a decision that already names this rule's Who is left as it is;
+    * otherwise the engine is asked, exactly as on import, which Who the
+      active rules name now. Only when that is this rule's Who is the
+      transaction eligible; when rules disagree, the Who stays with a
+      human, as it would on import."""
+    rule = session.get(m.BankRecognitionRule, rule_id)
+    refusal = retroactive_rule_refusal(rule)
+    if refusal is not None:
+        raise ValueError(refusal)
+
+    matching = transactions_matching_rule(session, rule)
+    explanation_ids = {t.explanation_id for t in matching if t.explanation_id is not None}
+    current_by_id = {
+        e.id: e for e in session.scalars(
+            select(m.BankTransactionExplanation)
+            .where(m.BankTransactionExplanation.id.in_(explanation_ids))
+        ).all()
+    } if explanation_ids else {}
+
+    items = []
+    for txn in matching:
+        current = current_by_id.get(txn.explanation_id)
+        if current is not None and current.decision_source == "HUMAN":
+            outcome = (RULE_APPLY_HUMAN_SAME_WHO if current.occurrence_id == rule.occurrence_id
+                       else RULE_APPLY_HUMAN_CONFLICT)
+            items.append(RuleApplicationItem(txn, outcome, current))
+            continue
+        if current is not None and current.occurrence_id == rule.occurrence_id:
+            outcome = (RULE_APPLY_ALREADY_THIS_RULE if current.recognition_rule_id == rule.id
+                       else RULE_APPLY_ALREADY_SAME_WHO)
+            items.append(RuleApplicationItem(txn, outcome, current))
+            continue
+        occurrence_id, engine_rule_id, _note = recognize_who(session, txn)
+        outcome = (RULE_APPLY_ELIGIBLE if occurrence_id == rule.occurrence_id
+                   else RULE_APPLY_RULES_DISAGREE)
+        items.append(RuleApplicationItem(txn, outcome, current, engine_rule_id))
+    return RuleApplicationReport(rule=rule, items=items)
+
+
+def apply_rule_to_existing_transactions(
+    session: Session, rule_id: int, *, applied_by_account_id: int | None,
+) -> RuleApplicationReport:
+    """Give every eligible existing transaction the Who this rule names.
+
+    One new RULE decision per eligible transaction, through
+    `_create_decision_row` like every other decision: the Who and the rule
+    that named it, and — copied unchanged from the current decision — the
+    Why, the What, the status, the confidence and their snapshots. A
+    transaction whose Why was open stays NEEDS_HUMAN_REVIEW.
+
+    Flushes but never commits: the caller commits once, or rolls the whole
+    application back. Re-running it applies nothing new, because every
+    transaction it changed now names this rule's Who."""
+    report = preview_rule_application(session, rule_id)
+    rule = report.rule
+    who = session.get(m.BankOccurrence, rule.occurrence_id)
+    who_name = who.canonical_name if who is not None else rule.occurrence_id
+    for item in report.items:
+        if item.outcome != RULE_APPLY_ELIGIBLE:
+            continue
+        current = item.current
+        note = (
+            f"Retroactive application of learned WHO rule #{rule.id} ({rule.match_type}, "
+            f"pattern={rule.normalized_pattern!r}) by account {applied_by_account_id}: "
+            f"Who {who_name!r}"
+            + (f", named by rule #{item.engine_rule_id}" if item.engine_rule_id != rule.id else "")
+            + ". WHO only: "
+            + (f"Why, What and status carried over unchanged from decision #{current.id}."
+               if current is not None else "no previous decision; the Why stays for a human.")
+        )
+        row = _create_decision_row(
+            session, item.transaction, occurrence_id=rule.occurrence_id,
+            transaction_reason_id=current.transaction_reason_id if current is not None else None,
+            recognition_rule_id=item.engine_rule_id, decision_source="RULE",
+            decision_status=current.decision_status if current is not None else "NEEDS_HUMAN_REVIEW",
+            confidence=current.confidence if current is not None else None,
+            explanation_notes=note,
+        )
+        # The purpose is the current decision's, verbatim — never re-derived
+        # from today's Why -> What chain; with no current decision there is
+        # no purpose to carry.
+        for field_name in _PURPOSE_SNAPSHOT_FIELDS:
+            setattr(row, field_name, getattr(current, field_name) if current is not None else None)
+        session.flush()
+        report.applied += 1
+    return report

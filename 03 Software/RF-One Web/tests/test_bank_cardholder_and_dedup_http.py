@@ -123,7 +123,7 @@ def main() -> int:
         # -----------------------------------------------------------------
         # Payment Instruments list.
         # -----------------------------------------------------------------
-        listing = operator_client.get("/bank").data
+        listing = operator_client.get("/bank/instruments").data
         check(
             "the Payment Instruments list shows the required columns",
             all(
@@ -238,7 +238,7 @@ def main() -> int:
             FULL_ACCOUNT_NUMBER.encode() not in history_page,
         )
 
-        listing = operator_client.get("/bank").data
+        listing = operator_client.get("/bank/instruments").data
         check(
             "the instruments list now shows the current cardholder and settlement account",
             # RF-One UI Rules §2: the list shows the holder as "Surname I."
@@ -279,7 +279,7 @@ def main() -> int:
         resp = operator_client.post(
             "/bank/accounting-dedup/recompute", data={"csrf_token": extract_csrf(page)},
         )
-        check("the recompute action redirects back to Import & Instruments",
+        check("the recompute action redirects back to Bank",
               resp.status_code in (302, 303))
 
         with SessionFactory() as s:
@@ -297,8 +297,8 @@ def main() -> int:
             raw_count_after = s.query(m.RawBankTransaction).count()
             transaction_count_after = len(rows)
 
-        summary_page = operator_client.get("/bank").data
-        check("the Import & Instruments page reports the deduplication summary",
+        summary_page = operator_client.get("/bank/instruments").data
+        check("the Instruments page reports the deduplication summary",
               b"Accounting deduplication" in summary_page
               and b"Canonical transactions" in summary_page
               and b"Duplicate groups" in summary_page

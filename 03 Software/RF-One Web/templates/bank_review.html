@@ -167,7 +167,7 @@
                   <span class="cell-note">
                     This transaction has no accounting identity and was not deduplicated.
                     Configure the card's settlement account in
-                    <a href="{{ url_for('bank_home') }}">Import &amp; Instruments</a>.
+                    <a href="{{ url_for('bank_instruments') }}">Instruments</a>.
                   </span>
                 {% endif %}
                 {% if resolved %}
@@ -377,7 +377,7 @@
 
       {% if who_options %}
       <label class="who-picker-learn">
-        <input type="checkbox" name="learn_description" checked>
+        <input type="checkbox" name="learn_description" id="who-picker-learn" checked>
         Learn this description &mdash; next time this exact description appears, recognize the same Who
         automatically. The Who &rarr; Why &rarr; What associations themselves are always kept, with or
         without this.
@@ -386,7 +386,14 @@
 
       <div class="who-picker-actions">
         {% if who_options %}
-          <button type="submit" id="who-picker-confirm" disabled>Confirm</button>
+          {#- BANK_GLOBAL_WHO_RULE_APPLICATION_001 — the learned WHO rule is
+              knowledge about every month. "Save & Apply" saves the same
+              decision and rule, then opens the preview of the rule on the
+              transactions already in the database; nothing is applied
+              until the operator confirms there. #}
+          <button type="submit" id="who-picker-confirm" disabled>Save Rule</button>
+          <button type="submit" id="who-picker-apply" name="apply_existing" value="1" disabled
+                  title="Save, then preview this learned WHO rule on the transactions already imported, in every month.">Save &amp; Apply to Existing Transactions</button>
         {% endif %}
         <button type="button" id="who-picker-cancel" data-modal-close>Cancel</button>
       </div>
@@ -406,6 +413,8 @@
   var subject = document.getElementById('who-picker-subject');
   var hidden = document.getElementById('who-picker-occurrence-id');
   var confirm = document.getElementById('who-picker-confirm');
+  var applyExisting = document.getElementById('who-picker-apply');
+  var learnBox = document.getElementById('who-picker-learn');
   var options = Array.prototype.slice.call(list.querySelectorAll('.who-option'));
   var pendingTrigger = null;
 
@@ -483,7 +492,15 @@
     // Both are required. A Who on its own is never enough: the operator
     // still has to say what this transaction was FOR.
     if (confirm) { confirm.disabled = !(hidden.value && reasonHidden && reasonHidden.value); }
+    // Save & Apply needs the same Who and Why, plus a rule to apply — and a
+    // rule is learned only with "Learn this description" ticked.
+    if (applyExisting) {
+      applyExisting.disabled = !(hidden.value && reasonHidden && reasonHidden.value
+                                 && learnBox && learnBox.checked);
+    }
   }
+
+  if (learnBox) { learnBox.addEventListener('change', function () { syncConfirm(); }); }
 
   function clearWhy() {
     if (reasonHidden) { reasonHidden.value = ''; }

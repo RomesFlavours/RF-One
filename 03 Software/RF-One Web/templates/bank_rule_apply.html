@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% import "_bank_macros.html" as bank %}
+{% block page_title %}Bank Reconciliation · Apply learned WHO rule · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+{{ bank.module_nav('review', 'Apply learned WHO rule #' ~ rule.id) }}
+{#- BANK_GLOBAL_WHO_RULE_APPLICATION_001 — one learned WHO rule on the
+    transactions already in the database, in every month. `mode` is
+    "preview" (nothing written) or "result" (after the confirmed
+    application). WHO only: no Why and no What is shown or changed here. -#}
+
+<div class="card">
+  <h2>Learned WHO rule #{{ rule.id }}</h2>
+  <p>
+    WHO <strong>{{ who_name }}</strong> when the normalized bank description
+    {% if rule.match_type == 'EXACT_NORMALIZED_DESCRIPTION' %}is exactly
+    {% elif rule.match_type == 'PREFIX' %}starts with
+    {% else %}contains{% endif %}
+    <code>{{ rule.normalized_pattern }}</code>
+    {%- if rule_instrument %}, on {{ bank.instrument_identity(rule_instrument) }} only{% endif %}
+    {%- if rule.direction %}, {{ rule.direction|lower }}s only{% endif %}.
+  </p>
+  <p class="cell-note">
+    The rule applies to every month. It is also used by every future import.
+  </p>
+</div>
+
+<div class="card" id="rule-impact">
+  {% if mode == 'preview' %}
+    <p class="bank-rule-summary">
+      This rule matches <strong data-count="matching">{{ matching }}</strong> existing transaction(s).
+      <strong data-count="eligible">{{ eligible }}</strong> can be updated automatically.
+    </p>
+  {% else %}
+    {% if errors %}
+      <p class="modal-empty-state">
+        <strong>Nothing was applied.</strong> An unexpected error stopped the application and every
+        change was rolled back.
+      </p>
+    {% endif %}
+    <p class="bank-rule-summary">
+      Rule #{{ rule.id }} saved &middot;
+      <strong data-count="matching">{{ matching }}</strong> matching &middot;
+      <strong data-count="applied">{{ applied }}</strong> updated &middot;
+      <strong data-count="unchanged">{{ unchanged }}</strong> unchanged &middot;
+      <strong data-count="protected">{{ human_same + human_conflicts }}</strong> protected human decision(s) &middot;
+      <strong data-count="conflicts">{{ human_conflicts }}</strong> conflict(s) &middot;
+      <strong data-count="errors">{{ errors }}</strong> error(s)
+    </p>
+  {% endif %}
+
+  <div class="table-scroll">
+    <table class="table-compact">
+      <tbody>
+        <tr><th scope="row">Matching existing transactions</th><td data-count="matching-row">{{ matching }}</td></tr>
+        <tr><th scope="row">Already have this WHO</th><td data-count="already-same">{{ already_same }}</td></tr>
+        <tr><th scope="row">&hellip; of which from this rule</th><td data-count="already-this-rule">{{ already_this_rule }}</td></tr>
+        <tr><th scope="row">Protected human decisions, same WHO</th><td data-count="human-same">{{ human_same }}</td></tr>
+        <tr><th scope="row">Protected human decisions, different WHO (conflict)</th><td data-count="human-conflicts">{{ human_conflicts }}</td></tr>
+        <tr><th scope="row">Other learned rules disagree &mdash; left to a person</th><td data-count="rules-disagree">{{ rules_disagree }}</td></tr>
+        <tr><th scope="row">{{ 'Eligible for automatic application' if mode == 'preview' else 'Updated now' }}</th>
+            <td data-count="{{ 'eligible-row' if mode == 'preview' else 'applied-row' }}">{{ eligible if mode == 'preview' else applied }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if months %}
+    <p class="cell-note">
+      Months:
+      {% for month_key, count in months %}{{ month_key }} ({{ count }}){{ '' if loop.last else ' · ' }}{% endfor %}
+    </p>
+  {% endif %}
+
+  {% if mode == 'preview' %}
+    <form method="post" action="{{ url_for('bank_rule_apply_confirm', rule_id=rule.id) }}" class="compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" {{ 'disabled' if not eligible else '' }}>Apply to {{ eligible }} existing transaction(s)</button>
+    </form>
+  {% endif %}
+  <p>
+    <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_review') }}">Back to Review</a>
+    <a class="btn btn-secondary btn-inline" href="{{ url_for('bank_home') }}">Import and Review</a>
+  </p>
+</div>
+
+{% if conflicts %}
+<div class="card" id="rule-conflicts">
+  <h3>Human decisions with a different WHO &mdash; not changed</h3>
+  <div class="table-scroll">
+    <table class="table-compact table-stack">
+      <thead><tr><th>Date</th><th>Description</th><th>WHO decided by a person</th></tr></thead>
+      <tbody>
+        {% for item in conflicts %}
+          <tr>
+            <td data-label="Date" class="col-date">{{ item.transaction.posting_date or '—' }}</td>
+            <td data-label="Description" class="col-description">{{ item.transaction.description_original }}</td>
+            <td data-label="WHO decided by a person">{{ conflict_names.get(item.current.occurrence_id, item.current.occurrence_id) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

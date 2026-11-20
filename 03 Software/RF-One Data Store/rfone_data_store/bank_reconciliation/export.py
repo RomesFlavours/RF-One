@@ -63,7 +63,7 @@ def month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
-def _in_scope_transactions(session: Session, year: int, month: int) -> list["m.FinancialTransaction"]:
+def in_scope_transactions(session: Session, year: int, month: int) -> list["m.FinancialTransaction"]:
     """The transactions this month's export is about.
 
     BANK_CARDHOLDER_AND_ACCOUNTING_DEDUPLICATION_001: a row SUPPRESSED as
@@ -91,6 +91,7 @@ def _in_scope_transactions(session: Session, year: int, month: int) -> list["m.F
             accounting_dedup.not_suppressed_filter(),
         ).order_by(m.FinancialTransaction.posting_date, m.FinancialTransaction.id)
     ).all())
+
 
 
 def _unresolved_settlement_transactions(
@@ -220,6 +221,65 @@ def _classification_blockers(
     return blockers
 
 
+def _resolution_facts(
+    session: Session, transactions: list["m.FinancialTransaction"],
+) -> tuple[set[int], set[int]]:
+    """The ids of the current decisions among `transactions` that are
+    sufficiently resolved, and the ids of the transactions that are a
+    confirmed internal transfer.
+
+    Canonical Financial Model Convergence — Phase 4B (Decision 13): a
+    transaction is unresolved unless it has a sufficiently resolved
+    canonical reconciliation decision — no pointer at all (Recognition
+    never ran, e.g. pre-Phase-4B data awaiting migration), or a pointer
+    to a decision still awaiting HUMAN review, count equally.
+
+    Phase 6B (Product Owner Decision B): a CONFIRMED internal transfer is
+    sufficient economic classification on its own (Decision A) — Kermali is
+    an output consumer, never the source of RF-One's own reconciliation
+    semantics, so it must not force a fake Occurrence/Reason/Explanation
+    onto a transaction that already has a genuine, confirmed
+    FinancialTransactionMatch. The exemption requires BOTH conditions
+    together (`_confirmed_internal_transfer_ids`)."""
+    explanation_ids = {t.explanation_id for t in transactions if t.explanation_id is not None}
+    resolved_explanation_ids: set[int] = set()
+    if explanation_ids:
+        resolved_explanation_ids = set(session.scalars(
+            select(m.BankTransactionExplanation.id).where(
+                m.BankTransactionExplanation.id.in_(explanation_ids),
+                m.BankTransactionExplanation.decision_status.in_(recognition.RESOLVED_DECISION_STATUSES),
+            )
+        ).all())
+    return resolved_explanation_ids, _confirmed_internal_transfer_ids(session, transactions)
+
+
+def unresolved_transactions(
+    session: Session, *, year: int, month: int,
+) -> list["m.FinancialTransaction"]:
+    """The month's transactions that still need a human decision — the ONE
+    read-only definition shared by this export's "Missing Who" blocker and
+    the Bank Import and Review page.
+
+    In scope as `in_scope_transactions`; unresolved when the current
+    decision is missing or not in `RESOLVED_DECISION_STATUSES`, unless the
+    transaction is a confirmed internal transfer. Ordered by posting date,
+    then id."""
+    transactions = in_scope_transactions(session, year, month)
+    resolved_explanation_ids, transfer_ids = _resolution_facts(session, transactions)
+    return _unresolved_among(transactions, resolved_explanation_ids, transfer_ids)
+
+
+def _unresolved_among(
+    transactions: list["m.FinancialTransaction"], resolved_explanation_ids: set[int],
+    transfer_ids: set[int],
+) -> list["m.FinancialTransaction"]:
+    return [
+        t for t in transactions
+        if (t.explanation_id is None or t.explanation_id not in resolved_explanation_ids)
+        and t.id not in transfer_ids
+    ]
+
+
 def compute_export_blockers(session: Session, *, year: int, month: int) -> list[ExportBlocker]:
     """Every reason this export cannot run, precisely stated (spec: "Mostra
     sempre il motivo preciso del blocco"). An empty list means the export
@@ -254,7 +314,7 @@ def compute_export_blockers(session: Session, *, year: int, month: int) -> list[
                 f"Parsing errors in batch {batch.original_file_name!r} (id={batch.id}): {batch.error_summary}"
             ))
 
-    transactions = _in_scope_transactions(session, year, month)
+    transactions = in_scope_transactions(session, year, month)
 
     undecided_duplicates = [t for t in transactions if t.duplicate_status == "CANDIDATE_DUPLICATE"]
     for txn in undecided_duplicates:
@@ -264,39 +324,14 @@ def compute_export_blockers(session: Session, *, year: int, month: int) -> list[
             f"{txn.amount_minor / 100:.2f}) requires a human duplicate decision."
         ))
 
-    # Canonical Financial Model Convergence — Phase 4B (Decision 13): a
-    # transaction blocks export unless it has a sufficiently resolved
-    # canonical reconciliation decision — no pointer at all (Recognition
-    # never ran, e.g. pre-Phase-4B data awaiting migration), or a pointer
-    # to a decision still awaiting HUMAN review, both block equally. A
+    # A transaction blocks export unless it has a sufficiently resolved
+    # canonical decision or is a confirmed internal transfer — the one
+    # definition `unresolved_transactions` also gives the Bank page. A
     # legacy catalog row no longer existing is not a distinct blocker —
     # that mechanism has been retired (Decision 1/10).
-    explanation_ids_needing_check = {t.explanation_id for t in transactions if t.explanation_id is not None}
-    resolved_explanation_ids: set[int] = set()
-    if explanation_ids_needing_check:
-        resolved_explanation_ids = set(session.scalars(
-            select(m.BankTransactionExplanation.id).where(
-                m.BankTransactionExplanation.id.in_(explanation_ids_needing_check),
-                m.BankTransactionExplanation.decision_status.in_(recognition.RESOLVED_DECISION_STATUSES),
-            )
-        ).all())
+    resolved_explanation_ids, transfer_ids = _resolution_facts(session, transactions)
 
-    # Canonical Financial Model Convergence — Phase 6B (Product Owner
-    # Decision B): a CONFIRMED internal transfer is sufficient economic
-    # classification on its own (Decision A) — Kermali is an output
-    # consumer, never the source of RF-One's own reconciliation semantics,
-    # so it must not force a fake Occurrence/Reason/Explanation onto a
-    # transaction that already has a genuine, confirmed
-    # FinancialTransactionMatch. The exemption requires BOTH conditions
-    # together (`_confirmed_internal_transfer_ids`) — classification alone
-    # is never sufficient.
-    transfer_ids = _confirmed_internal_transfer_ids(session, transactions)
-
-    unresolved = [
-        t for t in transactions
-        if (t.explanation_id is None or t.explanation_id not in resolved_explanation_ids)
-        and t.id not in transfer_ids
-    ]
+    unresolved = _unresolved_among(transactions, resolved_explanation_ids, transfer_ids)
     for txn in unresolved:
         blockers.append(ExportBlocker(
             f"Missing Who: transaction id={txn.id} "
@@ -370,7 +405,7 @@ def build_kermali_workbook(session: Session, *, year: int, month: int) -> bytes:
     first and refuse to call this while any blocker exists — this function
     itself does not re-check (single responsibility: building, not
     gating)."""
-    transactions = _in_scope_transactions(session, year, month)
+    transactions = in_scope_transactions(session, year, month)
 
     instrument_ids = {t.payment_instrument_id for t in transactions}
     instruments = {

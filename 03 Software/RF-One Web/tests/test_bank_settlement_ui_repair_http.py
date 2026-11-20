@@ -359,7 +359,7 @@ def main() -> int:
         )
         check(
             "G3. the edit page carries the Bank module navigation",
-            b"Import &amp; Instruments" in page and b"Classification" in page,
+            b"Import and Review" in page and b">Instruments<" in page and b"Classification" in page,
         )
 
         ungated = web_app.app.test_client()
