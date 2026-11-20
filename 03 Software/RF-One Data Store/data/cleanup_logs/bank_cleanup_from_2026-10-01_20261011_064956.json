@@ -1,0 +1,984 @@
+{
+  "performed_at": "2026-10-11T06:49:56.733907",
+  "database": "C:/Users/servi/OneDrive/AI-RF-ONE/rf-one-bank-simple-who-rules/03 Software/RF-One Data Store/data/rfone.db",
+  "backup": "C:/Users/servi/OneDrive/AI-RF-ONE/rf-one-bank-simple-who-rules/03 Software/RF-One Data Store/data/rfone_backup_before_oct2026_cleanup_20261011_064956.db",
+  "cutoff": "2026-10-01",
+  "who_rules": [
+    {
+      "rule_id": 1,
+      "original_created_from_transaction_id": 2825,
+      "origin": {
+        "transaction_id": 2825,
+        "posting_date": "2026-10-06",
+        "description": "AMAZON MKTPL*598ZE3KN1",
+        "amount_minor": -1601,
+        "currency": null,
+        "source": "Ink RFMD ··8076",
+        "payment_instrument_id": 10
+      }
+    },
+    {
+      "rule_id": 2,
+      "original_created_from_transaction_id": 867,
+      "origin": {
+        "transaction_id": 867,
+        "posting_date": "2026-10-04",
+        "description": "ABC FINE WINE 71",
+        "amount_minor": -2554,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "rule_id": 3,
+      "original_created_from_transaction_id": 866,
+      "origin": {
+        "transaction_id": 866,
+        "posting_date": "2026-10-04",
+        "description": "SAMUELS AND SON SEAFOOD -",
+        "amount_minor": -45481,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "rule_id": 4,
+      "original_created_from_transaction_id": 866,
+      "origin": {
+        "transaction_id": 866,
+        "posting_date": "2026-10-04",
+        "description": "SAMUELS AND SON SEAFOOD -",
+        "amount_minor": -45481,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "rule_id": 5,
+      "original_created_from_transaction_id": 429,
+      "origin": {
+        "transaction_id": 429,
+        "posting_date": "2026-10-02",
+        "description": "FROG INTERNET",
+        "amount_minor": -7500,
+        "currency": null,
+        "source": "Freedom··2915",
+        "payment_instrument_id": 8
+      }
+    },
+    {
+      "rule_id": 6,
+      "original_created_from_transaction_id": 201,
+      "origin": {
+        "transaction_id": 201,
+        "posting_date": "2026-10-01",
+        "description": "BONNE VIE SALON",
+        "amount_minor": -14729,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "rule_id": 7,
+      "original_created_from_transaction_id": 200,
+      "origin": {
+        "transaction_id": 200,
+        "posting_date": "2026-10-01",
+        "description": "SEASONS 52 0074503",
+        "amount_minor": -10276,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "rule_id": 10,
+      "original_created_from_transaction_id": 869,
+      "origin": {
+        "transaction_id": 869,
+        "posting_date": "2026-10-02",
+        "description": "SAMS CLUB.COM",
+        "amount_minor": -41006,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "rule_id": 13,
+      "original_created_from_transaction_id": 83,
+      "origin": {
+        "transaction_id": 83,
+        "posting_date": "2026-10-04",
+        "description": "CRICKET WIRELESS",
+        "amount_minor": -4300,
+        "currency": null,
+        "source": "Ink RFWP",
+        "payment_instrument_id": 3
+      }
+    },
+    {
+      "rule_id": 14,
+      "original_created_from_transaction_id": 428,
+      "origin": {
+        "transaction_id": 428,
+        "posting_date": "2026-10-02",
+        "description": "PY *MYPLACE SELF STORAGE",
+        "amount_minor": -31799,
+        "currency": null,
+        "source": "Freedom··2915",
+        "payment_instrument_id": 8
+      }
+    },
+    {
+      "rule_id": 15,
+      "original_created_from_transaction_id": 197,
+      "origin": {
+        "transaction_id": 197,
+        "posting_date": "2026-10-04",
+        "description": "EXTRA SPACE 5180",
+        "amount_minor": -18226,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "rule_id": 19,
+      "original_created_from_transaction_id": 811,
+      "origin": {
+        "transaction_id": 811,
+        "posting_date": "2026-10-06",
+        "description": "AUTOMATIC PAYMENT - THANK",
+        "amount_minor": 233417,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "rule_id": 20,
+      "original_created_from_transaction_id": 865,
+      "origin": {
+        "transaction_id": 865,
+        "posting_date": "2026-10-06",
+        "description": "EXXON 7-ELEVEN 34778",
+        "amount_minor": -5438,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "rule_id": 21,
+      "original_created_from_transaction_id": 194,
+      "origin": {
+        "transaction_id": 194,
+        "posting_date": "2026-10-05",
+        "description": "TST*AGAVE AZUL WINTER PA",
+        "amount_minor": -12798,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "rule_id": 25,
+      "original_created_from_transaction_id": 2826,
+      "origin": {
+        "transaction_id": 2826,
+        "posting_date": "2026-10-04",
+        "description": "THE WEBSTAURANT STORE INC",
+        "amount_minor": -197843,
+        "currency": null,
+        "source": "Ink RFMD ··8076",
+        "payment_instrument_id": 10
+      }
+    },
+    {
+      "rule_id": 26,
+      "original_created_from_transaction_id": 195,
+      "origin": {
+        "transaction_id": 195,
+        "posting_date": "2026-10-04",
+        "description": "PUBLIX #1488",
+        "amount_minor": -10909,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "rule_id": 27,
+      "original_created_from_transaction_id": 195,
+      "origin": {
+        "transaction_id": 195,
+        "posting_date": "2026-10-04",
+        "description": "PUBLIX #1488",
+        "amount_minor": -10909,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    }
+  ],
+  "reconciliation_standards": [
+    {
+      "standard_id": 1,
+      "original_created_from_transaction_id": 2829,
+      "origin": {
+        "transaction_id": 2829,
+        "posting_date": "2026-10-04",
+        "description": "AMAZON MKTPL*510SX4AZ2",
+        "amount_minor": -38306,
+        "currency": null,
+        "source": "Ink RFMD ··8076",
+        "payment_instrument_id": 10
+      }
+    },
+    {
+      "standard_id": 2,
+      "original_created_from_transaction_id": 2826,
+      "origin": {
+        "transaction_id": 2826,
+        "posting_date": "2026-10-04",
+        "description": "THE WEBSTAURANT STORE INC",
+        "amount_minor": -197843,
+        "currency": null,
+        "source": "Ink RFMD ··8076",
+        "payment_instrument_id": 10
+      }
+    },
+    {
+      "standard_id": 3,
+      "original_created_from_transaction_id": 867,
+      "origin": {
+        "transaction_id": 867,
+        "posting_date": "2026-10-04",
+        "description": "ABC FINE WINE 71",
+        "amount_minor": -2554,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "standard_id": 4,
+      "original_created_from_transaction_id": 866,
+      "origin": {
+        "transaction_id": 866,
+        "posting_date": "2026-10-04",
+        "description": "SAMUELS AND SON SEAFOOD -",
+        "amount_minor": -45481,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "standard_id": 5,
+      "original_created_from_transaction_id": 427,
+      "origin": {
+        "transaction_id": 427,
+        "posting_date": "2026-10-04",
+        "description": "PAYPAL *TRUTHFINDER",
+        "amount_minor": -499,
+        "currency": null,
+        "source": "Freedom··2915",
+        "payment_instrument_id": 8
+      }
+    },
+    {
+      "standard_id": 6,
+      "original_created_from_transaction_id": 197,
+      "origin": {
+        "transaction_id": 197,
+        "posting_date": "2026-10-04",
+        "description": "EXTRA SPACE 5180",
+        "amount_minor": -18226,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "standard_id": 7,
+      "original_created_from_transaction_id": 196,
+      "origin": {
+        "transaction_id": 196,
+        "posting_date": "2026-10-04",
+        "description": "SEASONS 52 0074503",
+        "amount_minor": -8955,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "standard_id": 8,
+      "original_created_from_transaction_id": 83,
+      "origin": {
+        "transaction_id": 83,
+        "posting_date": "2026-10-04",
+        "description": "CRICKET WIRELESS",
+        "amount_minor": -4300,
+        "currency": null,
+        "source": "Ink RFWP",
+        "payment_instrument_id": 3
+      }
+    },
+    {
+      "standard_id": 9,
+      "original_created_from_transaction_id": 869,
+      "origin": {
+        "transaction_id": 869,
+        "posting_date": "2026-10-02",
+        "description": "SAMS CLUB.COM",
+        "amount_minor": -41006,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "standard_id": 10,
+      "original_created_from_transaction_id": 868,
+      "origin": {
+        "transaction_id": 868,
+        "posting_date": "2026-10-02",
+        "description": "AMAZON PRIME*MT2J49TZ3",
+        "amount_minor": -1516,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    },
+    {
+      "standard_id": 11,
+      "original_created_from_transaction_id": 429,
+      "origin": {
+        "transaction_id": 429,
+        "posting_date": "2026-10-02",
+        "description": "FROG INTERNET",
+        "amount_minor": -7500,
+        "currency": null,
+        "source": "Freedom··2915",
+        "payment_instrument_id": 8
+      }
+    },
+    {
+      "standard_id": 12,
+      "original_created_from_transaction_id": 428,
+      "origin": {
+        "transaction_id": 428,
+        "posting_date": "2026-10-02",
+        "description": "PY *MYPLACE SELF STORAGE",
+        "amount_minor": -31799,
+        "currency": null,
+        "source": "Freedom··2915",
+        "payment_instrument_id": 8
+      }
+    },
+    {
+      "standard_id": 13,
+      "original_created_from_transaction_id": 199,
+      "origin": {
+        "transaction_id": 199,
+        "posting_date": "2026-10-02",
+        "description": "ORLANDO UROLOGY ASSOCIATE",
+        "amount_minor": -7500,
+        "currency": null,
+        "source": "Saffire-Pino··1562",
+        "payment_instrument_id": 4
+      }
+    },
+    {
+      "standard_id": 14,
+      "original_created_from_transaction_id": 872,
+      "origin": {
+        "transaction_id": 872,
+        "posting_date": "2026-10-01",
+        "description": "IC* COSTCO BY INSTACAR",
+        "amount_minor": -11231,
+        "currency": null,
+        "source": "Ink RFCO ··3144",
+        "payment_instrument_id": 9
+      }
+    }
+  ],
+  "deleted_transactions": [
+    {
+      "transaction_id": 1,
+      "posting_date": "2026-10-05",
+      "description": "INTEREST PAYMENT",
+      "amount_minor": 28,
+      "currency": null,
+      "source": "Ceo Checking",
+      "payment_instrument_id": 1
+    },
+    {
+      "transaction_id": 2,
+      "posting_date": "2026-10-01",
+      "description": "Zelle payment to Shelbi Fox Personal JPM99cyc6j0c",
+      "amount_minor": -300000,
+      "currency": null,
+      "source": "Ceo Checking",
+      "payment_instrument_id": 1
+    },
+    {
+      "transaction_id": 83,
+      "posting_date": "2026-10-04",
+      "description": "CRICKET WIRELESS",
+      "amount_minor": -4300,
+      "currency": null,
+      "source": "Ink RFWP",
+      "payment_instrument_id": 3
+    },
+    {
+      "transaction_id": 193,
+      "posting_date": "2026-10-06",
+      "description": "REST CAMBALACHE CANCUN",
+      "amount_minor": -13396,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 194,
+      "posting_date": "2026-10-05",
+      "description": "TST*AGAVE AZUL WINTER PA",
+      "amount_minor": -12798,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 195,
+      "posting_date": "2026-10-04",
+      "description": "PUBLIX #1488",
+      "amount_minor": -10909,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 196,
+      "posting_date": "2026-10-04",
+      "description": "SEASONS 52 0074503",
+      "amount_minor": -8955,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 197,
+      "posting_date": "2026-10-04",
+      "description": "EXTRA SPACE 5180",
+      "amount_minor": -18226,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 198,
+      "posting_date": "2026-10-04",
+      "description": "ROSS STORES #1933",
+      "amount_minor": -11712,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 199,
+      "posting_date": "2026-10-02",
+      "description": "ORLANDO UROLOGY ASSOCIATE",
+      "amount_minor": -7500,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 200,
+      "posting_date": "2026-10-01",
+      "description": "SEASONS 52 0074503",
+      "amount_minor": -10276,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 201,
+      "posting_date": "2026-10-01",
+      "description": "BONNE VIE SALON",
+      "amount_minor": -14729,
+      "currency": null,
+      "source": "Saffire-Pino··1562",
+      "payment_instrument_id": 4
+    },
+    {
+      "transaction_id": 425,
+      "posting_date": "2026-10-06",
+      "description": "DENTAL CLINIC",
+      "amount_minor": -300000,
+      "currency": null,
+      "source": "Freedom··2915",
+      "payment_instrument_id": 8
+    },
+    {
+      "transaction_id": 426,
+      "posting_date": "2026-10-04",
+      "description": "PAYPAL *TEMU",
+      "amount_minor": -59262,
+      "currency": null,
+      "source": "Freedom··2915",
+      "payment_instrument_id": 8
+    },
+    {
+      "transaction_id": 427,
+      "posting_date": "2026-10-04",
+      "description": "PAYPAL *TRUTHFINDER",
+      "amount_minor": -499,
+      "currency": null,
+      "source": "Freedom··2915",
+      "payment_instrument_id": 8
+    },
+    {
+      "transaction_id": 428,
+      "posting_date": "2026-10-02",
+      "description": "PY *MYPLACE SELF STORAGE",
+      "amount_minor": -31799,
+      "currency": null,
+      "source": "Freedom··2915",
+      "payment_instrument_id": 8
+    },
+    {
+      "transaction_id": 429,
+      "posting_date": "2026-10-02",
+      "description": "FROG INTERNET",
+      "amount_minor": -7500,
+      "currency": null,
+      "source": "Freedom··2915",
+      "payment_instrument_id": 8
+    },
+    {
+      "transaction_id": 811,
+      "posting_date": "2026-10-06",
+      "description": "AUTOMATIC PAYMENT - THANK",
+      "amount_minor": 233417,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 865,
+      "posting_date": "2026-10-06",
+      "description": "EXXON 7-ELEVEN 34778",
+      "amount_minor": -5438,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 866,
+      "posting_date": "2026-10-04",
+      "description": "SAMUELS AND SON SEAFOOD -",
+      "amount_minor": -45481,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 867,
+      "posting_date": "2026-10-04",
+      "description": "ABC FINE WINE 71",
+      "amount_minor": -2554,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 868,
+      "posting_date": "2026-10-02",
+      "description": "AMAZON PRIME*MT2J49TZ3",
+      "amount_minor": -1516,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 869,
+      "posting_date": "2026-10-02",
+      "description": "SAMS CLUB.COM",
+      "amount_minor": -41006,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 870,
+      "posting_date": "2026-10-01",
+      "description": "AMAZON MKTPL*5174711M0",
+      "amount_minor": -11787,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 871,
+      "posting_date": "2026-10-01",
+      "description": "IC* ABC FINE VIA INSTA",
+      "amount_minor": -13289,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 872,
+      "posting_date": "2026-10-01",
+      "description": "IC* COSTCO BY INSTACAR",
+      "amount_minor": -11231,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 873,
+      "posting_date": "2026-10-01",
+      "description": "SAMUELS AND SON SEAFOOD -",
+      "amount_minor": -36076,
+      "currency": null,
+      "source": "Ink RFCO ··3144",
+      "payment_instrument_id": 9
+    },
+    {
+      "transaction_id": 2824,
+      "posting_date": "2026-10-06",
+      "description": "AMAZON MKTPL*599YA3KR1",
+      "amount_minor": -66419,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    },
+    {
+      "transaction_id": 2825,
+      "posting_date": "2026-10-06",
+      "description": "AMAZON MKTPL*598ZE3KN1",
+      "amount_minor": -1601,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    },
+    {
+      "transaction_id": 2826,
+      "posting_date": "2026-10-04",
+      "description": "THE WEBSTAURANT STORE INC",
+      "amount_minor": -197843,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    },
+    {
+      "transaction_id": 2827,
+      "posting_date": "2026-10-04",
+      "description": "AMAZON MKTPL*517LJ72G0",
+      "amount_minor": -35064,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    },
+    {
+      "transaction_id": 2828,
+      "posting_date": "2026-10-04",
+      "description": "AMAZON MKTPL*514854E92",
+      "amount_minor": -1497,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    },
+    {
+      "transaction_id": 2829,
+      "posting_date": "2026-10-04",
+      "description": "AMAZON MKTPL*510SX4AZ2",
+      "amount_minor": -38306,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    },
+    {
+      "transaction_id": 2830,
+      "posting_date": "2026-10-02",
+      "description": "AMAZON MKTPL*519JF1MA0",
+      "amount_minor": -31835,
+      "currency": null,
+      "source": "Ink RFMD ··8076",
+      "payment_instrument_id": 10
+    }
+  ],
+  "deleted_dependency_ids": {
+    "bank_transaction_explanations": [
+      1,
+      3559,
+      8112,
+      2,
+      4676,
+      5460,
+      83,
+      3781,
+      8136,
+      8137,
+      193,
+      6362,
+      8110,
+      194,
+      6301,
+      8104,
+      8111,
+      195,
+      6385,
+      8134,
+      8135,
+      196,
+      3456,
+      8132,
+      8133,
+      197,
+      5286,
+      8130,
+      8131,
+      198,
+      6366,
+      8115,
+      199,
+      6433,
+      8148,
+      200,
+      3457,
+      201,
+      3441,
+      425,
+      6361,
+      8109,
+      426,
+      5265,
+      8113,
+      8114,
+      427,
+      5266,
+      8128,
+      8129,
+      428,
+      5260,
+      8146,
+      8147,
+      429,
+      3431,
+      8144,
+      8145,
+      811,
+      5534,
+      8108,
+      865,
+      6286,
+      8101,
+      8107,
+      866,
+      3419,
+      8126,
+      8127,
+      867,
+      3383,
+      8124,
+      8125,
+      868,
+      3278,
+      8142,
+      8143,
+      869,
+      3572,
+      8140,
+      8141,
+      870,
+      3279,
+      871,
+      3384,
+      872,
+      5201,
+      8151,
+      8152,
+      873,
+      3420,
+      8149,
+      8150,
+      2824,
+      3316,
+      8102,
+      8106,
+      2825,
+      3317,
+      8103,
+      8105,
+      2826,
+      6363,
+      8122,
+      8123,
+      2827,
+      3318,
+      8120,
+      8121,
+      2828,
+      3319,
+      8118,
+      8119,
+      2829,
+      3320,
+      8116,
+      8117,
+      2830,
+      3321,
+      8138,
+      8139
+    ],
+    "bank_transaction_allocations": [
+      22,
+      37,
+      20,
+      21,
+      36,
+      35,
+      34,
+      26,
+      43,
+      19,
+      25,
+      33,
+      42,
+      41,
+      18,
+      17,
+      32,
+      31,
+      40,
+      39,
+      45,
+      44,
+      16,
+      15,
+      30,
+      29,
+      28,
+      27,
+      38
+    ],
+    "bank_who_recognitions": [
+      291,
+      557,
+      513,
+      1388,
+      1469,
+      188,
+      527,
+      2799,
+      189,
+      173,
+      524,
+      163,
+      631,
+      1373,
+      151,
+      115,
+      10,
+      304,
+      11,
+      116,
+      2714,
+      152,
+      48,
+      49,
+      1448,
+      50,
+      51,
+      52,
+      53
+    ],
+    "raw_bank_transactions": [
+      1,
+      2,
+      83,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      425,
+      426,
+      427,
+      428,
+      429,
+      811,
+      865,
+      866,
+      867,
+      868,
+      869,
+      870,
+      871,
+      872,
+      873,
+      2824,
+      2825,
+      2826,
+      2827,
+      2828,
+      2829,
+      2830
+    ]
+  },
+  "batches_row_count_before": {
+    "1": 14,
+    "3": 111,
+    "5": 233,
+    "6": 391,
+    "7": 54,
+    "8": 266,
+    "11": 40
+  },
+  "counts": {
+    "tx": 34,
+    "kept": 3234,
+    "rules": 17,
+    "standards": 14,
+    "expl": 121,
+    "alloc": 29,
+    "recog": 29,
+    "raw": 34
+  },
+  "batches_row_count_after": {
+    "1": 12,
+    "3": 110,
+    "5": 224,
+    "6": 386,
+    "7": 53,
+    "8": 257,
+    "11": 33
+  },
+  "deleted": {
+    "bank_transaction_allocations": 29,
+    "bank_who_recognitions": 29,
+    "bank_transaction_explanations": 121,
+    "raw_bank_transactions": 34,
+    "financial_transactions": 34
+  },
+  "provenance_cleared": {
+    "rules": 17,
+    "standards": 14
+  },
+  "row_count_rule": "original row_count minus the deleted October raw rows of that batch"
+}
