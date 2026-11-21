@@ -12,7 +12,7 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Reparti e ruoli', none)]) }}
 <h1>Reparti e ruoli</h1>
 <hr>
-<div style="display:flex;justify-content:flex-end">{% include '_how_works.html' %}</div>
+<div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
 <p>Tabella unica di RF-One: ogni ruolo originale (Clover o documento storico) corrisponde a un ruolo RF-One, e ogni ruolo RF-One appartiene a un reparto. Su Clover non cambia nulla.</p>
 {% if not installed %}
 <p class="error" role="alert">La tabella Ruolo/Reparto non è ancora installata in questo database.</p>
