@@ -41,6 +41,17 @@ def safe_snapshot(raw):
     return result
 
 
+def named_roles(snapshot):
+    """Ignore Clover's permission tier and require complete named-role references."""
+    snapshot = snapshot or {}
+    roles = snapshot.get("roles") or []
+    if not roles and isinstance(snapshot.get("role"), dict):
+        roles = [snapshot["role"]]
+    if not roles or any(not role.get("id") or not role.get("name") for role in roles):
+        return {}
+    return {role["id"]: role["name"] for role in roles}
+
+
 def _event(db, action, *, employee_id=None, link=None, account_id=None, details=None):
     db.add(m.EmployeeDirectoryEvent(
         employee_id=employee_id, link_id=link.id if link else None,
@@ -280,6 +291,7 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
     db.scalar(select(m.SourceSystem).where(m.SourceSystem.id == source.id).with_for_update())
     ensure_legacy_links(db)
     observed_at = observed_at or datetime.now(timezone.utc)
+    observed_at = observed_at.replace(tzinfo=observed_at.tzinfo or timezone.utc)
     resolved = {}
     pending = []
     for snapshot in snapshots:
@@ -292,9 +304,30 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
                                        external_employee_id=external_id, state="PRESENT")
             db.add(link)
             db.flush()
-        if link.snapshot != snapshot or link.state != "PRESENT":
+        previous = link.snapshot or {}
+        before, after = named_roles(previous), named_roles(snapshot)
+        last_seen = link.last_seen_at
+        if last_seen is not None and last_seen.replace(tzinfo=last_seen.tzinfo or timezone.utc) > observed_at:
+            if link.employee_id is not None:
+                resolved[external_id] = link.employee_id
+            else:
+                pending.append(link.id)
+            continue
+        role_seen = previous.get("roles_observed_at")
+        if role_seen is None and before and last_seen is not None:
+            role_seen = last_seen.replace(tzinfo=last_seen.tzinfo or timezone.utc).isoformat()
+        if after and before.keys() != after.keys():
+            _event(db, "CLOVER_ROLE_CHANGE" if before else "CLOVER_ROLE_OBSERVED",
+                   employee_id=link.employee_id, link=link,
+                   details={"before": before, "after": after, "previous_observed_at": role_seen,
+                            "observed_at": observed_at.isoformat(), "run_id": run_id})
+        if not after and before:
+            snapshot["roles"] = previous.get("roles") or [previous["role"]]
+        if {k: v for k, v in previous.items() if k != "roles_observed_at"} != snapshot or link.state != "PRESENT":
             _event(db, "IMPORT", employee_id=link.employee_id, link=link,
-                   details={"snapshot": snapshot, "previous_state": link.state})
+                   details={"snapshot": snapshot.copy(), "previous_state": link.state,
+                            "observed_at": observed_at.isoformat() if after else role_seen})
+        snapshot["roles_observed_at"] = observed_at.isoformat() if after else role_seen
         link.snapshot = snapshot
         link.last_seen_at = observed_at
         link.last_run_id = run_id
@@ -309,6 +342,11 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
                    details={"run_id": run_id})
             link.state = "MISSING_REVIEW"
     db.flush()
+    # REGISTRY_CLOVER_DEPARTMENTS_001: every import also realigns the Registry assignments of this
+    # site with the current Clover roles, in the same transaction (part of the import, not a later step).
+    from . import registry_departments
+    if registry_departments.available(db):
+        registry_departments.sync_site(db, location_id=location_id, merchant_id=merchant_id)
     # Historical work can still refer to people absent from today's roster.
     resolved.update({l.external_employee_id: l.employee_id for l in db.scalars(
         select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
