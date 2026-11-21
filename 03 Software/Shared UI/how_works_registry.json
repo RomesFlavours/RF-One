@@ -85,7 +85,9 @@
     "RF-One Web": {
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
-      "pages": {},
+      "pages": {
+        "employee_departments.html": "help/employee_departments.html#employee-departments"
+      },
       "not_operational": {
         "base.html": "layout of RF-One Web",
         "login.html": "sign-in",
@@ -222,7 +224,8 @@
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
-        "role_profiles.html": "help/registry.html#registry"
+        "role_profiles.html": "help/registry.html#registry",
+        "employee_departments.html": "help/employee_departments.html#employee-departments"
       },
       "not_operational": {},
       "help_missing": {

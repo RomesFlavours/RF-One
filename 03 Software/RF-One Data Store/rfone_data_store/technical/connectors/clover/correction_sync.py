@@ -241,6 +241,63 @@ def _refresh_employees(session, client, *, location_id, merchant_id, run_id):
         return [f"Employee synchronization failed; previous roster preserved: {_safe_error_summary(exc)}"]
 
 
+def ensure_roster_site(session, *, restaurant_id: int, merchant_id: str, client, timezone_name: str | None = None) -> int:
+    """The Location of a Restaurant's Clover site (REGISTRY_CLOVER_DEPARTMENTS_001), created only when it
+    does not exist: an existing Location with this merchant is reused, never duplicated, and a Restaurant
+    already linked to a DIFFERENT merchant is refused. Uses the existing live onboarding upsert."""
+    from .onboarding import onboard_merchant_and_location_live
+    linked = list(session.scalars(select(m.Location).join(
+        m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id).where(
+        m.RestaurantLocation.restaurant_id == restaurant_id, m.RestaurantLocation.valid_to.is_(None))))
+    for location in linked:
+        if location.source_location_id == merchant_id:
+            return location.id
+    if linked:
+        raise ValueError(f"Restaurant #{restaurant_id} is already linked to another Clover site.")
+    if session.get(m.Restaurant, restaurant_id) is None:
+        raise ValueError(f"Restaurant #{restaurant_id} does not exist.")
+    source = session.scalar(select(m.SourceSystem).where(m.SourceSystem.code == "CLOVER"))
+    location = session.scalar(select(m.Location).where(
+        m.Location.source_system_id == source.id, m.Location.source_location_id == merchant_id))
+    now = utc_now()
+    if location is None:
+        run = m.IngestionRun(source_system_id=source.id, started_at=now, finished_at=now, status="COMPLETE",
+                             notes="REGISTRY_CLOVER_DEPARTMENTS_001: Clover site onboarding (merchant only)")
+        session.add(run)
+        session.flush()
+        _merchant_id, location_id = onboard_merchant_and_location_live(session, client, source.id, run.id, now)
+        location = session.get(m.Location, location_id)
+        run.location_id = location.id
+    elif session.scalar(select(m.RestaurantLocation).where(
+            m.RestaurantLocation.location_id == location.id, m.RestaurantLocation.valid_to.is_(None))) is not None:
+        raise ValueError("This Clover site is already linked to another Restaurant.")
+    if location.timezone is None and timezone_name:
+        location.timezone = timezone_name
+    session.add(m.RestaurantLocation(restaurant_id=restaurant_id, location_id=location.id, valid_from=now,
+                                     is_primary=True))
+    session.commit()
+    return location.id
+
+
+def refresh_roster_site(session, *, restaurant_id: int, client=None) -> list[str]:
+    """Roster-only refresh of a second Clover site (Mount Dora): employees and their roles, then the
+    Registry role sync that is part of every employee import. No orders, payments, shifts or refunds are
+    acquired here, so no other Domain's data changes. Uses the site's own credentials
+    (`get_location_client`, CLOVER_MD_*), never another merchant's."""
+    import os
+    merchant_id = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
+    if not merchant_id:
+        return ["Mount Dora Clover connection is not configured; roster not refreshed."]
+    try:
+        resolved = client or get_location_client(merchant_id)
+        location_id = ensure_roster_site(session, restaurant_id=restaurant_id, merchant_id=merchant_id,
+                                         client=resolved, timezone_name=os.environ.get("CLOVER_MD_TIMEZONE") or None)
+    except Exception as exc:  # noqa: BLE001 — a second site's problem never stops the main poller
+        session.rollback()
+        return [f"Roster site for restaurant #{restaurant_id} not ready: {_safe_error_summary(exc)}"]
+    return _refresh_employees(session, resolved, location_id=location_id, merchant_id=merchant_id, run_id=None)
+
+
 @dataclass(frozen=True)
 class ReconciliationStatus:
     """Read-only status ("is this Business Date's Clover data reconciled
@@ -757,8 +814,16 @@ def run_correction_cycle(
     return summary
 
 
+def _refresh_roster_sites(session_factory, roster_restaurant_ids) -> None:
+    for restaurant_id in roster_restaurant_ids or ():
+        with session_factory() as session:
+            for line in refresh_roster_site(session, restaurant_id=restaurant_id):
+                LOG.warning("roster restaurant_id=%s: %s", restaurant_id, line)
+
+
 def _run_forever(
     session_factory: sessionmaker[Session], *, location_id: int, interval_seconds: float,
+    roster_restaurant_ids=(),
 ) -> None:  # pragma: no cover — thin process loop, exercised via run_correction_cycle directly in tests
     LOG.info("Starting Clover Correction/Reconciliation loop for location_id=%s (interval=%.0fs).", location_id, interval_seconds)
     # A stop request (ECS sends SIGTERM on a redeploy or scale-down) ends the
@@ -781,6 +846,10 @@ def _run_forever(
                         )
         except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
             LOG.exception("Unhandled error in Correction/Reconciliation cycle — will retry next interval.")
+        try:
+            _refresh_roster_sites(session_factory, roster_restaurant_ids)
+        except Exception:  # noqa: BLE001 — a second site's roster never kills the loop
+            LOG.exception("Unhandled error in a roster site refresh — will retry next interval.")
         stop.wait(interval_seconds)
     LOG.info("Stop requested — Correction/Reconciliation loop ended cleanly between cycles.")
 
@@ -801,6 +870,12 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
         help="Run a single cycle and exit, instead of looping forever — for cron/Task Scheduler-driven "
         "invocation rather than a long-running daemon.",
     )
+    parser.add_argument(
+        "--roster-restaurant-id", type=int, action="append", default=[],
+        help="Also refresh, every cycle, the Clover employee roster (and Registry roles) of this Restaurant's "
+        "second Clover site (Mount Dora, CLOVER_MD_* credentials). Roster only: no sales data "
+        "(REGISTRY_CLOVER_DEPARTMENTS_001).",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -820,9 +895,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
                         "resource=%s status=%s seen=%d touched=%d errors=%d",
                         r.resource_type, r.status, r.records_seen, r.records_touched, len(r.errors),
                     )
+        _refresh_roster_sites(session_factory, args.roster_restaurant_id)
         return 0
 
-    _run_forever(session_factory, location_id=args.location_id, interval_seconds=args.interval_seconds)
+    _run_forever(session_factory, location_id=args.location_id, interval_seconds=args.interval_seconds,
+                 roster_restaurant_ids=args.roster_restaurant_id)
     return 0  # unreachable — _run_forever loops until killed
 
 

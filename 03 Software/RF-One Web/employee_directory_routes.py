@@ -272,6 +272,64 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 flash(str(exc) if isinstance(exc, ValueError) else "The record changed concurrently. Reload and retry.", "error")
                 return redirect(url_for("employee_directory_home"))
 
+    @app.route("/administration/employees/departments", methods=["GET", "POST"])
+    @gate
+    def employee_departments():
+        """Anagrafica > Reparti e ruoli (REGISTRY_CLOVER_DEPARTMENTS_001): the central Role/Department table of
+        Registry. Clover itself is never modified."""
+        from rfone_data_store import registry_departments as departments
+        with SessionFactory() as db:
+            account = load_current_account(db)
+            can_manage = shared_session.account_is_domain_admin(db, account, "EMPLOYEES")
+            if request.method == "POST":
+                require_csrf()
+                if not can_manage:
+                    abort(403)
+                anchor = request.form.get("return_to", "")
+                number = lambda name: int(request.form[name]) if request.form.get(name, "").strip() else None
+                try:
+                    action = request.form.get("action", "")
+                    if action == "map":
+                        departments.set_role_mapping(
+                            db, restaurant_id=number("restaurant_id"), source=request.form.get("source", ""),
+                            original_key=request.form.get("original_key", ""),
+                            original_label=request.form.get("original_label"),
+                            restaurant_role_id=number("restaurant_role_id"), department_id=number("department_id"),
+                            account_id=account.id)
+                        flash("Corrispondenza salvata. Le assegnazioni della sede sono state aggiornate.", "info")
+                    elif action == "role":
+                        role = departments.save_role(db, role_id=number("role_id"), name=request.form.get("name"),
+                                                     department_id=number("department_id"), account_id=account.id)
+                        anchor = anchor or f"rf-role-{role.id}"
+                        flash("Ruolo salvato.", "info")
+                    elif action == "department":
+                        row = departments.save_department(
+                            db, department_id=number("department_id"), name=request.form.get("name"),
+                            code=request.form.get("code"), active=request.form.get("active", "1") == "1",
+                            account_id=account.id)
+                        anchor = anchor or f"department-{row.id}"
+                        flash("Reparto salvato.", "info")
+                    else:
+                        abort(400)
+                    db.commit()
+                except (ValueError, IntegrityError) as exc:
+                    db.rollback()
+                    flash(str(exc) if isinstance(exc, ValueError) else "Il dato è cambiato nel frattempo. Ricarica e riprova.", "error")
+                return redirect(url_for("employee_departments") + (f"#{anchor}" if anchor else ""))
+            data = departments.overview(db)
+            installed = departments.available(db)
+            people_by_department = {}
+            for item in departments.classification(db):
+                if item["department_code"]:
+                    people_by_department[item["department_code"]] = people_by_department.get(item["department_code"], 0) + 1
+            return render_template(
+                "employee_departments.html", data=data, installed=installed, can_manage=can_manage,
+                departments=list(db.scalars(select(m.RegistryDepartment).order_by(m.RegistryDepartment.name))) if installed else [],
+                rf_roles=[r for r in db.scalars(select(m.RestaurantRole).order_by(m.RestaurantRole.name)) if r.active is not False],
+                areas={a.id: a for a in db.scalars(select(m.OperationalArea))},
+                accounts={a.id: a.display_name for a in db.scalars(select(m.RFOneAccount))},
+                people_by_department=people_by_department)
+
     @app.route("/administration/employees/sync-now", methods=["POST"])
     @gate
     @require_domain_access("CLOVER_ACQUISITION")
