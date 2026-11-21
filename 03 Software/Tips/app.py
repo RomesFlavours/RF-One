@@ -63,6 +63,7 @@ from rfone_data_store.database import (  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import local_calendar  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
+from rfone_data_store import site_selection  # noqa: E402
 from rfone_data_store.shift_location import shift_at_locations  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
@@ -223,14 +224,84 @@ app.jinja_env.globals["rfone_web_runs_url"] = rfone_web_link.tips_runs_url
 app.jinja_env.globals["rfone_web_not_configured_message"] = rfone_web_link.NOT_CONFIGURED_MESSAGE
 
 
+SITE_SESSION_KEY = "tips_restaurant_id"
+SITE_FORM_FIELD = "site_restaurant_id"
+# CLOVER_MULTISITE_001 — operations that acquire, calculate or pay: refused for an inactive site.
+OPERATIONAL_ENDPOINTS = frozenset({
+    "calculate_tips_run", "calculate_tips_consolidate", "tips_configuration_run_calculation_now",
+    "payment_control_start_cycle", "payment_control_approve_and_pay", "payment_control_retry_instruction",
+})
+
+
+def _selected_site(session) -> "site_selection.Site | None":
+    """The restaurant site chosen with the selector (CLOVER_MULTISITE_001),
+    remembered for this browser session; without a choice, the first site
+    (lowest Restaurant id), exactly the original single-site resolution."""
+    return site_selection.resolve_site(session, flask_session.get(SITE_SESSION_KEY))
+
+
 def _default_restaurant(session) -> "m.Restaurant | None":
-    """Rome's Flavours is currently the only Restaurant RF-One tracks — this
-    picks it deterministically (lowest id) rather than offering a selector,
-    per task §11's "keep it simple" and "do not redesign the global UI".
-    Never creates one: unlike Selection's own isolated demo database, this
-    app runs against the shared operational store, where the real
-    Restaurant/Location/Clover onboarding already exists."""
-    return session.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
+    """The Restaurant of the selected site: every Tips page, calculation,
+    history and operation reads this one. Never creates one: this app runs
+    against the shared operational store, where the real Restaurant/Location/
+    Clover onboarding already exists."""
+    site = _selected_site(session)
+    return session.get(m.Restaurant, site.restaurant_id) if site is not None else None
+
+
+def _follow_record_site(session, restaurant_id: int | None) -> None:
+    """A link to a record of another site (a saved period, a payment cycle, a
+    rule, a role) opens it on ITS site: the selector switches and says so, so
+    the page never mixes one site's record with another site's data."""
+    site = _selected_site(session)
+    if restaurant_id is None or site is None or site.restaurant_id == restaurant_id:
+        return
+    target = site_selection.resolve_site(session, restaurant_id)
+    if target is not None and target.restaurant_id == restaurant_id:
+        flask_session[SITE_SESSION_KEY] = restaurant_id
+        flash(ui("Restaurant switched to") + f" {target.name} " + ui("to show this record."), "info")
+
+
+def _refuse_other_site_record(session, restaurant_id: int | None):
+    """An operation on a record of a site other than the selected one is refused, never redirected."""
+    site = _selected_site(session)
+    if restaurant_id is not None and site is not None and site.restaurant_id != restaurant_id:
+        flash(ui("This record belongs to another restaurant: select that restaurant first. Nothing was changed."),
+              "error")
+        return redirect(url_for("home"))
+    return None
+
+
+@app.before_request
+def _site_selection_guard():
+    """CLOVER_MULTISITE_001 — (1) `?site=<restaurant_id>` switches the selected
+    site; (2) a form submitted from a page of another site than the one now
+    selected (two tabs) is refused; (3) an inactive site never acquires,
+    calculates or pays."""
+    if request.endpoint is None or request.endpoint in _PUBLIC_ENDPOINTS or request.blueprint == "training":
+        return None
+    if request.method == "GET" and "site" in request.args:
+        with SessionFactory() as db:
+            chosen = site_selection.resolve_site(db, request.args.get("site", type=int))
+        if chosen is not None:
+            flask_session[SITE_SESSION_KEY] = chosen.restaurant_id
+        args = {k: v for k, v in request.args.items(multi=True) if k != "site"}
+        from urllib.parse import urlencode
+        return redirect(request.path + ("?" + urlencode(args) if args else ""))
+    if request.method != "POST":
+        return None
+    with SessionFactory() as db:
+        site = _selected_site(db)
+        posted = request.form.get(SITE_FORM_FIELD, type=int)
+        if site is not None and posted is not None and posted != site.restaurant_id:
+            flash(ui("The restaurant selected changed in another tab: nothing was done. Check the restaurant and repeat."),
+                  "error")
+            return redirect(url_for("home"))
+        if site is not None and request.endpoint in OPERATIONAL_ENDPOINTS and not site.operational:
+            flash(f"{site.name}: " + ui("this restaurant is not active yet. Calculations and payments are not available."),
+                  "error")
+            return redirect(request.referrer or url_for("home"))
+    return None
 
 
 def _max_order_business_date(session, restaurant_id: int):
@@ -350,6 +421,9 @@ def inject_brand_context() -> dict:
         location_id = _resolve_clover_location_id(session, restaurant.id) if restaurant is not None else None
         location = session.get(m.Location, location_id) if location_id is not None else None
         return {
+            "site_choices": site_selection.list_sites(session),
+            "selected_site": _selected_site(session),
+            "site_form_field": SITE_FORM_FIELD,
             "brand_name": restaurant.name if restaurant is not None else "RF-One",
             "brand_logo_filename": _brand_logo_filename(),
             "tz": location.timezone if location is not None else None,
@@ -397,7 +471,15 @@ def _clover_acquisition_panel(session, restaurant) -> dict:
         "status_url": rfone_web_link.clover_status_url(),
         "full_page_url": rfone_web_link.clover_acquisition_url(),
         "login_url": rfone_web_link.login_url(url_for("home")),
+        # CLOVER_MULTISITE_001: RF-One Web acts on exactly this site, never on its own default.
+        "restaurant_id": restaurant.id if restaurant is not None else None,
+        "site_active": site_selection.restaurant_is_operational(session, restaurant.id) if restaurant is not None else False,
     }
+    if panel["restaurant_id"] is not None:
+        if panel["full_page_url"]:
+            panel["full_page_url"] += f"&restaurant_id={panel['restaurant_id']}"
+        if panel["status_url"]:
+            panel["status_url"] += f"?restaurant_id={panel['restaurant_id']}"
     if location_id is not None:
         panel["sync_point"] = clover_jobs.get_last_successful_sync_point(session, location_id=location_id)
         active = clover_jobs.get_active_run(session, location_id=location_id)
@@ -929,6 +1011,7 @@ def tips_run_report(run_id: int):
         if report is None:
             flash(f"No Calculation Run with id {run_id}.", "error")
             return redirect(url_for("tips_run_history"))
+        _follow_record_site(session, report["run"].restaurant_id)
         blockers = run_svc.finalization_blockers(session, report["run"])
         return render_template(
             "tips_run_report.html", report=report, run=report["run"],
@@ -1210,6 +1293,7 @@ def _render_payment_control(*, cycle_id: int | None):
                 flash(f"Payment Cycle {cycle_id} not found.", "error")
                 return redirect(url_for("payment_control_home"))
             restaurant = session.get(m.Restaurant, deep_link_cycle.restaurant_id)
+            _follow_record_site(session, deep_link_cycle.restaurant_id)
         else:
             restaurant = _default_restaurant(session)
 
@@ -1383,6 +1467,9 @@ def payment_control_retry_instruction(instruction_id: int):
             flash("Payment Instruction not found.", "error")
             return redirect(url_for("payment_control_home"))
         cycle = session.get(m.TipPaymentCycle, instruction.payment_cycle_id)
+        refusal = _refuse_other_site_record(session, cycle.restaurant_id if cycle is not None else None)
+        if refusal is not None:
+            return refusal
         try:
             connector = _resolve_restaurant_connector(session, cycle.restaurant_id) if cycle is not None else None
             source_account_id = instruction.provider_account_id or (
@@ -1662,6 +1749,7 @@ def distribution_rule_detail(rule_id: int):
         rule = rule_svc.get_rule(session, rule_id)
         if rule is None:
             return redirect(url_for("configuration_home", _anchor="distribution-rules"))
+        _follow_record_site(session, rule.restaurant_id)
         versions = rule_svc.list_versions(session, rule_id)
         roles = list(
             session.scalars(
@@ -1680,6 +1768,9 @@ def distribution_rule_new_version(rule_id: int):
         rule = rule_svc.get_rule(session, rule_id)
         if rule is None:
             return redirect(url_for("configuration_home", _anchor="distribution-rules"))
+        refusal = _refuse_other_site_record(session, rule.restaurant_id)
+        if refusal is not None:
+            return refusal
 
         source_role_id = request.form.get("source_role_id", type=int)
         recipient_role_id = request.form.get("recipient_role_id", type=int)
@@ -1728,6 +1819,9 @@ def distribution_rule_new_version(rule_id: int):
 def distribution_rule_toggle_active(rule_id: int):
     with SessionFactory() as session:
         rule = rule_svc.get_rule(session, rule_id)
+        refusal = _refuse_other_site_record(session, rule.restaurant_id if rule is not None else None)
+        if refusal is not None:
+            return refusal
         if rule is not None:
             rule_svc.set_active(session, rule_id, not rule.is_active)
             session.commit()
@@ -1882,6 +1976,12 @@ def restaurant_role_edit(role_id: int):
         if role is None:
             flash("Role not found.", "error")
             return redirect(url_for("restaurant_roles_home"))
+        if request.method == "POST":
+            refusal = _refuse_other_site_record(session, role.restaurant_id)
+            if refusal is not None:
+                return refusal
+        else:
+            _follow_record_site(session, role.restaurant_id)
 
         if request.method == "POST":
             name = request.form.get("name", "")

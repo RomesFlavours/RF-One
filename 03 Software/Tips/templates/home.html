@@ -51,7 +51,8 @@
     <form method="post" action="{{ clover.sync_now_url }}" onsubmit="return guardSyncNow()">
       <input type="hidden" name="csrf_token" value="{{ clover.csrf_token }}">
       <input type="hidden" name="return_to" value="tips">
-      <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not clover.location_id or not clover.sync_point) else '' }}>Sync Now</button>
+      <input type="hidden" name="restaurant_id" value="{{ clover.restaurant_id }}">
+      <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not clover.location_id or not clover.sync_point or not clover.site_active) else '' }}>Sync Now</button>
     </form>
   {% elif clover.signed_in %}
     <p class="muted">Sync Now requires the Clover Acquisition access on your RF-One account.</p>

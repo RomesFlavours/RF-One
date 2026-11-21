@@ -86,7 +86,8 @@
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
-        "employee_departments.html": "help/employee_departments.html#employee-departments"
+        "employee_departments.html": "help/employee_departments.html#employee-departments",
+        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition"
       },
       "not_operational": {
         "base.html": "layout of RF-One Web",
@@ -128,7 +129,6 @@
         "bank_configuration.html": "Bank Reconciliation",
         "bank_export.html": "Bank Reconciliation",
         "bank_instructions.html": "Bank Reconciliation (has its own instructions page, not linked as How Works per page)",
-        "clover_acquisition.html": "Clover Acquisition",
         "compensation_home.html": "Administration / Compensation",
         "compensation_period_summary.html": "Administration / Compensation",
         "compensation_reconciliation_detail.html": "Administration / Compensation",
@@ -225,7 +225,8 @@
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
         "role_profiles.html": "help/registry.html#registry",
-        "employee_departments.html": "help/employee_departments.html#employee-departments"
+        "employee_departments.html": "help/employee_departments.html#employee-departments",
+        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition"
       },
       "not_operational": {},
       "help_missing": {
@@ -258,7 +259,6 @@
         "bank_review.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "bank_sources.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "base.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "clover_acquisition.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "compensation_home.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "compensation_period_summary.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "compensation_reconciliation_detail.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
