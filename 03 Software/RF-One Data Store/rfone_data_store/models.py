@@ -4522,11 +4522,14 @@ class CompensationPreparationRun(Base):
         # documented terminology, not behavior, debt), APPROVED (Compensation
         # V1 Task 1 — an authorized actor approved this run and an
         # `ApprovedCompensationSnapshot` now exists for it; see
-        # `rfone_data_store/payroll_calculation/approval.py`). EXPORTED/CLOSED
-        # (functional spec §19) are not implemented yet — deliberately out of
-        # scope for this task.
+        # `rfone_data_store/payroll_calculation/approval.py`), EXPORTED (the
+        # manual handoff was confirmed — `payroll_calculation/export.py`) and
+        # CLOSED (functional spec §19). Kept identical to the database
+        # constraint created by migration f7174fa37e93, so a schema built
+        # from these models accepts exactly what the database accepts.
         CheckConstraint(
-            "status IN ('OPEN', 'CALCULATED', 'APPROVED')", name="ck_payroll_calculation_runs_status"
+            "status IN ('OPEN', 'CALCULATED', 'APPROVED', 'EXPORTED', 'CLOSED')",
+            name="ck_payroll_calculation_runs_status",
         ),
     )
 
@@ -10601,6 +10604,14 @@ class RFOneAccount(Base):
 DOMAIN_ACCESS_SCOPE_ALL = "ALL"
 DOMAIN_ACCESS_SCOPE_SELECTED = "SELECTED"
 DOMAIN_ACCESS_SCOPES = (DOMAIN_ACCESS_SCOPE_ALL, DOMAIN_ACCESS_SCOPE_SELECTED)
+# Which companies (and so which restaurant sites) an enabled direct access
+# opens in a site-scoped Domain (CLOVER_MULTISITE_001, Product Owner
+# 2026-11-21): ALL = every company, as before; SELECTED = only the companies
+# listed in `access_profiles.AccountDomainCompanyAccess`. Rows that existed
+# before keep ALL, so existing users keep their current access.
+DOMAIN_COMPANY_SCOPE_ALL = "ALL"
+DOMAIN_COMPANY_SCOPE_SELECTED = "SELECTED"
+DOMAIN_COMPANY_SCOPES = (DOMAIN_COMPANY_SCOPE_ALL, DOMAIN_COMPANY_SCOPE_SELECTED)
 
 
 class RFOneAccountDomainAccess(Base):
@@ -10623,6 +10634,9 @@ class RFOneAccountDomainAccess(Base):
     __table_args__ = (
         UniqueConstraint("account_id", "domain_code", name="uq_rfone_account_domain_access_account_domain"),
         CheckConstraint("scope IN ('ALL', 'SELECTED')", name="ck_rfone_account_domain_access_scope"),
+        CheckConstraint(
+            "company_scope IN ('ALL', 'SELECTED')", name="ck_rfone_account_domain_access_company_scope",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -10632,6 +10646,10 @@ class RFOneAccountDomainAccess(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     scope: Mapped[str] = mapped_column(
         String(16), nullable=False, default=DOMAIN_ACCESS_SCOPE_ALL, server_default=DOMAIN_ACCESS_SCOPE_ALL,
+    )
+    # Meaningful only for a site-scoped Domain (`DOMAIN_COMPANY_SCOPE_*`).
+    company_scope: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=DOMAIN_COMPANY_SCOPE_ALL, server_default=DOMAIN_COMPANY_SCOPE_ALL,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

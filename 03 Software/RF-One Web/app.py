@@ -47,6 +47,9 @@ from rfone_data_store import models as m  # noqa: E402
 from interview_routes import home_state as interview_home_state, register_interview_routes  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
+from rfone_data_store import access_profiles as profiles  # noqa: E402
+from rfone_data_store import financial_authorization  # noqa: E402
+from rfone_data_store import site_selection  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
@@ -758,13 +761,34 @@ def admin_account_access(account_id: int):
                         scope=m.DOMAIN_ACCESS_SCOPE_SELECTED if mode == _ACCESS_SELECTED else m.DOMAIN_ACCESS_SCOPE_ALL,
                         item_codes=item_codes,
                     )
+                    if domain.site_scoped:
+                        # CLOVER_MULTISITE_001: which companies (restaurants)
+                        # this direct access reaches; all companies by default.
+                        profiles.set_domain_companies(
+                            db, account_id=account.id, domain_code=domain.code,
+                            company_scope=(m.DOMAIN_COMPANY_SCOPE_SELECTED
+                                           if request.form.get(f"company_scope_{domain.code}") == "selected"
+                                           else m.DOMAIN_COMPANY_SCOPE_ALL),
+                            company_ids=[int(v) for v in request.form.getlist(f"companies_{domain.code}") if v.isdigit()],
+                            actor=current_account_id(),
+                        )
                     if domain.code == "TRAINING":
                         # Explicit, authorized sync point (task: "assegnano o
                         # modificano il ruolo TRAINING di un account già
                         # collegato") — same transaction as the access change
                         # itself, committed together below.
                         training_integration.sync_training_role_if_linked(db, account.id, role_code)
-            except ValueError as exc:
+                # Specific payment authorizations, per restaurant (Product
+                # Owner rule 4), granted to the account's own Acting Identity.
+                if request.form.get("payment_permissions_form") == "1":
+                    granter = account_service.get_account(db, current_account_id())
+                    for permission in financial_authorization.PAYMENT_PERMISSIONS:
+                        financial_authorization.set_restaurant_grants(
+                            db, account=account, permission=permission, granted_by_account=granter,
+                            restaurant_ids=[int(v) for v in request.form.getlist(
+                                f"pay_{permission.domain_code}_{permission.action}") if v.isdigit()],
+                        )
+            except (ValueError, financial_authorization.FinancialAuthorizationError) as exc:
                 db.rollback()
                 flash(f"Nothing saved. {exc}", "error")
                 status = 400
@@ -790,11 +814,29 @@ def admin_account_access(account_id: int):
                 mode = submitted.get(f'access_{d.code}', legacy)
                 access = {'role_code': submitted.get(f'role_{d.code}', '')}
                 items_by_code[d.code] = set(submitted.getlist(f'items_{d.code}'))
+            company_scope = getattr(access, "company_scope", m.DOMAIN_COMPANY_SCOPE_ALL) or m.DOMAIN_COMPANY_SCOPE_ALL
+            selected_companies = profiles.domain_company_ids(db, account.id, d.code)
+            if submitted is not None:
+                company_scope = (m.DOMAIN_COMPANY_SCOPE_SELECTED if submitted.get(f"company_scope_{d.code}") == "selected"
+                                 else m.DOMAIN_COMPANY_SCOPE_ALL)
+                selected_companies = {int(v) for v in submitted.getlist(f"companies_{d.code}") if v.isdigit()}
             domains_view.append({
                 "domain": d, "access": access, "mode": mode,
                 "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
+                "company_scope": company_scope, "selected_companies": selected_companies,
             })
-        return render_template("admin_account_access.html", account=account, domains_view=domains_view,profile_return=profile_return,profile_person=profile_person), status
+        companies = list(db.scalars(select(profiles.CompanyContext).where(profiles.CompanyContext.active.is_(True))
+                                    .order_by(profiles.CompanyContext.kind.desc(), profiles.CompanyContext.name)))
+        sites = site_selection.list_sites(db)
+        payment_view = []
+        for permission in financial_authorization.PAYMENT_PERMISSIONS:
+            granted = financial_authorization.granted_restaurant_ids(db, account, permission)
+            if submitted is not None:
+                granted = {int(v) for v in submitted.getlist(f"pay_{permission.domain_code}_{permission.action}") if v.isdigit()}
+            payment_view.append({"permission": permission, "granted": granted, "global": None in granted})
+        return render_template("admin_account_access.html", account=account, domains_view=domains_view,
+                               companies=companies, sites=sites, payment_view=payment_view,
+                               profile_return=profile_return, profile_person=profile_person), status
 
 
 # The three access choices of the Access screen (ACCOUNT_ITEM_ACCESS_001).

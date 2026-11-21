@@ -158,7 +158,7 @@ def main() -> int:
                 row.is_active = False
             session.commit()
             _link(session, server_fail, alex_rivera.id)
-            cycle_svc.retry_instruction(session, fail_instruction, connector, source_account_id=source_account_id)
+            cycle_svc.retry_instruction(session, fail_instruction, connector, source_account_id=source_account_id, acting_identity=approver)
             session.commit()
             print(
                 f"    [FAIL payee after retry] status={fail_instruction.status} "

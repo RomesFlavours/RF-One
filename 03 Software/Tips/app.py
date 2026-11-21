@@ -64,6 +64,7 @@ from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import local_calendar  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import site_selection  # noqa: E402
+from rfone_data_store import financial_authorization  # noqa: E402
 from rfone_data_store.shift_location import shift_at_locations  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
@@ -1320,19 +1321,16 @@ def _render_payment_control(*, cycle_id: int | None):
         entitlements_by_instruction = {}
         connector_balance = None
         connector_error = None
-        identities = []
+        approver_decision = None
 
         if restaurant is not None:
-            # Only Acting Identities actually authorized to Approve & Pay
-            # THIS Restaurant are offered — never a global list a user could
-            # pick from and then be rejected server-side (the server-side
-            # gate in `approve_and_pay_cycle` remains authoritative either
-            # way; this is a UI convenience, not a second/divergent check).
-            identities = [
-                identity
-                for identity in session.scalars(select(m.ActingIdentity).order_by(m.ActingIdentity.display_name))
-                if cycle_svc.can_approve_and_pay(session, acting_identity=identity, restaurant_id=restaurant.id)
-            ]
+            # CLOVER_MULTISITE_001 (Product Owner 2026-11-21): the approver is
+            # the signed-in account, never a person picked from a list. The
+            # page shows the SAME central decision the POST enforces again.
+            approver_decision = financial_authorization.decide(
+                session, account=rfone_identity.current_account(session),
+                permission=financial_authorization.TIPS_APPROVE_AND_PAY, restaurant_id=restaurant.id,
+            )
             calc_state = readiness_svc.describe_readiness(session, restaurant.id)
             cycle_readiness = cycle_svc.describe_payment_cycle_readiness(session, restaurant.id)
             # The SAME `payment_readiness.describe_payment_readiness` gate
@@ -1398,7 +1396,9 @@ def _render_payment_control(*, cycle_id: int | None):
             employees_by_id=employees_by_id, references_by_employee=references_by_employee,
             attention_items_by_instruction=attention_items_by_instruction,
             entitlements_by_instruction=entitlements_by_instruction,
-            connector_balance=connector_balance, connector_error=connector_error, identities=identities,
+            connector_balance=connector_balance, connector_error=connector_error,
+            approver_decision=approver_decision,
+            approver_name=rfone_identity.display_name(rfone_identity.current_account(session)),
             is_deep_link=cycle_id is not None, active_nav="payment-control",
         )
 
@@ -1430,10 +1430,16 @@ def payment_control_approve_and_pay():
             flash("No open Payment Cycle to approve.", "error")
             return redirect(url_for("payment_control_home"))
 
-        acting_identity_id = request.form.get("acting_identity_id", type=int)
-        acting_identity = session.get(m.ActingIdentity, acting_identity_id) if acting_identity_id else None
-        if acting_identity is None:
-            flash("Select the Acting Identity approving this payout.", "error")
+        # The approver is always the signed-in account (any `acting_identity_id`
+        # a form might still post is ignored): restaurant access + payment
+        # authorization, both checked centrally, server-side.
+        try:
+            acting_identity = cycle_svc.account_payment_identity(
+                session, account=rfone_identity.current_account(session), restaurant_id=restaurant.id,
+            )
+        except cycle_svc.ApproveAndPayError as exc:
+            session.rollback()
+            flash(str(exc), "error")
             return redirect(url_for("payment_control_home"))
 
         try:
@@ -1491,8 +1497,23 @@ def payment_control_retry_instruction(instruction_id: int):
             if source_account_id is None or connector is None:
                 flash("No payment connector source account available for retry.", "error")
                 return redirect(url_for("payment_control_home"))
-            cycle_svc.retry_instruction(session, instruction, connector, source_account_id=source_account_id)
+            # Same authorization as the initial payment, as the signed-in account.
+            acting_identity = cycle_svc.account_payment_identity(
+                session, account=rfone_identity.current_account(session), restaurant_id=cycle.restaurant_id,
+            )
+            cycle_svc.retry_instruction(session, instruction, connector, source_account_id=source_account_id,
+                                        acting_identity=acting_identity)
             session.commit()
+        except cycle_svc.PaymentRetryError as exc:
+            # A refused retry may still have recorded the provider's read-back
+            # outcome (e.g. "already paid"): keep that, never a resubmission.
+            session.commit()
+            flash(str(exc), "error")
+            return redirect(url_for("payment_control_home"))
+        except cycle_svc.ApproveAndPayError as exc:
+            session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for("payment_control_home"))
         except connector_svc.PaymentConnectorError as exc:
             session.rollback()
             flash(f"Payment connector error: {exc}", "error")
