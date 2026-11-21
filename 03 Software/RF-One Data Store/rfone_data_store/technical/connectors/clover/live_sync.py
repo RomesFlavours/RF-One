@@ -61,7 +61,9 @@ from .acquisition import (
     MODE_LIVE_SYNC,
     CloverReadClient,
     _resolve_clover_merchant,
+    active_clover_location_ids,
     import_clover_period,
+    location_is_active,
 )
 from .acquisition_jobs import compute_live_sync_window
 
@@ -103,6 +105,9 @@ def run_live_sync_cycle(
     Location, or another acquisition — Backfill or Live Sync — is already
     RUNNING for this Location right now). A skip is never an error: the
     next cycle simply tries again with a fresh, still-correct window."""
+    if _resolve_clover_merchant(session, location_id) is not None and not location_is_active(session, location_id):
+        LOG.info("location_id=%s is not active — no Live Sync until it is activated.", location_id)
+        return None
     window = compute_next_sync_window(session, location_id=location_id, now=now)
     if window is None:
         LOG.info("location_id=%s is not a Clover-sourced Location — skipping this cycle.", location_id)
@@ -122,22 +127,43 @@ def run_live_sync_cycle(
         return None
 
 
+def _cycle_locations(session_factory: sessionmaker[Session], location_ids: list[int] | None) -> list[int]:
+    """Fixed `--location-id` list, or every active Clover Location re-read each
+    cycle (`--all-active-locations`, CLOVER_MULTISITE_001)."""
+    if location_ids is not None:
+        return list(location_ids)
+    with session_factory() as session:
+        return active_clover_location_ids(session)
+
+
+def _run_one_location(session_factory: sessionmaker[Session], location_id: int) -> None:
+    """One Location's cycle in its own session and transaction."""
+    try:
+        with session_factory() as session:
+            summary = run_live_sync_cycle(session, location_id=location_id)
+            if summary is not None:
+                session.commit()
+                LOG.info(
+                    "location_id=%s cycle complete: payments=%d orders=%d shifts=%d refunds=%d errors=%d",
+                    location_id,
+                    summary.payments_imported + summary.payments_updated,
+                    summary.orders_imported + summary.orders_updated,
+                    summary.shifts_imported, summary.refunds_found, len(summary.errors),
+                )
+    except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
+        LOG.exception("Unhandled error in Live Sync cycle for location_id=%s — will retry next interval.", location_id)
+
+
 def _run_forever(
-    session_factory: sessionmaker[Session], *, location_id: int, interval_seconds: float,
+    session_factory: sessionmaker[Session], *, location_ids: list[int] | None, interval_seconds: float,
 ) -> None:  # pragma: no cover — thin process loop, exercised via run_live_sync_cycle directly in tests
-    LOG.info("Starting Clover Live Sync loop for location_id=%s (interval=%.0fs).", location_id, interval_seconds)
+    LOG.info("Starting Clover Live Sync loop for %s (interval=%.0fs).",
+             f"location_id(s)={location_ids}" if location_ids is not None else "all active Clover Locations",
+             interval_seconds)
     while True:
         try:
-            with session_factory() as session:
-                summary = run_live_sync_cycle(session, location_id=location_id)
-                if summary is not None:
-                    session.commit()
-                    LOG.info(
-                        "Cycle complete: payments=%d orders=%d shifts=%d refunds=%d errors=%d",
-                        summary.payments_imported + summary.payments_updated,
-                        summary.orders_imported + summary.orders_updated,
-                        summary.shifts_imported, summary.refunds_found, len(summary.errors),
-                    )
+            for location_id in _cycle_locations(session_factory, location_ids):
+                _run_one_location(session_factory, location_id)
         except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
             LOG.exception("Unhandled error in Live Sync cycle — will retry next interval.")
         time.sleep(interval_seconds)
@@ -147,7 +173,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     from ....database import create_configured_engine, create_session_factory, get_database_url, prepare_new_private_database
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--location-id", type=int, required=True)
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--location-id", type=int, action="append",
+                        help="A Clover Location to synchronize; repeat for several. Inactive Locations are skipped.")
+    target.add_argument("--all-active-locations", action="store_true",
+                        help="Synchronize every active Clover Location, re-read each cycle (CLOVER_MULTISITE_001).")
     parser.add_argument("--interval-seconds", type=float, default=DEFAULT_POLL_INTERVAL_SECONDS)
     parser.add_argument(
         "--once", action="store_true",
@@ -163,20 +193,13 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 
+    location_ids = None if args.all_active_locations else args.location_id
     if args.once:
-        with session_factory() as session:
-            summary = run_live_sync_cycle(session, location_id=args.location_id)
-            if summary is not None:
-                session.commit()
-                LOG.info(
-                    "Cycle complete: payments=%d orders=%d shifts=%d refunds=%d errors=%d",
-                    summary.payments_imported + summary.payments_updated,
-                    summary.orders_imported + summary.orders_updated,
-                    summary.shifts_imported, summary.refunds_found, len(summary.errors),
-                )
+        for location_id in _cycle_locations(session_factory, location_ids):
+            _run_one_location(session_factory, location_id)
         return 0
 
-    _run_forever(session_factory, location_id=args.location_id, interval_seconds=args.interval_seconds)
+    _run_forever(session_factory, location_ids=location_ids, interval_seconds=args.interval_seconds)
     return 0  # unreachable — _run_forever loops until killed
 
 

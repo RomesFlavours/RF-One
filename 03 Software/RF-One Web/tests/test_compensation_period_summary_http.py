@@ -85,7 +85,7 @@ def main() -> int:
             for offset in range(5):
                 for day, hours in ((week1, 9), (week2, 7)):
                     start = _local(day + timedelta(days=offset), 10)
-                    s.add(m.Shift(employee_id=ceban.id, clock_in=start, clock_out=start + timedelta(hours=hours)))
+                    s.add(m.Shift(employee_id=ceban.id, location_id=ceban.location_id, clock_in=start, clock_out=start + timedelta(hours=hours)))
             run = m.TipDistributionCalculationRun(
                 restaurant_id=restaurant.id, period_start=_local(week1, 4), period_end=_local(week2 + timedelta(days=7), 4),
                 status="COMPLETE", state=m.TIPS_RUN_STATE_FINAL, first_business_date=week1,

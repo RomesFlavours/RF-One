@@ -68,9 +68,24 @@ def _person(account) -> str:
 
 
 def _default_clover_location_id(db) -> int | None:
-    """The Clover Location of RF-One's (currently only) Restaurant — the
-    same resolution the Tips app has always used (lowest Restaurant id ->
-    RestaurantLocation -> Clover-sourced Location)."""
+    """The Clover Location this page acquires (CLOVER_MULTISITE_001).
+
+    An explicit `location_id` (query string or form) is honoured only when it
+    is an active Clover Location linked to a Restaurant; otherwise the page
+    keeps its original resolution — the first Restaurant's Clover Location
+    (lowest Restaurant id -> RestaurantLocation -> Clover-sourced Location).
+    An inactive Location is never acquired: the service refuses it."""
+    requested = request.values.get("location_id", type=int)
+    if requested is not None:
+        allowed = db.scalar(
+            select(m.Location.id)
+            .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
+            .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
+            .where(m.Location.id == requested, m.Location.active.is_(True),
+                   m.RestaurantLocation.valid_to.is_(None), m.SourceSystem.code == "CLOVER")
+        )
+        if allowed is not None:
+            return allowed
     restaurant = db.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
     if restaurant is None:
         return None
@@ -189,6 +204,13 @@ def register_clover_acquisition_routes(
                 flash(str(exc), "error")
                 return None
             except clover_jobs.NoSyncStartingPointError as exc:
+                flash(str(exc), "error")
+                return None
+            except clover_jobs.LocationNotActiveError:
+                flash("This Clover location is not active yet: no acquisition is started until it is activated.",
+                      "error")
+                return None
+            except clover_jobs.NotACloverLocationError as exc:
                 flash(str(exc), "error")
                 return None
             except clover_jobs.JobLaunchError as exc:
