@@ -40,7 +40,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import os
+
 from flask import abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import session as flask_session
 from sqlalchemy import func, select
 
 from domain_registry import TIPS_HOME_URL
@@ -48,6 +51,7 @@ from rfone_data_store import display_format
 from rfone_data_store import local_calendar
 from rfone_data_store import models as m
 from rfone_data_store import rfone_web_session as shared_session
+from rfone_data_store import site_selection
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs
 from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
 
@@ -67,34 +71,22 @@ def _person(account) -> str:
     return display_format.employee_short_name(shared_session.account_display_name(account))
 
 
-def _default_clover_location_id(db) -> int | None:
-    """The Clover Location this page acquires (CLOVER_MULTISITE_001).
+SITE_SESSION_KEY = "clover_acquisition_restaurant_id"
 
-    An explicit `location_id` (query string or form) is honoured only when it
-    is an active Clover Location linked to a Restaurant; otherwise the page
-    keeps its original resolution — the first Restaurant's Clover Location
-    (lowest Restaurant id -> RestaurantLocation -> Clover-sourced Location).
-    An inactive Location is never acquired: the service refuses it."""
-    requested = request.values.get("location_id", type=int)
-    if requested is not None:
-        allowed = db.scalar(
-            select(m.Location.id)
-            .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
-            .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
-            .where(m.Location.id == requested, m.Location.active.is_(True),
-                   m.RestaurantLocation.valid_to.is_(None), m.SourceSystem.code == "CLOVER")
-        )
-        if allowed is not None:
-            return allowed
-    restaurant = db.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
-    if restaurant is None:
-        return None
-    return db.scalars(
-        select(m.Location.id)
-        .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
-        .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
-        .where(m.RestaurantLocation.restaurant_id == restaurant.id, m.SourceSystem.code == "CLOVER")
-    ).first()
+
+def _selected_site(db) -> "site_selection.Site | None":
+    """The restaurant site this page works on (CLOVER_MULTISITE_001): an
+    explicit `restaurant_id` (selector, form, Tips link), else the choice
+    remembered for this browser session, else the first site — the original
+    single-site default. Every view, history and job of the page uses it."""
+    return site_selection.resolve_site(
+        db, request.values.get("restaurant_id", type=int), flask_session.get(SITE_SESSION_KEY))
+
+
+def _default_clover_location_id(db) -> int | None:
+    """The Clover Location of the selected site (kept name: one resolution)."""
+    site = _selected_site(db)
+    return site.location_id if site is not None else None
 
 
 
@@ -168,8 +160,13 @@ def register_clover_acquisition_routes(
             account, refusal = _authorized_account(db)
             if refusal is not None:
                 return refusal
-            location_id = _default_clover_location_id(db)
+            site = _selected_site(db)
+            if site is not None:
+                flask_session[SITE_SESSION_KEY] = site.restaurant_id
+            location_id = site.location_id if site is not None else None
             acquisition = _view(db, location_id)
+            acquisition["sites"] = site_selection.list_sites(db)
+            acquisition["site"] = site
             # Prefill From date with the latest operational Business Date on
             # file, as the Tips page did; an explicit value always wins.
             from_date = request.args.get("from_date")
@@ -181,7 +178,7 @@ def register_clover_acquisition_routes(
             return render_template(
                 "clover_acquisition.html", acquisition=acquisition, identified_as=_person(account),
                 from_date=from_date, through_date=request.args.get("through_date") or "",
-                from_tips=_from_tips(),
+                from_tips=_from_tips(), ui_it=os.environ.get("RFONE_UI_LANGUAGE") == "it",
             )
 
     def _start(request_job) -> None:
@@ -190,10 +187,14 @@ def register_clover_acquisition_routes(
             if refusal is not None:
                 return refusal
             require_csrf()
-            location_id = _default_clover_location_id(db)
+            # The site the submitted page was showing (hidden `restaurant_id`),
+            # never whatever another tab selected meanwhile.
+            site = _selected_site(db)
+            location_id = site.location_id if site is not None else None
             if location_id is None:
                 flash("No Clover-sourced Location is configured for this Restaurant — nothing to acquire.", "error")
                 return None
+            flask_session[SITE_SESSION_KEY] = site.restaurant_id
             try:
                 run = request_job(db, location_id, account.id)
             except ImportAlreadyRunningError:
@@ -232,7 +233,8 @@ def register_clover_acquisition_routes(
             return refusal
         if request.form.get("return_to") == RETURN_TIPS:
             return redirect(TIPS_HOME_URL)
-        return redirect(url_for("clover_acquisition_home", **({"from": RETURN_TIPS} if _from_tips() else {})))
+        return redirect(url_for("clover_acquisition_home", restaurant_id=request.form.get("restaurant_id", type=int),
+                                **({"from": RETURN_TIPS} if _from_tips() else {})))
 
     @app.route("/clover-acquisition/backfill", methods=["POST"])
     def clover_acquisition_backfill():
@@ -249,6 +251,7 @@ def register_clover_acquisition_routes(
                 return refusal
         first_day, last_day = local_calendar.parse_day(from_date), local_calendar.parse_day(through_date)
         back = redirect(url_for("clover_acquisition_home", from_date=from_date, through_date=through_date,
+                                restaurant_id=request.form.get("restaurant_id", type=int),
                                 **({"from": RETURN_TIPS} if _from_tips() else {})))
         if first_day is None or last_day is None:
             require_csrf()

@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% set help_section = 'clover_acquisition' %}
 {% block page_title %}Clover Acquisition · RF-One{% endblock %}
 {% block content %}
 {% set active = acquisition.active_run %}
 {% set busy = active is not none %}
+{% set site = acquisition.site %}
+{% set site_inactive = site is not none and not site.active %}
 {% set mode_labels = {'SYNC_NOW': 'Sync Now', 'BACKFILL': 'Historical Backfill', 'LIVE_SYNC': 'Live Sync', 'CORRECTION': 'Correction Sync'} %}
 {# RF-One UI Rules §1: every time is the Location's local time, never UTC. #}
 {% set tz = acquisition.tz_name %}
@@ -23,6 +26,24 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Clover Acquisition', None)]) }}
 {% endif %}
 <h1>Clover Acquisition</h1>
+<hr>
+<div style="display:flex;justify-content:flex-end">{% include '_how_works.html' %}</div>
+{# CLOVER_MULTISITE_001 — the restaurant site: every status, history and job below is this site's. #}
+{% if acquisition.sites %}
+<form method="get" action="{{ url_for('clover_acquisition_home') }}" style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.5rem 0;">
+  {% if from_tips %}<input type="hidden" name="from" value="tips">{% endif %}
+  <label for="site-select"><strong>{{ 'Ristorante' if ui_it else 'Restaurant' }}</strong></label>
+  <select id="site-select" name="restaurant_id" onchange="this.form.submit()">
+    {% for s in acquisition.sites %}
+    <option value="{{ s.restaurant_id }}" {{ 'selected' if site and s.restaurant_id == site.restaurant_id else '' }}>{{ s.name }}{% if not s.active %} — {{ 'inattivo' if ui_it else 'inactive' }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">{{ 'Mostra' if ui_it else 'Show' }}</button></noscript>
+  {% if site_inactive %}
+  <span class="badge warn" role="status">{{ 'Inattivo: nessuna acquisizione può essere avviata finché il ristorante non viene attivato.' if ui_it else 'Inactive: no acquisition can be started until this restaurant is activated.' }}</span>
+  {% endif %}
+</form>
+{% endif %}
 <p class="muted">Signed in as <strong>{{ identified_as }}</strong>. Every acquisition you start is recorded as requested by you.
   {% if acquisition.location_id %}Times are {{ acquisition.location_name or 'the location' }} local time ({{ zone_label(tz) }}).{% endif %}</p>
 
@@ -64,7 +85,8 @@
   <form method="post" action="{{ url_for('clover_acquisition_sync_now') }}" onsubmit="return guardSubmit('sync-now-btn')">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if from_tips %}<input type="hidden" name="from" value="tips">{% endif %}
-    <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not acquisition.location_id or not acquisition.sync_point) else '' }}>Sync Now</button>
+    {% if site %}<input type="hidden" name="restaurant_id" value="{{ site.restaurant_id }}">{% endif %}
+    <button type="submit" id="sync-now-btn" {{ 'disabled' if (busy or not acquisition.location_id or not acquisition.sync_point or site_inactive) else '' }}>Sync Now</button>
   </form>
 </div>
 
@@ -86,7 +108,8 @@
       <input type="date" id="through_date" name="through_date" value="{{ through_date }}" required>
     </div>
     <p class="muted">Whole local days: From 00:00 through 23:59 of the Through day ({{ zone_label(tz) }}).</p>
-    <button type="submit" id="backfill-btn" {{ 'disabled' if (busy or not acquisition.location_id) else '' }}>Run Historical Backfill</button>
+    {% if site %}<input type="hidden" name="restaurant_id" value="{{ site.restaurant_id }}">{% endif %}
+    <button type="submit" id="backfill-btn" {{ 'disabled' if (busy or not acquisition.location_id or site_inactive) else '' }}>Run Historical Backfill</button>
   </form>
   <p class="muted">
     Read-only against Clover — nothing is ever written back. Re-acquiring a period updates the Orders,
@@ -183,7 +206,7 @@
     if (!box) { return; }
     var runId = box.dataset.activeRunId;
     setInterval(function () {
-      fetch('{{ url_for("clover_acquisition_status") }}', {cache: 'no-store', credentials: 'same-origin'})
+      fetch('{{ url_for("clover_acquisition_status", restaurant_id=site.restaurant_id if site else none) }}', {cache: 'no-store', credentials: 'same-origin'})
         .then(function (r) { return r.json(); })
         .then(function (s) { if (String(s.active_run_id) !== String(runId)) { window.location.reload(); } })
         .catch(function () {});

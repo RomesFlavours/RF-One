@@ -71,6 +71,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from ..site_selection import require_operational
 from ..attention_service import create_attention, route_attention
 from ..authority_service import AuthorizationContext, authorize
 from ..organizational_responsibility_service import ScopeContext
@@ -208,6 +209,7 @@ def start_payment_cycle(
     double-aggregation of the same entitlements. Returns `None` (no cycle
     created) if there is nothing unpaid to aggregate."""
     now = now or datetime.now(UTC)
+    require_operational(session, restaurant_id)  # CLOVER_MULTISITE_001: no payment cycle for an inactive site
 
     existing_open = get_open_cycle(session, restaurant_id)
     if existing_open is not None:
@@ -399,6 +401,7 @@ def approve_and_pay_cycle(
     deterministic fresh/stale boundary. `connector` is resolved by the
     CALLER from this Restaurant's own configured `connector_code` — this
     function never resolves or defaults one itself."""
+    require_operational(session, cycle.restaurant_id)  # CLOVER_MULTISITE_001
     if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_OPEN:
         raise ApproveAndPayError(f"Payment Cycle {cycle.id} is not OPEN (status={cycle.status!r}).")
 

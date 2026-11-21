@@ -61,6 +61,51 @@
      context from Calculate Tips ("check Hosts", a row's "audit"), and its
      breadcrumb reads RF-One > Tips > Calculate Tips > Explain / Audit Host
      Tips (TIPS_NAVIGATION_STANDARD_001). #}
+  {# CLOVER_MULTISITE_001 — the restaurant site this page works on. Every datum,
+     calculation, history and operation below belongs to the selected site; a
+     form remembers the site it was shown for and is refused if the selection
+     changed meanwhile (another tab). An inactive site is shown as such and
+     its acquisition, calculation and payment buttons are disabled. #}
+  {% if site_choices and request.blueprint != 'training' %}
+  <form class="site-select" method="get" action="{{ request.path }}" style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.5rem 0;">
+    <label for="site-select"><strong>{{ ui("Restaurant") }}</strong></label>
+    <select id="site-select" name="site" onchange="this.form.submit()">
+      {% for s in site_choices %}
+      <option value="{{ s.restaurant_id }}" {{ 'selected' if selected_site and s.restaurant_id == selected_site.restaurant_id else '' }}>{{ s.name }}{% if not s.active %} — {{ ui("inactive") }}{% endif %}</option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">{{ ui("Show") }}</button></noscript>
+    {% if selected_site and not selected_site.active %}
+    <span class="badge warn" role="status">{{ ui("Inactive: data can be viewed and configured, but no acquisition, calculation or payment is started.") }}</span>
+    {% endif %}
+  </form>
+  <script>
+  (function () {
+    var field = {{ site_form_field|tojson }}, site = {{ (selected_site.restaurant_id if selected_site else '')|tojson }};
+    var inactive = {{ (selected_site is not none and not selected_site.active)|tojson }};
+    var operational = {{ [url_for('calculate_tips_run'), url_for('calculate_tips_consolidate'),
+                          url_for('tips_configuration_run_calculation_now'), url_for('payment_control_start_cycle'),
+                          url_for('payment_control_approve_and_pay')]|tojson }};
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      if (!site || (form.method || '').toLowerCase() !== 'post' || form.querySelector('input[name="' + field + '"]')) { return; }
+      var input = document.createElement('input');
+      input.type = 'hidden'; input.name = field; input.value = site;
+      form.appendChild(input);
+    }, true);
+    if (inactive) {
+      document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('form').forEach(function (form) {
+          var action = form.getAttribute('action') || '';
+          if (operational.indexOf(action) >= 0 || action.indexOf('/retry') >= 0) {
+            form.querySelectorAll('button, input[type=submit]').forEach(function (b) { b.disabled = true; });
+          }
+        });
+      });
+    }
+  })();
+  </script>
+  {% endif %}
   <div class="nav-tabs">
     <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">{{ ui("Clover Acquisition") }}</a>
     <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav in ('calculate-tips', 'host-audit') else '' }}">{{ ui("Calculate Tips") }}</a>
