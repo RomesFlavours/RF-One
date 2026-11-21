@@ -1,0 +1,26 @@
+{% set cv_areas = [
+ ('Identità e contatti', 'Nome completo, e-mail, telefono, località dichiarata', ['Nome completo', 'E-mail', 'Telefono', 'Località dichiarata']),
+ ('Profilo professionale', 'Presentazione personale, riepilogo o obiettivo professionale', ['Presentazione personale', 'Riepilogo', 'Obiettivo professionale']),
+ ('Esperienze lavorative', 'Azienda, sede, titolo della mansione, date di inizio e fine, mansioni e responsabilità, eventuali risultati dichiarati', ['Azienda', 'Sede', 'Titolo della mansione', 'Data di inizio', 'Data di fine', 'Mansioni e responsabilità', 'Risultati dichiarati']),
+ ('Formazione', 'Istituto, titolo di studio, ambito di studio, date e stato di completamento, se riconoscibile', ['Istituto', 'Titolo di studio', 'Ambito di studio', 'Date', 'Stato di completamento']),
+ ('Competenze', 'Competenze elencate nel CV, conservate come dichiarate', ['Competenze']),
+ ('Certificazioni', 'Nome della certificazione, ente emittente e data', ['Nome della certificazione', 'Ente emittente', 'Data']),
+ ('Lingue', 'Lingua e livello dichiarato', ['Lingua', 'Livello dichiarato']),
+ ('Collegamenti', 'LinkedIn ed eventuale altro sito o profilo', ['LinkedIn', 'Altro sito o profilo']),
+ ('Altre sezioni', 'Testo di sezioni aggiuntive, come progetti, premi e volontaria', ['Testo di sezioni aggiuntive'])
+] %}
+<dialog class="rule-modal cv-field-modal" id="cv-field-modal" aria-labelledby="cv-field-title">
+ <div class="rules-heading"><h2 id="cv-field-title">Campi estratti dal CV</h2><div><button type="button" id="cv-field-help" aria-label="Aiuto sulla scelta del campo CV">?</button> <button type="button" class="btn secondary" id="cv-field-close" aria-label="Chiudi scelta campo CV">×</button></div></div>
+ <p>Al momento, dal CV il caricamento cerca di estrarre questi dati, <strong>quando presenti e riconoscibili</strong>:</p>
+ <p>Scegli il campo su cui vuoi definire la regola. Conferma per inserirlo nella bozza della chat.</p>
+ <table class="cv-field-table"><thead><tr><th scope="col">Area</th><th scope="col">Dati estratti</th><th scope="col">Campo da selezionare</th></tr></thead><tbody>
+ {% for area, description, fields in cv_areas %}
+ <tr><th scope="row">{{ area }}</th><td>{{ description }}</td><td>
+ {% for field in fields %}<label class="cv-field-choice"><input type="radio" name="cv-field" value="{{ area }} → {{ field }}"> <span>{{ field }}</span></label>{% endfor %}
+ </td></tr>
+ {% endfor %}
+ </tbody></table>
+ <p id="cv-field-error" class="error" role="alert" hidden></p>
+ <div class="rule-actions cv-field-footer"><button type="button" id="cv-field-cancel" class="btn secondary">Annulla</button><button type="button" id="cv-field-confirm" disabled>Conferma campo</button></div>
+</dialog>
+<script defer src="{{ url_for('static', filename='js/selection-cv-field-picker.js') }}"></script>

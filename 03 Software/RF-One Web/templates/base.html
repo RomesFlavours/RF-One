@@ -33,6 +33,8 @@
       <img class="brand-logo" src="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}" alt="RF-One">
     {% endif %}
   </header>
+  {% if profile_companies and request.endpoint != 'role_profiles_home' %}<form method="post" action="{{ url_for('switch_access_company') }}" style="display:flex;align-items:center;gap:.6rem;justify-content:flex-end;margin:.75rem 0">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label style="margin:0">Company <select name="company_id" style="display:inline;width:auto;margin:0">{% for company in profile_companies %}<option value="{{ company.id }}" {% if company.id==profile_company_id %}selected{% endif %}>{{ company.name }}</option>{% endfor %}</select></label><button style="padding:.3rem .7rem">Switch</button></form>{% endif %}
 
   {% if local_env %}
     {# Local Bank environment ("Avvia Bank"): which PC, database, code and AI

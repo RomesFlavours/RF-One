@@ -1,0 +1,1883 @@
+{
+ "id": "RF-SERVER-COURSE-MASTER",
+ "version": "1.0",
+ "date": "2026-11-04",
+ "role": "Server",
+ "title": "The Server Course",
+ "academy": "Rome's Flavours Academy",
+ "master_text": "rf-server-course-master-v1.md",
+ "notes": "Built from Pino's master course v1.0 (4 November 2026), one unit per unit of his register. Each module's 'known' is what the person must show, taken from the unit's text and its essential evidence. Test questions come only from the unit's text. 'practical' lists the observed tests from D2 that belong to the unit: the lead observes them in person; the app only shows them. Tests (5 November 2026): a bank per unit, drawn at random and marked on the server; wrong options are believable mistakes of similar length.",
+ "pass_mark": 4,
+ "levels": [
+  {
+   "id": "A",
+   "title": "Belonging and orientation",
+   "question": "Where do we work, and what do we contribute to?"
+  },
+  {
+   "id": "B",
+   "title": "Conducting a simple service",
+   "question": "How do we guide a choice and a table?"
+  },
+  {
+   "id": "C",
+   "title": "Executing precisely",
+   "question": "How do we turn intention into reliable actions?"
+  },
+  {
+   "id": "D",
+   "title": "Integrating and demonstrating",
+   "question": "How do we maintain the method in real situations?"
+  }
+ ],
+ "units": [
+  {
+   "id": "A1",
+   "level": "A",
+   "title": "Identity, Brand and legacy",
+   "subtitle": "The experience we want people to recognize, and how we contribute to it",
+   "objective": "Understand the experience we want people to recognize and how the Server contributes to it.",
+   "evidence": "Connects a service choice to the RF promise.",
+   "prerequisites": [],
+   "banner": "m1",
+   "sources": [
+    "legacy"
+   ],
+   "extra": [],
+   "practical": [],
+   "modules": [
+    {
+     "id": "A1.promise",
+     "title": "The promise and its consistency",
+     "known": "Says that Rome's Flavours brings an Italian offering rooted in tradition to the table, that the Brand is the promise we make recognizable, and that credibility comes from consistency between that promise and what actually happens: an accurate description and a correct order support it, and a nice name or a smile does not make up for a false description or a wrong order.",
+     "scenario": "A guest asks what makes this restaurant different. What do we tell them, and what in our service has to back it up?"
+    },
+    {
+     "id": "A1.tradition",
+     "title": "Tradition with substance, without judging",
+     "known": "Knows that ingredients, pairings and preparations have an identity and that knowing them lets us explain the offering and suggest an alternative; explains it without declaring the guest, their taste or other restaurants inferior, and looks for an option compatible with who we are; distinguishes tradition from habit, and knows that improving a recipe follows the designated roles, not the Server's own decision.",
+     "scenario": "A guest asks for bacon in the Carbonara. What do we say and do?"
+    },
+    {
+     "id": "A1.legacy",
+     "title": "Legacy is continuity",
+     "known": "Explains legacy as making the way we create value transferable, so it doesn't depend on the founder's constant presence or one person's memory, and names concrete actions that contribute to it: describing a dish accurately, reporting a problem early, passing complete information to a colleague; knows that reporting a problem early is not a reason for reprimand, and does not remove the duty to correct the mistake.",
+     "scenario": "A colleague says: 'Legacy is the owner's thing, it has nothing to do with my tables.' What would we answer?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A guest asks what makes Rome's Flavours different. What backs up our answer?",
+     "options": [
+      "An accurate description and a correct order",
+      "A warm welcome and a big smile at the door",
+      "Telling them we're better than the place next door"
+     ],
+     "why": "Credibility comes from consistency between the promise and what actually happens: an accurate description and a correct order.",
+     "id": "A1.q1"
+    },
+    {
+     "q": "A guest asks for bacon in the Carbonara. What's our approach?",
+     "options": [
+      "Explain what the dish is, without judging, and look for an option that fits",
+      "Add it to the order, because here the guest's own taste always comes first",
+      "Tell them that's not how Italians eat it and move on"
+     ],
+     "why": "Knowing the dish's identity lets us explain it and suggest an alternative, without declaring the guest's taste inferior.",
+     "id": "A1.q2"
+    },
+    {
+     "q": "You think a recipe could be better. What do you do?",
+     "options": [
+      "Raise it through the designated roles; I don't change it myself",
+      "Ask the cook to try my version on the next order",
+      "Describe it to guests the way I personally think it should be made"
+     ],
+     "why": "Improving a recipe follows the designated roles, not the Server's own decision.",
+     "id": "A1.q3"
+    },
+    {
+     "q": "What does 'legacy' mean in our work?",
+     "options": [
+      "Making the way we work transferable, not dependent on one person",
+      "Respecting the owner's personal story and protecting the family name",
+      "Keeping every recipe exactly as it was the first year"
+     ],
+     "why": "Legacy is making the way we create value transferable, so it doesn't depend on the founder's presence or one person's memory.",
+     "id": "A1.q4"
+    },
+    {
+     "q": "You notice a problem early and report it. What follows?",
+     "options": [
+      "No reprimand for reporting, and I still help correct the mistake",
+      "Reporting it means someone else now handles the correction",
+      "Best to fix it quietly myself first, so that nobody ends up being blamed"
+     ],
+     "why": "Reporting early is not a reason for reprimand, and it doesn't remove the duty to correct the mistake.",
+     "id": "A1.q5"
+    },
+    {
+     "q": "A colleague says a friendly name for a dish makes up for a vague description. Right?",
+     "options": [
+      "No: a nice name doesn't make up for a false description",
+      "Yes: guests remember the name more than the details",
+      "Yes, as long as the plate looks good when it arrives"
+     ],
+     "why": "A nice name or a smile doesn't make up for a false description or a wrong order.",
+     "id": "A1.q6"
+    },
+    {
+     "q": "Which of these is a concrete way a server contributes to legacy?",
+     "options": [
+      "Passing complete information to a colleague at a handoff",
+      "Learning the founder's whole biography so I can tell it to guests",
+      "Always working the same section so guests know you"
+     ],
+     "why": "Describing a dish accurately, reporting early and passing complete information all make the work transferable.",
+     "id": "A1.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "A2",
+   "level": "A",
+   "title": "The Server within the system",
+   "subtitle": "Connection, precision and coordination",
+   "objective": "Understand that guiding a table requires connection, precision and coordination.",
+   "evidence": "Distinguishes personal responsibility, coordination and authority.",
+   "prerequisites": [
+    "A1"
+   ],
+   "banner": "m6",
+   "sources": [],
+   "extra": [],
+   "practical": [],
+   "modules": [
+    {
+     "id": "A2.roles",
+     "title": "Who does what",
+     "known": "Describes the Server's part (understands the need, guides the choice, records accurately, follows the experience), the Host's (welcomes and seats; the Server covers when the Host is unavailable), the kitchen's (prepares according to recipes and procedures) and the lead's (decisions beyond the authority assigned), and knows that on every shift we need to know who fills these roles and how to reach them.",
+     "scenario": "A guest asks you for a discount because their table wasn't ready on time. Whose decision is it, and what do you do?"
+    },
+    {
+     "id": "A2.value",
+     "title": "How we create value",
+     "known": "Explains that we create value when the guest gets a suitable suggestion, the restaurant works with fewer errors and less waste, and the team can rely on the information it receives; that a higher sale from an unsuitable suggestion undermines this, and that failing to suggest a useful product can also mean incomplete service.",
+     "scenario": "A colleague says the best server is the one with the highest checks, whatever the guest ordered. What do we think?"
+    },
+    {
+     "id": "A2.handoff",
+     "title": "A reliable handoff",
+     "known": "Builds a handoff with the fact, the reference and the action needed (for example: table, Pivot position, what the guest reported, what hasn't been confirmed, what is needed), so a colleague can act without starting from zero; recognizes that 'the kitchen needs to pay more attention' is not a usable report.",
+     "scenario": "A guest at your table mentions a tree nut allergy just as you're going on break. What do you tell the colleague who takes over?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A guest asks for a discount because their table wasn't ready. Whose decision is it?",
+     "options": [
+      "The lead's, beyond my authority; I involve them",
+      "Mine, if it's a small amount and they're upset",
+      "The Host's, because the delay happened at the door"
+     ],
+     "why": "Decisions beyond the authority assigned are the lead's. On every shift we need to know who fills each role.",
+     "id": "A2.q1"
+    },
+    {
+     "q": "Who decides whether a new server is ready to work tables alone?",
+     "options": [
+      "The leads, after observing them in person",
+      "The AI Trainer, once every unit is complete",
+      "The new server, once they feel confident enough"
+     ],
+     "why": "Readiness for independent work is decided by the leads through practical observation.",
+     "id": "A2.q2"
+    },
+    {
+     "q": "Which report lets a colleague act without starting from zero?",
+     "options": [
+      "'Table 12, seat 3: tree nut allergy. No dish confirmed yet.'",
+      "'Someone at one of the tables near the window mentioned an allergy.'",
+      "'The kitchen needs to pay more attention to allergies.'"
+     ],
+     "why": "A reliable handoff has the fact, the reference and the action needed.",
+     "id": "A2.q3"
+    },
+    {
+     "q": "Which creates value the way we mean it?",
+     "options": [
+      "A suggestion that suits the guest, with fewer errors",
+      "Reaching the highest possible check on every single table",
+      "Never suggesting anything, so we don't seem pushy"
+     ],
+     "why": "A higher sale from an unsuitable suggestion undermines value, and failing to suggest something useful can be incomplete service.",
+     "id": "A2.q4"
+    },
+    {
+     "q": "The Host is busy and a new party walks in. What's right?",
+     "options": [
+      "The Server covers the welcome while the Host is busy",
+      "The party waits at the door until the Host is free",
+      "The Server seats them at whichever table happens to look open"
+     ],
+     "why": "The Host normally welcomes and seats; the Server covers when the Host is unavailable.",
+     "id": "A2.q5"
+    },
+    {
+     "q": "What does the kitchen do, in our system?",
+     "options": [
+      "Prepares according to recipes and procedures",
+      "Adjusts any dish to what the guest requests",
+      "Decides compensation when a dish goes wrong"
+     ],
+     "why": "The kitchen prepares according to recipes and procedures; decisions beyond assigned authority go to the lead.",
+     "id": "A2.q6"
+    },
+    {
+     "q": "At the start of a shift, what do we need to know about roles?",
+     "options": [
+      "Who fills each role today, and how to reach them",
+      "Only which tables are in my own section for the shift",
+      "Nothing: roles are the same every shift"
+     ],
+     "why": "On every shift we need to know who fills these roles and how to reach them.",
+     "id": "A2.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "A3",
+   "level": "A",
+   "title": "The table's journey",
+   "subtitle": "The map of a service, before the technical details",
+   "objective": "Build the map before the technical details.",
+   "evidence": "Reconstructs the stages and essential POS steps.",
+   "prerequisites": [
+    "A2"
+   ],
+   "banner": "m11",
+   "sources": [],
+   "extra": [],
+   "practical": [],
+   "modules": [
+    {
+     "id": "A3.flow",
+     "title": "The four movements",
+     "known": "Puts the service in four movements in order: we prepare; we understand and take orders; we serve and follow through; we conclude and prepare the table for the next guests; and knows that the Host normally welcomes and that no stage leaves a table abandoned.",
+     "scenario": "A friend asks what a server actually does from the moment guests arrive to the moment they leave. How do we sum it up?"
+    },
+    {
+     "id": "A3.two_visits",
+     "title": "Two visits for the order",
+     "known": "Knows we take appetizers and main courses in two visits: we enter the appetizer so the kitchen can begin and return for the main courses, without waiting for the complete order as a matter of principle, and without promising an exact timing the kitchen hasn't confirmed.",
+     "scenario": "A table has chosen an appetizer but is still deciding on main courses. What do we do?"
+    },
+    {
+     "id": "A3.pos_first",
+     "title": "POS first, always",
+     "known": "Knows we always enter the order in the POS before preparing or serving, including beverages, desserts and additions; that recording, sending and firing a course are different operations; and that if the system is down we use the approved procedure instead of improvising unrecorded service.",
+     "scenario": "It's busy and a colleague says: 'I'll bring two soft drinks now, then ring them in when I can.' What's wrong with that?"
+    }
+   ],
+   "test": [
+    {
+     "q": "What are the four movements of a service, in order?",
+     "options": [
+      "Prepare; take orders; serve and follow; conclude and reset",
+      "Greet; take every order at once; serve the food; present the check",
+      "Seat; take orders; serve and follow; clear the table"
+     ],
+     "why": "We prepare; we understand and take orders; we serve and follow through; we conclude and prepare the table for the next guests.",
+     "id": "A3.q1"
+    },
+    {
+     "q": "A table has chosen an appetizer but not their mains. What do we do?",
+     "options": [
+      "Enter the appetizer now, then return for the mains",
+      "Wait until the whole table is ready to order",
+      "Enter it and promise it in exactly ten minutes"
+     ],
+     "why": "We enter the appetizer so the kitchen can begin, return for the mains, and don't promise timing the kitchen hasn't confirmed.",
+     "id": "A3.q2"
+    },
+    {
+     "q": "When do we enter an order in the POS?",
+     "options": [
+      "Before anything is prepared or served, drinks too",
+      "After it's served, once things calm down",
+      "Only for food; the drinks can all be added at the end of the meal"
+     ],
+     "why": "We always enter the order in the POS before preparing or serving, including beverages, desserts and additions.",
+     "id": "A3.q3"
+    },
+    {
+     "q": "The POS goes down mid-service. What's right?",
+     "options": [
+      "Use the approved procedure, never unrecorded service",
+      "Keep serving and ring everything in as soon as the system is back",
+      "Stop taking orders until the system comes back up"
+     ],
+     "why": "If the system is down we use the approved procedure instead of improvising unrecorded service.",
+     "id": "A3.q4"
+    },
+    {
+     "q": "Recording, sending and firing a course are...",
+     "options": [
+      "Three different operations",
+      "Three names for the same step",
+      "Done by the kitchen, not the Server"
+     ],
+     "why": "Recording, sending and firing a course are different operations.",
+     "id": "A3.q5"
+    },
+    {
+     "q": "In the table's journey, who normally welcomes the guests?",
+     "options": [
+      "The Host, and no stage leaves the table abandoned",
+      "The Server, who takes over from the door as soon as they arrive",
+      "Whoever is closest to the door at the moment"
+     ],
+     "why": "The Host normally welcomes, and no stage of the service leaves a table abandoned.",
+     "id": "A3.q6"
+    },
+    {
+     "q": "A colleague brings two soft drinks and plans to ring them in later. What's wrong?",
+     "options": [
+      "POS first, always: nothing is served unrecorded",
+      "Nothing, as long as they remember to add them before the check",
+      "Only that drinks should come from the bar"
+     ],
+     "why": "We always enter the order in the POS before serving, beverages included.",
+     "id": "A3.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "A4",
+   "level": "A",
+   "title": "Reliability and basic safety",
+   "subtitle": "Recognizing the boundaries before practice",
+   "objective": "Recognize boundaries before practicing with products, guests and equipment.",
+   "evidence": "Recognizes when to stop and whom to involve.",
+   "prerequisites": [
+    "A2",
+    "A3"
+   ],
+   "banner": "m2",
+   "safety_critical": true,
+   "sources": [
+    "answers"
+   ],
+   "extra": [
+    "menu",
+    "safety"
+   ],
+   "practical": [],
+   "modules": [
+    {
+     "id": "A4.verify",
+     "title": "Verify before answering",
+     "known": "Knows we verify before giving an uncertain answer and don't turn a memory into a certainty; when we don't know a fact, we say we'll verify it, find the competent source and return with the outcome.",
+     "scenario": "A guest asks if the Bolognese contains pork. You think so, but you're not sure. What do you say?"
+    },
+    {
+     "id": "A4.allergy",
+     "title": "Allergies: the procedure, every time",
+     "known": "Knows an allergy requires the procedure and verification with the kitchen, and that a menu description is not enough ('I don't see nuts in the description, so it's safe' is wrong); that a recipe is never changed to remove an allergen, because taking an ingredient off doesn't remove its traces; that the kitchen is told about every allergy, every time; and that if we aren't sure, the answer is no and the guest chooses another dish.",
+     "scenario": "A guest says they're allergic to tree nuts and asks if the Alfredo is safe. What do you do?"
+    },
+    {
+     "id": "A4.hands_loads",
+     "title": "Hygiene, loads and hazards",
+     "known": "Knows not to touch drinking rims, glass interiors, the working ends of utensils or food-contact surfaces; not to carry a load we can't control, and to ask for help before losing control; and to report breakages, spills and hazards immediately, protecting the area.",
+     "scenario": "You drop a glass near a busy table. What do you do first?"
+    },
+    {
+     "id": "A4.emergency_authority",
+     "title": "Emergencies and authority",
+     "known": "Knows that in an emergency we activate the required assistance immediately: we call the manager on shift, and if we're alone, 911, instead of waiting or asking the AI for a diagnosis; that if a guest has been harmed or has a reaction, we take care of the guest first, tell the manager immediately, note what they say and what they ate, and don't argue, admit or promise anything; and that we don't grant modifications, compensation or exceptions beyond the authority actually assigned.",
+     "scenario": "A guest starts having trouble breathing after their first bites. What do you do?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A guest with a nut allergy asks about a dish. The description lists no nuts. What do you say?",
+     "options": [
+      "'Let me verify the ingredients and preparation with the kitchen.'",
+      "'There are no nuts listed, so you should be fine with it.'",
+      "'Most of our guests with allergies order this one and they're always fine.'"
+     ],
+     "why": "A menu description is not enough for an allergy. We follow the procedure and verify with the kitchen.",
+     "id": "A4.q1"
+    },
+    {
+     "q": "Can the kitchen leave the nuts off a dish for a guest with a nut allergy?",
+     "options": [
+      "No: traces remain, so we suggest a dish without nuts",
+      "Yes, as long as we clearly tell the kitchen it's for an allergy",
+      "Yes, if the guest confirms it's only a mild allergy"
+     ],
+     "why": "A recipe is never changed to remove an allergen, because taking an ingredient off doesn't remove its traces.",
+     "id": "A4.q2"
+    },
+    {
+     "q": "You're not sure a dish is safe for a guest's allergy. What's the answer?",
+     "options": [
+      "No, and the guest chooses another dish",
+      "Probably yes, if it's a dish we know well",
+      "Let the guest decide after you explain the risk"
+     ],
+     "why": "If we aren't sure, the answer is no, and the guest chooses another dish.",
+     "id": "A4.q3"
+    },
+    {
+     "q": "A regular orders the same dish as always and mentions their allergy. Do you tell the kitchen?",
+     "options": [
+      "Yes, every allergy, every time, even on a known dish",
+      "No, the kitchen already knows this guest's order",
+      "Only if the dish or the recipe has changed since their last visit"
+     ],
+     "why": "The kitchen is told about every allergy, every time: recipes, suppliers and preparation can change.",
+     "id": "A4.q4"
+    },
+    {
+     "q": "A guest asks if the Bolognese has pork. You think so, but you're not sure. What do you say?",
+     "options": [
+      "'Let me check with the kitchen and come right back.'",
+      "'I'm fairly sure it does, so I'd say yes.'",
+      "'It's a meat sauce, so it almost certainly does, yes.'"
+     ],
+     "why": "We verify before giving an uncertain answer and don't turn a memory into a certainty.",
+     "id": "A4.q5"
+    },
+    {
+     "q": "A guest says their throat feels tight after a few bites. What comes first?",
+     "options": [
+      "Call the manager on shift now, or 911 if you're alone",
+      "Bring water and check back on them in a couple of minutes",
+      "Ask them which ingredient they think caused it"
+     ],
+     "why": "In an emergency we activate help immediately; we take care of the guest first and tell the manager at once.",
+     "id": "A4.q6"
+    },
+    {
+     "q": "A guest has had a reaction. Which is right while you help?",
+     "options": [
+      "Note what they say and ate; don't argue, admit or promise",
+      "Reassure them the kitchen followed every procedure correctly tonight",
+      "Offer to pay for their meal so they stay calm"
+     ],
+     "why": "We take care of the guest, tell the manager immediately, note what they say and ate, and don't argue, admit or promise anything.",
+     "id": "A4.q7"
+    },
+    {
+     "q": "Where do you hold a clean glass?",
+     "options": [
+      "By the stem or the lower outside, never the rim",
+      "By the rim, so it's steadier while you walk",
+      "Fingers inside, so you can carry several at once"
+     ],
+     "why": "We don't touch drinking rims, glass interiors, the working ends of utensils or food-contact surfaces.",
+     "id": "A4.q8"
+    },
+    {
+     "q": "You drop a glass near a busy table. What do you do?",
+     "options": [
+      "Warn people, protect the area and report it now",
+      "Finish your current task, then come back to it",
+      "Pick the big pieces up by hand straight away"
+     ],
+     "why": "We report breakages, spills and hazards immediately, protecting the area.",
+     "id": "A4.q9"
+    },
+    {
+     "q": "A guest asks you to take a dish off the bill. You're not authorized. What do you do?",
+     "options": [
+      "Don't grant it: involve the person with the authority",
+      "Take it off, since it's only a small amount",
+      "Promise them the lead will be happy to take it off later"
+     ],
+     "why": "We don't grant modifications, compensation or exceptions beyond the authority actually assigned.",
+     "id": "A4.q10"
+    },
+    {
+     "q": "A guest at your table looks about 35 and orders a glass of wine. What do you do first?",
+     "options": [
+      "Ask for valid government-issued photo ID before serving it.",
+      "Serve it, since the guest clearly looks a lot older than 21.",
+      "Ask the guest's friends at the table to confirm they're over 21."
+     ],
+     "why": "Anyone who appears under 40 shows valid photo ID before being served alcohol.",
+     "id": "A4.q11"
+    },
+    {
+     "q": "You wake up with symptoms that could affect food safety. When and to whom do you report it?",
+     "options": [
+      "Before the shift starts, to the FOH manager.",
+      "At the end of the shift, to a colleague on the floor.",
+      "Only if the symptoms get worse during service."
+     ],
+     "why": "Symptoms are reported before the shift. Front of house reports to the FOH manager.",
+     "id": "A4.q12"
+    },
+    {
+     "q": "How do we wash our hands before handling food?",
+     "options": [
+      "Soap and running water, for at least 20 seconds.",
+      "A quick rinse with warm water, then a paper towel.",
+      "Hand sanitizer is enough, without washing at the sink."
+     ],
+     "why": "Soap and running water for at least 20 seconds, every time it's needed.",
+     "id": "A4.q13"
+    }
+   ],
+   "draw": 6
+  },
+  {
+   "id": "B1",
+   "level": "B",
+   "title": "Knowing what we offer",
+   "subtitle": "Turning reliable information into help with choosing",
+   "objective": "Turn reliable information into help with choosing.",
+   "evidence": "Describes products without invention and identifies what needs checking.",
+   "prerequisites": [
+    "A1",
+    "A2",
+    "A3",
+    "A4"
+   ],
+   "banner": "m8",
+   "sources": [
+    "dish_cards",
+    "answers"
+   ],
+   "extra": [
+    "menu",
+    "safety"
+   ],
+   "practical": [],
+   "modules": [
+    {
+     "id": "B1.card",
+     "title": "The minimum card",
+     "known": "Knows what to know for each product: name, category and role in the meal, defining ingredients, essential preparation, the taste described without exaggeration, approved variations, and what needs checking; and that the sales description and the allergen card serve different purposes.",
+     "scenario": "A guest asks you about a dish you've never served. What do you need to know about it to help them, and where do you get it?"
+    },
+    {
+     "id": "B1.differences",
+     "title": "Useful differences",
+     "known": "Uses a few useful differences to help a choice: the Carbonara has guanciale, eggs and Pecorino and is not a cream sauce; the Bolognese is a beef and pork ragù, not a generic tomato sauce; the Alfredo is a sauce based on dairy components; and adapts the wording to the current recipe, knowing a description is not an allergen certification.",
+     "scenario": "A guest is torn between the Carbonara, the Bolognese and the Alfredo, and wants something mild. How do we help?"
+    },
+    {
+     "id": "B1.modifications",
+     "title": "Variations and modifications",
+     "known": "Knows we don't currently modify dishes freely: only the variations that belong to a dish are offered, and the mushroom, bacon and truffle additions apply to the Alfredo, not to every pasta; for salads, only the additions on the current menu; and the Server doesn't anticipate future recipe revisions.",
+     "scenario": "A guest asks to add truffle to the Bolognese. What do we say?"
+    },
+    {
+     "id": "B1.dietary",
+     "title": "Children, vegetarian, vegan, gluten free",
+     "known": "Suggests only confirmed options for children, vegetarian, vegan or gluten-free requests; knows egg pasta is not vegan, gnocchi are not automatically gluten free, a meat-free dish doesn't prove every requested characteristic, and removing an ingredient is not a safety guarantee; when information is missing, recognizes the limit and checks instead of inventing.",
+     "scenario": "A guest asks for a vegan pasta. What do you tell them?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A guest asks about a dish you've never served. Where does your answer come from?",
+     "options": [
+      "The dish card, and the kitchen for anything to check",
+      "What a colleague told you about it last week",
+      "What dishes with a similar name usually contain at other places"
+     ],
+     "why": "For each product we know the minimum card and what needs checking; we never invent.",
+     "id": "B1.q1"
+    },
+    {
+     "q": "Which describes the Carbonara correctly?",
+     "options": [
+      "Guanciale, eggs and Pecorino; not a cream sauce",
+      "Bacon, cream and Parmesan; a rich cream sauce",
+      "Pancetta, cream and egg yolk; a light sauce"
+     ],
+     "why": "The Carbonara has guanciale, eggs and Pecorino and is not a cream sauce.",
+     "id": "B1.q2"
+    },
+    {
+     "q": "Which describes the Bolognese correctly?",
+     "options": [
+      "A beef and pork ragù, not a generic tomato sauce",
+      "A tomato sauce with a little ground beef in it",
+      "A creamy sauce with beef and fresh tomatoes"
+     ],
+     "why": "The Bolognese is a beef and pork ragù, not a generic tomato sauce.",
+     "id": "B1.q3"
+    },
+    {
+     "q": "A guest asks to add truffle to the Bolognese. What do we say?",
+     "options": [
+      "That addition belongs to the Alfredo; we can suggest it",
+      "Yes, every pasta can take any of the additions",
+      "Yes, as long as the kitchen isn't too busy to add it tonight"
+     ],
+     "why": "Only the variations that belong to a dish are offered; mushroom, bacon and truffle additions apply to the Alfredo.",
+     "id": "B1.q4"
+    },
+    {
+     "q": "A guest asks for a vegan pasta. Is egg pasta suitable?",
+     "options": [
+      "No: egg pasta is not vegan",
+      "Yes: pasta is always vegan",
+      "Yes, if there's no cheese on top"
+     ],
+     "why": "Egg pasta is not vegan. We suggest only confirmed options.",
+     "id": "B1.q5"
+    },
+    {
+     "q": "A gluten-free guest asks about the gnocchi. What's right?",
+     "options": [
+      "Gnocchi aren't automatically gluten free: we check",
+      "Gnocchi are potato, so they're gluten free",
+      "Gnocchi are fine as long as they're made fresh in-house today"
+     ],
+     "why": "Gnocchi are not automatically gluten free. When information is missing, we check instead of inventing.",
+     "id": "B1.q6"
+    },
+    {
+     "q": "The sales description and the allergen card...",
+     "options": [
+      "Serve different purposes",
+      "Say exactly the same thing",
+      "Are both written by the server"
+     ],
+     "why": "The sales description helps a choice; the allergen card serves safety. A description is not an allergen certification.",
+     "id": "B1.q7"
+    },
+    {
+     "q": "A guest asks for a meat-free dish for a vegetarian friend. Is 'no meat listed' enough?",
+     "options": [
+      "No: meat-free doesn't prove every characteristic asked",
+      "Yes: if no meat is listed on the menu, the dish is vegetarian",
+      "Yes, as long as we take any meat off the plate"
+     ],
+     "why": "A meat-free dish doesn't prove every requested characteristic, and removing an ingredient is not a guarantee.",
+     "id": "B1.q8"
+    },
+    {
+     "q": "A guest tells you she's allergic to sesame. What do you do with the order?",
+     "options": [
+      "Add an allergy alert on the item in Clover and tell the kitchen lead.",
+      "Write 'no sesame' in the item's note and send the order as usual.",
+      "Take the sesame off the dish yourself and tell the guest it's now safe."
+     ],
+     "why": "We enter an allergy alert in Clover naming the allergen, and confirm with the kitchen lead directly.",
+     "id": "B1.q9"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "B2",
+   "level": "B",
+   "title": "Connecting and understanding",
+   "subtitle": "Beginning naturally, and finding out what the guest wants",
+   "objective": "Begin naturally and collect useful information without interrogating the table.",
+   "evidence": "Conducts a brief opening and asks a useful question.",
+   "prerequisites": [
+    "B1"
+   ],
+   "banner": "m7",
+   "sources": [],
+   "extra": [],
+   "practical": [],
+   "modules": [
+    {
+     "id": "B2.five_actions",
+     "title": "The five RF actions",
+     "known": "Names the five actions of the RF communication method: we observe, we understand, we guide, we accompany, we remain available; knows they are actions, not words to recite to the guest; and that we observe facts (eye contact, menus still open, an empty drink, a conversation in progress) without inferring emotions from posture, age, accent or clothing.",
+     "scenario": "You approach a table: menus are still open and two guests are deep in conversation. What do you notice, and what do you do?"
+    },
+    {
+     "id": "B2.opening",
+     "title": "A brief, natural opening",
+     "known": "Opens a first visit briefly and naturally (for example: welcome, here we focus on Italian cuisine rooted in tradition, I'll be happy to help you find something you'll enjoy), with a short personal introduction; doesn't repeat the whole introduction to guests who already know us, and includes newcomers in a mixed group without a long speech.",
+     "scenario": "A group of four sits down: two have been here before, two are new. How do you open?"
+    },
+    {
+     "id": "B2.question",
+     "title": "One question that narrows the choice",
+     "known": "Starts with a question that narrows the choice ('a milder flavor or something more pronounced?'), and if the answer is vague, asks for an example of a dish they enjoy; doesn't pile up five questions before helping, and doesn't suggest the most expensive product before understanding the need, but presents one or two relevant options and explains the difference.",
+     "scenario": "A guest says: 'I like everything.' What do you say next?"
+    }
+   ],
+   "test": [
+    {
+     "q": "What are the five RF actions?",
+     "options": [
+      "Observe, understand, guide, accompany, remain available",
+      "Greet, suggest, sell, check back, and present the check on time",
+      "Smile, listen, recommend, upsell, thank the guests"
+     ],
+     "why": "Observe, understand, guide, accompany, remain available: actions, not words to recite.",
+     "id": "B2.q1"
+    },
+    {
+     "q": "Which is an observed fact, the way we mean it?",
+     "options": [
+      "The menus are still open",
+      "That guest looks annoyed",
+      "They seem like big spenders"
+     ],
+     "why": "We observe facts (menus open, an empty drink) without inferring emotions from posture, age, accent or clothing.",
+     "id": "B2.q2"
+    },
+    {
+     "q": "A guest says, 'I like everything.' What do you say next?",
+     "options": [
+      "'A milder flavor, or something more pronounced?'",
+      "'Then I'll bring you our most popular dish.'",
+      "'Our most expensive dish is the best one.'"
+     ],
+     "why": "We start with one question that narrows the choice; we don't suggest the most expensive before understanding the need.",
+     "id": "B2.q3"
+    },
+    {
+     "q": "Two of four guests have been here before. How do you open?",
+     "options": [
+      "Briefly, including the newcomers without a long speech",
+      "The full introduction again, for the whole table",
+      "Skip the introduction entirely, since some of them already know us"
+     ],
+     "why": "We don't repeat the whole introduction to guests who know us, and we include newcomers without a long speech.",
+     "id": "B2.q4"
+    },
+    {
+     "q": "The guest's answer to your question is vague. What next?",
+     "options": [
+      "Ask for an example of a dish they enjoy",
+      "Ask four more questions before suggesting",
+      "Suggest the most expensive dish to be safe"
+     ],
+     "why": "If the answer is vague, ask for an example; don't pile up questions before helping.",
+     "id": "B2.q5"
+    },
+    {
+     "q": "Are the five RF actions words to say to the guest?",
+     "options": [
+      "No: they're things we do, not a script",
+      "Yes: we say them at the start of service",
+      "Yes: but only to first-time guests"
+     ],
+     "why": "The five actions are actions, not words to recite to the guest.",
+     "id": "B2.q6"
+    },
+    {
+     "q": "How many options do you present once you understand the need?",
+     "options": [
+      "One or two relevant options, with the difference",
+      "Every dish in the category, so they can compare",
+      "Just one: the dish the kitchen wants to sell"
+     ],
+     "why": "We present one or two relevant options and explain the difference.",
+     "id": "B2.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "B3",
+   "level": "B",
+   "title": "Guiding and taking the order",
+   "subtitle": "From a guided choice to an accurate order",
+   "objective": "Turn a guided choice into an accurate order that gets properly underway.",
+   "evidence": "Suggests, confirms and records across the two RF visits.",
+   "prerequisites": [
+    "B2"
+   ],
+   "banner": "m3",
+   "sources": [
+    "dish_cards"
+   ],
+   "extra": [
+    "menu"
+   ],
+   "practical": [],
+   "modules": [
+    {
+     "id": "B3.suggest",
+     "title": "A useful suggestion",
+     "known": "Connects what we understood to a real characteristic of a dish (not just 'everything is delicious', no universal promises about taste); knows selling is part of guiding: suggesting a dish to share, a beverage, a paired wine or a dessert while explaining why; and if the guest declines, continues with the same care without renewing the pressure.",
+     "scenario": "A table wants something fresh and simple to start. What do you suggest, and how do you say it?"
+    },
+    {
+     "id": "B3.sequence",
+     "title": "The order in two visits",
+     "known": "Follows the sequence: take and confirm appetizers with Pivot positions; enter them in the POS before any preparation or service; give time to choose mains and return for a second visit; take, confirm and record the mains, coordinating the courses; suggest wine after the food so we can advise on pairing, or help right away if they already want it; if there are no appetizers, go straight to mains; and don't wait until appetizers are finished to take the mains.",
+     "scenario": "A table orders one appetizer to share and two different mains, and asks for wine. Walk me through the steps."
+    },
+    {
+     "id": "B3.confirm",
+     "title": "Confirming, and when something's unavailable",
+     "known": "Confirms names and quantities clearly, knows a similar name is not an equivalent dish, and doesn't leave essential requirements in memory or an informal note; doesn't promise precise times without reliable information; when a main course is unavailable, offers a suitable alternative, confirms again and updates the order.",
+     "scenario": "After you've taken the order, the kitchen tells you one of the mains is not available today. What do you do?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A table wants something fresh and simple to start. Which suggestion works?",
+     "options": [
+      "Connect it to the dish: 'the Caprese: tomato, mozzarella, basil'",
+      "'Everything is delicious, you really can't go wrong here.'",
+      "'You'll love it, I promise: everyone who orders it says it's amazing.'"
+     ],
+     "why": "A useful suggestion connects what we understood to a real characteristic, without universal promises about taste.",
+     "id": "B3.q1"
+    },
+    {
+     "q": "The guest declines your suggestion. What now?",
+     "options": [
+      "Continue with the same care, without new pressure",
+      "Suggest the same dish again, just using different words this time",
+      "Stop suggesting anything for the rest of the meal"
+     ],
+     "why": "If the guest declines, we continue with the same care without renewing the pressure.",
+     "id": "B3.q2"
+    },
+    {
+     "q": "When do we normally suggest wine?",
+     "options": [
+      "After the food, so we can advise on pairing",
+      "Before anything else, as soon as they sit",
+      "Only if the guest brings it up themselves"
+     ],
+     "why": "We suggest wine after the food so we can advise on pairing, or help right away if they already want it.",
+     "id": "B3.q3"
+    },
+    {
+     "q": "Appetizers are taken. Do we wait for them to be finished before taking the mains?",
+     "options": [
+      "No: we return for the mains and coordinate the courses",
+      "Yes: mains are always taken after appetizers are done",
+      "Yes, unless the guests are clearly in a hurry to eat tonight"
+     ],
+     "why": "We don't wait until appetizers are finished to take the mains.",
+     "id": "B3.q4"
+    },
+    {
+     "q": "A guest orders a dish with a name similar to another. What do you do?",
+     "options": [
+      "Confirm the name clearly: similar isn't the same dish",
+      "Ring in the one you think they most likely meant to order",
+      "Ring in both, so the kitchen can work it out"
+     ],
+     "why": "We confirm names and quantities clearly; a similar name is not an equivalent dish.",
+     "id": "B3.q5"
+    },
+    {
+     "q": "A main is unavailable after you took the order. What do you do?",
+     "options": [
+      "Tell them, offer a suitable alternative, confirm, update",
+      "Substitute the closest dish quietly, so they don't have to wait",
+      "Wait until the other dishes arrive, then tell them"
+     ],
+     "why": "We offer a suitable alternative, confirm again and update the order.",
+     "id": "B3.q6"
+    },
+    {
+     "q": "Where do essential requirements, like an allergy, get recorded?",
+     "options": [
+      "In the order itself, never just in memory",
+      "In my memory, since I'm the one serving",
+      "On a sticky note on my order pad"
+     ],
+     "why": "We don't leave essential requirements in memory or an informal note.",
+     "id": "B3.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "B4",
+   "level": "B",
+   "title": "Following through and concluding",
+   "subtitle": "Attentive, without interrupting",
+   "objective": "Make guests feel consistently attended to without interrupting them for automatic reassurance.",
+   "evidence": "Remains available and concludes without imposing haste.",
+   "prerequisites": [
+    "B3"
+   ],
+   "banner": "m4",
+   "sources": [],
+   "extra": [],
+   "practical": [],
+   "modules": [
+    {
+     "id": "B4.presence",
+     "title": "Visible and available",
+     "known": "Stays visible, passes near the table and makes contact easy, sometimes with a discreet gesture; offers something specific ('May I refill the water?') instead of constantly asking 'Is everything wonderful?'; doesn't do a mechanical two-minute check-back or repeated identical visits; and only says what we actually observe.",
+     "scenario": "Your table has just received their mains and seems happy. What do you do in the next ten minutes?"
+    },
+    {
+     "id": "B4.signals",
+     "title": "Real signals",
+     "known": "Doesn't ignore an untouched plate, insistent eye contact or an obvious difficulty, and addresses the fact ('I see the plate is still untouched: is there something we need to address?'); if a problem emerges, listens and acts; the aim is real availability, not avoiding complaints.",
+     "scenario": "One guest hasn't touched their plate after several minutes and the others are eating. What do you do?"
+    },
+    {
+     "id": "B4.concluding",
+     "title": "Concluding without haste",
+     "known": "Clears with respect for anyone still eating; presents dessert and coffee with a specific suggestion, without imposing a sequence; prepares an accurate check and presents it when requested; keeps attending to guests after payment; and knows the table is available only after they've left and it has been cleaned and reset.",
+     "scenario": "A table has finished their mains and is chatting happily. How do you take them through to the end?"
+    }
+   ],
+   "test": [
+    {
+     "q": "Which is a specific attention, the way we work?",
+     "options": [
+      "'May I refill the water?' when a glass is low",
+      "'Is everything wonderful?' every few minutes",
+      "A check-back two minutes after every course"
+     ],
+     "why": "We offer something specific instead of constantly asking 'Is everything wonderful?'",
+     "id": "B4.q1"
+    },
+    {
+     "q": "Mains have just landed. How do you follow the table?",
+     "options": [
+      "Stay visible and make contact easy",
+      "Check back two minutes in, every time",
+      "Stay away until they call you over"
+     ],
+     "why": "We stay visible and available; no mechanical two-minute check-back or repeated identical visits.",
+     "id": "B4.q2"
+    },
+    {
+     "q": "A guest's plate is untouched while the others eat. What do you say?",
+     "options": [
+      "'I see the plate is untouched: is there something to address?'",
+      "'I see everything is going well tonight, enjoy the rest!'",
+      "Say nothing: it's always better not to interrupt a guest's meal"
+     ],
+     "why": "We don't ignore an untouched plate: we address the fact.",
+     "id": "B4.q3"
+    },
+    {
+     "q": "When do we normally present the check?",
+     "options": [
+      "When the guests ask for it",
+      "As soon as the mains are cleared",
+      "When the Host needs it"
+     ],
+     "why": "We prepare an accurate check and present it when requested.",
+     "id": "B4.q4"
+    },
+    {
+     "q": "The guests have paid. Is the table ready for the next party?",
+     "options": [
+      "No: only after they've left and it's cleaned and reset",
+      "Yes, as soon as the payment has gone through",
+      "Yes, as long as the Host is waiting at the door with a new party"
+     ],
+     "why": "The table is available only after they've left and it has been cleaned and reset.",
+     "id": "B4.q5"
+    },
+    {
+     "q": "One guest is still eating; the others have finished. What about clearing?",
+     "options": [
+      "Clear with respect for the guest still eating",
+      "Clear every plate together straight away",
+      "Leave everything until the check arrives"
+     ],
+     "why": "We clear with respect for anyone still eating.",
+     "id": "B4.q6"
+    },
+    {
+     "q": "How do we present dessert and coffee?",
+     "options": [
+      "With a specific suggestion, not imposing a sequence",
+      "Bring the dessert menu to every table automatically",
+      "Bring the dessert menu automatically to every single table"
+     ],
+     "why": "We present dessert and coffee with a specific suggestion, without imposing a sequence.",
+     "id": "B4.q7"
+    },
+    {
+     "q": "A guest's card is declined. What do you do?",
+     "options": [
+      "Discreetly ask for another payment method.",
+      "Tell the table out loud that the card didn't work.",
+      "Run the same card again until it goes through."
+     ],
+     "why": "Discreetly ask for another method; if it can't be solved, tell the FOH manager or manager on duty.",
+     "id": "B4.q8"
+    },
+    {
+     "q": "A table of four asks to split the check. What comes first?",
+     "options": [
+      "Ask how they want to divide it, then split it in Clover.",
+      "Split it in four equal parts in Clover without asking them.",
+      "Print a single check and let the four of them work it out."
+     ],
+     "why": "We confirm how they want to divide it, split it in Clover and check each check before payment.",
+     "id": "B4.q9"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "C1",
+   "level": "C",
+   "title": "Preparation, Pivot and coordination",
+   "subtitle": "Eliminating avoidable mistakes before reaching the table",
+   "objective": "Eliminate avoidable mistakes before reaching the table.",
+   "evidence": "Uses a consistent map and a complete handoff.",
+   "prerequisites": [
+    "B4"
+   ],
+   "banner": "m12",
+   "sources": [],
+   "extra": [],
+   "practical": [
+    {
+     "title": "Preparation and Pivot",
+     "visible": "Station ready, map used correctly, unambiguous handoff."
+    }
+   ],
+   "modules": [
+    {
+     "id": "C1.preparation",
+     "title": "Before service",
+     "known": "Checks before service: the assigned section, cleanliness and completeness, booth access, unavailable products, daily offerings, timing or issues communicated by the kitchen, and who the shift lead is; knows the local checklist is checked for real, not just declared.",
+     "scenario": "You arrive for an evening shift. What do you check before the first guests sit down?"
+    },
+    {
+     "id": "C1.pivot",
+     "title": "The Pivot method",
+     "known": "Explains the Pivot method: the reference point and numbering direction must be identical for whoever takes the order, the POS and whoever delivers; we use the restaurant's physical map and don't invent which seat is number one; we don't renumber people for convenience during the meal.",
+     "scenario": "A colleague numbers the seats differently from you. Why is that a problem at delivery?"
+    },
+    {
+     "id": "C1.pass",
+     "title": "At the pass",
+     "known": "At the pass, checks table, dish, position, completeness and relevant instructions; doesn't take a dish because it resembles the expected one; prepares the table before items needing space or equipment arrive; coordinates with the person responsible for the pass if something is missing; and gives delivery information complete enough for a colleague to deliver (not 'the two pastas are for the booth at the back').",
+     "scenario": "You ask a colleague: 'The two pastas are for the booth at the back.' What's missing?"
+    }
+   ],
+   "test": [
+    {
+     "q": "You arrive for a shift. Which belongs in your check before guests sit?",
+     "options": [
+      "Section, unavailable products, and who the lead is",
+      "Only that my tables look set from a distance",
+      "Only the specials, because those are what guests always ask about"
+     ],
+     "why": "We check the section, cleanliness, booth access, unavailable products, daily offerings, kitchen issues and who the shift lead is.",
+     "id": "C1.q1"
+    },
+    {
+     "q": "What is the Pivot method for?",
+     "options": [
+      "Everyone numbers the seats the same way",
+      "Choosing the best seat for the guest",
+      "Remembering guests' names during the meal"
+     ],
+     "why": "The reference point and numbering direction must be identical for whoever orders, the POS and whoever delivers.",
+     "id": "C1.q2"
+    },
+    {
+     "q": "Which seat is number one?",
+     "options": [
+      "The one on the restaurant's physical map",
+      "Whoever ordered first at the table",
+      "The seat closest to me when I arrive"
+     ],
+     "why": "We use the restaurant's physical map and don't invent which seat is number one.",
+     "id": "C1.q3"
+    },
+    {
+     "q": "Two guests swap seats mid-meal. Do we renumber them?",
+     "options": [
+      "No: we don't renumber people for convenience",
+      "Yes: numbering follows wherever they sit",
+      "Yes, but only if the mains haven't arrived at the table yet"
+     ],
+     "why": "We don't renumber people for convenience during the meal.",
+     "id": "C1.q4"
+    },
+    {
+     "q": "At the pass, a dish looks like the one you're waiting for. What do you do?",
+     "options": [
+      "Check table, dish, position and completeness first",
+      "Take it: it looks right and the guests are waiting",
+      "Take it and confirm with the guests once you reach the table"
+     ],
+     "why": "We don't take a dish because it resembles the expected one.",
+     "id": "C1.q5"
+    },
+    {
+     "q": "Which delivery instruction can a colleague act on?",
+     "options": [
+      "'Table 14, seat 2: Carbonara; seat 3: Bolognese.'",
+      "'The two pastas are for the booth at the back.'",
+      "'They're for the couple who ordered a while ago.'"
+     ],
+     "why": "Delivery information must be complete enough for a colleague to deliver.",
+     "id": "C1.q6"
+    },
+    {
+     "q": "Something is missing from an order at the pass. What do you do?",
+     "options": [
+      "Coordinate with the person responsible for the pass",
+      "Deliver whatever's there and tell them the rest is on its way",
+      "Wait at the pass until it shows up on its own"
+     ],
+     "why": "We coordinate with the person responsible for the pass if something is missing.",
+     "id": "C1.q7"
+    },
+    {
+     "q": "Clover goes down in the middle of service. What's the first thing you do?",
+     "options": [
+      "Tell management immediately.",
+      "Keep taking cards on paper on your own.",
+      "Ask the guests to come back later."
+     ],
+     "why": "Management is told first; orders are written by hand only when the manager says so.",
+     "id": "C1.q8"
+    },
+    {
+     "q": "How do we enter an order in Clover?",
+     "options": [
+      "Table, number of guests, then each item on its seat.",
+      "All the items together first, then sort them at payment.",
+      "Only the table and the items; seats are added at the end."
+     ],
+     "why": "Orders go in seat by seat, and the seat numbers stay the same for the whole service.",
+     "id": "C1.q9"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "C2",
+   "level": "C",
+   "title": "Hands, glasses and the table",
+   "subtitle": "Hygienic, under control, respecting the guest's space",
+   "objective": "Handle and place objects hygienically, under control and with respect for the guest's space.",
+   "evidence": "Distinguishes grip points and placement, then demonstrates them.",
+   "prerequisites": [
+    "A4",
+    "C1"
+   ],
+   "banner": "m10",
+   "sources": [],
+   "extra": [],
+   "practical": [
+    {
+     "title": "Glasses and beverages",
+     "visible": "Correct grip points, stable load, controlled placement and pouring."
+    }
+   ],
+   "modules": [
+    {
+     "id": "C2.grip",
+     "title": "Grip points",
+     "known": "Holds glasses by the stem or lower outside, never the drinking rim or inside; touches utensils by the handle; keeps hands off the food-contact area of plates; and follows the hygiene procedure and the clean and dirty handling rules.",
+     "scenario": "You're carrying clean glasses and cutlery to a table. Where do your fingers go?"
+    },
+    {
+     "id": "C2.placement",
+     "title": "Placing on the table",
+     "known": "Places the glass at the upper right of the setting, reachable and stable, with water in the position the RF setup specifies; never in the neighbor's area for convenience; if a phone is in the way, asks the guest ('Could we clear this space for the glass?') and doesn't move phones, keys, bags, glasses, napkins or items in use without permission.",
+     "scenario": "A guest's phone is exactly where the glass should go. What do you do?"
+    },
+    {
+     "id": "C2.pour_carry",
+     "title": "Pouring and carrying",
+     "known": "Opens bottled beverages at the table according to the product procedure; pours with control, without the bottle touching the glass and not to the rim; knows approved measures govern by-the-glass sales; uses a tray only if able to control it; knows there's no universal number of glasses to carry and the maximum is what's been shown safe; never uses a glass to scoop ice or as a waste container.",
+     "scenario": "A colleague scoops ice with a glass to save time. What do you tell them?"
+    }
+   ],
+   "test": [
+    {
+     "q": "Where do your fingers go on a glass?",
+     "options": [
+      "The stem or lower outside",
+      "Just under the rim, firmly",
+      "Inside, to carry several"
+     ],
+     "why": "We hold glasses by the stem or lower outside, never the drinking rim or inside.",
+     "id": "C2.q1"
+    },
+    {
+     "q": "How do you hold cutlery when setting the table?",
+     "options": [
+      "By the handle, never the working end",
+      "By the middle, so it doesn't slip",
+      "Any way, as long as it's polished"
+     ],
+     "why": "We touch utensils by the handle and keep hands off food-contact areas.",
+     "id": "C2.q2"
+    },
+    {
+     "q": "A guest's phone is where the glass goes. What do you do?",
+     "options": [
+      "Ask: 'Could we clear this space for the glass?'",
+      "Move the phone gently to one side yourself, without a word",
+      "Put the glass in the neighbor's space instead"
+     ],
+     "why": "We don't move phones, keys, bags or items in use without permission.",
+     "id": "C2.q3"
+    },
+    {
+     "q": "How far do you pour?",
+     "options": [
+      "With control, not to the rim, bottle off the glass",
+      "To the rim, so the pour looks generous",
+      "Resting the bottle lightly on the glass, for better control"
+     ],
+     "why": "We pour with control, without the bottle touching the glass and not to the rim.",
+     "id": "C2.q4"
+    },
+    {
+     "q": "How many glasses can a server carry at once?",
+     "options": [
+      "As many as they've shown they can control",
+      "Six between the fingers, once you're trained",
+      "As many as possible, during the rush"
+     ],
+     "why": "There's no universal number; the maximum is what's been shown safe.",
+     "id": "C2.q5"
+    },
+    {
+     "q": "A colleague scoops ice with a glass. What do you tell them?",
+     "options": [
+      "Never use a glass to scoop ice",
+      "It's fine if the glass is clean",
+      "It's fine when the bar is busy"
+     ],
+     "why": "We never use a glass to scoop ice or as a waste container.",
+     "id": "C2.q6"
+    },
+    {
+     "q": "What governs how much wine goes in a glass sold by the glass?",
+     "options": [
+      "The approved measures",
+      "The space left in the glass",
+      "How generous the server feels"
+     ],
+     "why": "Approved measures govern by-the-glass sales.",
+     "id": "C2.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "C3",
+   "level": "C",
+   "title": "Plates, access and clearing",
+   "subtitle": "Delivering and removing safely",
+   "objective": "Deliver and remove without endangering people, product or control of the load.",
+   "evidence": "Plans safe delivery and clearing, then demonstrates them.",
+   "prerequisites": [
+    "C2"
+   ],
+   "banner": "m9",
+   "sources": [],
+   "extra": [],
+   "practical": [
+    {
+     "title": "Plates and booths",
+     "visible": "Safe route and access, correct placement, timely request for help."
+    },
+    {
+     "title": "Clearing",
+     "visible": "Respect for the ongoing course, non-dominant hand as support, no stacks on the table."
+    }
+   ],
+   "modules": [
+    {
+     "id": "C3.access",
+     "title": "Safe access, booths too",
+     "known": "Knows the right side is preferred when it offers safe, natural access, and that in booths and semi-booths accessibility and safety come first; never carries a plate across a guest's face or a hot load over a person, and doesn't ask someone to stand; announces briefly ('Excuse me, I'll place the plate here'); and if safe access isn't available, stops and asks for support instead of moving occupied tables or improvising.",
+     "scenario": "Four guests in a semi-booth: the dish is for the guest against the wall. How do you deliver it?"
+    },
+    {
+     "id": "C3.deliver",
+     "title": "Carrying and delivering",
+     "known": "Checks the pass and route first; carries a stable load that lets us see where we're going; uses the designated dry protection for hot plates and warns the guest; uses Pivot positions to deliver the right dish without auctioning ('who had the Carbonara?'), and checks before placing if unsure; more work doesn't mean carrying more plates.",
+     "scenario": "It's the rush and a colleague says to carry four hot plates at once to go faster. What do you do?"
+    },
+    {
+     "id": "C3.clearing",
+     "title": "RF clearing",
+     "known": "Normally waits until everyone has finished the course unless a guest asks otherwise, asks permission about a specific plate if unclear, and never takes a plate while someone is still eating; uses the non-dominant hand as support and the dominant hand to collect; doesn't build stacks on the table; makes another trip or asks for help rather than lose control; keeps water and wine still in use, and checks before taking an unfinished beverage.",
+     "scenario": "Three guests have finished and one is still eating. What do you clear, and how?"
+    }
+   ],
+   "test": [
+    {
+     "q": "The dish is for the guest against the wall of a semi-booth. How do you deliver it?",
+     "options": [
+      "Safe natural access; if there isn't any, ask for support",
+      "Reach across the guests on the outside to place it",
+      "Politely ask the guest on the outside to stand up for a moment"
+     ],
+     "why": "In booths, safety comes first: never across a face or over a person, and we don't ask someone to stand.",
+     "id": "C3.q1"
+    },
+    {
+     "q": "A colleague says to carry four hot plates to go faster. What do you do?",
+     "options": [
+      "Carry only what I control; make another trip",
+      "Carry them, since speed matters most in a rush",
+      "Carry them, but warn the guests as I go"
+     ],
+     "why": "More work doesn't mean carrying more plates; we carry a stable load we control.",
+     "id": "C3.q2"
+    },
+    {
+     "q": "How do you find out who gets which dish?",
+     "options": [
+      "From the Pivot positions",
+      "Ask: 'Who had the Carbonara?'",
+      "Place them and let guests swap"
+     ],
+     "why": "We use Pivot positions to deliver the right dish without auctioning.",
+     "id": "C3.q3"
+    },
+    {
+     "q": "Three guests have finished; one is still eating. What do you clear?",
+     "options": [
+      "Nothing yet, unless a guest asks otherwise",
+      "The three finished plates, straight away, to save a trip",
+      "Every plate, so the table looks tidy"
+     ],
+     "why": "We normally wait until everyone has finished, and never take a plate while someone is eating.",
+     "id": "C3.q4"
+    },
+    {
+     "q": "While clearing, how do you use your hands?",
+     "options": [
+      "Non-dominant to support, dominant to collect",
+      "Stack everything on the table, then lift it",
+      "Collect with both hands as fast as possible"
+     ],
+     "why": "We use the non-dominant hand as support and the dominant hand to collect, without stacks on the table.",
+     "id": "C3.q5"
+    },
+    {
+     "q": "There's an unfinished glass of wine. Do you take it?",
+     "options": [
+      "Check with the guest before taking it",
+      "Take it, since the course is over",
+      "Take it, but only if it's nearly empty"
+     ],
+     "why": "We keep water and wine still in use, and check before taking an unfinished beverage.",
+     "id": "C3.q6"
+    },
+    {
+     "q": "You're carrying a hot plate to the table. What else is required?",
+     "options": [
+      "Designated dry protection, and warn the guest",
+      "Nothing, if you move quickly enough",
+      "A damp cloth under the plate, so that it doesn't slip at all"
+     ],
+     "why": "We use the designated dry protection for hot plates and warn the guest.",
+     "id": "C3.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "C4",
+   "level": "C",
+   "title": "Wine and beverages",
+   "subtitle": "Advising simply, serving safely",
+   "objective": "Advise using simple information and perform orderly, safe service.",
+   "evidence": "Advises correctly and performs the required practical work.",
+   "prerequisites": [
+    "B3",
+    "C2"
+   ],
+   "banner": "m10",
+   "sources": [
+    "wine",
+    "dish_cards"
+   ],
+   "extra": [
+    "wines"
+   ],
+   "practical": [
+    {
+     "title": "Wine service",
+     "visible": "Bottle checked and presented, opened with the demonstrated technique, taste offered, served with safe access."
+    }
+   ],
+   "modules": [
+    {
+     "id": "C4.terms",
+     "title": "The words for wine",
+     "known": "Knows the Server isn't a sommelier but can describe a few reliable differences with the necessary terms: sweetness, freshness or acidity, body, tannic sensation and aromas; and knows a fruity wine is not necessarily sweet, and body can't be explained by alcohol content alone.",
+     "scenario": "A guest asks for 'a fruity red, but not a sweet one'. Is that a contradiction? What do you say?"
+    },
+    {
+     "id": "C4.advise",
+     "title": "Advising a bottle",
+     "known": "First asks what direction interests the guest and what food they've chosen, then suggests one or two bottles actually available, distinguished by a few accurate facts; doesn't attribute universal characteristics to entire regions, doesn't automatically suggest the most expensive bottle, and doesn't promise free tastes or opening bottles without the policy.",
+     "scenario": "A couple ordered the Bolognese and the branzino and asks you to choose a wine for them. How do you go about it?"
+    },
+    {
+     "id": "C4.bottle",
+     "title": "Serving the bottle",
+     "known": "Follows the bottle sequence: check product, vintage where relevant and condition; present the label and verify it's the one ordered; open with the demonstrated technique, under control; offer the taste to the person who chose; after acceptance, serve the guests with safe access; then look after the bottle and its temperature. Knows the cork's smell isn't the only test, a reported defect means listening and involving the competent person, and serving order follows the RF criterion, requests and access, not rigid rules like 'women first'.",
+     "scenario": "The guest tastes the wine and says it seems off. What do you do?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A guest wants 'a fruity red, not sweet'. What do you know?",
+     "options": [
+      "Fruity isn't necessarily sweet, so we look for one",
+      "It's a contradiction, so they'll have to pick one or the other",
+      "Every red is fruity, so any red will work"
+     ],
+     "why": "A fruity wine is not necessarily sweet.",
+     "id": "C4.q1"
+    },
+    {
+     "q": "What do we ask before suggesting a bottle?",
+     "options": [
+      "The direction they like and the food they chose",
+      "How much they want to spend, before anything else at all",
+      "Nothing: we suggest the most expensive bottle"
+     ],
+     "why": "We first ask what direction interests the guest and what food they've chosen.",
+     "id": "C4.q2"
+    },
+    {
+     "q": "Which statement follows the course?",
+     "options": [
+      "We don't give whole regions universal traits",
+      "All wines from the north of Italy are light",
+      "The priciest bottle is always the best advice"
+     ],
+     "why": "We don't attribute universal characteristics to entire regions, and we don't automatically suggest the most expensive bottle.",
+     "id": "C4.q3"
+    },
+    {
+     "q": "Can body be explained by alcohol content?",
+     "options": [
+      "Not by alcohol content alone",
+      "Yes: more alcohol means more body",
+      "Yes: body is just the alcohol level"
+     ],
+     "why": "Body can't be explained by alcohol content alone.",
+     "id": "C4.q4"
+    },
+    {
+     "q": "After opening the bottle, who tastes it first?",
+     "options": [
+      "The person who chose the wine",
+      "The oldest person at the table",
+      "Always the woman at the table"
+     ],
+     "why": "We offer the taste to the person who chose; serving order follows the RF criterion, not rigid rules.",
+     "id": "C4.q5"
+    },
+    {
+     "q": "The guest says the wine has a defect. What do you do?",
+     "options": [
+      "Listen, and involve the competent person",
+      "Smell the cork to show them it's fine",
+      "Explain that this wine is meant to taste so"
+     ],
+     "why": "A reported defect means listening and involving the competent person; the cork's smell isn't the only test.",
+     "id": "C4.q6"
+    },
+    {
+     "q": "Before opening, what do you check and show?",
+     "options": [
+      "Product, vintage and condition; present the label",
+      "Nothing: open it quickly so that they can taste it right away",
+      "Only the price, so there are no surprises"
+     ],
+     "why": "We check product, vintage and condition, present the label and verify it's the one ordered.",
+     "id": "C4.q7"
+    },
+    {
+     "q": "A guest who appears intoxicated orders another drink. What can you do?",
+     "options": [
+      "Refuse the drink and tell the FOH manager or manager on duty.",
+      "Serve a smaller glass and keep a close eye on the guest after.",
+      "Ask the rest of the guest's table to decide if it's a good idea."
+     ],
+     "why": "A Server may refuse alcohol to a guest who appears intoxicated; the manager supports the decision.",
+     "id": "C4.q8"
+    },
+    {
+     "q": "You're in your first week. A table orders a bottle of wine. Who serves it?",
+     "options": [
+      "You serve it with a lead, until a manager approves you.",
+      "You serve it on your own, the same as you would any drink.",
+      "You ask the guests to go and fetch it from the bar themselves."
+     ],
+     "why": "A new hire doesn't serve alcohol on their own until training is complete and a manager has approved it.",
+     "id": "C4.q9"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "C5",
+   "level": "C",
+   "title": "Communication in difficult situations",
+   "subtitle": "Responsibility, clarity and connection when things go wrong",
+   "objective": "Address the actual situation while maintaining responsibility, clarity and connection.",
+   "evidence": "Handles a problem without unauthorized promises or initiatives.",
+   "prerequisites": [
+    "B4",
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+   ],
+   "banner": "m5",
+   "sources": [
+    "answers"
+   ],
+   "extra": [
+    "safety"
+   ],
+   "practical": [],
+   "modules": [
+    {
+     "id": "C5.actions",
+     "title": "The five actions on a problem",
+     "known": "Applies the five RF actions to a problem: observe the fact, understand the need, guide toward a permitted solution, accompany the action, remain available until the outcome has been checked; doesn't leave the guest to chase the problem; knows asking an open question to understand a real difficulty is right.",
+     "scenario": "A guest stops you: 'We've been waiting a long time for our mains.' What do you do, step by step?"
+    },
+    {
+     "id": "C5.delay_unavailable",
+     "title": "Delays and unavailable products",
+     "known": "For a delay, checks the status with the kitchen, returns with a real update and agrees the follow-through, never inventing minutes ('two minutes' is wrong if it isn't verified) or shifting blame; for an unavailable product, says so before the choice, offers a relevant alternative and confirms, never substituting without consent.",
+     "scenario": "The kitchen is behind and a guest asks how long their dish will be. You don't know. What do you say?"
+    },
+    {
+     "id": "C5.wrong_unhappy",
+     "title": "Wrong order, dish not enjoyed",
+     "known": "For a wrong order, identifies table and dish, acknowledges the mistake and starts the correction; for a dish not enjoyed, listens to the concrete problem ('which aspect was different from what you expected?'), involves the lead, doesn't promise a refund and doesn't criticize the guest's taste; knows compensation follows the assigned authority and is recorded, and recording and authorizing are separate things.",
+     "scenario": "A guest says the dish isn't what they expected and they don't like it. What do you do?"
+    },
+    {
+     "id": "C5.boundaries",
+     "title": "Boundaries: modifications, allergies, aggression",
+     "known": "For an unapproved modification, explains the boundary ('we prepare this dish according to our recipe'), understands the need and offers an allowed alternative, never sending the change hoping it's accepted; for an allergy, stops confirmations and activates verification and the procedure; with an aggressive guest, keeps it brief, involves the lead immediately and protects safety, never handling a risky situation alone.",
+     "scenario": "A guest raises their voice at you and won't calm down. What do you do?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A guest asks how long their delayed dish will be. You haven't checked. What do you say?",
+     "options": [
+      "'I'll check with the kitchen and come back with an update.'",
+      "'Two minutes, it's coming out right now, I promise.'",
+      "'The kitchen is really slow tonight, so there's nothing I can do.'"
+     ],
+     "why": "We check the status, return with a real update, and never invent minutes or shift blame.",
+     "id": "C5.q1"
+    },
+    {
+     "q": "The wrong dish arrives at a table. What's the first step?",
+     "options": [
+      "Acknowledge the mistake and start the correction",
+      "Suggest they try it, since it's a good dish too",
+      "Offer a free dessert before saying anything else"
+     ],
+     "why": "For a wrong order, we identify table and dish, acknowledge the mistake and start the correction.",
+     "id": "C5.q2"
+    },
+    {
+     "q": "A guest didn't enjoy the dish. Which is right?",
+     "options": [
+      "Ask what was different from what they expected; involve the lead",
+      "Promise a refund straight away so they leave happy",
+      "Explain that the dish was made correctly, so it must be a matter of taste"
+     ],
+     "why": "We listen to the concrete problem, involve the lead, don't promise a refund and don't criticize the guest's taste.",
+     "id": "C5.q3"
+    },
+    {
+     "q": "A guest insists on a modification that isn't allowed. What do you do?",
+     "options": [
+      "Explain the boundary and offer an allowed option",
+      "Send it through to the kitchen and hope that it gets accepted",
+      "Refuse and leave them to choose something else"
+     ],
+     "why": "We explain the boundary, understand the need and offer an allowed alternative.",
+     "id": "C5.q4"
+    },
+    {
+     "q": "A guest becomes aggressive. What do you do?",
+     "options": [
+      "Keep it brief and involve the lead immediately",
+      "Handle it alone so the lead isn't bothered",
+      "Keep calmly explaining our side until they finally calm down"
+     ],
+     "why": "With an aggressive guest, we keep it brief, involve the lead immediately and protect safety.",
+     "id": "C5.q5"
+    },
+    {
+     "q": "A product is unavailable. When do you tell the guest?",
+     "options": [
+      "Before they choose, with a relevant alternative",
+      "After they order, when the kitchen tells you",
+      "Never: we substitute something close instead"
+     ],
+     "why": "For an unavailable product, we say so before the choice and never substitute without consent.",
+     "id": "C5.q6"
+    },
+    {
+     "q": "A lead approves a gesture for a guest. What else happens?",
+     "options": [
+      "It's recorded: recording and authorizing are separate",
+      "Nothing: once approved, no record is needed",
+      "The server records it and approves the next similar one themselves"
+     ],
+     "why": "Compensation follows the assigned authority and is recorded; recording and authorizing are separate things.",
+     "id": "C5.q7"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "D1",
+   "level": "D",
+   "title": "Integrated service",
+   "subtitle": "Four complete service simulations",
+   "objective": "Connect skills without turning every stage into a separate exercise.",
+   "evidence": "Maintains the flow in complete, progressive scenarios.",
+   "prerequisites": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+   ],
+   "banner": "m4",
+   "sources": [
+    "dish_cards"
+   ],
+   "extra": [],
+   "practical": [],
+   "modules": [
+    {
+     "id": "D1.first_table",
+     "title": "Scenario 1: the first simple table",
+     "known": "Runs a simple first-visit table of two from start to finish, connecting the steps: opening, a suggestion for a savory sauce and a simpler dish, two visits, Pivot, POS first, table preparation, presence and conclusion.",
+     "scenario": "Two guests, first visit, no special requests. One prefers a savory sauce, the other a simpler dish; they'll share an appetizer. Take me through the table from the moment they sit."
+    },
+    {
+     "id": "D1.semi_booth",
+     "title": "Scenario 2: the semi-booth",
+     "known": "Plans the semi-booth: four guests, two on the booth side and two on chairs, a phone in the way: safe access, asking permission, placement, identifying each course by position, and clearing without stacks; knows the actions themselves must be observed in person.",
+     "scenario": "Four guests: two on the booth side, two on chairs, and a phone where a glass should go. How do you serve and clear this table?"
+    },
+    {
+     "id": "D1.pressure",
+     "title": "Scenario 3: the kitchen under pressure",
+     "known": "Under pressure (one table ready for appetizers, one asking for the check, one looking for eye contact) chooses the next action from the concrete signals, keeps the safety constraints, never bypasses the POS, and reports overload early and arranges help.",
+     "scenario": "One table's appetizers are ready, a second asks for the check, and a third is trying to catch your eye. What do you do next?"
+    },
+    {
+     "id": "D1.handover",
+     "title": "Scenario 4: handing a table over",
+     "known": "Hands a table over so the colleague can continue without starting from zero: table, positions, recorded orders, what has been served, what's missing, verified requirements, open points and who is handling them; and connects it to legacy: making the work transferable.",
+     "scenario": "Appetizers, a wine and mains are ordered, and one request still needs checking. You have to hand the table to a colleague. What do you tell them?"
+    }
+   ],
+   "test": [
+    {
+     "q": "A first-visit table of two. What connects the steps of the service?",
+     "options": [
+      "Opening, two visits, Pivot, POS first, presence, conclusion",
+      "A greeting, then one visit for everything, then the check at the end",
+      "Drinks, food and the check, in whatever order suits"
+     ],
+     "why": "A simple table connects opening, a suggestion, two visits, Pivot, POS first, table preparation, presence and conclusion.",
+     "id": "D1.q1"
+    },
+    {
+     "q": "In a semi-booth with a phone in the way, what must be observed in person?",
+     "options": [
+      "Access, placement and clearing: the actions themselves",
+      "Nothing: describing it well in the chat is enough",
+      "Only the opening words to the guests at the table"
+     ],
+     "why": "The actions themselves must be observed in person.",
+     "id": "D1.q2"
+    },
+    {
+     "q": "Appetizers are up, a table wants the check, another seeks eye contact. How do you choose?",
+     "options": [
+      "From the concrete signals, within the safety rules",
+      "Always go to whichever table is waving at you the most",
+      "Always the one that's been waiting longest"
+     ],
+     "why": "Under pressure we choose the next action from the concrete signals and keep the safety constraints.",
+     "id": "D1.q3"
+    },
+    {
+     "q": "You're overloaded during a rush. What do you do?",
+     "options": [
+      "Report it early and arrange help",
+      "Skip the POS for small items to catch up",
+      "Push through and say nothing to anyone"
+     ],
+     "why": "We report overload early and arrange help, and never bypass the POS.",
+     "id": "D1.q4"
+    },
+    {
+     "q": "You hand a table to a colleague. What do they need?",
+     "options": [
+      "Positions, orders, what's served, what's open, who handles it",
+      "The table number, and a reassurance that everything's fine with them",
+      "A summary of the mood at the table"
+     ],
+     "why": "A handover covers table, positions, recorded orders, what's served, what's missing, verified requirements and open points.",
+     "id": "D1.q5"
+    },
+    {
+     "q": "Why does a complete handover matter beyond the shift?",
+     "options": [
+      "It makes the work transferable: that's legacy",
+      "It shows the lead that you're working hard",
+      "It isn't needed if the colleague is experienced"
+     ],
+     "why": "Making the work transferable connects the handover to legacy.",
+     "id": "D1.q6"
+    }
+   ],
+   "draw": 5
+  },
+  {
+   "id": "D2",
+   "level": "D",
+   "title": "Practice, shadowing and transfer",
+   "subtitle": "What only the dining room can show",
+   "objective": "Verify on site what a conversation cannot demonstrate.",
+   "evidence": "Demonstrates on site and receives the lead's decision.",
+   "prerequisites": [
+    "D1"
+   ],
+   "banner": "m6",
+   "sources": [],
+   "extra": [],
+   "practical": [
+    {
+     "title": "POS and courses",
+     "visible": "Recording before service, correct positions and coordinated course delivery."
+    },
+    {
+     "title": "Connection and presence",
+     "visible": "Useful question, coherent suggestion, noticeable availability without serial interruptions."
+    },
+    {
+     "title": "Critical request",
+     "visible": "Correct handling of uncertain information, allergy or required authority."
+    },
+    {
+     "title": "Integrated service",
+     "visible": "Continuity from welcome to making the table ready again."
+    }
+   ],
+   "modules": [
+    {
+     "id": "D2.on_site",
+     "title": "Practice on site",
+     "known": "Knows the lead organizes demonstration, guided practice, shadowing and observation; that the amount depends on the evidence, not a fixed number of hours or days; and that the AI conversations replace part of the explanation and practice, while the practical checks and the human decision about independence remain.",
+     "scenario": "A new colleague asks: 'I finished all the conversations with the Trainer. Can I take my own tables tomorrow?' What do you tell them?"
+    },
+    {
+     "id": "D2.outcomes",
+     "title": "The observed tests",
+     "known": "Knows each observed test has a concrete outcome: demonstrated; repeat required, with the error identified; or not yet observed; that an average doesn't offset a safety gap; and that completing the conversations does not by itself authorize serving tables.",
+     "scenario": "You did well on most practical checks but the lead asks you to repeat the glass test. What does that mean?"
+    }
+   ],
+   "test": [
+    {
+     "q": "You've finished every conversation unit. Can you serve tables alone?",
+     "options": [
+      "Not yet: practical checks and the lead's decision first",
+      "Yes, finishing every conversation unit is enough to start alone",
+      "Yes, after one shadowing shift, in every case"
+     ],
+     "why": "Completing the conversations does not by itself authorize serving tables.",
+     "id": "D2.q1"
+    },
+    {
+     "q": "How long is shadowing?",
+     "options": [
+      "It depends on the evidence, as the lead decides",
+      "Always three full days, for everyone",
+      "As many hours as the course itself took"
+     ],
+     "why": "The amount depends on the evidence, not a fixed number of hours or days.",
+     "id": "D2.q2"
+    },
+    {
+     "q": "What are the possible outcomes of an observed test?",
+     "options": [
+      "Demonstrated; repeat with the error named; not yet observed",
+      "A score from one to ten, with seven or more needed to pass",
+      "Pass or fail, decided at the end of the shift"
+     ],
+     "why": "Each observed test has a concrete outcome: demonstrated; repeat required, with the error identified; or not yet observed.",
+     "id": "D2.q3"
+    },
+    {
+     "q": "You're excellent on six tests and have a safety gap on one. What happens?",
+     "options": [
+      "The safety gap must be fixed: an average doesn't offset it",
+      "The average is strong overall, so you're cleared to work alone",
+      "Nothing, since it's only one test out of seven"
+     ],
+     "why": "An average doesn't offset a safety gap.",
+     "id": "D2.q4"
+    },
+    {
+     "q": "The lead asks you to repeat the glass test. What does it mean?",
+     "options": [
+      "An error was identified; you practice and are observed again",
+      "You've failed the course and will need to start it over again",
+      "Nothing: the lead just wants to see it once more"
+     ],
+     "why": "'Repeat required' comes with the error identified; we practice it and are observed again.",
+     "id": "D2.q5"
+    },
+    {
+     "q": "What do the AI conversations replace?",
+     "options": [
+      "Part of the explanation and practice, not the checks",
+      "The practical checks and the lead's decision",
+      "Everything: the lead only signs at the end"
+     ],
+     "why": "The AI conversations replace part of the explanation and practice; the practical checks and the human decision remain.",
+     "id": "D2.q6"
+    }
+   ],
+   "draw": 5
+  }
+ ]
+}

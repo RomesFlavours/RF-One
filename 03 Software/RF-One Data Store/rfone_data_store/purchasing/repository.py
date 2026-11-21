@@ -333,6 +333,13 @@ def record_purchase_document(
             grade=line.get("grade"),
             unit_price_minor=line.get("unit_price_minor"),
             economic_classification=economic_classification,
+            # Read-only line measures (PURCHASING.md §13): stored only when
+            # the caller read them on the invoice; absent stays NULL.
+            piece_content_value=_decimal_or_none(line.get("piece_content_value")),
+            piece_content_unit=line.get("piece_content_unit"),
+            actual_weight_value=_decimal_or_none(line.get("actual_weight_value")),
+            actual_weight_unit=line.get("actual_weight_unit"),
+            unit_price_basis=line.get("unit_price_basis"),
         )
         session.add(purchase_line)
 

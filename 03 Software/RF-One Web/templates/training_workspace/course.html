@@ -1,0 +1,13 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}{{ course_data.title }} · Training{% endblock %}
+{% block main %}
+<div class="tw-heading"><div><h1>{{ course_data.title }}</h1><p>{{ course_data.description }}</p></div><span class="tw-badge">{{ 'Draft preview' if is_draft else 'Version '~version }}</span></div>
+{% if preview %}<p><a href="{{ url_for('tw_content') }}">← Back to content</a></p>{% endif %}
+<section class="tw-card"><h2>Learning objective</h2><p>{{ course_data.objective or 'Complete the objective.' }}</p></section>
+{% for lesson in course_data.lessons %}<section class="tw-card tw-course-lesson"><h2>{{ loop.index }}. {{ lesson.title or 'Lesson da completare' }}</h2>
+{% if lesson.kind=='text' %}<div class="tw-course-text">{{ lesson.text }}</div>
+{% elif lesson.kind in ('internal','link') and lesson.url %}<a class="btn" href="{{ lesson.url }}" {% if lesson.kind=='link' %}target="_blank" rel="noopener noreferrer"{% endif %}>{{ 'Open RF-One page' if lesson.kind=='internal' else 'Open material' }}</a>
+{% elif lesson.kind=='file' and lesson.file_id %}<p><a href="{{ url_for('tw_course_file',file_id=lesson.file_id,assignment=assignment_id) }}">{{ lesson.filename }}</a></p>
+{% if lesson.filename.lower().endswith(('.mp4','.webm')) %}<video controls preload="metadata" class="tw-course-video" src="{{ url_for('tw_course_file',file_id=lesson.file_id,assignment=assignment_id) }}">Your browser does not support this video. Use the file link.</video>{% endif %}
+{% else %}<p class="muted">Complete this material in the draft.</p>{% endif %}</section>{% else %}<p class="muted">The draft does not contain any lessons yet.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,10 @@
+{% if result and result.active %}
+{% if result.old_engine %}<div class="small"><strong>{{ result.status|ui }}</strong><p>{{ result.reason }}</p><p><a href="{{ url_for('primary_screening_detail', run_id=result.run_id) }}">Apri la valutazione Old</a></p></div>{% else %}
+<div class="small pdl-rule-result">
+ <strong>{{ result.status|ui }}</strong> · Priorità: {{ result.priority }}
+ <details><summary>Esiti delle regole PDL</summary><ul>
+ {% for item in result.details %}<li><strong>{{ item.title }}</strong>: {{ 'Condizione verificata' if item.outcome is sameas true else 'Condizione non verificata' if item.outcome is sameas false else 'Dato mancante o non riconoscibile: da chiarire' }}<br>{{ item.condition }}</li>{% endfor %}
+ </ul></details>
+</div>
+{% endif %}
+{% endif %}

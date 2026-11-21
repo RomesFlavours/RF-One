@@ -1,0 +1,50 @@
+{% extends "_visual_menu_base.html" %}
+{% set help_section = 'visual_menu_card' %}
+{% set help_title = 'How this page works' %}
+{% block page_title %}Visual Menu · {{ card.title }} · {{ card.restaurant_name }}{% endblock %}
+{% block menu_content %}
+<article class="vm-dish">
+  <header class="vm-hero">
+    {% if photo_url %}<img class="vm-photo" src="{{ photo_url }}" alt="{{ card.title }}">{% else %}<p class="muted">Photograph not yet available.</p>{% endif %}
+    <div class="vm-intro"><p class="muted">{{ card.restaurant_name }}</p><h2>{{ card.title }}</h2>
+    <p class="muted">{{ card.menu_name }} · {{ card.area_name }}</p>
+    {% for peer in peers %}<a href="{{ peer.url }}">View {{ peer.name }}’s dish</a>{% endfor %}</div>
+  </header>
+
+  <section class="vm-section" aria-labelledby="vm-components"><h2 id="vm-components">Components</h2>
+    <ul class="vm-list">{% for component in card.components %}<li>{{ component }}</li>{% else %}<li>Components not yet available.</li>{% endfor %}</ul>
+  </section>
+
+  <section class="vm-section" aria-labelledby="vm-allergens"><h2 id="vm-allergens">Allergens</h2>
+    <ul class="vm-list">{% for allergen in card.allergens %}<li>{{ allergen.name }}</li>{% else %}<li>No allergens identified in the available ingredient breakdown.</li>{% endfor %}</ul>
+    <p class="muted vm-note">Includes allergens identified in linked preparations. An unlisted allergen is not confirmed absent; cross-contact precautions require kitchen confirmation.</p>
+  </section>
+
+  <section class="vm-section" aria-labelledby="vm-nutrition"><h2 id="vm-nutrition">Nutritional profile</h2>
+    {% if card.recipe %}{% set nutrition = namespace(available=false) %}
+    <dl class="vm-facts">{% for field,label in [('kcal','Energy'),('protein_g','Protein'),('carbohydrate_g','Carbohydrate'),('fat_g','Fat'),('cholesterol_mg','Cholesterol')] %}
+    {% if card.recipe[field] is not none %}{% set nutrition.available=true %}<div><dt>{{ label }}</dt><dd>{{ '%.0f'|format(card.recipe[field]|float) }} {{ 'kcal' if field=='kcal' else 'mg' if field=='cholesterol_mg' else 'g' }}</dd></div>{% endif %}{% endfor %}</dl>
+    {% if nutrition.available %}<p class="muted vm-note">Preliminary recipe totals; not validated per serving.</p>{% else %}<p class="muted">Nutritional information not yet available.</p>{% endif %}
+    {% else %}<p class="muted">Nutritional information not yet available.</p>{% endif %}
+  </section>
+
+  <section class="vm-section" id="phrases" aria-labelledby="vm-description"><h2 id="vm-description">Dish description</h2>
+    {% if card.recipe and card.recipe.description %}<p>{{ card.recipe.description }}</p>{% endif %}
+    {% for phrase in card.description_phrases %}<p>{{ phrase }}</p>{% endfor %}
+    {% if not card.description_phrases and (not card.recipe or not card.recipe.description) %}<p class="muted">Description not yet added.</p>{% endif %}
+  </section>
+
+  <section class="vm-section" aria-labelledby="vm-characteristics"><h2 id="vm-characteristics">Characteristics and curiosities</h2>
+    {% set characteristics = namespace(available=false) %}
+    {% if card.recipe %}<dl class="vm-characteristics">{% for field,label in [('dietary_class','Dietary classification'),('appearance','Appearance'),('aroma','Aroma'),('taste','Taste'),('texture','Texture'),('serving_temperature','Serving temperature')] %}
+    {% if card.recipe[field] %}{% set characteristics.available=true %}<div><dt>{{ label }}</dt><dd>{{ card.recipe[field] }}</dd></div>{% endif %}{% endfor %}</dl>
+    {% if card.recipe.organoleptic_notes %}{% set characteristics.available=true %}<p>{{ card.recipe.organoleptic_notes }}</p>{% endif %}{% endif %}
+    {% if not characteristics.available %}<p class="muted">Characteristics and curiosities not yet added.</p>{% endif %}
+  </section>
+
+  <section class="vm-section" aria-labelledby="vm-sales"><h2 id="vm-sales">How to sell the dish</h2>
+    {% for phrase in card.sales_phrases %}<p>{{ phrase }}</p>{% else %}<p class="muted">Sales phrases not yet added.</p>{% endfor %}
+  </section>
+
+</article>
+{% endblock %}

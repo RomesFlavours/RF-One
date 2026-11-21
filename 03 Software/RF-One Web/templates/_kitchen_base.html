@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set kitchen_page_label = {'DASHBOARD':'Dashboard','MENU':'Menu','RECIPES':'Recipes and Preparations','CONFIGURATION':'Configuration'}[active_tab] %}
+{% block page_title %}{{ kitchen_page_label }} · Kitchen · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide kitchen-shell{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/kitchen.css') }}">
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="{{ url_for('home') }}">RF-One</a><span aria-hidden="true">›</span>
+  <a href="{{ url_for('kitchen_home') }}">Kitchen</a><span aria-hidden="true">›</span>
+  <span aria-current="page">{{ kitchen_page_label }}</span>
+</nav>
+<div class="kitchen-navigation">
+  <nav class="kitchen-tabs" aria-label="Kitchen">
+    {% for code, label, endpoint in kitchen_tabs %}
+    <a href="{{ url_for(endpoint) }}" class="kitchen-tab {{ 'is-active' if active_tab == code }}" {% if active_tab == code %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  {% include '_how_works.html' %}
+</div>
+<main id="kitchen-content" class="kitchen-content" aria-label="{{ kitchen_page_label }}">
+{% block kitchen_content %}{% endblock %}
+</main>
+{% endblock %}

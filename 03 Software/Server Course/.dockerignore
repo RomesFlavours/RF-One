@@ -1,0 +1,6 @@
+__pycache__
+*.pyc
+deploy
+*.txt.private
+ACCESS CODE*
+local-store

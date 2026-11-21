@@ -1,0 +1,127 @@
+{% extends "_kitchen_base.html" %}
+
+{% set help_section = 'kitchen_recipes' %}
+
+{% set help_title = 'How this page works' %}
+
+{% block kitchen_content %}
+
+<h1>Recipes and Preparations</h1>
+
+<p class="kitchen-config-intro">Open a section to manage its records and composition.</p>
+
+<div id="recipe-workspace" data-options-url="{{ url_for('kitchen_recipe_options') }}" data-save-url="{{ url_for('kitchen_recipe_save') }}" data-base-url="{{ url_for('kitchen_recipes') }}">
+
+{% for kind,label in [('dish','Recipes'),('preparation','Preparations')] %}
+
+<details class="kitchen-config-section recipe-section" id="recipes-{{ kind }}" data-kind="{{ kind }}">
+
+  <summary><span class="config-arrow" aria-hidden="true"></span><span class="config-heading">{{ label }}</span><span class="config-count"><span data-section-count>{{ recipes|selectattr('kind','equalto',kind)|list|length }}</span> items</span><span class="config-chevron" aria-hidden="true">⌄</span></summary>
+
+  <div class="config-body">
+
+    <div class="recipe-section-toolbar"><button type="button" data-new-recipe="{{ kind }}">+ New {{ 'recipe' if kind=='dish' else 'preparation' }}</button></div>
+
+    <div class="config-table-scroll"><table class="config-table recipe-list"><thead><tr><th>Name</th><th><label for="category-filter-{{ kind }}">Category</label><select id="category-filter-{{ kind }}" class="recipe-category-filter" data-category-filter aria-label="Filter {{ label|lower }} by category"><option value="">All categories</option></select></th><th>Actions</th></tr></thead><tbody>
+
+    {% for recipe in recipes if recipe.kind==kind %}
+
+    <tr data-recipe-id="{{ recipe.id }}" data-rr-key="recipe-{{ recipe.id }}"><td data-recipe-name>{{ recipe.name }}</td><td data-recipe-category>{{ recipe.category or '—' }}</td><td class="recipe-actions"><div class="recipe-action-buttons"><button type="button" class="btn-secondary" data-edit-recipe="{{ recipe.id }}">Edit</button><button type="button" class="btn-secondary" data-compose-recipe="{{ recipe.id }}">Components</button><span class="recipe-composition-check" data-composition-check role="img" aria-label="Composition missing from DB-Recipes" title="Composition missing from DB-Recipes" {% if not recipe.missing_source_composition %}hidden{% endif %}>✓</span><button type="button" class="btn-secondary" data-plating-recipe="{{ recipe.id }}">{{ 'Visual Instructions' if kind=='preparation' else 'Plating' }}</button><span class="recipe-photo-check" data-photo-check role="img" aria-label="{{ 'Visual instructions image available' if kind=='preparation' else 'Plating photo available' }}" title="{{ 'Visual instructions image available' if kind=='preparation' else 'Plating photo available' }}" {% if not recipe.has_photo %}hidden{% endif %}>✓</span></div></td></tr>
+
+    {% endfor %}
+
+    </tbody></table></div>
+    <p class="config-empty" data-category-empty role="status" hidden>No items in this category.</p>
+
+  </div>
+
+</details>
+
+{% endfor %}
+
+<p role="alert" class="error" id="recipe-page-error" hidden></p>
+
+<template id="recipe-list-row"><tr><td data-recipe-name></td><td data-recipe-category></td><td class="recipe-actions"><div class="recipe-action-buttons"><button type="button" class="btn-secondary" data-edit-recipe>Edit</button><button type="button" class="btn-secondary" data-compose-recipe>Components</button><span class="recipe-composition-check" data-composition-check role="img" aria-label="Composition missing from DB-Recipes" title="Composition missing from DB-Recipes" hidden>✓</span><button type="button" class="btn-secondary" data-plating-recipe>Plating</button><span class="recipe-photo-check" data-photo-check role="img" aria-label="Plating photo available" title="Plating photo available" hidden>✓</span></div></td></tr></template>
+
+<dialog class="recipe-dialog recipe-metadata-dialog" id="recipe-form-dialog" aria-labelledby="recipe-form-title">
+
+  <form id="recipe-form">
+
+    <div class="recipe-dialog-header"><h2 id="recipe-form-title">Recipe</h2><button type="button" class="btn-secondary recipe-help" data-modal-help="recipe-form-help" aria-label="Help with recipe details">?</button><button type="button" class="recipe-close" data-close-dialog aria-label="Close">×</button></div>
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id"><input type="hidden" name="revision"><input type="hidden" name="kind"><input type="hidden" name="draft_key">
+
+    <label for="recipe-name">Name</label><input id="recipe-name" name="name" maxlength="1000" required>
+
+    <label for="recipe-category">Category</label><select id="recipe-category" name="category_id"></select>
+
+    <label for="recipe-work-minutes">Active labour time (person-minutes)</label><input id="recipe-work-minutes" name="actual_work_minutes" type="number" min="0" step="1">
+    <p class="config-note">Total hands-on work by all people preparing this recipe. Used for labour costing.</p>
+    <label for="recipe-elapsed-minutes">Total preparation time (elapsed minutes)</label><input id="recipe-elapsed-minutes" name="elapsed_preparation_minutes" type="number" min="0" step="1">
+    <p class="config-note">Time from start to finish, including cooking, resting and waiting. Leave blank if unknown.</p>
+
+    <p class="error recipe-error" role="alert" hidden></p>
+
+    <div class="recipe-dialog-footer"><button type="submit">Save</button><button type="button" class="btn-secondary" data-close-dialog>Cancel</button></div>
+
+  </form>
+
+</dialog>
+
+<dialog class="recipe-dialog recipe-composition-dialog" id="recipe-composition-dialog" aria-labelledby="recipe-composition-title">
+
+  <form id="composition-form">
+
+    <div class="recipe-dialog-header"><h2 id="recipe-composition-title">Components</h2><button type="button" class="btn-secondary recipe-help" data-modal-help="recipe-composition-help" aria-label="Help with composition">?</button><button type="button" class="recipe-close" data-close-dialog aria-label="Close">×</button></div>
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="recipe-composition-toolbar"><button type="button" id="composition-add-row" class="btn-secondary">+ Add row</button><p>Total grams: <strong id="composition-total">0</strong></p></div>
+
+    <div class="recipe-composition-scroll"><table class="config-table composition-table"><thead><tr><th>Components</th><th>Preparation used</th><th>Grams</th><th>Instructions</th><th></th></tr></thead><tbody id="composition-rows"></tbody></table></div>
+
+
+    <p class="error recipe-error" role="alert" hidden></p>
+
+    <div class="recipe-dialog-footer"><button type="submit">Save composition</button><button type="button" class="btn-secondary" data-close-dialog>Cancel</button></div>
+
+  </form>
+
+</dialog>
+
+<dialog class="recipe-dialog recipe-metadata-dialog" id="recipe-plating-dialog" aria-labelledby="recipe-plating-title">
+
+  <form id="plating-form" enctype="multipart/form-data">
+
+    <div class="recipe-dialog-header"><h2 id="recipe-plating-title">Plating</h2><button type="button" class="btn-secondary recipe-help" data-modal-help="recipe-plating-help" aria-label="Help with plating">?</button><button type="button" class="recipe-close" data-close-dialog aria-label="Close">×</button></div>
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="revision">
+
+    <img id="plating-preview" class="plating-preview" alt="Current plating image" hidden>
+
+    <p id="plating-no-image" class="config-note">No plating image uploaded.</p>
+
+    <label for="plating-image">Plating image</label><input id="plating-image" class="config-sr-only" name="image" type="file" accept="image/jpeg,image/png,image/webp">
+    <div class="plating-file-control"><button type="button" class="btn-secondary" id="plating-choose-file">Choose file</button><span id="plating-file-name">No file selected</span></div>
+
+    <p class="config-note">JPEG, PNG or WebP · up to 10 MB. Choose a file to add or replace the image.</p>
+
+    <label for="plating-description">Plating description</label><textarea id="plating-description" name="description" rows="5" maxlength="20000"></textarea>
+
+    <p class="error recipe-error" role="alert" hidden></p>
+
+    <div class="recipe-dialog-footer"><button type="submit">Save plating</button><button type="button" class="btn-secondary" data-close-dialog>Cancel</button></div>
+
+  </form>
+
+</dialog>
+
+<dialog class="recipe-dialog recipe-context-help" id="recipe-modal-help" aria-labelledby="recipe-modal-help-title"><div class="recipe-dialog-header"><h2 id="recipe-modal-help-title">How this modal works</h2><button type="button" class="recipe-close" data-close-dialog aria-label="Close">×</button></div><div id="recipe-modal-help-body"></div></dialog>
+
+</div>
+
+<script defer src="{{ url_for('static',filename='js/kitchen-numbers.js') }}"></script>
+<script defer src="{{ url_for('static',filename='js/kitchen-recipes.js') }}"></script>
+
+{% endblock %}
+

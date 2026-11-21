@@ -1,0 +1,11 @@
+{
+  "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
+  "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
+  "revision": "e9a120261117",
+  "previous_revision": "t9a120261110",
+  "verified_utc": "2026-11-20",
+  "applied_by": "Email service release 7291a4a (Pino, 17 Nov 2026); recorded by the 20 Nov integration",
+  "evidence": {
+    "alembic_version": "read from the AWS database on 20 Nov 2026: e9a120261117"
+  }
+}

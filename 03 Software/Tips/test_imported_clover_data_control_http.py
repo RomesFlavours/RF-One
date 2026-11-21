@@ -101,6 +101,14 @@ def main() -> int:
         s.add(emp)
         s.flush()
 
+        # Same provider ID at a different merchant must never replace this name.
+        other_location = m.Location(merchant_id=merchant.id, source_system_id=source.id,
+            source_location_id="OTHER-MERCHANT", name="Other site", timezone="America/New_York")
+        s.add(other_location); s.flush()
+        s.add(m.Employee(location_id=other_location.id, source_system_id=source.id,
+            source_employee_id="CLOVEREMPCTRL1", display_name="Unrelated Person"))
+        s.flush()
+
         def order(oid, total, at, **extra):
             o = m.Order(location_id=location.id, source_system_id=source.id, source_order_id=oid,
                         employee_id=emp.id, source_employee_id=emp.source_employee_id, created_at=at,

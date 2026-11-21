@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <p class="muted" style="font-size:.82rem;">
+    Performance by exact Channel/Publication/Placement/Job-Posting-variant — never collapsed across placements.
+    Cost metrics show "-" whenever cost data was not recorded (never fabricated). Recommendations are advisory
+    only; nothing here changes a budget or a live publication automatically.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Channel / Placement Funnel</h2>
+  {% if rows %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Channel</th><th>Placement</th><th>Applications</th><th>Passed Screening</th><th>Ready for Phone Review</th>
+        <th>Advanced to Phone</th><th>In-Person</th><th>Hirable</th><th>Cost/App</th><th>Recommendation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set rec = recommendations.get(row.publication_id) %}
+      <tr>
+        <td>{{ row.channel_name }}</td>
+        <td>{{ row.placement_label }}</td>
+        <td>{{ row.applications }}</td>
+        <td>{{ row.passed_primary_screening }}</td>
+        <td>{{ row.ready_for_phone_review }}</td>
+        <td>{{ row.advanced_to_phone }}</td>
+        <td>{{ row.in_person_reached }}</td>
+        <td>{{ row.hirable }}</td>
+        <td>{{ '%.2f'|format(row.cost_per_application) if row.cost_per_application is not none else '-' }}</td>
+        <td>
+          {% if rec %}<span class="badge">{{ rec.recommendation }}</span><div class="muted" style="font-size:.72rem;">{{ rec.rationale }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No publications recorded yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

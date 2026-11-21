@@ -1,0 +1,7 @@
+VERIFY-LATER: web payroll/compensation callers with Tips distribution_engine
+KITCHEN-LEFTOVERS: kitchen image models.py has 19 extra names (9 tables) that are NOT in the live DB and not used by kitchen code; excluded. Kitchen image also carries extra migration files (e.g. b9e4c2a7d5f3, 00e6783b630f): when assembling, do NOT union migration files across images; keep the chain that matches the live DB (e9a120261117).
+CLOVER-JOBS run older shared code (Oct 28); integration uses the newer (Nov 2+) versions that contain it. Rebuilding clover jobs from the branch changes their code: verify.
+WEB uses Tips' newer distribution_engine via payroll/compensation: verify web compensation pages and tests.
+TRAINING/* merged with web's managed-sign-in mode: verify both web and training services.
+VERIFY: kitchen lists row-return with web's script (3 data-rr-key uses)
+TEST: test_shared_schema_compatibility TREE_HEAD must become the integration head (e9a120261117)

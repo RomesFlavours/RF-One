@@ -1,0 +1,104 @@
+{% extends "workspace/base.html" %}
+{% block title %}Job Position{% endblock %}
+{% block content %}
+<div class="selection-page-heading">
+  <div><h1>Job Position</h1><p class="muted" style="margin:0">Carica i Resume, modifica la PDL oppure premi <b>{{ ui("Select and set the Job Position") }}</b> per impostarla come posizione corrente{% if not actor.supervises_all %} (Jobs assigned to you){% endif %}.</p></div>
+  <div class="selection-page-actions">
+    {% if actor.role != 'SUPERVISOR' %}<a class="btn" href="{{ url_for('positions.position_new') }}" data-job-modal="New Job">+ New Job</a>{% endif %}
+  </div>
+</div>
+<form method="get" action="{{ url_for('positions.dashboard') }}" class="selection-search">
+  <label>Search by Role, location or manager<input type="text" name="q" value="{{ search }}" maxlength="120"></label>
+  <button class="btn btn-secondary">Search</button>
+  {% if search %}<a href="{{ url_for('positions.dashboard') }}">Clear search</a>{% endif %}
+</form>
+{% if rows %}<div class="card"><div class="table-scroll"><table class="selection-table">
+  <thead><tr><th>Role</th><th>Location</th><th>People required</th><th>Created</th><th>Status</th><th>Candidates</th><th>Action</th></tr></thead>
+  <tbody>{% for r in rows %}{% set p = r.position %}<tr id="pdl-{{ p.id }}" data-rr-key="pdl:{{ p.id }}"{% if current_job and current_job.id == p.id %} style="background:var(--olive-050)"{% endif %}>
+    <td><b>{{ ROLE_LABEL.get(p.role_code, p.role_code) }}</b>{% if p.title != ROLE_LABEL.get(p.role_code) %}<div class="small muted">{{ p.title }}</div>{% endif %}
+      <div class="small muted">Manager {{ r.manager }}</div></td>
+    <td>{{ p.location_label }}</td>
+    <td>{{ p.headcount }}</td>
+    <td class="small">{{ p.created_at|local(p.timezone, '%b %d, %Y') }}</td>
+    <td><span class="badge {{ 'ok' if p.status == 'OPEN' else ('warn' if p.status == 'DRAFT' else '') }}">{{ POSITION_STATUS_LABELS[p.status]|ui }}</span></td>
+    <td>{{ r.total }}</td>
+    <td><div class="selection-table-actions">
+      {% if actor.can_edit(p) %}
+      <a id="upload-{{ p.id }}" class="btn btn-small" href="{{ url_for('positions.sp_upload', position_id=p.id) }}" data-job-modal="Carica Resume · {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}">Carica Resume</a>
+      <a id="edit-{{ p.id }}" class="btn btn-secondary btn-small" href="{{ url_for('positions.job_edit', position_id=p.id) }}" data-job-modal="Modifica · {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}">Modifica</a>
+      {% endif %}
+      <a id="select-{{ p.id }}" class="btn btn-secondary btn-small" href="{{ applications_url(p) }}">Select and set the Job Position</a>
+    </div></td>
+  </tr>{% endfor %}</tbody>
+</table></div></div>
+{% else %}<div class="card selection-empty">
+  <h2>{% if search %}No results{% else %}No Jobs yet{% endif %}</h2>
+  <p class="muted">{% if search %}Change your search.{% else %}Create a Job with <b>New Job</b>: choose the Role and its standard requirements and rules load automatically.{% endif %}</p>
+</div>{% endif %}
+{% if upcoming %}<div class="card"><h2>Upcoming interviews</h2>
+  {% for a, p, c in upcoming %}<div class="small" style="margin:.5rem 0"><b>{{ a.starts_at|local(p.timezone, '%a %d/%m %H:%M') }}</b> · {{ KIND_LABELS[a.kind]|ui }} ·
+    <a href="{{ url_for('positions.candidate_detail', position_id=p.id, pc_id=c.pc.id) }}">{{ c.name }}</a>
+    <span class="muted">— {{ ROLE_LABEL.get(p.role_code) }} · {{ p.location_label }}{% if a.place %} · {{ a.place }}{% endif %} ({{ p.timezone }})</span></div>{% endfor %}
+</div>{% endif %}
+{# New Job / Complete & Publish: the Job form in a modal window over this tab (RF-One UI rule 5: a close X at
+   the top right, always visible, calling the window's own Cancel). The form is the same page and the same
+   save as on its own (`?modal=1` only drops the shell); a save closes the window and reloads this list. #}
+<div id="job-modal" class="job-modal" hidden role="dialog" aria-modal="true" aria-labelledby="job-modal-title">
+  <div class="job-modal-box">
+    <div class="job-modal-head"><b id="job-modal-title">New Job</b>
+      <div><button type="button" aria-label="Aiuto sulla modale" onclick="SelectionModal.help()">?</button> <button type="button" class="job-modal-x" aria-label="Chiudi" onclick="SelectionModal.close()">×</button></div></div>
+    <iframe id="job-modal-frame" title="Job form"></iframe>
+  </div>
+</div>
+<style>
+  .job-modal { position: fixed; inset: 0; background: rgba(20, 24, 14, .45); z-index: 1000; display: flex;
+               align-items: center; justify-content: center; padding: 2vh 2vw; }
+  .job-modal[hidden] { display: none; }
+  .job-modal-box { background: var(--surface, #fff); width: min(1180px, 96vw); height: 94vh; border-radius: 10px;
+                   display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .job-modal-head { display: flex; align-items: center; justify-content: space-between; padding: .7rem 1rem;
+                    border-bottom: 1px solid var(--line); }
+  .job-modal-x { border: 0; background: none; font-size: 1.8rem; line-height: 1; cursor: pointer; color: var(--muted); }
+  .job-modal-x:hover { color: var(--ink); }
+  #job-modal-frame { flex: 1; width: 100%; border: 0; }
+</style>
+<script>
+  window.SelectionModal = (function () {
+    const box = document.getElementById("job-modal"), frame = document.getElementById("job-modal-frame");
+    let origin = null, uploadChanged = false;
+    function open(url, title, button) {
+      origin = button || document.activeElement; uploadChanged = false;
+      document.getElementById("job-modal-title").textContent = title;
+      frame.src = url + (url.includes("?") ? "&" : "?") + "modal=1";
+      box.hidden = false;
+      Array.from(box.parentElement.children).filter(el=>el!==box).forEach(el=>el.inert=true);
+      box.querySelector('.job-modal-x').focus();
+      document.body.style.overflow = "hidden";
+    }
+    function shut() { box.hidden = true; frame.src = "about:blank"; Array.from(box.parentElement.children).filter(el=>el!==box).forEach(el=>el.inert=false); document.body.style.overflow = ""; }
+    function close() {
+      let dirty = false;
+      try { dirty = !!(frame.contentWindow && frame.contentWindow.jobFormDirty); } catch (e) {}
+      if (dirty && !confirm("Hai modifiche non salvate. Vuoi chiudere e perderle?")) return;
+      let changed = false;
+      try { changed = !!frame.contentWindow.resumeUploadChanged; } catch (e) {}
+      if (changed || uploadChanged) { done(); return; }
+      shut(); if (origin) origin.focus({preventScroll:true});
+    }
+    function done() {
+      sessionStorage.setItem('selection-modal-return', JSON.stringify({id:origin && origin.id, y:scrollY}));
+      shut(); location.reload();
+    }
+    const back = sessionStorage.getItem('selection-modal-return');
+    if (back) {sessionStorage.removeItem('selection-modal-return');try {const value=JSON.parse(back);requestAnimationFrame(()=>{const button=document.getElementById(value.id);if(button)button.focus({preventScroll:true});scrollTo(0,value.y);});} catch(e) {}}
+    document.querySelectorAll("[data-job-modal]").forEach(a => a.addEventListener("click", e => {
+      e.preventDefault(); open(a.getAttribute("href"), a.dataset.jobModal, a);
+    }));
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !box.hidden) close(); });
+    function help() {try {const dialog=frame.contentDocument.getElementById('selection-page-help');if(dialog)dialog.showModal();} catch(e) {}}
+    function markChanged() { uploadChanged = true; }
+    return { open, close, done, help, markChanged };
+  })();
+</script>
+{% endblock %}
+

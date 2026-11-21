@@ -1,0 +1,10 @@
+{# Saved from the modal: close it and reload the Jobs list, which shows the messages of the save. #}
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saved</title></head>
+<body>
+<script>
+  if (parent && parent.SelectionModal) { parent.SelectionModal.done(); }
+  else { location.href = "{{ url_for('positions.dashboard') }}"; }
+</script>
+</body>
+</html>

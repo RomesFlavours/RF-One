@@ -85,7 +85,12 @@ class _FullCoverageFakeCloverClient(FakeCloverClient):
         if path.endswith("/order_types"):
             return _collection(self.order_types)
         if path.endswith("/employees") and params.get("expand") == "role":
-            return _collection(self.employees_expand_role)
+            # Clover expansion adds relationships to full Employee objects;
+            # it does not replace the roster with sparse role-only records.
+            expanded = {raw["id"]: dict(raw) for raw in self.employees}
+            for raw in self.employees_expand_role:
+                expanded.setdefault(raw["id"], {}).update(raw)
+            return _collection(list(expanded.values()))
         if path.endswith("/items") and "/orders/" not in path:
             return _collection(self.items)
         if path.endswith("/roles"):
@@ -201,6 +206,11 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     # =========================================================================
     # First run.
     # =========================================================================
+    from .employee_directory import import_snapshot, attach_link
+    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
+    for link_id in pending:
+        attach_link(session, link_id=link_id, create_new=True)
+    session.flush()
     summary1 = import_clover_period(
         session, location_id=location.id, period_start=period_start, period_end=period_end, client=client,
     )

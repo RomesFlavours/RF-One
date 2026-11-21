@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set help_section = "tips_rules" %}
 {% block content %}
 
 {# CONFIGURATION_TAB_001 — all Tips configuration in one place: the former
@@ -13,10 +14,10 @@
   {% endfor %}
 {% endwith %}
 
-<h2 class="section-title" id="distribution-rules">Distribution Rules</h2>
+<h2 class="section-title" id="distribution-rules">{{ ui("Distribution Rules") }}</h2>
 {% include "_distribution_rules_section.html" %}
 
-<h2 class="section-title" id="general-configuration">General Configuration</h2>
+<h2 class="section-title" id="general-configuration">{{ ui("General Configuration") }}</h2>
 {% include "_general_configuration_section.html" %}
 
 {% endblock %}

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    Core Questions are this restaurant's own Phone Interview script — RF-One supplies the framework, never the
+    content. Sine Qua Non Questions are always presented first in the interview regardless of their importance
+    level. Courtesy Questions are used only in the Escape Route, for a short professional closing.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Core Questions ({{ core_definitions|length }})</h2>
+  {% if core_definitions %}
+    {% for d in core_definitions %}
+    <div class="question-card {{ '' if d.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ d.question_text }}
+        <span class="badge importance-{{ d.importance|lower }}">{{ d.importance }}</span>
+        {% if d.is_sine_qua_non %}<span class="badge sine-qua-non">SINE QUA NON</span>{% endif %}
+        {% if d.mandatory_within_selection_process %}<span class="badge">Mandatory within process</span>{% endif %}
+        {% if d.target_role %}<span class="badge">{{ d.target_role }}</span>{% endif %}
+        {% if not d.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+        <span class="muted" style="font-size:.72rem;">v{{ d.version }}</span>
+      </div>
+      {% if d.objective %}<p style="font-size:.85rem; margin:.3rem 0;"><strong>Objective:</strong> {{ d.objective }}</p>{% endif %}
+      {% if d.follow_up_guidance %}<p style="font-size:.8rem;"><strong>Follow-up guidance:</strong> {{ d.follow_up_guidance }}</p>{% endif %}
+      <p class="muted" style="font-size:.78rem;">
+        Assessable at: {{ d.assessment_stages|join(', ')|replace('_',' ') if d.assessment_stages else '(none set)' }}
+      </p>
+
+      <form method="post" action="{{ url_for('phone_interview_question_toggle_active', definition_id=d.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if d.is_active else 'Reactivate' }}
+        </button>
+      </form>
+
+      <details class="edit-toggle">
+        <summary>Edit this Core Question</summary>
+        <form method="post" action="{{ url_for('phone_interview_question_update', definition_id=d.id) }}" class="req-form">
+          <label>Question text</label>
+          <textarea name="question_text" required>{{ d.question_text }}</textarea>
+          <label>Target role (leave blank to apply to every role)</label>
+          <input type="text" name="target_role" value="{{ d.target_role or '' }}">
+          <label>Objective — what is this question trying to understand?</label>
+          <textarea name="objective">{{ d.objective or '' }}</textarea>
+          <label>Importance</label>
+          <select name="importance">
+            {% for i in importance_levels %}<option value="{{ i }}" {{ 'selected' if d.importance == i else '' }}>{{ i }}</option>{% endfor %}
+          </select>
+          <label>Applicable assessment stage(s)</label>
+          <div class="checkbox-row">
+            {% for stage in assessment_stages %}
+            <label><input type="checkbox" name="assessment_stages" value="{{ stage }}" {{ 'checked' if stage in d.assessment_stages else '' }}> {{ stage|replace('_',' ') }}</label>
+            {% endfor %}
+          </div>
+          <div class="checkbox-row" style="margin-top:.4rem;">
+            <label><input type="checkbox" name="is_sine_qua_non" {{ 'checked' if d.is_sine_qua_non else '' }}> Sine Qua Non (Gate Question — presented first)</label>
+            <label><input type="checkbox" name="mandatory_within_selection_process" {{ 'checked' if d.mandatory_within_selection_process else '' }}> Mandatory within selection process</label>
+            <label><input type="checkbox" name="is_courtesy" {{ 'checked' if d.is_courtesy else '' }}> Courtesy Question (Escape Route only)</label>
+          </div>
+          <label>Follow-up guidance (optional)</label>
+          <textarea name="follow_up_guidance">{{ d.follow_up_guidance or '' }}</textarea>
+          <button type="submit" class="btn" style="margin-top:.6rem;">Save Core Question</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Core Questions configured yet.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Courtesy Questions ({{ courtesy_definitions|length }})</h2>
+  <p class="muted" style="font-size:.82rem;">
+    Short, professional closing questions offered when the Selezionatore activates the Escape Route — up to 3 are
+    shown, never the full remaining interview plan.
+  </p>
+  {% if courtesy_definitions %}
+    {% for d in courtesy_definitions %}
+    <div class="question-card {{ '' if d.is_active else 'inactive' }}">
+      <div class="req-title">
+        {{ d.question_text }}
+        {% if d.target_role %}<span class="badge">{{ d.target_role }}</span>{% endif %}
+        {% if not d.is_active %}<span class="badge status-failed">INACTIVE</span>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('phone_interview_question_toggle_active', definition_id=d.id) }}" class="inline-form">
+        <button type="submit" class="btn secondary" style="margin-top:.5rem; font-size:.78rem; padding:.35rem .8rem;">
+          {{ 'Deactivate' if d.is_active else 'Reactivate' }}
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Courtesy Questions configured yet — a generic professional closing is used instead.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Create a Question</h2>
+  <form method="post" action="{{ url_for('phone_interview_question_create') }}" class="req-form">
+    <label>Question text</label>
+    <textarea name="question_text" placeholder="e.g. Are you available to work weekends?" required></textarea>
+    <label>Target role (leave blank to apply to every role)</label>
+    <input type="text" name="target_role" placeholder="e.g. SERVER">
+    <label>Objective — what is this question trying to understand?</label>
+    <textarea name="objective"></textarea>
+    <label>Importance</label>
+    <select name="importance">
+      {% for i in importance_levels %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+    <label>Applicable assessment stage(s)</label>
+    <div class="checkbox-row">
+      {% for stage in assessment_stages %}
+      <label><input type="checkbox" name="assessment_stages" value="{{ stage }}" {{ 'checked' if stage == 'PHONE_INTERVIEW' else '' }}> {{ stage|replace('_',' ') }}</label>
+      {% endfor %}
+    </div>
+    <div class="checkbox-row" style="margin-top:.4rem;">
+      <label><input type="checkbox" name="is_sine_qua_non"> Sine Qua Non (Gate Question — presented first)</label>
+      <label><input type="checkbox" name="mandatory_within_selection_process"> Mandatory within selection process</label>
+      <label><input type="checkbox" name="is_courtesy"> Courtesy Question (Escape Route only)</label>
+    </div>
+    <label>Follow-up guidance (optional)</label>
+    <textarea name="follow_up_guidance"></textarea>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Create Question</button>
+  </form>
+</div>
+
+{% endblock %}

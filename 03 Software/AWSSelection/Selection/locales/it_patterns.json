@@ -1,0 +1,2122 @@
+[
+  [
+    "sqlite:///",
+    ""
+  ],
+  [
+    "Selection database: ",
+    ""
+  ],
+  [
+    "Unsupported format: ",
+    ". Supported formats: ",
+    "."
+  ],
+  [
+    "Already imported for ",
+    ": no new application created."
+  ],
+  [
+    "Unsupported CV file format: ",
+    "."
+  ],
+  [
+    "level_description_",
+    ""
+  ],
+  [
+    "auto_level_",
+    ""
+  ],
+  [
+    "Configurazione SMTP locale salvata (password protetta con Windows DPAPI): ",
+    ""
+  ],
+  [
+    "Segreto AWS aggiornato: ",
+    ""
+  ],
+  [
+    "Configurazione email di Selection - casella ",
+    " (",
+    ":",
+    ")"
+  ],
+  [
+    "1/3 Password corretta: messaggio di prova accettato da Aruba per ",
+    " (",
+    ")."
+  ],
+  [
+    "2/3 Salvata per Selection locale, protetta con Windows DPAPI: ",
+    ""
+  ],
+  [
+    "Il server SMTP ha accettato il messaggio di prova per ",
+    " (",
+    "). Controllare l'arrivo nella casella."
+  ],
+  [
+    "Segreto AWS creato: ",
+    ""
+  ],
+  [
+    "Test message from RF-One Selection via ",
+    ":",
+    ".\nSent at ",
+    ". Verification codes for candidates use this same path.\n"
+  ],
+  [
+    "3/3 AWS non raggiungibile ora (",
+    "): la registrazione in AWS verrà completata da Claude dalla copia protetta, senza chiederti di nuovo la password."
+  ],
+  [
+    "Invio NON riuscito: ",
+    ""
+  ],
+  [
+    "Invio di prova NON riuscito (",
+    "): nulla è stato salvato."
+  ],
+  [
+    "http://127.0.0.1:",
+    ""
+  ],
+  [
+    "Local administrator created; credentials in ",
+    ""
+  ],
+  [
+    "RF-One: http://127.0.0.1:",
+    "/  ·  Selection: http://127.0.0.1:",
+    "/selection/"
+  ],
+  [
+    "Local data: ",
+    ""
+  ],
+  [
+    "invalid provider ",
+    ""
+  ],
+  [
+    "AWS Bedrock · ",
+    ""
+  ],
+  [
+    "",
+    ": AI feature not enabled."
+  ],
+  [
+    "- id=",
+    " [",
+    "] ",
+    ": ",
+    ""
+  ],
+  [
+    "Received ",
+    " requirements and an English job ad."
+  ],
+  [
+    "Received ",
+    " résumé-based interview questions."
+  ],
+  [
+    "Evaluated the synthetic résumé with ",
+    " quotes verified against the source text."
+  ],
+  [
+    "frame-ancestors ",
+    ""
+  ],
+  [
+    "",
+    ": your verification code is ",
+    ". It expires in 10 minutes. Reply STOP to opt out."
+  ],
+  [
+    "Your ",
+    " verification code"
+  ],
+  [
+    "Hi ",
+    ",\n\nYour verification code is: ",
+    "\n\nIt expires in 10 minutes. If you did not request it, you can ignore this email.\n\n",
+    ""
+  ],
+  [
+    "We sent a 6-digit code to ",
+    ". It expires in 10 minutes."
+  ],
+  [
+    "AI résumé-based questions unavailable (",
+    "): approved standard questions used"
+  ],
+  [
+    "Application completed (",
+    " answers out of ",
+    ")"
+  ],
+  [
+    "appointment:",
+    ":confirmation"
+  ],
+  [
+    "Your interview for ",
+    " is confirmed for ",
+    " (",
+    ").\n"
+  ],
+  [
+    "Location / phone: ",
+    "\n"
+  ],
+  [
+    "later data is recorded (",
+    ")"
+  ],
+  [
+    "CV deleted before its evaluation: ",
+    ""
+  ],
+  [
+    " (kept: ",
+    ")"
+  ],
+  [
+    "Aggiunto ",
+    " (",
+    ")"
+  ],
+  [
+    "Same person (matching email or phone) as ",
+    " other archived application(s)."
+  ],
+  [
+    "Possible duplicate: name similar to ",
+    " (",
+    "). Please verify."
+  ],
+  [
+    "Analyzed ",
+    ": proposal “",
+    "»"
+  ],
+  [
+    "Verificare: ",
+    ""
+  ],
+  [
+    "AI evaluation not performed: ",
+    ""
+  ],
+  [
+    "",
+    " demonstrated, ",
+    " to clarify, ",
+    " concern(s) documented"
+  ],
+  [
+    "Scenario: ",
+    ""
+  ],
+  [
+    "Interview configured: ",
+    " questions, ",
+    " points to clarify, ",
+    " scenarios"
+  ],
+  [
+    "q_",
+    "_answer"
+  ],
+  [
+    "dim_",
+    "_evidence"
+  ],
+  [
+    "cl_",
+    "_answer"
+  ],
+  [
+    "sc_",
+    "_answer"
+  ],
+  [
+    "Interview saved (",
+    ", ",
+    "): ",
+    ""
+  ],
+  [
+    "q_active_",
+    ""
+  ],
+  [
+    "cl_active_",
+    ""
+  ],
+  [
+    "sc_active_",
+    ""
+  ],
+  [
+    "dim_",
+    "_rating"
+  ],
+  [
+    "cl_",
+    "_status"
+  ],
+  [
+    "sc_",
+    "_rating"
+  ],
+  [
+    "dim_",
+    "_src"
+  ],
+  [
+    "Interview completed (",
+    ", ",
+    "): ",
+    ""
+  ],
+  [
+    "Interview reopened (",
+    ")"
+  ],
+  [
+    "cl_",
+    "_evidence"
+  ],
+  [
+    "sc_",
+    "_evidence"
+  ],
+  [
+    "message:",
+    ""
+  ],
+  [
+    "Rome's Flavours — ",
+    ""
+  ],
+  [
+    "Restaurant: ",
+    ""
+  ],
+  [
+    " (proposal: ",
+    ")"
+  ],
+  [
+    ". Note: ",
+    ""
+  ],
+  [
+    "Requirement removed: ",
+    ""
+  ],
+  [
+    "Requirement updated: ",
+    ""
+  ],
+  [
+    "Decision recorded for ",
+    " candidate(s)."
+  ],
+  [
+    "AI check ",
+    ": ",
+    ""
+  ],
+  [
+    "AI proposed ",
+    " requirements, headcount and job ad (pending approval)"
+  ],
+  [
+    "req_remove_",
+    ""
+  ],
+  [
+    "sp_weight_",
+    ""
+  ],
+  [
+    "Kept the first ",
+    " questions: the interview should take about 5 minutes."
+  ],
+  [
+    "Role changed to ",
+    ": its standard requirements and rules are loaded. Review them, then save."
+  ],
+  [
+    "Job saved: ",
+    ", ",
+    ", ",
+    " person(s), ",
+    " standard questions"
+  ],
+  [
+    "Details updated: ",
+    " opening(s), job ad and ",
+    " standard questions"
+  ],
+  [
+    "Requirement added: ",
+    " (",
+    ")"
+  ],
+  [
+    "Requirements copied from the existing template «",
+    "» (review before approval)"
+  ],
+  [
+    "Job confirmed and published (requirements v",
+    ": ",
+    "; ",
+    " opening(s); ",
+    " standard questions)"
+  ],
+  [
+    "Interview on ",
+    " cancelled"
+  ],
+  [
+    "AI drafting unavailable: ",
+    ""
+  ],
+  [
+    "Job created: ",
+    " (",
+    ", ",
+    "); manager ",
+    ""
+  ],
+  [
+    "sp_remove_",
+    ""
+  ],
+  [
+    "sp_crit_",
+    ""
+  ],
+  [
+    "sp_active_",
+    ""
+  ],
+  [
+    "Interview ",
+    " with ",
+    ": ",
+    ""
+  ],
+  [
+    "Proposed ",
+    " times for a ",
+    ""
+  ],
+  [
+    "Warning: overlaps with ",
+    " scheduled interview(s)."
+  ],
+  [
+    "AI drafting unavailable (",
+    "): standard text used."
+  ],
+  [
+    "AI draft used: ",
+    " requirements"
+  ],
+  [
+    "Candidate ",
+    ""
+  ],
+  [
+    "Message approved: ",
+    ""
+  ],
+  [
+    "Email retry requested ",
+    ""
+  ],
+  [
+    "",
+    "\nRésumé keywords: ",
+    ""
+  ],
+  [
+    "",
+    " CV(s) received · ",
+    " new imported · ",
+    " exact duplicate(s) ignored · ",
+    " possible duplicate(s) to verify"
+  ],
+  [
+    "Upload ",
+    ": ",
+    "."
+  ],
+  [
+    " · ",
+    " not imported"
+  ],
+  [
+    "CV “",
+    "” deleted."
+  ],
+  [
+    "Analyzing the ",
+    " new CV(s); earlier analyses are kept."
+  ],
+  [
+    "CV “",
+    "” not deleted: ",
+    "."
+  ],
+  [
+    "Analyzing ",
+    " CV(s)…"
+  ],
+  [
+    "Requirements approved (version ",
+    ")."
+  ],
+  [
+    "Upload #",
+    ": ",
+    " CV(s) received, ",
+    " new (this CV among them)"
+  ],
+  [
+    "CV Selection SP analysis failed: ",
+    ""
+  ],
+  [
+    "CV Selection SP analysis with requirements v",
+    ""
+  ],
+  [
+    "Gap of ",
+    ": not explained in the CV (to verify, not a judgement)."
+  ],
+  [
+    "Name “",
+    "” not found in the CV, not used."
+  ],
+  [
+    "",
+    ": level ",
+    " without a verifiable quote, treated as not documented."
+  ],
+  [
+    "",
+    ": contrary quote not found in the CV, discarded."
+  ],
+  [
+    "Competence “",
+    "”: quote not found in the CV, discarded."
+  ],
+  [
+    "Competence “",
+    "”: only in the skills list, ",
+    " → claimed."
+  ],
+  [
+    "Flag “",
+    "” refers to residence or a personal characteristic: dropped."
+  ],
+  [
+    "Missing-information line about residence or a personal characteristic dropped (“",
+    "”)."
+  ],
+  [
+    "",
+    ": quote not found in the CV, discarded (“",
+    "”)."
+  ],
+  [
+    "Job ",
+    " “",
+    "” not found in the CV: shown as read, to check."
+  ],
+  [
+    "",
+    "_unverified"
+  ],
+  [
+    "",
+    ": evidence only in the skills list, level ",
+    " → 1 (claimed)."
+  ],
+  [
+    "Flag “",
+    "” states a duration or gap written by the AI: dropped (durations are computed from the dates)."
+  ],
+  [
+    "Missing-information line states a duration written by the AI: dropped (“",
+    "”)."
+  ],
+  [
+    "Flag “",
+    "” describes missing information: moved to To verify."
+  ],
+  [
+    "Missing-information line about a job's dates replaced by the code's check (“",
+    "”)."
+  ],
+  [
+    "Flag “",
+    "” has no quote found in the CV: moved to To verify."
+  ],
+  [
+    "Same documented evidence as ",
+    ": kept in upload order."
+  ],
+  [
+    "Ahead of ",
+    ": group ",
+    " (",
+    ") vs ",
+    " — ",
+    "."
+  ],
+  [
+    " ",
+    " flag(s) to discuss."
+  ],
+  [
+    "Placed before ",
+    " by the manager."
+  ],
+  [
+    "Ahead of ",
+    ", same group: stronger documented evidence on "
+  ],
+  [
+    "Red flag computed from the verified CV dates: 2 or more consecutive jobs under ",
+    " months, or 5 or more jobs started in the last 36 months. ",
+    "+ months at one relevant employer counts as positive evidence."
+  ],
+  [
+    "A gap between two dated jobs is listed to verify when it is certainly at least ",
+    " months. Never a negative judgement."
+  ],
+  [
+    "(",
+    "\\s*(?:-|–|—|\\bto\\b)\\s*(?:",
+    "|present|current|now|ongoing))"
+  ],
+  [
+    "",
+    "–",
+    " months (year-only dates)"
+  ],
+  [
+    "",
+    " years (year-only dates)"
+  ],
+  [
+    "Longest job at least ",
+    " months; jobs started in the last 24 / 36 months: ",
+    " / ",
+    "."
+  ],
+  [
+    "No dates for ",
+    " in the CV."
+  ],
+  [
+    "The dates read by the AI (“",
+    "”) are not in the CV: not used."
+  ],
+  [
+    "“",
+    "”: start or end is missing, the duration cannot be computed."
+  ],
+  [
+    "",
+    " job(s) without verifiable dates are not counted."
+  ],
+  [
+    "at least ",
+    " months"
+  ],
+  [
+    "",
+    " consecutive jobs under 6 months (computed from the CV dates)"
+  ],
+  [
+    "",
+    " jobs started in the last 36 months (computed from the CV dates)"
+  ],
+  [
+    "At least ",
+    " months at one relevant employer"
+  ],
+  [
+    "",
+    " between ",
+    " (ended ",
+    ") and ",
+    " (",
+    ")"
+  ],
+  [
+    "No Application with id ",
+    ""
+  ],
+  [
+    "A generic coordination title, kept as written: ",
+    ", so it is not read as FOH Supervisor / Team Leader. To be clarified."
+  ],
+  [
+    "In your role as \"",
+    "\", which team did you coordinate, and in which area?"
+  ],
+  [
+    "No ApplicationQuestionDefinition with id ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on an ApplicationQuestionDefinition through update_question"
+  ],
+  [
+    "Application Question — \"",
+    "\": ",
+    ""
+  ],
+  [
+    "No Candidate with id ",
+    ""
+  ],
+  [
+    "Unknown outcome ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown workflow status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Queue -> ",
+    " (",
+    ")"
+  ],
+  [
+    "Received (",
+    "): classified ",
+    ""
+  ],
+  [
+    "",
+    " appointment ",
+    " for ",
+    ""
+  ],
+  [
+    "Questionnaire ",
+    ""
+  ],
+  [
+    "Stage -> ",
+    ""
+  ],
+  [
+    "Owner -> ",
+    ""
+  ],
+  [
+    "This action requires configured authority level '",
+    "' or higher, which this Acting Identity does not hold in this Session."
+  ],
+  [
+    "No CandidatePerson with id ",
+    ""
+  ],
+  [
+    "No CandidateFlag with id ",
+    ""
+  ],
+  [
+    "(***) ***-",
+    ""
+  ],
+  [
+    "Your password must be at least ",
+    " characters long."
+  ],
+  [
+    "A code was just sent. Please wait ",
+    " seconds before asking for a new one."
+  ],
+  [
+    "The code is not correct. ",
+    " attempt",
+    " left."
+  ],
+  [
+    "Application ",
+    " has no SelectionOutcomeDecision yet — close_case_memory() requires an Outcome to have been applied first."
+  ],
+  [
+    "First observed in this Stage (role=",
+    ")."
+  ],
+  [
+    "Role changed from ",
+    " to ",
+    "."
+  ],
+  [
+    "Relevance changed from ",
+    " to ",
+    "."
+  ],
+  [
+    "Same role (",
+    ") and relevance (",
+    ") as the previous Stage Snapshot."
+  ],
+  [
+    "Only ",
+    " Application(s) so far — too little volume for a confident call yet."
+  ],
+  [
+    "Strong funnel quality (",
+    " Hirable / ",
+    " Applications)."
+  ],
+  [
+    "Weak funnel quality — only ",
+    " of ",
+    " Applications reached Ready for Phone Review."
+  ],
+  [
+    "No JobPostingChannelVariant with id ",
+    ""
+  ],
+  [
+    "No ChannelPublication with id ",
+    ""
+  ],
+  [
+    "MOCK-SMS-",
+    ""
+  ],
+  [
+    "MOCK-EMAIL-",
+    ""
+  ],
+  [
+    "No CommunicationTemplate with id ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a CommunicationTemplate through update_template"
+  ],
+  [
+    "No ",
+    " with id ",
+    ""
+  ],
+  [
+    "No ComplianceReview with id ",
+    ""
+  ],
+  [
+    "Stage assessment reliability: this characteristic (\"",
+    "\") may be important, but the evidence sources currently allowed for it are limited to CV/Application-era facts, which are usually insufficient to assess it reliably. This is a Selection quality observation, not a legal warning."
+  ],
+  [
+    "Potential protected-characteristic issue: the text appears to reference ",
+    " (matched: \"",
+    "\"). Consider whether this can instead be expressed as an objective, job-related requirement. Potential compliance concern — consider review before activation."
+  ],
+  [
+    "Weak job relevance: \"",
+    "\" is a vague, subjective phrase that is difficult to evaluate consistently or defend as job-related. Better framed as a job-related observable behavior."
+  ],
+  [
+    "Strongest evidence: ",
+    "."
+  ],
+  [
+    "Weaker/partial evidence: ",
+    "."
+  ],
+  [
+    "Conflicting evidence on: ",
+    "."
+  ],
+  [
+    "Not yet evidenced/unresolved: ",
+    "."
+  ],
+  [
+    "Gaps that appear trainable: ",
+    "."
+  ],
+  [
+    "Notable Selection Signals: ",
+    "."
+  ],
+  [
+    "Active, un-overridden Hard Disqualifier(s): ",
+    "."
+  ],
+  [
+    "Active Candidate Flag(s) on record for this person: ",
+    "."
+  ],
+  [
+    "Unknown assessment status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown evidence source type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown evidence classification ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown evidence relationship ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown confidence ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No RequirementSetSnapshot with id ",
+    ""
+  ],
+  [
+    "No FitAssessment with id ",
+    ""
+  ],
+  [
+    "No RequirementAssessment with id ",
+    ""
+  ],
+  [
+    "No SelectionAuthorityLevel with id ",
+    ""
+  ],
+  [
+    "No PersonMatchCandidate with id ",
+    ""
+  ],
+  [
+    "Same email (",
+    ")."
+  ],
+  [
+    "Same full name (",
+    ")."
+  ],
+  [
+    "Identity reassignment: ",
+    ""
+  ],
+  [
+    "Similar name (",
+    ")."
+  ],
+  [
+    "",
+    " experience(s) could not be read with certainty — verify them against the original résumé on the candidate page."
+  ],
+  [
+    "Could not process this résumé (",
+    ")."
+  ],
+  [
+    "No InboundCommunication with id ",
+    ""
+  ],
+  [
+    "Distinct employers counted: ",
+    ". Jobs with a usable duration: ",
+    ". Short jobs: ",
+    "."
+  ],
+  [
+    "Months of experiences whose role is the target role (",
+    ") or an equivalent of it (equivalents: ",
+    ")."
+  ],
+  [
+    "Months of experiences in roles that prepare for ",
+    ": propedeutic (",
+    ") or adjacent (",
+    ")."
+  ],
+  [
+    "Experience ",
+    ": the CV could not be read with certainty (its role is not determined), so it may or may not be of this kind."
+  ],
+  [
+    "read as ",
+    ": the target role ",
+    ""
+  ],
+  [
+    "read as ",
+    ": an equivalent of ",
+    ""
+  ],
+  [
+    "read as ",
+    ": propedeutic for ",
+    ""
+  ],
+  [
+    "read as ",
+    ": adjacent to ",
+    ""
+  ],
+  [
+    "",
+    ": no usable dates (start ",
+    ", end ",
+    "), so its duration is unknown."
+  ],
+  [
+    "",
+    ": no usable dates, not part of the durations."
+  ],
+  [
+    "Experience ",
+    ": read with uncertainty — counted by its dates, its employer was not determined."
+  ],
+  [
+    "",
+    ": no start date, not part of the comparison."
+  ],
+  [
+    "",
+    " → ",
+    ": not compared, the rank of ",
+    " is unknown."
+  ],
+  [
+    "after ",
+    ": rank ",
+    " → ",
+    ", ",
+    ""
+  ],
+  [
+    "",
+    ": title not recognized, not counted (to be clarified)."
+  ],
+  [
+    "Regarding ",
+    ", I'd like to understand something better. ",
+    ". Can you help me understand how these fit together?"
+  ],
+  [
+    "Cross-Application: ",
+    ""
+  ],
+  [
+    "Unknown importance ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Section kind ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Assessment Item type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No InPersonInterviewSectionDefinition with id ",
+    ""
+  ],
+  [
+    "No AssessmentItemDefinition with id ",
+    ""
+  ],
+  [
+    "Carried forward from the Phone Interview (was ",
+    ")."
+  ],
+  [
+    "No InPersonInterviewPlan with id ",
+    ""
+  ],
+  [
+    "Unknown Assessment Item status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No AssessmentItemInstance with id ",
+    ""
+  ],
+  [
+    "Follow-up to: \"",
+    "\""
+  ],
+  [
+    "Unknown In-Person Interview Plan status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "AssessmentItemInstance#",
+    ""
+  ],
+  [
+    "Unknown consistency status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown consistency source stage ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No ConsistencyThread with id ",
+    ""
+  ],
+  [
+    "No PhoneInterviewQuestionInstance with id ",
+    ""
+  ],
+  [
+    "PhoneInterviewQuestionInstance#",
+    ""
+  ],
+  [
+    "Application#",
+    ""
+  ],
+  [
+    "Clarify the '",
+    "' Consistency Thread."
+  ],
+  [
+    "Cannot set ",
+    " on an InPersonInterviewSectionDefinition through update_section_definition"
+  ],
+  [
+    "Cannot set ",
+    " on an AssessmentItemDefinition through update_item_definition"
+  ],
+  [
+    "Open Consistency Thread: ",
+    "."
+  ],
+  [
+    "New information on a prior Application compared to this one: ",
+    ""
+  ],
+  [
+    "No Selection Session with id ",
+    ""
+  ],
+  [
+    "",
+    " — Now Hiring"
+  ],
+  [
+    "No JobPosting with id ",
+    ""
+  ],
+  [
+    "JobPosting ",
+    " has no version ",
+    ""
+  ],
+  [
+    "Unknown Job Posting content field(s) ",
+    ""
+  ],
+  [
+    "No ChannelDefinition with id ",
+    ""
+  ],
+  [
+    "Variant ",
+    " has no version ",
+    ""
+  ],
+  [
+    "We are looking for a ",
+    " to join our team"
+  ],
+  [
+    "We could not determine \"",
+    "\" from your application. Could you tell us more?"
+  ],
+  [
+    "No MissingEvidenceQuestionnaire with id ",
+    ""
+  ],
+  [
+    "/missing-evidence/",
+    ""
+  ],
+  [
+    "Missing-Evidence Questionnaire — \"",
+    "\": ",
+    ""
+  ],
+  [
+    "Unknown future-contact policy ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No SelectionOutcomeDefinition with id ",
+    ""
+  ],
+  [
+    "The Outcome '",
+    "' requires a reason to be selected."
+  ],
+  [
+    "Changing the Application's existing decision ('",
+    "' -> '",
+    "') requires a reason, regardless of whether '",
+    "' itself normally requires one."
+  ],
+  [
+    "The Outcome '",
+    "' requires a Note to be entered."
+  ],
+  [
+    "Reopening requires selecting an Outcome whose lifecycle effect is ACTIVE; '",
+    "' resolves to ",
+    "."
+  ],
+  [
+    "No SelectionReminder with id ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a SelectionOutcomeDefinition through update_outcome_definition"
+  ],
+  [
+    "Automatically created by Outcome '",
+    "'."
+  ],
+  [
+    "Follow-up scheduled by Outcome '",
+    "'."
+  ],
+  [
+    "Taken in charge by ",
+    "."
+  ],
+  [
+    "Ownership reassigned from ",
+    " to ",
+    " by ",
+    ". Reason: ",
+    ""
+  ],
+  [
+    "",
+    " requires a valid, active Acting Identity."
+  ],
+  [
+    "This Application is already taken in charge by ",
+    ". Use reassignment instead."
+  ],
+  [
+    "",
+    " is not authorized to reassign this Application — not the current owner (",
+    "), and not a Selezionatore with configured superior authority over them."
+  ],
+  [
+    "This Acting Identity has read-only access to this Application — it is currently taken in charge by ",
+    ". Reassign ownership first."
+  ],
+  [
+    "No SelectionPatternDefinition with id ",
+    ""
+  ],
+  [
+    "No SelectionPatternObservation with id ",
+    ""
+  ],
+  [
+    "Cannot update SelectionPatternDefinition.",
+    " via update_pattern_definition"
+  ],
+  [
+    "I'd like to better understand something related to \"",
+    "\". ",
+    " Can you tell me more?"
+  ],
+  [
+    "Unknown assessment stage(s) ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No PhoneInterviewQuestionDefinition with id ",
+    ""
+  ],
+  [
+    "No PhoneInterviewPlan with id ",
+    ""
+  ],
+  [
+    "Regarding \"",
+    "\": ",
+    ""
+  ],
+  [
+    "'",
+    "' was not assessable from the résumé alone and is now assessable at Phone Interview."
+  ],
+  [
+    "Unknown Question Instance status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Gate Evaluation ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Not resolved during Phone Interview (was ",
+    ")."
+  ],
+  [
+    "Unknown Phone Interview Plan status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown post-Phone-Interview decision ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a PhoneInterviewQuestionDefinition through update_question_definition"
+  ],
+  [
+    "I have partial information about \"",
+    "\" from your résumé — can you tell me more?"
+  ],
+  [
+    "'",
+    "' is currently only PARTIALLY_EVIDENCED from the résumé."
+  ],
+  [
+    "Clarify the '",
+    "' Signal (currently ",
+    ")."
+  ],
+  [
+    "Signal '",
+    "' observed as ",
+    "."
+  ],
+  [
+    "I noticed some inconsistency in what I have on file related to \"",
+    "\" — can you help me understand it?"
+  ],
+  [
+    "'",
+    "' currently has CONFLICTING_EVIDENCE from the résumé."
+  ],
+  [
+    "Assess Requirement '",
+    "'"
+  ],
+  [
+    "Select from ",
+    " to ",
+    " applications to compare (selected: ",
+    ")."
+  ],
+  [
+    "Target role: ",
+    ". Applied: ",
+    ". Source: ",
+    "."
+  ],
+  [
+    "You are assisting a restaurant's Selezionatore (hiring reviewer) with Primary Screening of a job Application. Evaluate exactly ONE restaurant-defined Screening Criterion, strictly against the evidence listed below. You must NEVER invent a candidate fact that is not present in that evidence.\n\nCRITERION\nName: ",
+    "\nCategory: ",
+    "\nTarget role: ",
+    "\nDescription: ",
+    "\nEvaluation guidance: ",
+    "\nSupporting-evidence guidance: ",
+    "\nContrary-evidence guidance: ",
+    "\nInsufficient-evidence guidance: ",
+    "\nEvidence sources this restaurant considers most relevant for this Criterion: ",
+    "\n\nLEVEL MEANINGS — these are THIS restaurant's own definitions. Use ONLY these meanings; never invent a generic/universal meaning for the 0-4 scale:\n",
+    "\n\nAPPLICATION EVIDENCE (grouped by source; you may not use anything outside this list):\n",
+    "\n\nINSTRUCTIONS\n1. Decide which ONE of the restaurant's level descriptions above (0-4) is BEST SUPPORTED by the evidence.\n2. Distinguish FACT (directly stated in the evidence) from DERIVED INFORMATION (a conservative, reasonable interpretation of stated facts, e.g. computing tenure from dates) from INFERENCE (a plausible but unproven guess) — never present an inference as if it were a fact, and never treat a weak, unrelated proxy (e.g. \"worked as a Server for three years\") as proof of a specific trait (e.g. reliability, attitude, honesty, motivation) unless the evidence actually and specifically supports that trait.\n3. If two levels are both plausible and the evidence is weak, choose the LOWER, more conservative level and set confidence to LOW.\n4. If no level is reasonably supportable from the evidence, return status \"INSUFFICIENT_EVIDENCE\" and level null. Do not guess, and do not default to level 0 merely because evidence is thin — INSUFFICIENT_EVIDENCE is the honest answer, not level 0.\n5. If this Criterion plainly does not apply to this Application, return status \"NOT_APPLICABLE\".\n6. Every evidence item you cite must correspond to something actually present in the APPLICATION EVIDENCE above (same source_reference/evidence_text) — never fabricate an evidence item, and if status is EVALUATED you must cite at least one.\n7. Return ONLY the JSON object below. No extra commentary, no markdown code fences.\n\n{\n  \"status\": \"EVALUATED | INSUFFICIENT_EVIDENCE | NOT_APPLICABLE\",\n  \"level\": <0-4, or null unless status is EVALUATED>,\n  \"confidence\": \"HIGH | MEDIUM | LOW | UNKNOWN\",\n  \"explanation\": \"<one or two concise sentences explaining the conclusion>\",\n  \"evidence\": [\n    {\"source_type\": \"<one of: ",
+    ">\", \"source_reference\": \"<from the evidence above>\", \"evidence_text\": \"<from the evidence above>\", \"interpretation\": \"<how it relates to this Criterion>\"}\n  ]\n}\n"
+  ],
+  [
+    "",
+    " (legacy pre-Outcome-Engine record, not a governed decision)"
+  ],
+  [
+    "Requirement '",
+    "': ",
+    ""
+  ],
+  [
+    "Signal '",
+    "' (",
+    "): ",
+    ""
+  ],
+  [
+    "",
+    " (Downgraded to insufficient evidence: no supporting evidence was cited.)"
+  ],
+  [
+    ". Role family: ",
+    "."
+  ],
+  [
+    " Responsibilities: ",
+    ""
+  ],
+  [
+    "AI response status ",
+    " is not one of ",
+    "."
+  ],
+  [
+    "",
+    " prior application(s) by this person. Most recent prior target role: ",
+    "; recorded outcome: ",
+    "."
+  ],
+  [
+    "candidate_flag:",
+    ""
+  ],
+  [
+    "  Level ",
+    ": ",
+    ""
+  ],
+  [
+    "AI response level ",
+    " is not a number."
+  ],
+  [
+    "AI response level ",
+    " is not a whole number."
+  ],
+  [
+    "AI response level ",
+    " is outside the 0-4 scale."
+  ],
+  [
+    "AI evaluation call failed: ",
+    ""
+  ],
+  [
+    "AI returned an invalid/malformed response: ",
+    ""
+  ],
+  [
+    "work_history: ",
+    ""
+  ],
+  [
+    "education: ",
+    ""
+  ],
+  [
+    "Résumé summary/objective: ",
+    ""
+  ],
+  [
+    "Declared availability: ",
+    ""
+  ],
+  [
+    "Location: ",
+    ""
+  ],
+  [
+    "requirement: ",
+    ""
+  ],
+  [
+    "signal: ",
+    ""
+  ],
+  [
+    "Certification: ",
+    ""
+  ],
+  [
+    "Languages: ",
+    ""
+  ],
+  [
+    "Candidate Flag \"",
+    "\" (scope ",
+    ", effect ",
+    ")"
+  ],
+  [
+    " — note: ",
+    ""
+  ],
+  [
+    "Auto-evaluated from Signal '",
+    "' (status ",
+    "), per this restaurant's own configured mapping."
+  ],
+  [
+    "Unknown direction ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown evidence source(s) ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "level_descriptions keys must be one of ",
+    "; got ",
+    ""
+  ],
+  [
+    "No PrimaryScreeningCriterion with id ",
+    ""
+  ],
+  [
+    "Signal '",
+    "' status (",
+    ") has no configured level mapping for this Criterion."
+  ],
+  [
+    "",
+    " ",
+    " current priority."
+  ],
+  [
+    "Insufficient evidence so far for: ",
+    "."
+  ],
+  [
+    "No PrimaryScreeningCriterionEvaluation with id ",
+    ""
+  ],
+  [
+    "Unknown evidence source ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No PrimaryScreeningRun with id ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a PrimaryScreeningCriterion through update_criterion"
+  ],
+  [
+    "Automatic evaluation not available: ",
+    ""
+  ],
+  [
+    "Hard Disqualifier detected: ",
+    ""
+  ],
+  [
+    "No SelectionQueue with id ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a SelectionQueue through update_queue"
+  ],
+  [
+    "Queue '",
+    "' is inactive and cannot be newly selected."
+  ],
+  [
+    "Unknown criticality ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown trainability ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No RequirementTemplate with id ",
+    ""
+  ],
+  [
+    "No RequirementSet with id ",
+    ""
+  ],
+  [
+    "No Requirement with id ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a RequirementSet through update_requirement_set"
+  ],
+  [
+    "Cannot set ",
+    " on a Requirement through update_requirement"
+  ],
+  [
+    "Résumé self-description mentions: ",
+    ". A self-reported claim is weak evidence for a behavioral trait — kept at low confidence, never treated as confirmed."
+  ],
+  [
+    "~",
+    " month(s) across matching role(s)"
+  ],
+  [
+    "Calculated from start/end dates of the matching entries above; the Requirement's wording implies at least ",
+    " month(s)."
+  ],
+  [
+    "work_history[",
+    "]"
+  ],
+  [
+    "Matched on: ",
+    ""
+  ],
+  [
+    "Currently: ",
+    " at ",
+    ""
+  ],
+  [
+    "work_history[",
+    "].responsibilities"
+  ],
+  [
+    "Matched only in free-text description, not in the stated title/role: ",
+    ""
+  ],
+  [
+    "Rule Change (",
+    "): ",
+    " — ",
+    ""
+  ],
+  [
+    "No SelectionSession with id ",
+    ""
+  ],
+  [
+    "No SelectionRuleChangeImpact with id ",
+    ""
+  ],
+  [
+    "Automatic recalculation failed: ",
+    ""
+  ],
+  [
+    "",
+    "\nReview note: ",
+    ""
+  ],
+  [
+    "No SelectionRuleSetVersion with id ",
+    ""
+  ],
+  [
+    "Rule Set version ",
+    " was already confirmed by ",
+    " on ",
+    ". Propose a Rule Change to create a new version if something must change."
+  ],
+  [
+    "Rule Set version ",
+    " confirmed by ",
+    "."
+  ],
+  [
+    "/schedule/",
+    ""
+  ],
+  [
+    "No InterviewSchedulingWindow with id ",
+    ""
+  ],
+  [
+    "No InterviewAppointment with id ",
+    ""
+  ],
+  [
+    " (source: ",
+    ")"
+  ],
+  [
+    "Selection Session '",
+    "' is not yet operational — its Rule Set must be explicitly reviewed and confirmed before candidate operational work can begin."
+  ],
+  [
+    "No SelectionSessionAssignment with id ",
+    ""
+  ],
+  [
+    "Application ",
+    " is already linked to a different Selection Session (",
+    ")."
+  ],
+  [
+    "Cannot set ",
+    " on a SelectionSession through update_session"
+  ],
+  [
+    "Currently working as ",
+    " at ",
+    "."
+  ],
+  [
+    "Most recent relevant role ended ",
+    " month(s) ago."
+  ],
+  [
+    "No relevant operational experience in the previous ",
+    " month(s)."
+  ],
+  [
+    "Previous application target role: ",
+    ". Since then, gained experience as ",
+    " at ",
+    ". Current application target role: ",
+    "."
+  ],
+  [
+    "Applied for ",
+    " previously; subsequently gained ",
+    " experience; now applies for a role aligned with that newly gained experience."
+  ],
+  [
+    "",
+    " of ",
+    " assessed Requirements are EVIDENCED."
+  ],
+  [
+    "Unknown signal family ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown signal status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown priority contribution ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "No SignalDefinition with id ",
+    ""
+  ],
+  [
+    "No SignalObservation with id ",
+    ""
+  ],
+  [
+    "Unknown evidence source type ",
+    ""
+  ],
+  [
+    "Unknown evidence classification ",
+    ""
+  ],
+  [
+    "Unknown evidence relationship ",
+    ""
+  ],
+  [
+    "Unknown confidence ",
+    ""
+  ],
+  [
+    "No ReviewPriorityPolicy with id ",
+    ""
+  ],
+  [
+    "No ReviewPriorityPolicyRule with id ",
+    ""
+  ],
+  [
+    "Unknown Review Priority ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Cannot set ",
+    " on a SignalDefinition through update_signal_definition"
+  ],
+  [
+    "No TrainableGap with id ",
+    ""
+  ],
+  [
+    "Unsupported legacy workflow status ",
+    ""
+  ],
+  [
+    "Target role changed from ",
+    " to ",
+    "."
+  ],
+  [
+    "New role(s) on record since the previous application: ",
+    "."
+  ],
+  [
+    "New certification(s) on record: ",
+    "."
+  ],
+  [
+    "Longer relevant tenure toward the current target role: ",
+    " -> ",
+    " month(s)."
+  ],
+  [
+    "Unknown communication channel ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Phone Interview advance mode ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown communication trigger event ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown schedulable interview stage ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown inbound classification ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown compliance-reviewable object type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown compliance severity ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown compliance disposition action ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Derived from a dated high school completion record (",
+    "), assuming a typical graduation age of ",
+    "-",
+    ". An estimate, not a fact."
+  ],
+  [
+    "You wrote: \"",
+    "\"",
+    ". Who was involved and how many people, which decisions were yours to take, and what was the result?"
+  ],
+  [
+    "",
+    " consecutive roles under ",
+    " months: ",
+    "."
+  ],
+  [
+    "",
+    "-month gap between ",
+    " and ",
+    "."
+  ],
+  [
+    "Overlapping dates between ",
+    " and ",
+    "."
+  ],
+  [
+    "Transition from ",
+    " into ",
+    " — worth understanding the motivation. Motivation: Unknown."
+  ],
+  [
+    "Most recent role: ",
+    " at ",
+    "."
+  ],
+  [
+    "Job title \"",
+    "\" at ",
+    " did not match any known role."
+  ],
+  [
+    "Can you tell me more about what your role as \"",
+    "\" actually involved day to day?"
+  ],
+  [
+    "No job title recorded for ",
+    "."
+  ],
+  [
+    "What was your role at ",
+    "?"
+  ],
+  [
+    "No start date recorded for ",
+    "."
+  ],
+  [
+    "",
+    ": end date precedes start date as parsed."
+  ],
+  [
+    "Could you confirm the dates you worked at ",
+    "?"
+  ],
+  [
+    " Résumé text: \"",
+    "\""
+  ],
+  [
+    "Job title \"",
+    "\" at ",
+    "."
+  ],
+  [
+    "avg tenure ",
+    " mo, ",
+    " job(s) < 6mo"
+  ],
+  [
+    "",
+    " upward move(s) detected"
+  ],
+  [
+    "Unknown Job Posting content origin ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown publication status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Application Question response type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Application lifecycle state ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Candidate Flag scope ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Candidate Flag operational effect ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern Definition scope ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern Definition status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern maturity ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern persistence type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern comparison classification ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern Observation role ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown provenance ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Stage Delta type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown learning scope ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Pattern Example type ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Screening Criterion level ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown queue-movement source ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Rule Change scope ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Selection Session status ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Selection Stage ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Unknown Trainable Gap initial level ",
+    "; expected one of ",
+    ""
+  ],
+  [
+    "Your recent experience has primarily been in ",
+    ". What is making you want to move into ",
+    "?"
+  ],
+  [
+    "",
+    " from ",
+    " to ",
+    "."
+  ],
+  [
+    "Apparent decrease in responsibility from ",
+    " to ",
+    " — motive unknown."
+  ],
+  [
+    "Lateral move from ",
+    " to ",
+    "."
+  ],
+  [
+    "Candidate returned to a previous employer: ",
+    "."
+  ],
+  [
+    "Unknown RFONE_AI_PROVIDER ",
+    " — expected one of ",
+    "."
+  ],
+  [
+    "AI provider call failed: ",
+    ""
+  ],
+  [
+    "AWS Bedrock call failed: ",
+    ""
+  ],
+  [
+    "AWS Bedrock returned an unparsable response: ",
+    ""
+  ],
+  [
+    "Real AI provider call blocked during tests: ",
+    ""
+  ],
+  [
+    "(?:",
+    "\\s+\\d{4}|\\d{1,2}/\\d{4}|\\d{4})"
+  ],
+  [
+    "(?P<start>",
+    ")\\s*(?:-|–|—|to)\\s*(?P<end>",
+    "|Present|Current|Now|Ongoing)"
+  ],
+  [
+    "^\\s*",
+    "\\s*$"
+  ],
+  [
+    "(?:^|[\\s,\\-|])(",
+    "\\s+)?((?:19|20)\\d{2})"
+  ],
+  [
+    "Lines before the dates: ",
+    ". It could not be determined which is the job title and which the employer, so neither was recorded. Check the original text."
+  ],
+  [
+    "Read as \"job title, employer\" from \"",
+    "\"."
+  ]
+]
