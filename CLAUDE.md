@@ -152,7 +152,7 @@ The canonical top-level structure (established by TASK_CORE_005) is:
 90 Archive/                 never current authority, regardless of status text inside
 ```
 
-Each top-level directory carries its own `README.md` stating purpose, authority level, and what does/does not belong there — consult it before assuming where new material belongs.
+Top-level directory `README.md` files, where present, describe purpose and authority; inspect the actual tree before relying on one. `07 Tasks/README.md` is absent at the reviewed baseline, so do not invent or assume its contents.
 
 ---
 
@@ -247,7 +247,7 @@ Your responsibilities are to:
 
 The Product Owner and ChatGPT conduct product/functional architecture and approve decisions. Claude implements the approved specification. Codex performs an **independent technical review** of the implementation against the approved specification and canonical documentation before any deployment authorization. The Product Owner authorizes integration/deployment after reviewing the evidence. Claude's own tests and consistency checks do not replace Codex's independent review.
 
-If a specification conflicts with canonical documentation or leaves a material business decision unresolved, stop that affected work, cite the exact files/sections and ask for a Product Owner decision. Do not infer approval from existing code, old task reports or a plausible design. Do not redesign approved concepts unless explicitly requested.
+If a specification conflicts with canonical documentation or leaves a material business decision unresolved, stop that affected work, cite the exact files/sections and ask for a Product Owner decision. Do not infer approval from existing code, old task reports or a plausible design. A request to investigate, review, redesign, or propose alternatives is **not** authorization to select or implement an architectural or functional change. Claude may choose only technical implementation details that preserve the approved specification. Any change to business workflow, data schema, API contract, authorization behavior, user-visible behavior, or canonical model requires an explicit, documented Product Owner decision formulated with ChatGPT **before implementation**. Claude may present options with tradeoffs but cannot approve or implement one on its own.
 
 Required sequence for implementation work: **Product Owner + ChatGPT specification → Claude implementation and tests → Codex independent review → Product Owner authorization for merge/deploy**. Do not merge or deploy merely because code or tests are ready.
 
@@ -328,13 +328,14 @@ Do not silently change the meaning of an existing approved concept.
 
 # Before Editing
 
-For significant architectural tasks:
+Before **every** implementation task, including supposedly small or technical changes:
 
-1. Read the supplied task/specification.
-2. Inspect all relevant repository references.
-3. Identify the files that will probably change.
-4. Identify contradictions or blockers.
-5. Implement unless a genuine unresolved ambiguity prevents doing so.
+1. Read the approved task/specification and relevant canonical documentation.
+2. Inspect the affected references, interfaces, source-of-truth rules and dependencies.
+3. Identify the files that may change, expected behavior, and prohibited changes.
+4. Separate technical implementation choices within the approved design from functional or architectural decisions that require Product Owner approval.
+5. If a change to business flow, data schema, API contract, permissions, user-visible behavior or canonical model is required but not explicitly approved, **stop only that affected work**; report the exact decision needed to the Product Owner and ChatGPT. Never treat a request to analyze or redesign as approval to implement.
+6. Implement **only the portion covered by an explicit approved specification**; otherwise report the blocker. No presumed approval because a design seems reasonable or an ambiguity appears minor.
 
 ---
 
