@@ -718,6 +718,13 @@ def _open_cycle(session: Session, *, restaurant_id: int) -> m.TipPaymentCycle:
     BEFORE it queries instructions or calls the connector: an empty cycle is
     sufficient to prove both ALLOW/DENY and "denied before any connector
     call", without needing a full Order/Entitlement fixture."""
+    # CLOVER_MULTISITE_001: one OPEN cycle per restaurant (enforced by the database) — a still-open
+    # synthetic cycle (e.g. left OPEN by a denied approval) is reused.
+    existing = session.scalars(select(m.TipPaymentCycle).where(
+        m.TipPaymentCycle.restaurant_id == restaurant_id,
+        m.TipPaymentCycle.status == m.TIP_PAYMENT_CYCLE_STATUS_OPEN)).first()
+    if existing is not None:
+        return existing
     cycle = m.TipPaymentCycle(
         restaurant_id=restaurant_id, period_start=T0, period_end=T0 + timedelta(days=1),
         status=m.TIP_PAYMENT_CYCLE_STATUS_OPEN, triggered_by="MANUAL",

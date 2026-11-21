@@ -36,6 +36,7 @@ from sqlalchemy import func, select
 from .. import models as m
 from ..site_selection import restaurant_is_operational
 from . import calculation_run_service as run_svc
+from .money_lock import lock_restaurant
 from . import distribution_engine as engine_svc
 from . import readiness as readiness_svc
 
@@ -62,6 +63,7 @@ def run_calculation_now(session: Session, *, restaurant_id: int) -> CalculationR
     if not restaurant_is_operational(session, restaurant_id):  # CLOVER_MULTISITE_001: inactive site
         return CalculationRunResult(business_date=None, blocked_reason="This restaurant site is not active yet: "
                                     "no Tips calculation is run for it.")
+    lock_restaurant(session, restaurant_id)  # the "already calculated" check and the save are one step
     state = readiness_svc.describe_readiness(session, restaurant_id)
     result = CalculationRunResult(business_date=state.business_date.isoformat() if state.business_date else None)
 

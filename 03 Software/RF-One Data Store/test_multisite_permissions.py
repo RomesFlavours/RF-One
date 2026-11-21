@@ -427,17 +427,19 @@ class TipsPaymentAuditTest(TipsPaymentAuthorizationTest):
     approval, execution and retry (CLOVER_MULTISITE_001)."""
 
     def prepared_cycle(self, prepared_by=None, triggered_by="MANUAL"):
-        # One unpaid entitlement, as the calculation would leave it (its own
-        # creation is covered by tips_payment_execution_validation).
-        from types import SimpleNamespace
-        from unittest import mock
-        unpaid = [SimpleNamespace(employee_id=self.employee.id, payable_amount_minor=1200,
-                                  business_date=None, tip_payment_instruction_id=None)]
-        with mock.patch.object(cycle_svc, "get_unpaid_entitlements", return_value=unpaid):
-            cycle = cycle_svc.start_payment_cycle(self.db, restaurant_id=self.wp.id, triggered_by=triggered_by,
-                                                  prepared_by=prepared_by)
+        run = m.TipDistributionCalculationRun(restaurant_id=self.wp.id, period_start=pv.T0,
+            period_end=pv.T0 + pv.timedelta(days=1), status="COMPLETE", state=m.TIPS_RUN_STATE_FINAL)
+        self.db.add(run)
+        self.db.flush()
+        entitlement = m.TipEntitlement(calculation_run_id=run.id, restaurant_id=self.wp.id,
+            employee_id=self.employee.id, gross_amount_minor=1200, outbound_amount_minor=0,
+            inbound_amount_minor=0, payable_amount_minor=1200)
+        self.db.add(entitlement)
         self.db.commit()
-        self.assertIsNotNone(unpaid[0].tip_payment_instruction_id)
+        cycle = cycle_svc.start_payment_cycle(self.db, restaurant_id=self.wp.id, triggered_by=triggered_by,
+                                              prepared_by=prepared_by)
+        self.db.commit()
+        self.assertIsNotNone(self.db.get(m.TipEntitlement, entitlement.id).tip_payment_instruction_id)
         return cycle
 
     def test_preparation_by_a_person_records_the_account_and_time(self):

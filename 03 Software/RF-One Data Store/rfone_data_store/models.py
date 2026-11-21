@@ -2826,6 +2826,9 @@ class TipPaymentCycle(Base):
         CheckConstraint(
             "triggered_by IN ('MANUAL','AUTOMATIC')", name="ck_tip_payment_cycle_triggered_by",
         ),
+        # CLOVER_MULTISITE_001: at most one OPEN cycle per restaurant, enforced by the database too.
+        Index("uq_tip_payment_cycle_open_restaurant", "restaurant_id", unique=True,
+              sqlite_where=text("status = 'OPEN'"), postgresql_where=text("status = 'OPEN'")),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

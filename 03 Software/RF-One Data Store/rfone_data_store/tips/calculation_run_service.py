@@ -47,6 +47,7 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from ..site_selection import restaurant_is_operational
 from . import distribution_engine as engine
+from .money_lock import lock_restaurant
 from . import validation_mode_service as mode_svc
 
 UTC = timezone.utc
@@ -78,6 +79,9 @@ def save_calculation_run(
     is finalized here, in the same transaction, with no person named."""
     if not restaurant_is_operational(session, restaurant_id):  # CLOVER_MULTISITE_001: inactive site
         return None, "This restaurant site is not active yet: no Tips calculation is saved for it."
+    # Serialized per restaurant (CLOVER_MULTISITE_001): saving and the automatic finalization below never
+    # run concurrently with another save, validation or payment preparation of the same restaurant.
+    lock_restaurant(session, restaurant_id)
     result = engine.calculate_tips_for_business_dates(
         session, restaurant_id=restaurant_id,
         first_business_date=first_business_date, last_business_date=last_business_date,
@@ -252,6 +256,9 @@ def validate_run(
             f"RF-One account {account_id} no longer exists, so it cannot be recorded as "
             "the validator."
         )
+    # Two finalizations of overlapping periods never pass the overlap check at the same time.
+    lock_restaurant(session, run.restaurant_id)
+    session.refresh(run)
     blockers = finalization_blockers(session, run)
     if blockers:
         return None, " ".join(blockers)
@@ -283,6 +290,7 @@ def finalize_automatically(
             f"Restaurant {run.restaurant_id} is in MANUAL validation mode, so this period "
             "needs a person to validate it. Automatic finalization is never a default."
         )
+    lock_restaurant(session, run.restaurant_id)
     blockers = finalization_blockers(session, run)
     if blockers:
         return None, " ".join(blockers)

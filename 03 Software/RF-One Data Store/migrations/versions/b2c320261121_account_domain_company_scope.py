@@ -6,6 +6,8 @@ Additive and behaviour-preserving:
 - `rfone_account_domain_company_access`: the companies chosen when company_scope is SELECTED.
 - `tip_payment_audit_events`: append-only audit of Tips payments — who (account or system identity)
   and when each cycle was prepared and approved, each instruction executed, each retry attempted.
+- `uq_tip_payment_cycle_open_restaurant`: at most one OPEN Payment Cycle per restaurant (RDS had 0 cycles
+  on 2026-11-21).
 No account, access, grant, company or payment row is created, changed or removed.
 """
 from alembic import op
@@ -58,9 +60,12 @@ def upgrade() -> None:
                     ['payment_cycle_id'])
     op.create_index('ix_tip_payment_audit_events_payment_instruction_id', 'tip_payment_audit_events',
                     ['payment_instruction_id'])
+    op.create_index('uq_tip_payment_cycle_open_restaurant', 'tip_payment_cycles', ['restaurant_id'], unique=True,
+                    sqlite_where=sa.text("status = 'OPEN'"), postgresql_where=sa.text("status = 'OPEN'"))
 
 
 def downgrade() -> None:
+    op.drop_index('uq_tip_payment_cycle_open_restaurant', table_name='tip_payment_cycles')
     op.drop_index('ix_tip_payment_audit_events_payment_instruction_id', table_name='tip_payment_audit_events')
     op.drop_index('ix_tip_payment_audit_events_payment_cycle_id', table_name='tip_payment_audit_events')
     op.drop_table('tip_payment_audit_events')

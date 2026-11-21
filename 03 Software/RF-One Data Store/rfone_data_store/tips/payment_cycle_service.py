@@ -75,6 +75,7 @@ from .. import acting_identity_service
 from .. import financial_authorization
 from ..site_selection import require_operational
 from . import payment_audit
+from .money_lock import lock_restaurant
 from ..attention_service import create_attention, route_attention
 from ..authority_service import AuthorizationContext, authorize
 from ..organizational_responsibility_service import ScopeContext
@@ -219,6 +220,9 @@ def start_payment_cycle(
     is written for every newly created cycle (CLOVER_MULTISITE_001)."""
     now = now or datetime.now(UTC)
     require_operational(session, restaurant_id)  # CLOVER_MULTISITE_001: no payment cycle for an inactive site
+    # Serialized per restaurant: a manual and an automatic preparation never aggregate the same
+    # entitlements; the second one waits, then finds the first one's open cycle.
+    lock_restaurant(session, restaurant_id)
 
     existing_open = get_open_cycle(session, restaurant_id)
     if existing_open is not None:
@@ -256,8 +260,19 @@ def start_payment_cycle(
         instructions_by_employee[employee_id] = instruction
     session.flush()
 
+    # Second, independent guard: an entitlement is linked only while still unlinked; anything else means
+    # a concurrent aggregation got there first, and nothing of this cycle is kept.
     for entitlement in unpaid:
-        entitlement.tip_payment_instruction_id = instructions_by_employee[entitlement.employee_id].id
+        linked = session.execute(
+            m.TipEntitlement.__table__.update()
+            .where(m.TipEntitlement.id == entitlement.id, m.TipEntitlement.tip_payment_instruction_id.is_(None))
+            .values(tip_payment_instruction_id=instructions_by_employee[entitlement.employee_id].id)
+        ).rowcount
+        if linked != 1:
+            raise ApproveAndPayError(
+                f"Tip Entitlement {entitlement.id} was aggregated by another Payment Cycle meanwhile; "
+                "nothing was prepared.")
+        session.expire(entitlement, ["tip_payment_instruction_id"])
 
     payment_audit.record(
         session, event=m.TIP_PAYMENT_AUDIT_PREPARED, cycle=cycle,
@@ -438,9 +453,9 @@ def approve_and_pay_cycle(
     CALLER from this Restaurant's own configured `connector_code` — this
     function never resolves or defaults one itself."""
     require_operational(session, cycle.restaurant_id)  # CLOVER_MULTISITE_001
-    # Lock the cycle row so two simultaneous approvals cannot both see it OPEN
-    # (PostgreSQL row lock; a no-op on SQLite, which serializes writers).
-    session.flush()
+    # Serialized per restaurant, then the cycle row is locked and re-read: two approvals (a person and
+    # the scheduler, or two people) can never both see it OPEN.
+    lock_restaurant(session, cycle.restaurant_id)
     session.execute(select(m.TipPaymentCycle.id).where(m.TipPaymentCycle.id == cycle.id).with_for_update())
     session.refresh(cycle)
     if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_OPEN:
