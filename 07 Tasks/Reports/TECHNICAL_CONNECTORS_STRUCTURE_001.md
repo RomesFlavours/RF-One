@@ -1,5 +1,8 @@
 # TECHNICAL_CONNECTORS_STRUCTURE_001 — Implementation Report
 
+> **Historical record — not current specification.** This execution report is preserved unchanged. Where it describes Clover acquisition, Domain-specific import paths or direct Domain access to provider data, it is superseded by the approved decision [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) (RF-One canonical operational database independent of source providers).
+
+
 ## 1. Previous Clover location
 
 `rfone_data_store/ingestion/clover/` (mapping, ingest/upsert, enrichment,

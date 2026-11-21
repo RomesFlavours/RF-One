@@ -214,7 +214,7 @@ Employees with the configured recipient role who worked during the Distribution 
 
 Additional modes may be added later without changing the core engine.
 
-The source of truth for clock-in / clock-out is the POS/time-clock system. For Rome’s Flavours this is Clover.
+The originating source of clock-in / clock-out is the POS/time-clock system (for Rome’s Flavours, currently Clover). The engine reads them only from the RF-One canonical operational database, never from the provider (RF1_OPERATIONAL_DATABASE_001).
 
 ---
 

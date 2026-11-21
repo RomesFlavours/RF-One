@@ -1,5 +1,7 @@
 # Clover acquisition job runner (AWS)
 
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This runner is part of the one shared Clover acquisition service, not an importer of any Domain (it uses the `rfone-tips` image for packaging only). Open points: one service for all locations (OQ-4) and the 30 s target (OQ-1).
+
 CLOVER_ACQUISITION_JOBS_001. **Status: created 2026-09-26** (Product Owner
 approval: ECS Fargate runner, then the ECS API VPC endpoint).
 

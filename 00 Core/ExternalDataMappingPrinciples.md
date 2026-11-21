@@ -78,3 +78,9 @@ The Mapping Layer is responsible for:
 Changes in external APIs must affect only the Mapping Layer.
 
 The RF-One Domain Model must remain stable.
+
+---
+
+# Related system-level decision
+
+[RF1_OPERATIONAL_DATABASE_001](../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) applies these principles to RF-One's operational database: Source Records and the Mapping Layer correspond to the acquisition connector and the common ingestion service; the result is recorded in RF-One's own canonical operational database, which is the only source the Domains read. It does not redefine the principles above.

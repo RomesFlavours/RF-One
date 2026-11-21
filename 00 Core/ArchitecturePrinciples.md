@@ -44,6 +44,8 @@ The origin of business data is irrelevant.
 
 APIs, databases, files, OCR, manual input or any future data source must produce the same business concepts inside the RF-One Domain.
 
+At system level this principle is made binding by RF1_OPERATIONAL_DATABASE_001: RF-One owns its own canonical operational database; every source reaches the Domains only through acquisition connector → common ingestion service → canonical operational database, and no Domain depends on a provider's API, schema or staging tables. See [10 System/Operational Database and Data Governance/README.md](../10%20System/Operational%20Database%20and%20Data%20Governance/README.md).
+
 ---
 
 # Canonical Knowledge

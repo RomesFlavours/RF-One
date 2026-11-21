@@ -1,5 +1,8 @@
 # CLOVER_TIPS_INGESTION_001 — Live Clover Import for the Tips Module (Source Facts Layer)
 
+> **Historical record — not current specification.** This execution report is preserved unchanged. Where it describes Clover acquisition, Domain-specific import paths or direct Domain access to provider data, it is superseded by the approved decision [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) (RF-One canonical operational database independent of source providers).
+
+
 **Scope:** the Source Facts / Clover ingestion layer required by `01 Domains/Business Domain/Restaurant/Functional Specifications/TIP_DISTRIBUTION_ENGINE_FUNCTIONAL_SPEC_001.md`, using the field-level findings established in `07 Tasks/Reports/CLOVER_TIPS_DATA_PROBE_001.md`. No Tip Distribution Rules, no Host/Bartender tip-out calculation, no Zelle, no payroll, and no Tips-module redesign were implemented. No broad integrity/architecture review was performed.
 
 ---

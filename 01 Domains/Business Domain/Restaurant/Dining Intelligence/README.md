@@ -75,7 +75,7 @@ Dining Intelligence uses the Commercial Catalog's existing Item/Item Category/It
 
 ## Relationship to Reservation / Guest platforms
 
-Dining Intelligence may eventually consume guest/reservation evidence from systems such as OpenTable, Resy, future reservation/CRM systems, or walk-in identification. **Dining Intelligence is never made dependent on any particular reservation provider** — provider adapters are expected to map into canonical RF-One `Guest`, `Reservation`, and `Dining Session` identity/context concepts. No such integration is implemented by this task — see [Customer Consumption Profile.md](Customer%20Consumption%20Profile.md), "Reservation / Guest sources."
+Dining Intelligence may eventually consume guest/reservation evidence from systems such as OpenTable, Resy, future reservation/CRM systems, or walk-in identification. **Dining Intelligence is never made dependent on any particular reservation provider** — provider adapters are expected to map into canonical RF-One `Guest`, `Reservation`, and `Dining Session` identity/context concepts. No such integration is implemented by this task — see [Customer Consumption Profile.md](Customer%20Consumption%20Profile.md), "Reservation / Guest sources." Any future OpenTable/Resy/CRM adapter follows [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md): acquisition connector → common ingestion → RF-One canonical operational database → Dining Intelligence.
 
 ---
 

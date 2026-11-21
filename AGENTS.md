@@ -35,3 +35,7 @@ When explicitly assigned a separate implementation task, Codex must still follow
 ## General RF-One rules
 
 Core ≠ Domain ≠ Product ≠ Runtime. The canonical RF-One model, not external vendor APIs or UI shortcuts, defines business meaning. Source connectors map external data into RF-One concepts. Identity, authorization and audit are shared capabilities. Preserve historical integrity and the approved location/assignment semantics. Never invent business decisions from technical convenience.
+
+## RF-One operational database principle
+
+- **Operational database principle and development roles (RF1_OPERATIONAL_DATABASE_001, Product Owner, 2026-11-21).** RF-One owns its canonical operational database; Domains never depend on provider APIs, schemas or staging tables. Design = Product Owner + ChatGPT; implementation = Claude; **independent review = Codex**, which verifies conformity, tests, regressions, dependencies, schema and risks, does not change requirements, and reports deviations before deployment. Normative text: [`10 System/Operational Database and Data Governance/README.md`](10%20System/Operational%20Database%20and%20Data%20Governance/README.md). Codex checklist: [`03 Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md`](03%20Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md). Section *Operational database principle and development roles* of `CLAUDE.md`.

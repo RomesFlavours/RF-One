@@ -1,5 +1,7 @@
 # RF-One — Clover Restaurant Data Mapping
 
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This is connector-level mapping (source → RF-One canonical model). The RF-One model is defined by RF-One, not by this mapping; Domains never consume Clover fields directly.
+
 ## Status
 
 Runtime/Software mapping between the current Clover production data and the RF-One Restaurant sales model.

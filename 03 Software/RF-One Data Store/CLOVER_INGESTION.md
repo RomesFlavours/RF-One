@@ -1,5 +1,7 @@
 # Clover → RF-One Canonical Ingestion
 
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This document describes one source connector (Clover) and its historical bulk load. Under that decision the first historical import is a separate initialization operation, not repeated each time a Domain is used; ordinary acquisition runs in the one shared acquisition service; Domains read only the canonical operational database.
+
 TASK_DATABASE_002 — the first real ingestion of Clover source evidence into the RF-One canonical Restaurant operational database created by TASK_DATABASE_001. This document describes the ingestion **architecture and design decisions**; for the actual run's results, see `CLOVER_INGESTION_RECONCILIATION.md` and `07 Tasks/Reports/TASK_DATABASE_002_REPORT.md`. For the **continuous, always-running** live acquisition/correction architecture (Fast Live Extractor, Correction/Reconciliation Poller, eventual consistency for Cognito, consolidation for Tips) — as opposed to this document's one-off, manually-triggered bulk pipeline — see `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md`.
 
 ```text

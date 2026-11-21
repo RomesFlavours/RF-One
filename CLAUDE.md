@@ -2,6 +2,33 @@
 
 # RF-One Project Instructions
 
+## Operational database principle and development roles — Product Owner, 2026-11-21 (RF1_OPERATIONAL_DATABASE_001)
+
+Mandatory for every task. The single normative text is
+`10 System/Operational Database and Data Governance/README.md` (verbatim approved
+original: `SOURCE_DECISION_IT.md` in the same folder); this is a pointer to it.
+
+1. **RF-One owns its information model and its canonical operational database.**
+   Clover, OpenTable, ADP, PayPal, Amazon, the future RF POS and any other source
+   only supply data. Mandatory flow: source → acquisition connector (extraction and
+   format translation only) → common ingestion service → RF-One canonical
+   operational database → Domains. Domains never read provider APIs, provider
+   schemas or connector staging tables for ordinary business logic; never build a
+   Clover (or other provider) engine for one Domain or one period; never duplicate
+   the same business fact per module.
+2. **Design is done by the Product Owner + ChatGPT; Claude implements.** Implement
+   complete, approved specifications faithfully. Do not add workflows, schemas,
+   tables, columns, APIs, information models or architectural decisions of your own.
+   When a choice the specification does not define emerges, **stop and submit it to
+   design** — do not decide it. Do not invent column or table names not verified in
+   the existing code.
+3. **Codex performs the independent review** using
+   `03 Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md`; hand
+   over the commit and its report. Codex does not change requirements.
+4. **Release only after explicit Product Owner approval:** no push, merge,
+   deployment, destructive migration or production change without specific
+   authorization, unless the assignment already expressly grants it.
+
 This file defines the working rules that must always be followed when contributing to the RF-One repository.
 
 ---
@@ -251,6 +278,13 @@ If a specification conflicts with canonical documentation or leaves a material b
 
 Required sequence for implementation work: **Product Owner + ChatGPT specification → Claude implementation and tests → Codex independent review → Product Owner authorization for merge/deploy**. Do not merge or deploy merely because code or tests are ready.
 
+The "Repository Architect" role means keeping the repository's structure,
+references and documentation consistent with approved decisions. It does not
+authorize designing new architecture, data models, workflows or APIs: under
+RF1_OPERATIONAL_DATABASE_001 §7 design belongs to the Product Owner + ChatGPT,
+implementation to Claude, independent review to Codex (see the section
+*Operational database principle and development roles* at the top of this file).
+
 ---
 
 # Modular Architecture
@@ -294,6 +328,12 @@ Keep RF-One's proprietary value in its:
 - learning mechanisms.
 
 Where practical, keep provider-specific integrations behind abstractions so providers can be replaced.
+
+For business data sources (POS, reservation, payroll, payment, marketplace and
+any future source) this is mandatory, not merely "where practical": data reaches
+the Domains only through the connector → common ingestion → RF-One canonical
+operational database path of RF1_OPERATIONAL_DATABASE_001
+(`10 System/Operational Database and Data Governance/README.md`).
 
 ---
 

@@ -34,6 +34,7 @@ Top-level directories may contain a `README.md` explaining purpose and authority
 - Canonical architecture: `00 Core/ConceptualArchitecture/00_RF-One_Core_Vision.md`
 - Current Domain example: `01 Domains/Business Domain/Restaurant/README.md`
 - Project instructions: `CLAUDE.md`
+- Operational database and data governance (one RF-One operational model, distinct from source systems): `10 System/Operational Database and Data Governance/README.md`
 - Current repository state: `PROJECT_STATE.md`
 
 ## Agent entrypoints and review gate

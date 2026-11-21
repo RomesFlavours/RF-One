@@ -2,15 +2,25 @@
 
 The physical RF-One Restaurant **operational database** — the canonical, vendor-independent relational schema (TASK_DATABASE_001), now populated with the first real Clover ingestion (TASK_DATABASE_002).
 
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) — RF-One owns this canonical operational database and its
+> information model; Clover, OpenTable, ADP, PayPal, Amazon and the future RF POS are replaceable sources. Domains read only
+> RF-One data and interfaces, never provider APIs, provider schemas or connector staging tables. This module implements step 4
+> of that decision's mandatory flow; it does not restate the decision.
+
 ```text
-Clover / future POS
+Source (Clover / ADP / PayPal / uploads / future RF POS)
         ↓
-Source ingestion            ← rfone_data_store/ingestion/ (TASK_DATABASE_002, Clover only so far)
+Acquisition connector       ← rfone_data_store/technical/connectors/<provider>/ (extraction + format translation only)
+        ↓
+Common ingestion            ← location/entity identification, validity, deduplication, checkpoints, errors, traceability
         ↓
 RF-One canonical operational database   ← this module (TASK_DATABASE_001 schema)
         ↓
-Analytics / KPI / Performance / Training / Decisions   (NOT built yet)
+RF-One Domains (Tips, Kitchen, Bank, Management, …) — through RF-One data/interfaces only
 ```
+
+The historical diagram of TASK_DATABASE_002 (Clover → "Source ingestion" under `rfone_data_store/ingestion/`) is superseded by the
+flow above; the Clover connector has since moved to `technical/connectors/clover/` (TECHNICAL_CONNECTORS_STRUCTURE_001).
 
 This module is **vendor-independent**. Clover is one source adapter (`03 Software/Clover Data Explorer/` for raw evidence collection, `rfone_data_store/ingestion/clover/` for canonical mapping) — the canonical schema does not copy Clover's tables mechanically. See `DATABASE_SCHEMA.md` for the full table-by-table documentation and the modeling principles behind it, `CLOVER_INGESTION.md` / `CLOVER_INGESTION_RECONCILIATION.md` for the one-off bulk ingestion architecture and this run's results, `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` for the continuous, always-running Live Sync / Correction-Reconciliation architectural decision (Fast Live Extractor, Correction/Reconciliation Poller, Cognito's accepted eventual consistency, Tips' consolidation boundary), `RESTAURANT_PROFILE.md` for the Restaurant Profile / Organization layer (Restaurant, Operational Area, Physical Area, Restaurant Role, temporal Employee Assignment — TASK_RESTAURANT_001), `PAYROLL.md` for the Administration/Payroll implementation (Payroll Schedule/Period/Workweek, Compensation Terms, ADP `Payroll Detail` Excel import, Payroll Employer Cost — TASK_PAYROLL_001), and `PURCHASING.md` for the Restaurant/Purchasing implementation (Supplier, Supplier Product, Purchase Document/Line, Configured Expectation/Alert, Physical Receiving, Order vs Invoice vs Receiving reconciliation, Expected Supplier Credit — TASK_PURCHASING_004).
 
