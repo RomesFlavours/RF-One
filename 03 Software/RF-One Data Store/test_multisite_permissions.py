@@ -38,6 +38,7 @@ from rfone_data_store import rfone_account_service as accounts  # noqa: E402
 from rfone_data_store import rfone_web_session  # noqa: E402
 from rfone_data_store import site_selection  # noqa: E402
 from rfone_data_store.database import create_configured_engine, create_session_factory  # noqa: E402
+from rfone_data_store.tips import payment_audit as audit  # noqa: E402
 from rfone_data_store.tips import payment_cycle_service as cycle_svc  # noqa: E402
 from rfone_data_store.tips import payment_instruction as pi_svc  # noqa: E402
 from rfone_data_store import tips_payment_execution_validation as pv  # noqa: E402
@@ -379,7 +380,11 @@ class TipsPaymentAuthorizationTest(_Fixture):
         self.assertEqual(self.retry(payer, instruction), cycle_svc.RETRY_SUBMITTED)
         self.assertEqual(instruction.status, pi_svc.STATUS_SENT)
         self.assertEqual(self.client.create_transaction_calls, 2)
-        self.assertIn(f"by Acting Identity {fin.acting_identity_for_account(self.db, payer).id}", cycle.notes)
+        retried = [e for e in audit.events_for_cycle(self.db, cycle.id) if e.event == m.TIP_PAYMENT_AUDIT_RETRIED]
+        self.assertEqual([(e.actor_kind, e.account_id, e.outcome) for e in retried],
+                         [(m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, payer.id, pi_svc.STATUS_SENT)])
+        self.assertEqual(retried[0].payment_instruction_id, instruction.id)
+        self.assertIsNotNone(retried[0].occurred_at)
         # A second click after success is refused: no third call.
         with self.assertRaises(cycle_svc.PaymentRetryError):
             self.retry(payer, instruction)
@@ -415,6 +420,87 @@ class TipsPaymentAuthorizationTest(_Fixture):
         # Same idempotency key: the provider refuses a second payment.
         self.assertEqual(instruction.failure_class, pi_svc.FAILURE_DUPLICATE_PROTECTION)
         self.assertEqual(len(self.client._transactions_by_id), 1)
+
+
+class TipsPaymentAuditTest(TipsPaymentAuthorizationTest):
+    """Payment audit: account or system identity, date and time of preparation,
+    approval, execution and retry (CLOVER_MULTISITE_001)."""
+
+    def prepared_cycle(self, prepared_by=None, triggered_by="MANUAL"):
+        # One unpaid entitlement, as the calculation would leave it (its own
+        # creation is covered by tips_payment_execution_validation).
+        from types import SimpleNamespace
+        from unittest import mock
+        unpaid = [SimpleNamespace(employee_id=self.employee.id, payable_amount_minor=1200,
+                                  business_date=None, tip_payment_instruction_id=None)]
+        with mock.patch.object(cycle_svc, "get_unpaid_entitlements", return_value=unpaid):
+            cycle = cycle_svc.start_payment_cycle(self.db, restaurant_id=self.wp.id, triggered_by=triggered_by,
+                                                  prepared_by=prepared_by)
+        self.db.commit()
+        self.assertIsNotNone(unpaid[0].tip_payment_instruction_id)
+        return cycle
+
+    def test_preparation_by_a_person_records_the_account_and_time(self):
+        payer = self.account("payer")
+        cycle = self.prepared_cycle(prepared_by=fin.acting_identity_for_account(self.db, payer))
+        [event] = audit.events_for_cycle(self.db, cycle.id)
+        self.assertEqual((event.event, event.actor_kind, event.account_id, event.actor_label),
+                         (m.TIP_PAYMENT_AUDIT_PREPARED, m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, payer.id, "Payer"))
+        self.assertIsNotNone(event.occurred_at)
+
+    def test_automatic_preparation_records_the_system_identity(self):
+        cycle = self.prepared_cycle(triggered_by="AUTOMATIC")
+        [event] = audit.events_for_cycle(self.db, cycle.id)
+        self.assertEqual((event.event, event.actor_kind, event.account_id),
+                         (m.TIP_PAYMENT_AUDIT_PREPARED, m.TIP_PAYMENT_AUDIT_ACTOR_SYSTEM, None))
+        self.assertIsNotNone(event.acting_identity_id)
+
+    def test_approval_and_execution_are_audited_per_instruction(self):
+        payer = self.account("payer")
+        self.grant_pay(payer, self.wp)
+        cycle, instruction = self.cycle_with_instruction()
+        self.approve(payer, cycle)
+        events = [(e.event, e.actor_kind, e.account_id, e.payment_instruction_id, e.outcome)
+                  for e in audit.events_for_cycle(self.db, cycle.id)]
+        self.assertEqual(events, [
+            (m.TIP_PAYMENT_AUDIT_APPROVED, m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, payer.id, None,
+             m.TIP_PAYMENT_CYCLE_STATUS_APPROVED),
+            (m.TIP_PAYMENT_AUDIT_EXECUTED, m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, payer.id, instruction.id,
+             pi_svc.STATUS_SENT),
+        ])
+
+    def test_refused_approval_leaves_no_audit_row(self):
+        cycle, instruction = self.cycle_with_instruction()
+        bare = fin.acting_identity_for_account(self.db, self.account("no-grant"))
+        with self.assertRaises(cycle_svc.ApproveAndPayError):
+            cycle_svc.approve_and_pay_cycle(self.db, cycle=cycle, acting_identity=bare,
+                                            connector=self.connector, source_account_id="acct-1")
+        self.db.rollback()
+        self.assertEqual(audit.events_for_cycle(self.db, cycle.id), [])
+
+    def test_refused_retry_is_audited_without_a_payment(self):
+        payer, cycle, instruction = self.failed_after_approval()
+        with self.assertRaises(cycle_svc.PaymentRetryError):
+            self.retry(payer, instruction)
+        self.db.commit()  # as the Payment Control route does after a refused retry
+        retried = [e for e in audit.events_for_cycle(self.db, cycle.id) if e.event == m.TIP_PAYMENT_AUDIT_RETRIED]
+        self.assertEqual([(e.account_id, e.outcome) for e in retried], [(payer.id, "REFUSED")])
+        self.assertIn("no failed payment", retried[0].detail)
+        self.assertEqual(self.client.create_transaction_calls, 1)
+
+    def test_system_approval_is_recorded_as_system(self):
+        from rfone_data_store import acting_identity_service
+        from rfone_data_store.authority_service import grant_authority
+        system = acting_identity_service.get_or_create_system_identity(self.db)
+        grant_authority(self.db, actor=system, domain=TIPS, action="APPROVE_AND_PAY",
+                        scope_type=m.SCOPE_RESTAURANT, scope_id=self.wp.id)
+        cycle, instruction = self.cycle_with_instruction()
+        cycle_svc.approve_and_pay_cycle(self.db, cycle=cycle, acting_identity=system,
+                                        connector=self.connector, source_account_id="acct-1")
+        self.db.commit()
+        kinds = {(e.event, e.actor_kind, e.account_id) for e in audit.events_for_cycle(self.db, cycle.id)}
+        self.assertEqual(kinds, {(m.TIP_PAYMENT_AUDIT_APPROVED, m.TIP_PAYMENT_AUDIT_ACTOR_SYSTEM, None),
+                                 (m.TIP_PAYMENT_AUDIT_EXECUTED, m.TIP_PAYMENT_AUDIT_ACTOR_SYSTEM, None)})
 
 
 if __name__ == "__main__":

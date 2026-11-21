@@ -2979,6 +2979,60 @@ class TipPaymentInstruction(Base):
     attention_item: Mapped["AttentionItem | None"] = relationship()
 
 
+TIP_PAYMENT_AUDIT_PREPARED = "PREPARED"
+TIP_PAYMENT_AUDIT_APPROVED = "APPROVED"
+TIP_PAYMENT_AUDIT_EXECUTED = "EXECUTED"
+TIP_PAYMENT_AUDIT_RETRIED = "RETRIED"
+TIP_PAYMENT_AUDIT_EVENTS = (
+    TIP_PAYMENT_AUDIT_PREPARED, TIP_PAYMENT_AUDIT_APPROVED, TIP_PAYMENT_AUDIT_EXECUTED, TIP_PAYMENT_AUDIT_RETRIED,
+)
+TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT = "ACCOUNT"
+TIP_PAYMENT_AUDIT_ACTOR_SYSTEM = "SYSTEM"
+
+
+class TipPaymentAuditEvent(Base):
+    """Append-only audit of every Tips payment step (CLOVER_MULTISITE_001,
+    Product Owner 2026-11-21): who (the signed-in RF-One account, or the
+    system identity of an automatic step) and when (UTC) a Payment Cycle was
+    prepared, approved, each instruction executed, and each retry attempted.
+
+    - PREPARED: one per cycle (`start_payment_cycle`).
+    - APPROVED: one per cycle (`approve_and_pay_cycle`).
+    - EXECUTED: one per instruction submitted by Approve & Pay.
+    - RETRIED: one per retry attempt that passed the authorization gate —
+      `outcome` is the instruction status after it, or `REFUSED` with the
+      reason in `detail` when nothing was resubmitted.
+
+    `account_id` is set exactly when `actor_kind = ACCOUNT`; `actor_label`
+    keeps the name shown at that moment (the account/identity row stays the
+    authority). Rows are never updated or deleted by the application."""
+
+    __tablename__ = "tip_payment_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event IN ('PREPARED','APPROVED','EXECUTED','RETRIED')", name="ck_tip_payment_audit_event",
+        ),
+        CheckConstraint(
+            "(actor_kind = 'ACCOUNT' AND account_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND account_id IS NULL)",
+            name="ck_tip_payment_audit_actor",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payment_cycle_id: Mapped[int] = mapped_column(ForeignKey("tip_payment_cycles.id"), nullable=False, index=True)
+    payment_instruction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tip_payment_instructions.id"), nullable=True, index=True,
+    )
+    event: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    acting_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), nullable=True)
+    actor_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 # `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` — the legacy
 # engine's own RESULT tables — were removed entirely (models + tables) by
 # TIPS_LEGACY_ENGINE_RETIREMENT_001: confirmed empty (0 rows each) in the

@@ -71,8 +71,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from .. import acting_identity_service
 from .. import financial_authorization
 from ..site_selection import require_operational
+from . import payment_audit
 from ..attention_service import create_attention, route_attention
 from ..authority_service import AuthorizationContext, authorize
 from ..organizational_responsibility_service import ScopeContext
@@ -201,6 +203,7 @@ def get_open_cycle(session: Session, restaurant_id: int) -> "m.TipPaymentCycle |
 
 def start_payment_cycle(
     session: Session, *, restaurant_id: int, now: datetime | None = None, triggered_by: str = m.TIP_PAYMENT_CYCLE_TRIGGER_MANUAL,
+    prepared_by: "m.ActingIdentity | None" = None,
 ) -> "m.TipPaymentCycle | None":
     """Aggregates every currently-unpaid `TipEntitlement` into one new
     `TipPaymentCycle`, creating exactly one `TipPaymentInstruction` per
@@ -208,7 +211,12 @@ def start_payment_cycle(
     construction: if an OPEN cycle already exists for this Restaurant, it
     is returned UNCHANGED — never a second concurrent cycle, never a
     double-aggregation of the same entitlements. Returns `None` (no cycle
-    created) if there is nothing unpaid to aggregate."""
+    created) if there is nothing unpaid to aggregate.
+
+    `prepared_by`: the signed-in account's Acting Identity when a person
+    prepares the cycle (Payment Control); omitted by automatic/system callers,
+    which are recorded as the RF-One SYSTEM identity. A PREPARED audit event
+    is written for every newly created cycle (CLOVER_MULTISITE_001)."""
     now = now or datetime.now(UTC)
     require_operational(session, restaurant_id)  # CLOVER_MULTISITE_001: no payment cycle for an inactive site
 
@@ -250,6 +258,13 @@ def start_payment_cycle(
 
     for entitlement in unpaid:
         entitlement.tip_payment_instruction_id = instructions_by_employee[entitlement.employee_id].id
+
+    payment_audit.record(
+        session, event=m.TIP_PAYMENT_AUDIT_PREPARED, cycle=cycle,
+        acting_identity=prepared_by or acting_identity_service.get_or_create_system_identity(session),
+        outcome=cycle.status, detail=f"{triggered_by}: {len(by_employee)} instruction(s), {len(unpaid)} entitlement(s).",
+        now=now,
+    )
     session.flush()
 
     return cycle
@@ -453,11 +468,20 @@ def approve_and_pay_cycle(
     cycle.status = m.TIP_PAYMENT_CYCLE_STATUS_APPROVED
     cycle.approved_at = datetime.now(UTC)
     cycle.approved_by_identity_id = acting_identity.id
+    payment_audit.record(
+        session, event=m.TIP_PAYMENT_AUDIT_APPROVED, cycle=cycle, acting_identity=acting_identity,
+        outcome=cycle.status, detail=f"{len(ready)} instruction(s) to submit.", now=cycle.approved_at,
+    )
 
     submitted = 0
     for instruction in ready:
         pi_svc.submit_payment_instruction(session, instruction, connector, account_id=source_account_id)
         _maybe_raise_attention(session, instruction, restaurant_id=cycle.restaurant_id)
+        payment_audit.record(
+            session, event=m.TIP_PAYMENT_AUDIT_EXECUTED, cycle=cycle, instruction=instruction,
+            acting_identity=acting_identity, outcome=instruction.status,
+            detail=_execution_detail(instruction),
+        )
         if instruction.status in (pi_svc.STATUS_SENT, pi_svc.STATUS_SUBMITTED):
             submitted += 1
     session.flush()
@@ -518,28 +542,33 @@ def retry_instruction(
         raise PaymentRetryError(
             f"Acting Identity {acting_identity.id} is not authorized to pay Tips for Restaurant "
             f"{cycle.restaurant_id}: {decision.reason}")
+    def refuse(message: str) -> PaymentRetryError:
+        # An authorized attempt that resubmitted nothing is still audited.
+        payment_audit.record(
+            session, event=m.TIP_PAYMENT_AUDIT_RETRIED, cycle=cycle, instruction=instruction,
+            acting_identity=acting_identity, outcome="REFUSED", detail=message, now=now,
+        )
+        session.flush()
+        return PaymentRetryError(message)
+
     if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_APPROVED:
-        raise PaymentRetryError(
-            f"Payment Cycle {cycle.id} is not approved (status={cycle.status!r}): use Approve & Pay.")
+        raise refuse(f"Payment Cycle {cycle.id} is not approved (status={cycle.status!r}): use Approve & Pay.")
     if instruction.status != pi_svc.STATUS_NEEDS_ATTENTION:
-        raise PaymentRetryError(
+        raise refuse(
             f"Payment Instruction {instruction.id} is {instruction.status}: there is no failed payment to retry.")
 
     if instruction.provider_transaction_id is not None:
         pi_svc.refresh_outcome(session, instruction, connector)
         if instruction.status in (pi_svc.STATUS_SENT, pi_svc.STATUS_SUBMITTED, pi_svc.STATUS_OUTCOME_VERIFIED):
-            session.flush()
-            raise PaymentRetryError(
+            raise refuse(
                 f"Payment Instruction {instruction.id} is already paid or in progress at the provider "
                 f"(status {instruction.provider_status!r}): nothing was resubmitted.")
         if instruction.failure_class == pi_svc.FAILURE_OUTCOME_REOPENED:
-            session.flush()
-            raise PaymentRetryError(
+            raise refuse(
                 f"Payment Instruction {instruction.id} was reversed by the provider: it needs a person's "
                 "review, not an automatic resubmission.")
         if (instruction.provider_status or "").lower() not in pi_svc.TERMINAL_FAILURE_STATUSES:
-            session.flush()
-            raise PaymentRetryError(
+            raise refuse(
                 f"The outcome of the earlier payment of instruction {instruction.id} cannot be confirmed "
                 "with the provider: nothing was resubmitted.")
     elif instruction.idempotency_key is not None and instruction.failure_class in (
@@ -547,18 +576,30 @@ def retry_instruction(
         reference = pi_svc.active_recipient_reference(
             session, instruction.employee_id, connector_code=connector.connector_code)
         if reference is not None and reference.provider_recipient_id != instruction.provider_recipient_id:
-            raise PaymentRetryError(
+            raise refuse(
                 f"An earlier attempt of instruction {instruction.id} reached the provider for a different "
                 "recipient and its outcome is unknown: verify it with the provider before retrying.")
 
     pi_svc.submit_payment_instruction(session, instruction, connector, account_id=source_account_id)
     _maybe_raise_attention(session, instruction, restaurant_id=cycle.restaurant_id)
-    stamp = (now or datetime.now(UTC)).isoformat(timespec="seconds")
-    line = (f"{stamp} retry of instruction {instruction.id} by Acting Identity {acting_identity.id}: "
-            f"{instruction.status}")
-    cycle.notes = f"{cycle.notes}\n{line}" if cycle.notes else line
+    payment_audit.record(
+        session, event=m.TIP_PAYMENT_AUDIT_RETRIED, cycle=cycle, instruction=instruction,
+        acting_identity=acting_identity, outcome=instruction.status, detail=_execution_detail(instruction), now=now,
+    )
     session.flush()
     return RETRY_SUBMITTED
+
+
+def _execution_detail(instruction: "m.TipPaymentInstruction") -> str:
+    """Provider evidence of one submit attempt, for the audit row."""
+    parts = [f"amount_minor={instruction.amount_minor}"]
+    if instruction.provider_transaction_id:
+        parts.append(f"provider_transaction_id={instruction.provider_transaction_id}")
+    if instruction.idempotency_key:
+        parts.append(f"idempotency_key={instruction.idempotency_key}")
+    if instruction.failure_class:
+        parts.append(f"failure_class={instruction.failure_class}")
+    return "; ".join(parts)
 
 
 def refresh_outcomes_for_cycle(
