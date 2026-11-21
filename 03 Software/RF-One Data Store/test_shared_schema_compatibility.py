@@ -20,9 +20,9 @@ from rfone_data_store.schema_compatibility import (
 
 HERE = Path(__file__).resolve().parent
 UNKNOWN = "ffff20991231"
-# This tree's single head: the AWS revision or a later one built on it
-# (e1b220261102, interview consent, runs on AWS after e0a120261101).
-TREE_HEAD = "e9a120261117"
+# This tree's single head: the AWS revision or a later one built on it. Read from the tree (the tests
+# used to hard-code it and went stale with every new migration).
+TREE_HEAD = chain.check(chain.VERSIONS_DIR, chain.aws_revision()[0])[0][0]
 
 
 def _sha(path):
