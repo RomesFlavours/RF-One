@@ -30,7 +30,7 @@ When explicitly assigned a separate implementation task, Codex must still follow
 - Report the exact branch and commit reviewed, and whether the canonical documents were read at that same ref.
 - Request an updated review if implementation or canonical specifications change after the reviewed commit.
 - Keep Git changes in a dedicated branch or PR; never silently alter the deployed baseline.
-- For current production reconciliation, consult the integration records under `03 Software/Infrastructure/integration-2026-11-20/` and independently verify unresolved items rather than assuming they are closed.
+- For historical integration evidence, consult `03 Software/Infrastructure/integration-2026-11-20/` **only at the external integration snapshot commit** [`7a4a126e721024fed32751190330850312772022`](https://github.com/RomesFlavours/RF-One/tree/7a4a126e721024fed32751190330850312772022/03%20Software/Infrastructure/integration-2026-11-20). This path **does not exist on the reviewed `main` baseline**. Inspect that commit **read-only**, without switching the active branch or treating its reports as canonical specifications or verified current AWS state. Independently validate any outstanding runtime claims.
 
 ## General RF-One rules
 
