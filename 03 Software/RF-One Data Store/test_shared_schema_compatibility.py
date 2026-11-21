@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 UNKNOWN = "ffff20991231"
 # This tree's single head: the AWS revision or a later one built on it
 # (e1b220261102, interview consent, runs on AWS after e0a120261101).
-TREE_HEAD = "e9a120261117"
+TREE_HEAD = "a1c220261121"
 
 
 def _sha(path):
