@@ -286,26 +286,16 @@ class TipsPaymentAuthorizationTest(_Fixture):
         return cycle, instruction
 
     def recipient_manager(self, name="manager"):
-        return self.account(name)
+        manager = self.account(name)
+        fin.set_restaurant_grants(self.db, account=manager, permission=fin.TIPS_MANAGE_RECIPIENTS,
+                                  restaurant_ids=[self.wp.id])
+        self.db.commit()
+        return manager
 
     def change_recipient(self, account, recipient_id):
-        """An authorized, recorded recipient change (as Payment Control records it)."""
-        from datetime import datetime, timezone
-        previous = self.db.scalars(select(m.EmployeeExternalPaymentAccount).where(
-            m.EmployeeExternalPaymentAccount.employee_id == self.employee.id,
-            m.EmployeeExternalPaymentAccount.is_active.is_(True))).first()
-        if previous is not None:
-            previous.is_active = False
-        new = m.EmployeeExternalPaymentAccount(employee_id=self.employee.id, provider="MERCURY",
-                                               provider_recipient_id=recipient_id, is_active=True)
-        self.db.add(new)
-        self.db.flush()
-        self.db.add(m.TipPaymentRecipientChange(
-            employee_id=self.employee.id, restaurant_id=self.wp.id, provider="MERCURY",
-            previous_reference_id=previous.id if previous else None, new_reference_id=new.id,
-            provider_recipient_id=recipient_id, actor_kind=m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, account_id=account.id,
-            acting_identity_id=fin.acting_identity_for_account(self.db, account).id,
-            changed_at=datetime.now(timezone.utc)))
+        from rfone_data_store.tips import payment_recipients
+        payment_recipients.change_recipient(self.db, account=account, employee_id=self.employee.id,
+            restaurant_id=self.wp.id, connector_code="MERCURY", provider_recipient_id=recipient_id)
         self.db.commit()
 
     def approve(self, account, cycle):
@@ -500,8 +490,32 @@ class TipsPaymentAuthorizationTest(_Fixture):
         self.assertEqual(self.db.get(m.TipPaymentCycle, cycle.id).status, m.TIP_PAYMENT_CYCLE_STATUS_APPROVED)
         with self.assertRaisesRegex(cycle_svc.PaymentRetryError, "awaiting reconciliation"):
             self.retry(payer, self.db.get(m.TipPaymentInstruction, instruction.id))
+        from rfone_data_store.tips import payment_recipients
+        with self.assertRaisesRegex(payment_recipients.RecipientChangeRefused, "awaiting reconciliation"):
+            self.change_recipient(self.recipient_manager(), "recipient-2")
+        self.db.rollback()
         self.assertEqual(self.client.create_transaction_calls, 1)
         self.assertEqual(len(self.client._transactions_by_id), 1)
+
+    def test_recipient_change_needs_its_own_authorization_and_is_recorded(self):
+        from rfone_data_store.tips import payment_recipients
+        payer = self.account("payer")
+        self.grant_pay(payer, self.wp)                     # paying is not enough to redirect payments
+        with self.assertRaises(payment_recipients.RecipientChangeRefused):
+            self.change_recipient(payer, "recipient-x")
+        self.db.rollback()
+        manager = self.recipient_manager()
+        with self.assertRaises(payment_recipients.RecipientChangeRefused):  # not linked to MD in Registry
+            payment_recipients.change_recipient(self.db, account=manager, employee_id=self.employee.id,
+                restaurant_id=self.md.id, connector_code="MERCURY", provider_recipient_id="recipient-x")
+        self.db.rollback()
+        self.change_recipient(manager, "recipient-2")
+        [change] = self.db.scalars(select(m.TipPaymentRecipientChange)).all()
+        self.assertEqual((change.account_id, change.provider_recipient_id, change.restaurant_id),
+                         (manager.id, "recipient-2", self.wp.id))
+        active = self.db.scalars(select(m.EmployeeExternalPaymentAccount).where(
+            m.EmployeeExternalPaymentAccount.is_active.is_(True))).all()
+        self.assertEqual([a.provider_recipient_id for a in active], ["recipient-2"])
 
 
 class TipsPaymentAuditTest(TipsPaymentAuthorizationTest):

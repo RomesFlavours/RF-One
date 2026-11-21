@@ -139,7 +139,9 @@ class TipsMultisiteSelectionTest(unittest.TestCase):
             runs_before = s.scalar(select(func.count()).select_from(m.TipDistributionCalculationRun))
         for path in ("/calculate-tips/run", "/calculate-tips/consolidate", "/tips-configuration/run-calculation-now",
                      "/payment-control/start-cycle", "/payment-control/approve-and-pay"):
-            resp = c.post(path, data={"start_at": "2026-06-01", "end_at": "2026-06-02"})
+            with c.session_transaction() as sess:   # financial posts carry the RF-One CSRF token
+                token = sess.setdefault(tips_app.shared_session.SESSION_CSRF_KEY, "test-csrf-token")
+            resp = c.post(path, data={"start_at": "2026-06-01", "end_at": "2026-06-02", "csrf_token": token})
             self.assertEqual(resp.status_code, 302, path)
         with c.session_transaction() as sess:
             messages = [m_ for _, m_ in sess.get("_flashes", [])]

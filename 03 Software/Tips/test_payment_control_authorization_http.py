@@ -117,7 +117,9 @@ class PaymentControlAuthorizationTest(unittest.TestCase):
     @staticmethod
     def post(c, url, data=None, **kwargs):
         """A form post as the page sends it, with the RF-One session's CSRF token."""
-        return c.post(url, data={**(data or {})}, **kwargs)
+        with c.session_transaction() as flask_session:
+            token = flask_session.get(tips_app.shared_session.SESSION_CSRF_KEY)
+        return c.post(url, data={**(data or {}), "csrf_token": token}, **kwargs)
 
     def cycle(self):
         with tips_app.SessionFactory() as s:
@@ -178,6 +180,34 @@ class PaymentControlAuthorizationTest(unittest.TestCase):
         self.assertEqual(self.instruction().status, pi_svc.STATUS_SENT)
         statuses = sorted(t.status for t in self.provider._transactions_by_id.values())
         self.assertEqual(statuses, ["failed", "sent"])              # exactly one payment that counts
+
+    def test_financial_posts_without_the_csrf_token_change_nothing(self):
+        c = self.client(self.account("payer", pay=True))
+        for url in ("/payment-control/approve-and-pay", "/payment-control/start-cycle",
+                    f"/payment-control/instruction/{self.instruction_id}/retry",
+                    f"/payment-control/employee/{self.employee_id}/link-recipient"):
+            self.assertEqual(c.post(url, data={"recipient_name": "x"}).status_code, 400, url)
+            self.assertEqual(c.post(url, data={"recipient_name": "x", "csrf_token": "forged"}).status_code, 400, url)
+        self.assertEqual(self.cycle().status, m.TIP_PAYMENT_CYCLE_STATUS_OPEN)
+        self.assertEqual(self.provider.create_transaction_calls, 0)
+
+    def test_linking_a_recipient_needs_its_own_authorization(self):
+        url = f"/payment-control/employee/{self.employee_id}/link-recipient"
+        with patch.object(self.connector, "find_recipient_by_name",
+                          lambda name: tips_app.connector_svc.ConnectorRecipient(id="recipient-new", name=name)):
+            payer = self.client(self.account("payer", pay=True))
+            resp = self.post(payer, url, data={"recipient_name": "New"}, follow_redirects=True)
+            self.assertIn("needs its own authorization", resp.get_data(as_text=True))
+            manager_id = self.account("manager")
+            with tips_app.SessionFactory() as s:
+                fin.set_restaurant_grants(s, account=s.get(m.RFOneAccount, manager_id[0]),
+                                          permission=fin.TIPS_MANAGE_RECIPIENTS, restaurant_ids=[self.restaurant_id])
+                s.commit()
+            self.post(self.client(manager_id), url, data={"recipient_name": "New"})
+        with tips_app.SessionFactory() as s:
+            [change] = s.scalars(select(m.TipPaymentRecipientChange).where(
+                m.TipPaymentRecipientChange.employee_id == self.employee_id)).all()
+            self.assertEqual((change.account_id, change.provider_recipient_id), (manager_id[0], "recipient-new"))
 
 
 if __name__ == "__main__":

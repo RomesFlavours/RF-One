@@ -40,6 +40,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import hmac
 import os
 import sys
 from dataclasses import asdict
@@ -76,6 +77,7 @@ from rfone_data_store.tips import review_mode_service as review_mode_svc  # noqa
 from rfone_data_store.tips import payment_connector as connector_svc  # noqa: E402
 from rfone_data_store.tips import payment_cycle_service as cycle_svc  # noqa: E402
 from rfone_data_store.tips import payment_instruction as pi_svc  # noqa: E402
+from rfone_data_store.tips import payment_recipients as recipient_svc  # noqa: E402
 from rfone_data_store.tips import payment_readiness as payment_readiness_svc  # noqa: E402
 from rfone_data_store.tips import payout_process as payout_svc  # noqa: E402
 from rfone_data_store.tips import readiness as readiness_svc  # noqa: E402
@@ -232,6 +234,27 @@ OPERATIONAL_ENDPOINTS = frozenset({
     "calculate_tips_run", "calculate_tips_consolidate", "tips_configuration_run_calculation_now",
     "payment_control_start_cycle", "payment_control_approve_and_pay", "payment_control_retry_instruction",
 })
+
+
+# CLOVER_MULTISITE_001 — the financial operations also require the RF-One session's CSRF token (the
+# one RF-One Web issues and checks, `rfone_web_session.csrf_token`): a page of another site can never
+# make a signed-in person prepare, approve, retry or redirect a payment.
+FINANCIAL_ENDPOINTS = frozenset({
+    "payment_control_start_cycle", "payment_control_approve_and_pay", "payment_control_retry_instruction",
+    "payment_control_link_recipient",
+})
+app.jinja_env.globals["rfone_csrf_token"] = lambda: shared_session.csrf_token(flask_session)
+
+
+@app.before_request
+def _require_csrf_for_financial_operations():
+    if request.method != "POST" or request.endpoint not in FINANCIAL_ENDPOINTS:
+        return None
+    expected = flask_session.get(shared_session.SESSION_CSRF_KEY)
+    supplied = request.form.get("csrf_token", "")
+    if not expected or not supplied or not hmac.compare_digest(str(expected), str(supplied)):
+        abort(400, description="Missing or invalid CSRF token: nothing was changed.")
+    return None
 
 
 def _selected_site(session) -> "site_selection.Site | None":
@@ -1558,21 +1581,17 @@ def payment_control_link_recipient(employee_id: int):
             flash(f"No {connector.connector_code} recipient named {recipient_name!r} was found.", "error")
             return redirect(url_for("payment_control_home"))
 
-        existing = session.scalars(
-            select(m.EmployeeExternalPaymentAccount).where(
-                m.EmployeeExternalPaymentAccount.employee_id == employee_id,
-                m.EmployeeExternalPaymentAccount.provider == connector.connector_code,
-                m.EmployeeExternalPaymentAccount.is_active.is_(True),
-            )
-        ).all()
-        for row in existing:
-            row.is_active = False
-        session.add(
-            m.EmployeeExternalPaymentAccount(
-                employee_id=employee_id, provider=connector.connector_code, provider_recipient_id=recipient.id,
-                is_active=True,
-            )
-        )
+        # Specific authority, restaurant check, refusal while a payment awaits reconciliation, and a
+        # recorded change: the one central service (CLOVER_MULTISITE_001).
+        try:
+            recipient_svc.change_recipient(
+                session, account=rfone_identity.current_account(session), employee_id=employee_id,
+                restaurant_id=restaurant.id, connector_code=connector.connector_code,
+                provider_recipient_id=recipient.id)
+        except recipient_svc.RecipientChangeRefused as exc:
+            session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for("payment_control_home"))
         session.commit()
         flash(f"Employee {employee_id} linked to {connector.connector_code} recipient {recipient.name!r}.", "summary")
     return redirect(url_for("payment_control_home"))

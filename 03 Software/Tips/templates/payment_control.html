@@ -96,6 +96,7 @@
       {% endif %}
 
       <form method="post" action="{{ url_for('payment_control_start_cycle') }}" style="display:inline-block; margin-right:.6rem; margin-bottom:.6rem;">
+        <input type="hidden" name="csrf_token" value="{{ rfone_csrf_token() }}">
         <button type="submit" {{ 'disabled' if not cycle_readiness or not cycle_readiness.ready_to_start_cycle else '' }}>
           Start Payment Cycle Now
         </button>
@@ -104,6 +105,7 @@
       {% if open_cycle and open_cycle.status == "OPEN" %}
       {# ---- Approve & Pay — clearly accessible when authorized AND ready (task §6/§10). ---- #}
       <form method="post" action="{{ url_for('payment_control_approve_and_pay') }}" class="approve-pay-form">
+        <input type="hidden" name="csrf_token" value="{{ rfone_csrf_token() }}">
         <span class="approver">{{ ui('Approving as') }} <strong>{{ approver_name }}</strong></span>
         <button type="submit" {{ 'disabled' if not (approver_decision and approver_decision.allowed) or (payment_readiness and not payment_readiness.ready) else '' }}>
           Approve &amp; Pay
@@ -151,6 +153,7 @@
             <span class="muted" style="font-size:.78rem;">linked</span>
           {% else %}
             <form method="post" action="{{ url_for('payment_control_link_recipient', employee_id=instruction.employee_id) }}" style="display:flex; gap:.3rem; justify-content:flex-end;">
+        <input type="hidden" name="csrf_token" value="{{ rfone_csrf_token() }}">
               <input type="text" name="recipient_name" placeholder="Mercury sandbox recipient name" required style="font-size:.78rem;">
               <button type="submit" style="font-size:.78rem;">Link</button>
             </form>
@@ -198,6 +201,7 @@
           <span class="badge warn" style="font-size:.72rem;">{{ ui('Awaiting reconciliation') }}</span>
           {% elif instruction.status == "NEEDS_ATTENTION" %}
           <form method="post" action="{{ url_for('payment_control_retry_instruction', instruction_id=instruction.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ rfone_csrf_token() }}">
             <button type="submit" style="font-size:.78rem;">Retry this instruction only</button>
           </form>
           {% endif %}

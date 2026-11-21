@@ -48,7 +48,10 @@ class PaymentPermission:
 
 
 TIPS_APPROVE_AND_PAY = PaymentPermission("TIPS", "APPROVE_AND_PAY", "Tips — Approve & Pay and retry of failed payments")
-PAYMENT_PERMISSIONS: tuple[PaymentPermission, ...] = (TIPS_APPROVE_AND_PAY,)
+# CLOVER_MULTISITE_001: linking or changing where an employee's tips are paid is its own authority.
+TIPS_MANAGE_RECIPIENTS = PaymentPermission("TIPS", "MANAGE_PAYMENT_RECIPIENTS",
+                                           "Tips — link or change an employee's payment recipient")
+PAYMENT_PERMISSIONS: tuple[PaymentPermission, ...] = (TIPS_APPROVE_AND_PAY, TIPS_MANAGE_RECIPIENTS)
 
 
 class FinancialAuthorizationError(PermissionError):
