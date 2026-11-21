@@ -111,12 +111,35 @@ LF archive of `c968fb5`: `CLOVER_RELEASE_VERIFIED`, 36 tests, artifact verified.
      AND rm.source = 'CLOVER' AND rm.original_key = sr.source_role_id AND rm.valid_to IS NULL
      AND rm.restaurant_role_id IS NOT NULL);
    ```
-   Expected: no rows. Rows = define them in Anagrafica > Reparti e ruoli first (otherwise every WP
-   calculation is blocked and names the role). Not yet run (no database access in this preparation).
-7. How Works check: `rfone-tips` 0 errors. `rfone-web`: 3 errors **already present in the live web
-   code** (`email_control.html`, `email_detail.html`, `forgot_username.html`, pages of other
-   releases, not changed here) — PO decision required (author their Help in their own release, or
-   accept them as inherited) before `release_selection.py` can pass.
+   Expected: no rows.
+
+   **Result of the read-only check (2026-11-21 ~14:30 UTC, PO authorization; ECS one-off tasks
+   `42bcf2cf…`, `11fc96bf…` on `rfone-clover-correction-sync:12`, session `default_transaction_read_only=on`,
+   SELECT only; RDS alembic `a1c220261121`).** Winter Park = restaurant 1, location 1 (only one).
+   7 Clover roles are used (link snapshots and directory events, as Tips reads them), each with
+   exactly one current CLOVER correspondence in `registry_role_mappings`; no duplicate, no overlapping
+   version, `original_key`/`source_role_id`/location consistent, no reference to a missing or other
+   restaurant's role:
+
+   | Clover role (id) | People | RF-One role in Registry | State |
+   |---|---|---|---|
+   | Server (`B34X62EPMK31C`) | 13 | Server (#3) | complete |
+   | Host (`5NASW8Q6YP4JP`) | 8 | Host (#5) | complete |
+   | Team Leader (`8A2A5M5445KMW`) | 2 | Team Leader (#2) | complete |
+   | Manager (`KB1GMWVKB9JQA`) | 1 | Manager (#1) | complete |
+   | BOH (`EPVZVYY6QJVAG`) | 7 | none (department Back of House only) | **to be defined** |
+   | Admin (`F443SKPEAQ0R2`) | 4 | none | **to be defined** |
+   | Employee (`Z4HX1XW42W74M`) | 1 ("Employee Test") | none | **to be defined** |
+
+   The 12 holders of the three undefined roles hold only that role; since 2026-10-01 none owns an order
+   with a tip and none has a Registry assignment (BOH: 126 shifts; Admin: 12 orders without tip, 3
+   shifts). Observations start 2026-10-28. Nothing was created or corrected (PO instruction).
+   **Open: the three roles need an RF-One role (or an explicit PO decision) in Anagrafica > Reparti e
+   ruoli before this precondition is met.**
+
+7. How Works check: `rfone-tips` 0 errors. `rfone-web`: 3 errors inherited from the live web code —
+   **limited exemption authorized by the PO (2026-11-21)** for this release only; not changed here,
+   tracked as separate issues in §8.
 
 ## 4. Steps (one component at a time; verify before the next)
 
@@ -226,3 +249,11 @@ EMPLOYEE_DIRECTORY_RECORD_HOLD_001); historical tip payments HTTP (account stub,
 three web multi-site HTTP tests (live How Works markup); `test_clover_multisite` consumer assertions
 per image; plus the five already updated in `1b1ee48` (TIPS grant, selector GET, help directory,
 Compensation summary text, employee-directory selector).
+
+## 8. Separate issues (not part of this release)
+
+| # | Issue | Decision |
+|---|---|---|
+| 1 | `email_control.html` (RF-One Web, email service) has no registered How Works | PO 2026-11-21: limited exemption for CLOVER_MULTISITE_001; fix in its own release |
+| 2 | `email_detail.html` (RF-One Web, email service) has no registered How Works | same |
+| 3 | `forgot_username.html` (RF-One Web, account recovery) has no registered How Works | same |
