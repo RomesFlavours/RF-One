@@ -22,6 +22,6 @@
     "RF-One Data Store/rfone_data_store/shift_location.py": "539481425d62ee09600c1ebb5e55c410b1b2c15eb147ac92300ca129b86adac2",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition_jobs.py": "2e45fbb638b2e66e026e25105b276c2410db1254e867a4e4aef1bbc80ce538c5",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/live_sync.py": "eb83c9975de4479db699226b413b5da2f7fb5205918ddb3ad84b31c31baa3f00",
-    "RF-One Data Store/test_clover_multisite.py": "a54393c9b7ff37d50fa44d6a3f8ed4ae20f0a59824cfbf21a8079112b6720dff"
+    "RF-One Data Store/test_clover_multisite.py": "96bfaf5400a00057744fb2f61f0af5c749995cb377b78f1e6847c822b1eb50b5"
   }
 }

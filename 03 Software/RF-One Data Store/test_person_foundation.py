@@ -129,7 +129,9 @@ class PersonFoundationTests(unittest.TestCase):
         self.assertEqual(directory.candidates(self.db, {"name": "Pallino Pinco"})[0]["employee"].id, person.id)
         self.assertIsNone(self.db.get(m.EmployeeCloverLink, pending[0]).employee_id)
 
-    def test_historical_import_failure_preserves_pending_identity_and_no_work(self):
+    def test_historical_import_holds_records_of_a_pending_identity_without_inventing_a_person(self):
+        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: an unconfirmed employee no longer fails the import; only
+        # that person's records wait (no person attached), and the identity stays pending for review.
         from rfone_data_store.clover_acquisition_validation import FakeCloverClient
         from rfone_data_store.technical.connectors.clover import acquisition as acquisition
         client = FakeCloverClient("WP")
@@ -138,16 +140,17 @@ class PersonFoundationTests(unittest.TestCase):
                             "createdTime": int(now.timestamp() * 1000), "amount": 100, "result": "SUCCESS"}]
         location_id = self.site.id
         self.db.commit()
-        with self.assertRaises(acquisition.EmployeeIdentityConfirmationRequired):
-            acquisition.import_clover_period(self.db, location_id=location_id,
-                period_start=now, period_end=now, mode="LIVE_SYNC", client=client)
+        summary = acquisition.import_clover_period(self.db, location_id=location_id,
+            period_start=now, period_end=now, mode="LIVE_SYNC", client=client)
+        self.assertTrue(summary.identity_holds)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Payment)), 0)
+        held = self.db.scalars(select(m.Payment)).all()
+        self.assertTrue(all(payment.employee_id is None for payment in held))
         link = self.db.scalar(select(m.EmployeeCloverLink))
         self.assertIsNotNone(link)
         self.assertIsNone(link.employee_id)
         self.assertTrue(directory.pending_requires_review(self.db, link))
-        self.assertEqual(self.db.scalar(select(m.IngestionRun.status)), "FAILED")
+        self.assertNotEqual(self.db.scalar(select(m.IngestionRun.status)), "FAILED")
 
     def test_existing_authentication_bridge_resolves_person_without_grants(self):
         person, other = self.person(), self.person("Other")

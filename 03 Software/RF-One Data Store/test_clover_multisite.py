@@ -25,9 +25,10 @@ from rfone_data_store.shift_location import pending_shift_count, resolve_shift_l
 from rfone_data_store.technical.connectors.clover import acquisition, acquisition_jobs, correction_sync, live_sync
 from rfone_data_store.tips import distribution_engine
 
-# The Clover worker image ships the shift-location resolver but not its Tips/Compensation consumers
-# (those ship in the rfone-tips/rfone-web images, where this test checks them too).
-CONSUMERS_SHIP_HERE = hasattr(distribution_engine, "shift_counts_at")
+# Each image ships the shift-location resolver; its consumers ship where they run: the Tips engine in
+# rfone-tips, Compensation worked time in rfone-tips/rfone-web, neither in the Clover worker image.
+TIPS_CONSUMER_HERE = hasattr(distribution_engine, "shift_counts_at")
+COMPENSATION_CONSUMER_HERE = hasattr(worked_time, "shift_at_locations")
 
 UTC = timezone.utc
 WP_MERCHANT, MD_MERCHANT = "WPMERCHANT01", "MDMERCHANT01"
@@ -262,21 +263,19 @@ class TwoCloverSitesTest(unittest.TestCase):
         self.assertEqual(resolved, {proven_wp.id: self.wp.id, proven_md.id: self.md.id, conflicting.id: None,
                                     no_location_run.id: None, orphan.id: None})
         self.assertFalse(shift_counts_at(orphan, self.md.id, resolved))
-        self.assertEqual(pending_shift_count(self.db, start=PERIOD_START, end=PERIOD_END), 3)
-        if not CONSUMERS_SHIP_HERE:
-            return
         # Tips presence and Compensation hours read the same certain Location.
-        self.assertEqual(distribution_engine._employees_shift_active_at(self.db, location_id=self.wp.id, at=T0),
-                         {self.luca.id})
-        self.assertEqual(distribution_engine._employees_shift_active_at(self.db, location_id=self.md.id, at=T0),
-                         {self.luca.id}, "Luca's MD record wins over his WP home; Sara's uncertain shifts count nowhere")
-        md_loaded = worked_time.load_location_shifts(self.db, location_id=self.md.id,
-                                                     window_start=PERIOD_START, window_end=PERIOD_END)
-        self.assertEqual({s.source_shift_id for s in md_loaded}, {"OLD-MD"})
-        self.assertFalse(shift_counts_at(orphan, self.md.id, resolved))
-        eligibility = distribution_engine._PeriodEligibility([], [proven_wp, orphan], history=None,
-                                                             shift_locations=resolved)
-        self.assertEqual(eligibility.on_shift({self.luca.id, self.sara.id}, self.wp.id, T0), {self.luca.id})
+        if TIPS_CONSUMER_HERE:
+            self.assertEqual(distribution_engine._employees_shift_active_at(self.db, location_id=self.wp.id, at=T0),
+                             {self.luca.id})
+            self.assertEqual(distribution_engine._employees_shift_active_at(self.db, location_id=self.md.id, at=T0),
+                             {self.luca.id}, "Luca's MD record wins over his WP home; Sara's uncertain shifts count nowhere")
+            eligibility = distribution_engine._PeriodEligibility([], [proven_wp, orphan], history=None,
+                                                                 shift_locations=resolved)
+            self.assertEqual(eligibility.on_shift({self.luca.id, self.sara.id}, self.wp.id, T0), {self.luca.id})
+        if COMPENSATION_CONSUMER_HERE:
+            md_loaded = worked_time.load_location_shifts(self.db, location_id=self.md.id,
+                                                         window_start=PERIOD_START, window_end=PERIOD_END)
+            self.assertEqual({s.source_shift_id for s in md_loaded}, {"OLD-MD"})
         # The anomalies are counted for reporting; no Shift was modified.
         self.assertEqual(pending_shift_count(self.db, start=PERIOD_START, end=PERIOD_END), 3)
         self.assertEqual(self.db.scalar(select(m.Shift.location_id).where(m.Shift.source_shift_id == "OLD-WP")), None)
