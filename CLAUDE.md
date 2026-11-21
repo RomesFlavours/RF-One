@@ -36,6 +36,33 @@ If a requested change necessarily requires work beyond the stated scope, explain
 
 Verbatim order: “Allora smettila anche tu di aggiungere cose che non ti ho chiesto nei comandi. So io come procedere. Questo è un ordine, scrivitelo dove lo devi vedere per forza prima di rispondermi o creare comandi per C.”
 
+## Operational database principle and development roles — Product Owner, 2026-11-21 (RF1_OPERATIONAL_DATABASE_001)
+
+Mandatory for every task. The single normative text is
+`10 System/Operational Database and Data Governance/README.md` (verbatim approved
+original: `SOURCE_DECISION_IT.md` in the same folder); this is a pointer to it.
+
+1. **RF-One owns its information model and its canonical operational database.**
+   Clover, OpenTable, ADP, PayPal, Amazon, the future RF POS and any other source
+   only supply data. Mandatory flow: source → acquisition connector (extraction and
+   format translation only) → common ingestion service → RF-One canonical
+   operational database → Domains. Domains never read provider APIs, provider
+   schemas or connector staging tables for ordinary business logic; never build a
+   Clover (or other provider) engine for one Domain or one period; never duplicate
+   the same business fact per module.
+2. **Design is done by the Product Owner + ChatGPT; Claude implements.** Implement
+   complete, approved specifications faithfully. Do not add workflows, schemas,
+   tables, columns, APIs, information models or architectural decisions of your own.
+   When a choice the specification does not define emerges, **stop and submit it to
+   design** — do not decide it. Do not invent column or table names not verified in
+   the existing code.
+3. **Codex performs the independent review** using
+   `03 Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md`; hand
+   over the commit and its report. Codex does not change requirements.
+4. **Release only after explicit Product Owner approval:** no push, merge,
+   deployment, destructive migration or production change without specific
+   authorization, unless the assignment already expressly grants it.
+
 This file defines the working rules that must always be followed when contributing to the RF-One repository.
 
 ---
@@ -283,6 +310,13 @@ If a genuine ambiguity prevents correct implementation, ask the Product Owner.
 
 Do not redesign approved concepts unless explicitly asked to do so.
 
+The "Repository Architect" role means keeping the repository's structure,
+references and documentation consistent with approved decisions. It does not
+authorize designing new architecture, data models, workflows or APIs: under
+RF1_OPERATIONAL_DATABASE_001 §7 design belongs to the Product Owner + ChatGPT,
+implementation to Claude, independent review to Codex (see the section
+*Operational database principle and development roles* at the top of this file).
+
 ---
 
 # Modular Architecture
@@ -326,6 +360,12 @@ Keep RF-One's proprietary value in its:
 - learning mechanisms.
 
 Where practical, keep provider-specific integrations behind abstractions so providers can be replaced.
+
+For business data sources (POS, reservation, payroll, payment, marketplace and
+any future source) this is mandatory, not merely "where practical": data reaches
+the Domains only through the connector → common ingestion → RF-One canonical
+operational database path of RF1_OPERATIONAL_DATABASE_001
+(`10 System/Operational Database and Data Governance/README.md`).
 
 ---
 
@@ -649,6 +689,13 @@ Never present a list of problems without first having looked for their
 solutions. Never ask the Product Owner to choose between technical
 alternatives Claude can evaluate itself — choose, and state why. Never run
 operations blocked by security controls and never try to bypass them.
+
+**Limit (RF1_OPERATIONAL_DATABASE_001 §6–§7):** a choice of architecture,
+information/data model, workflow, schema or API that the approved specification
+does not define is not a technical alternative for Claude to choose: stop and
+submit it to design. The precise boundary between the two is an open question
+recorded in `10 System/Operational Database and Data Governance/README.md` §11
+(OQ-9); until it is confirmed, treat any doubtful case as a design choice.
 
 Reports state, for each obstacle: **problem found → solution identified →
 action taken, or the strictly necessary authorization.** This complements

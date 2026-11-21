@@ -1,5 +1,7 @@
 # Clover Correction Sync (AWS)
 
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This service is part of the one shared Clover acquisition service, not a Domain importer. It currently runs per Location (`--location-id 1`) at ~60 s: how one service covers all locations (OQ-4) and the 30 s target (OQ-1) are open questions of the governing decision.
+
 ## Employee protection release 2026-10-19
 
 The active service uses task-definition revision 2, pinned to the immutable

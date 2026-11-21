@@ -3,6 +3,7 @@
 **Status:** APPROVED ARCHITECTURAL DECISION
 **Module:** Software / RF-One Data Store / Technical Connectors (Clover)
 **Scope:** Documentation-only architectural decision. No software, database, or connector behavior is changed by this document.
+**Governing decision (2026-11-21):** [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) prevails over this document wherever they differ. This document remains the Clover-specific description of the shared acquisition service's Clover connector. Statements below that give Clover the role of RF-One's operational model or system of record have been qualified (§1, §8); the 30-second target of the governing decision versus the ~15 s / ~60 s cadence approved here is an open question (governing decision §11, OQ-1) and is not resolved by this document.
 
 ---
 
@@ -30,7 +31,7 @@ It formalizes a decision, not a redesign: Live Sync (already implemented) is con
 
 ## 1. General principle
 
-RF-One uses Clover as the **source operational system** for Restaurant point-of-sale facts. RF-One does **not** exist to replicate Clover's full POS/transactional history.
+RF-One uses Clover as the **current source system** for Restaurant point-of-sale facts — a replaceable provider feeding RF-One's own canonical operational database through the connector and common ingestion path of RF1_OPERATIONAL_DATABASE_001. RF-One does **not** exist to replicate Clover's full POS/transactional history.
 
 RF-One maintains three distinct properties, deliberately kept separate:
 
@@ -40,7 +41,7 @@ B. a corrected state within a short interval   (about a minute behind, for rare 
 C. a separate, deliberately slower consolidation level for financial processes
 ```
 
-Clover remains the system of record for POS/transactional history. RF-One's canonical operational database reflects the **operational reality currently needed by RF-One's own processes** — not a parallel, permanent replica of every intermediate POS state that ever existed.
+Clover holds its own POS/transactional history at the source; it is not RF-One's operational data model. Where that history lives once the source is replaced (e.g. by RF POS) is an open question (RF1_OPERATIONAL_DATABASE_001 §11, OQ-2). RF-One's canonical operational database reflects the **operational reality currently needed by RF-One's own processes** — not a parallel, permanent replica of every intermediate POS state that ever existed.
 
 ---
 
@@ -122,6 +123,8 @@ RF-One may be up to about one minute behind Clover on rare corrections
 
 Cognito does **not** query Clover directly, at any point, for any purpose.
 
+The same rule applies to every Domain (RF1_OPERATIONAL_DATABASE_001 §2, §4): no Domain queries Clover or any other provider directly for its ordinary work.
+
 Cognito consumes **RF-One Canonical Operational Data** — the same canonical schema every other Domain consumes — kept current by the Fast Live Extractor (§2) and corrected by the Correction/Reconciliation Poller (§3).
 
 > **Cognito privileges operational freshness.** It accepts the short eventual consistency window of §5 in exchange for near-real-time responsiveness.
@@ -146,6 +149,8 @@ Clover live data
 
 **"Business Date consolidated / ready" is not a new concept this document introduces** — it is the existing `Order.business_date` concept (Restaurant Sales Model §6a) together with the existing readiness gate `tips/readiness.py`'s `describe_readiness()` already exposes (latest `Order.business_date` on file, whether it is already calculated, Payment Instruction status, settlement). This document only states the general principle those existing mechanisms already embody: **Tips must not calculate or pay against a Business Date before that Business Date's Clover data has had the opportunity to pass through both the Fast Live Extractor and the Correction/Reconciliation Poller.** It does not change `readiness.py`'s logic, its schema, or its UI.
 
+**Residual contradiction (RF1_OPERATIONAL_DATABASE_001):** Tips reaches this gate by calling the Clover connector function `correction_sync.describe_reconciliation_status()` directly. The governing decision requires Domains to read through RF-One interfaces only; a source-neutral readiness/consolidation interface is not yet designed (governing decision §11, OQ-3). Recorded, not resolved here; no code is changed.
+
 **Implemented (see Implementation status below).** `readiness.describe_readiness()` now concretely enforces the principle above: `BusinessDateReadiness` gained `reconciliation_ready`/`reconciliation_reason`, and `ready_to_calculate` additionally requires `technical.connectors.clover.correction_sync.describe_reconciliation_status()` to report the Business Date's own end already reached by the Live Cursor AND all three Correction resource cursors. This is the follow-up IMPLEMENTATION this document approved, not a change to this document's own decision. STEP 12B integration note: `ready_to_submit_payouts` (originally listed alongside `ready_to_calculate` above) was retired from `BusinessDateReadiness` when Tips adopted the Payment Cycle model — see the Tips boundary (§7) status note below for where that gate now lives.
 
 ---
@@ -156,7 +161,7 @@ Example (illustrative, non-normative): a server enters Dish A, notices the mista
 
 RF-One does **not** need to preserve the historical sequence of that error. After the Correction/Reconciliation Poller (§3) has processed the correction, RF-One's canonical operational data reflects the corrected state its own processes need — not a replay of the order the mistake happened to be made and fixed in.
 
-**Clover remains the system of record for POS/transactional history.** RF-One retains the operational reality its own processes require, not a parallel historical ledger of every intermediate POS state — this is the concrete meaning of "RF-One does not replicate the full POS history" (§1).
+**Clover holds its own POS/transactional history at the source** (qualified by RF1_OPERATIONAL_DATABASE_001; open question OQ-2). RF-One retains the operational reality its own processes require, not a parallel historical ledger of every intermediate POS state — this is the concrete meaning of "RF-One does not replicate the full POS history" (§1).
 
 ---
 

@@ -26,6 +26,8 @@ TASK_DATABASE_001 — the first physical RF-One canonical Restaurant operational
 
 This document is about the **physical schema**, not restaurant business meaning — the canonical business model is `01 Domains/Business Domain/Restaurant/Sales/Restaurant Sales Model.md`; the Clover-specific source facts this schema is built from are `03 Software/Clover Data Explorer/CLOVER_DATA_CAPABILITY_MATRIX.md`, `CLOVER_SOURCE_RELATIONSHIP_MAP.md`, `CLOVER_ATOMIC_DERIVED_FACTS.md`, and `CLOVER_RESTAURANT_DATA_MAPPING.md`.
 
+> **Governing decision (RF1_OPERATIONAL_DATABASE_001):** the logical structure of this schema is RF-One's own and is not determined by Clover or any other provider. The Clover documents above are source evidence used to design the Clover connector mapping and to verify coverage — not the schema's authority. External IDs and `source_*` columns are provenance for audit, never the conceptual primary identity. See [10 System/Operational Database and Data Governance/README.md](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md).
+
 ---
 
 ## 0. Conventions

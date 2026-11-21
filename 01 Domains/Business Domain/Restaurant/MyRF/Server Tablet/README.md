@@ -36,6 +36,8 @@ Dove queste definizioni dipendono da ciò che Clover consente effettivamente (le
 
 Nei documenti 01–04 i punti che dipendono da una verifica sono indicati con il rimando *(verifica: 05)*.
 
+**Decisione prevalente:** [RF1_OPERATIONAL_DATABASE_001](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). MyRF legge menu, catalogo e conti dal database operativo canonico RF-One, alimentato dal connettore Clover tramite il servizio comune di ingestione; dove i documenti 01–04 dicono «dai dati Clover» si intendono i dati Clover acquisiti in RF-One. L'invio delle ordinazioni verso Clover (scrittura verso un POS esterno) non è definito dalla decisione: questione aperta OQ-5, da progettare.
+
 ---
 
 ## Documenti correlati (esistenti)

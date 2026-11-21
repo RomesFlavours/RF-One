@@ -1,5 +1,7 @@
 # Clover → RF-One Canonical Ingestion
 
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This document describes one source connector (Clover) and its historical bulk load. Under that decision the first historical import is a separate initialization operation, not repeated each time a Domain is used; ordinary acquisition runs in the one shared acquisition service; Domains read only the canonical operational database.
+
 ## Historical recovery safeguards (2026-10-18)
 
 Historical time-filtered collection reads must be split into calendar-month

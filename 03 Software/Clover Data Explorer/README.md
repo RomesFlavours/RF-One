@@ -1,5 +1,7 @@
 # Clover Data Explorer
 
+> **Decisione prevalente:** [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). Questo strumento è solo discovery/raccolta di evidenze sulla sorgente Clover: i suoi dati grezzi e i documenti di mappatura servono a progettare e verificare il connettore, non definiscono il modello RF-One e non sono mai letti dai domini.
+
 Strumento **read-only** di connessione, esportazione e discovery dati verso l'account Clover production di Rome's Flavours. Primo passo di TASK_CLOVER_001, verso:
 
 ```text

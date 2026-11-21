@@ -4,6 +4,7 @@
 **Status:** IMPLEMENTED — sandbox-only Mercury payout through a connector-neutral resolver; see `Tips Payment Execution.md` for the payout-pilot boundary this document does not change
 **Module:** Restaurant Domain / Tips
 **Origin:** TASK_TIPS_COMPLETE_001; TASK_TIPS_RESTAURANT_AUTHORITY_SCOPE_001; TASK_TIPS_RECONCILIATION_AND_PAYMENT_CONTROL_001; STEP 12B integration
+**Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) — Tips reads only RF-One canonical data and interfaces, never Clover or any other provider directly; it never runs its own acquisition. See the residual contradiction noted in §3 and §10.
 
 ---
 
@@ -12,7 +13,7 @@
 Completes Tips as a configurable, end-to-end, Restaurant-scoped process:
 
 ```text
-Clover Operational Data
+RF-One canonical operational data (fed today by the Clover connector)
   -> Daily Tips Calculation
   -> Saved Tip Entitlements
   -> Configurable Payment Cycle
@@ -76,6 +77,8 @@ Schedule / Manual Trigger
 
 **STEP 12B integration note:** an earlier, independently-developed draft of this gate (`feature/tips-complete`) checked only the Live Cursor via a Tips-local `_clover_live_sync_readiness` helper, predating STEP 12A's Correction/Reconciliation Sync work. That draft was **not** carried over — main's canonical, stricter gate (Live Cursor + all three Correction resource cursors) is authoritative.
 
+**Residual contradiction (RF1_OPERATIONAL_DATABASE_001):** this gate calls a Clover connector function directly. The governing decision requires a source-neutral RF-One readiness/consolidation interface; it is not yet designed (OQ-3). Recorded, not resolved; no code changed.
+
 ---
 
 ## 4. Daily calculation, less-frequent payment
@@ -129,6 +132,8 @@ A failed, blocked, cancelled, or reopened (reversed) `TipPaymentInstruction` rai
 ---
 
 ## 10. Payment Readiness — the Clover reconciliation gate before Approve & Pay
+
+> Same residual contradiction as §3 (RF1_OPERATIONAL_DATABASE_001, OQ-3): the gate depends on a Clover connector function rather than a source-neutral RF-One interface.
 
 `tips/payment_readiness.describe_payment_readiness(session, restaurant_id)` is the PAYMENT-time gate (never confused with §3's CALCULATION-time gate) `payment_cycle_service.approve_and_pay_cycle` checks immediately after Authority, before any connector call:
 

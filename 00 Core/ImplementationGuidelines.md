@@ -63,6 +63,8 @@ Every external source must be translated into RF-One business concepts through t
 
 The Domain must never depend directly on external APIs, databases or file formats.
 
+Operational path and governance: [RF1_OPERATIONAL_DATABASE_001](../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) — source → acquisition connector → common ingestion service → RF-One canonical operational database → Domains.
+
 ---
 
 # Artificial Intelligence

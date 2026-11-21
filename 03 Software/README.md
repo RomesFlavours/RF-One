@@ -31,7 +31,7 @@ Software is **authoritative for actual runtime behavior** — what the system ac
 | Module | Description |
 |---|---|
 | `InvoiceIntake/` | Local prototype web app validating the purchase-document intake flow (upload → OCR/extraction → review → RF-One Data Store, Excel as a secondary debug export only — TASK_PURCHASING_004). See `InvoiceIntake/README.md`. |
-| `RF-One Data Store/` | The canonical RF-One operational database (SQLAlchemy + Alembic) — Restaurant/Sales (Clover ingestion), Administration/Payroll, and Restaurant/Purchasing (Purchase Document/Line, Physical Receiving, Alerts, Expected Supplier Credit — TASK_PURCHASING_004). See `RF-One Data Store/README.md`. |
+| `RF-One Data Store/` | The canonical RF-One operational database (SQLAlchemy + Alembic), owned by RF-One and independent of source providers per RF1_OPERATIONAL_DATABASE_001 (`10 System/Operational Database and Data Governance/README.md`) — Restaurant/Sales (Clover ingestion), Administration/Payroll, and Restaurant/Purchasing (Purchase Document/Line, Physical Receiving, Alerts, Expected Supplier Credit — TASK_PURCHASING_004). See `RF-One Data Store/README.md`. |
 
 `AI/`, `Backend/`, `Database/`, `Frontend/`, `Infrastructure/` are anticipated future module areas; they are created on demand rather than scaffolded empty in advance.
 

@@ -1,5 +1,8 @@
 # RFONE_OPERATIONAL_DATA_MODEL_001 — Clover Connector / RF-One Operational Data Model
 
+> **Historical record — not current specification.** This execution report is preserved unchanged. Where it describes Clover acquisition, Domain-specific import paths or direct Domain access to provider data, it is superseded by the approved decision [RF1_OPERATIONAL_DATABASE_001](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) (RF-One canonical operational database independent of source providers).
+
+
 ## 1. Existing operational models found
 
 Inspection of `rfone_data_store/models.py` found the following operational entities already persisted:

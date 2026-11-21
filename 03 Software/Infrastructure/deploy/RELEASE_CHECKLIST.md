@@ -1,7 +1,8 @@
 # RF-One release checklist
 
 This checklist collects the existing CLAUDE.md, How Works, language and documented
-AWS deployment requirements. It introduces no new approval requirement.
+AWS deployment requirements, and the release governance of RF1_OPERATIONAL_DATABASE_001
+(`10 System/Operational Database and Data Governance/README.md` §7).
 
 1. Confirm the user-authorized module and deployment target; keep unrelated local
    changes out of the release. Preserve existing authentication and account grants.
@@ -21,3 +22,7 @@ AWS deployment requirements. It introduces no new approval requirement.
    terminal result; verify readiness, authorization boundaries and official routing.
 7. Record outcome, URLs, source/image versions, data checks, remaining scope and
    rollback references. Do not claim deployment success from a submitted build alone.
+8. Before any push, merge or deployment: the Codex independent review
+   ([CODEX_INDEPENDENT_REVIEW_CHECKLIST.md](CODEX_INDEPENDENT_REVIEW_CHECKLIST.md)) has been
+   completed with no open deviation, and the Product Owner has explicitly approved the
+   release, unless the assignment already expressly authorizes it.
