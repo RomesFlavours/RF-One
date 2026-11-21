@@ -1582,6 +1582,101 @@ class OperationalAreaRole(Base):
     )
 
 
+class RegistryDepartment(Base):
+    """A Registry department (e.g. FOH, BOH) inside an existing Operational
+    Area (REGISTRY_CLOVER_DEPARTMENTS_001, Product Owner, 2026-11-21).
+
+    Registry is the official source of RF-One departments. A department is a
+    subdivision of an Operational Area ("Restaurant Operations"), never a new
+    independent Area, and it is not a Clover concept: Clover only supplies the
+    operational Role, which `RegistryRoleMapping` maps to an RF-One role and department."""
+
+    __tablename__ = "registry_departments"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_registry_departments_code"),
+        UniqueConstraint("name", name="uq_registry_departments_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    operational_area_id: Mapped[int] = mapped_column(ForeignKey("operational_areas.id"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    updated_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RegistryRoleDepartment(Base):
+    """The department (FOH, BOH, ...) of an RF-One role (REGISTRY_CLOVER_DEPARTMENTS_001).
+
+    Temporal and never overwritten: a change closes the current row and opens a new one.
+    `department_id` NULL = "to be defined"."""
+
+    __tablename__ = "registry_role_departments"
+    __table_args__ = (
+        Index("ux_registry_role_departments_current", "restaurant_role_id", unique=True,
+              sqlite_where=text("valid_to IS NULL"), postgresql_where=text("valid_to IS NULL")),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_role_id: Mapped[int] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=False, index=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("registry_departments.id"), nullable=True)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)          # SEED or PERSON
+    changed_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+
+
+class RegistryRoleMapping(Base):
+    """What an ORIGINAL role means in RF-One at one Restaurant (REGISTRY_CLOVER_DEPARTMENTS_001).
+
+    An original role is a Clover role of that site (`source` CLOVER, `original_key` = Clover role id,
+    `source_role_id` set) or a historical code from a source document (e.g. `source` EXCEL_WP_NOTE,
+    `original_key` "2-Serv"). It maps to an RF-One role (whose department is in
+    `RegistryRoleDepartment`); when the RF-One role is not certain, `department_id` may still record a
+    certain department (e.g. Clover "BOH"). Per Restaurant: Winter Park and Mount Dora can differ.
+    Temporal and never overwritten (history kept). Independent of `SourceRoleMapping`, which Tips reads."""
+
+    __tablename__ = "registry_role_mappings"
+    __table_args__ = (
+        Index("ux_registry_role_mappings_current", "restaurant_id", "source", "original_key", unique=True,
+              sqlite_where=text("valid_to IS NULL"), postgresql_where=text("valid_to IS NULL")),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    original_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    original_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_role_id: Mapped[int | None] = mapped_column(ForeignKey("source_roles.id"), nullable=True)
+    restaurant_role_id: Mapped[int | None] = mapped_column(ForeignKey("restaurant_roles.id"), nullable=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("registry_departments.id"), nullable=True)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)          # SEED or PERSON
+    changed_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+
+
+class RegistryPersonSourceRole(Base):
+    """A person's historical role as recorded by a source document (REGISTRY_CLOVER_DEPARTMENTS_001), e.g.
+    the Note sheet of "2026 - WP Control Bank.xlsb". Historical evidence only: it never opens an assignment,
+    never makes a person active and never replaces the current Clover role. `declared_department` keeps the
+    department written in the document (e.g. HOUSE = FOH) for comparison with the role table."""
+
+    __tablename__ = "registry_person_source_roles"
+    __table_args__ = (UniqueConstraint("employee_id", "restaurant_id", "source", name="uq_registry_person_source_role"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    original_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    declared_department: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class EmployeeAssignment(Base):
     """A temporally bounded fact describing how an Employee participates in
     a Restaurant (task §17): Employee + Restaurant + OperationalArea +
@@ -2980,6 +3075,9 @@ class SourceRoleMapping(Base):
     across Restaurants (a second Restaurant importing the same Clover
     merchant, hypothetically, would need its own mapping rows)."""
 
+    # RETIRED for Tips (TIPS_REGISTRY_ROLES_001, Product Owner 2026-11-21): Tips reads the Clover role ->
+    # RF-One role correspondence only from Registry (`RegistryRoleMapping`). This table is kept, unchanged and
+    # not deleted, for history; nothing in Tips reads it any more. Do not add rows for Tips.
     __tablename__ = "source_role_mappings"
     __table_args__ = (
         UniqueConstraint("restaurant_id", "source_role_id", "valid_from"),

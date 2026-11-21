@@ -898,7 +898,12 @@ def calculate_tips(
         for shift in sorted(uncertain, key=lambda row: (row.clock_in, row.id)):
             employee = session.get(m.Employee, shift.employee_id)
             entries.append(f"{employee.display_name} ({_aware_utc(shift.clock_in):%Y-%m-%d %H:%M} UTC)")
-        result.blocked_reason = "Clover role uncertain for these shifts: " + ", ".join(entries)
+        undefined = sorted({name for shift in uncertain for name in history.undefined_roles(
+            shift.employee_id, shift.location_id, max(period_start, _aware_utc(shift.clock_in)),
+            min(period_end, _aware_utc(shift.clock_out)) if shift.clock_out else period_end)})
+        result.blocked_reason = (
+            ("Clover role without an RF-One role in Registry (to be defined in Anagrafica > Reparti e ruoli): "
+             + ", ".join(undefined) + ". ") if undefined else "") + "Clover role uncertain for these shifts: " + ", ".join(entries)
         return result
     role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name).where(
         m.RestaurantRole.id.in_({v.recipient_role_id for items in versions.values() for v in items}))).all())

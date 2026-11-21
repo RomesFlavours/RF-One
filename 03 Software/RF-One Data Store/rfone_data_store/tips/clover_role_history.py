@@ -1,5 +1,12 @@
-"""Clover role observations used by the Tips engine."""
+"""Clover role observations used by the Tips engine.
+
+TIPS_REGISTRY_ROLES_001 (Product Owner, 2026-11-21): the Clover role -> RF-One role correspondence comes
+ONLY from Registry (`RegistryRoleMapping`, Anagrafica > Reparti e ruoli), per Restaurant and over time.
+Tips' former table `SourceRoleMapping` is no longer read (retired, kept unchanged for history).
+A Clover role without an RF-One role in Registry is "to be defined": never guessed.
+"""
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -8,7 +15,39 @@ from .. import models as m
 from ..employee_directory import named_roles
 
 
+@dataclass(frozen=True)
+class RoleCorrespondence:
+    """One Registry correspondence, as Tips reads it. `valid_from` None = since always: the first version
+    Registry holds for a Clover role states what that role has always meant at this Restaurant (the
+    table was introduced after the roles existed); every later version applies from its own date."""
+    restaurant_role_id: int
+    valid_from: datetime | None
+    valid_to: datetime | None
+    mapping_status: str = "ACTIVE"
+
+
+def registry_correspondences(session, restaurant_id):
+    """Clover role id -> [RoleCorrespondence] from Registry, plus the ids Registry leaves to be defined."""
+    rows = list(session.scalars(select(m.RegistryRoleMapping).where(
+        m.RegistryRoleMapping.restaurant_id == restaurant_id, m.RegistryRoleMapping.source == "CLOVER",
+    ).order_by(m.RegistryRoleMapping.original_key, m.RegistryRoleMapping.valid_from, m.RegistryRoleMapping.id)))
+    by_key = defaultdict(list)
+    for row in rows:
+        by_key[row.original_key].append(row)
+    out, undefined = defaultdict(list), {}
+    for key, versions in by_key.items():
+        for index, row in enumerate(versions):
+            if row.restaurant_role_id is None:
+                if row.valid_to is None:
+                    undefined[key] = row.original_label
+                continue
+            out[key].append(RoleCorrespondence(row.restaurant_role_id, None if index == 0 else row.valid_from, row.valid_to))
+    return out, undefined
+
+
 def utc(value):
+    if value is None:
+        return None
     if isinstance(value, str):
         value = datetime.fromisoformat(value)
     return value.replace(tzinfo=value.tzinfo or timezone.utc).astimezone(timezone.utc)
@@ -19,6 +58,8 @@ class CloverRoleHistory:
         self.observations = defaultdict(dict)
         self.mappings = defaultdict(list)
         self.confirmed = defaultdict(list)
+        self.undefined = {}          # Clover role id -> name: no RF-One role in Registry yet
+        self.role_names = {}
         links = session.scalars(select(m.EmployeeCloverLink).where(
             m.EmployeeCloverLink.location_id.in_(locations),
             m.EmployeeCloverLink.employee_id.is_not(None),
@@ -46,13 +87,12 @@ class CloverRoleHistory:
             if roles and last_seen:
                 self.observations[keys[link.id]][utc(last_seen)] = frozenset(roles)
         self.observations = {key: sorted(points.items()) for key, points in self.observations.items() if points}
-        mapping, role = m.SourceRoleMapping, m.SourceRole
-        for source_id, entry in session.execute(
-            select(role.source_role_id, mapping).join(role, role.id == mapping.source_role_id)
-            .join(m.SourceSystem, m.SourceSystem.id == role.source_system_id)
-            .where(mapping.restaurant_id == restaurant_id, m.SourceSystem.code == "CLOVER")
-        ):
-            self.mappings[source_id].append(entry)
+        # From here on, observations never change; the correspondences come from Registry only.
+        correspondences, self.undefined = registry_correspondences(session, restaurant_id)
+        for source_id, entries in correspondences.items():
+            self.mappings[source_id].extend(entries)
+        for link in links:
+            self.role_names.update(named_roles(link.snapshot))
 
         assignment = m.EmployeeAssignment
         for row in session.scalars(select(assignment).where(
@@ -66,7 +106,7 @@ class CloverRoleHistory:
         mapped = set()
         for source_id in source_roles:
             active = {entry.restaurant_role_id for entry in self.mappings[source_id]
-                      if entry.mapping_status == "ACTIVE" and utc(entry.valid_from) <= instant
+                      if entry.mapping_status == "ACTIVE" and (entry.valid_from is None or utc(entry.valid_from) <= instant)
                       and (entry.valid_to is None or instant < utc(entry.valid_to))}
             if len(active) != 1:
                 return set()
@@ -104,6 +144,16 @@ class CloverRoleHistory:
                     return self.map_roles(previous[1] if instant < handoffs.pop() else following[1], instant)
             return set()
         return self.map_roles(previous[1], instant)
+
+    def undefined_roles(self, employee, location, start, end):
+        """Names of the Clover roles held in [start, end) that Registry does not map to an RF-One role."""
+        points = self.observations.get((employee, location), ())
+        held = set()
+        for index, (at, roles) in enumerate(points):
+            following = points[index + 1][0] if index + 1 < len(points) else None
+            if at < end and (following is None or following > start):
+                held |= set(roles)
+        return sorted(self.role_names.get(r) or self.undefined.get(r) or r for r in held if not self.mappings.get(r))
 
     def uncertain_shift(self, employee, location, start, end):
         points = self.observations.get((employee, location))
