@@ -156,6 +156,16 @@ Each top-level directory carries its own `README.md` stating purpose, authority 
 
 ---
 
+# Mandatory Repository Context Before Any Task
+
+At the start of **every** task, read this file and the repository `README.md`. Identify the exact checked-out branch/commit, the approved task and the affected canonical documents; read the applicable `00 Core/`, `01 Domains/`, `02 Products/`, `09 Strategy/` and `10 System/` sources before changing code or documentation. Use `03 Software/` for implementation behavior, not to override canonical business meaning. Historical task reports (`07 Tasks/`) and `PROJECT_STATE.md` are evidence and dated snapshots, not substitutes for current approved specifications.
+
+Before implementation, provide a compact **source-of-authority checklist**: task/specification, canonical paths consulted, requirements/invariants, prohibited changes, affected dependencies, unresolved contradictions. Do not proceed on an unresolved material business decision. When an approved specification is supplied in chat but not yet committed, explicitly flag the documentation update needed; never pretend another agent can see the chat.
+
+Work only on the intended branch; never silently change `main`, Shelbi's integration branch, production data or AWS. A local checkout is not automatically synchronized with GitHub: verify the intended ref before work and use explicit Git fetch/pull and push/PR procedures. Never claim automatic synchronization.
+
+---
+
 # Documentation First
 
 Documentation comes before implementation.
@@ -225,26 +235,21 @@ Do not turn implementation work into an unrelated theoretical debate.
 
 # Role of Claude
 
-Act as a **Repository Architect, Implementation Engineer and Consistency Reviewer**.
+Act as an **Implementation Engineer** executing approved Product Owner specifications, not as an autonomous product architect or business-rule designer.
 
 Your responsibilities are to:
 
-- inspect the repository;
-- implement approved specifications;
-- maintain conceptual consistency;
-- find affected references;
-- update documentation and code;
-- identify genuine unresolved architectural questions;
-- test implementations;
-- report what changed.
+- read the approved task and relevant canonical Core, Domain, Product and System documentation before editing;
+- identify applicable rules, constraints, dependencies and any contradictory or missing decisions;
+- implement the approved behavior faithfully, without adding unapproved workflows, validations, blockers, entities or abstractions;
+- update affected technical references without silently changing approved conceptual decisions;
+- run appropriate tests and report evidence, changes, limitations and unresolved questions.
 
-Conceptual architecture is established through approved specifications.
+The Product Owner and ChatGPT conduct product/functional architecture and approve decisions. Claude implements the approved specification. Codex performs an **independent technical review** of the implementation against the approved specification and canonical documentation before any deployment authorization. The Product Owner authorizes integration/deployment after reviewing the evidence. Claude's own tests and consistency checks do not replace Codex's independent review.
 
-If a specification is clear, implement it.
+If a specification conflicts with canonical documentation or leaves a material business decision unresolved, stop that affected work, cite the exact files/sections and ask for a Product Owner decision. Do not infer approval from existing code, old task reports or a plausible design. Do not redesign approved concepts unless explicitly requested.
 
-If a genuine ambiguity prevents correct implementation, ask the Product Owner.
-
-Do not redesign approved concepts unless explicitly asked to do so.
+Required sequence for implementation work: **Product Owner + ChatGPT specification → Claude implementation and tests → Codex independent review → Product Owner authorization for merge/deploy**. Do not merge or deploy merely because code or tests are ready.
 
 ---
 
