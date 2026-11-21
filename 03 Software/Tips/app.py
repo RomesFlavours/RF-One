@@ -1410,8 +1410,16 @@ def payment_control_start_cycle():
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("payment_control_home"))
+        # The preparer is recorded as the signed-in account (payment audit).
+        try:
+            prepared_by = financial_authorization.acting_identity_for_account(
+                session, rfone_identity.current_account(session))
+        except financial_authorization.FinancialAuthorizationError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("payment_control_home"))
         cycle = cycle_svc.start_payment_cycle(
             session, restaurant_id=restaurant.id, triggered_by=m.TIP_PAYMENT_CYCLE_TRIGGER_MANUAL,
+            prepared_by=prepared_by,
         )
         session.commit()
         if cycle is None:
