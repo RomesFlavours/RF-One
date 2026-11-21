@@ -4,6 +4,21 @@
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Tips', tips_home_url), ('Saved Periods', None)]) }}
 <h1>Tips &mdash; saved periods</h1>
+<hr>
+<div style="display:flex;justify-content:flex-end">{% with help_section='tips_validation_runs' %}{% include '_how_works.html' %}{% endwith %}</div>
+{# CLOVER_MULTISITE_001 — only the selected restaurant's periods; only restaurants this account may use. #}
+{% if sites %}
+<form method="get" action="{{ url_for('tips_validation_runs') }}" style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.5rem 0;">
+  <label for="site-select"><strong>{{ 'Ristorante' if ui_it else 'Restaurant' }}</strong></label>
+  <select id="site-select" name="restaurant_id" onchange="this.form.submit()">
+    {% for s in sites %}
+    <option value="{{ s.restaurant_id }}" {{ 'selected' if site and s.restaurant_id == site.restaurant_id else '' }}>{{ s.name }}{% if not s.active %} — {{ 'inattivo' if ui_it else 'inactive' }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">{{ 'Mostra' if ui_it else 'Show' }}</button></noscript>
+  {% if site and not site.active %}<span class="badge warn" role="status">{{ 'Inattivo: i periodi non possono essere convalidati.' if ui_it else 'Inactive: periods cannot be validated.' }}</span>{% endif %}
+</form>
+{% endif %}
 <p class="muted">
   Every saved Tips Calculation Run, final and not. A CALCULATED period is not payable: it becomes
   FINAL only when an authorized person validates it here. Calculation itself stays in the Tips app.

@@ -132,8 +132,6 @@
         "compensation_run_detail.html": "Administration / Compensation",
         "compensation_run_new.html": "Administration / Compensation",
         "compensation_snapshot_detail.html": "Administration / Compensation",
-        "tips_validation_runs.html": "Tips validation",
-        "tips_validation_run.html": "Tips validation",
         "dev_journal_list.html": "Dev Journal",
         "dev_journal_entry_form.html": "Dev Journal",
         "dev_journal_entry_versions.html": "Dev Journal",

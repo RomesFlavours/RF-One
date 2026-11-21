@@ -122,8 +122,10 @@ def main() -> int:
         check("3. run 8 links exactly to <base>/tips/runs/8",
               f'href="{BASE}/tips/runs/8"' in page)
 
+        # CLOVER_MULTISITE_001: the link names the selected restaurant (`?restaurant_id=`), nothing else.
         check("1b. Saved Periods offers 'Validate saved periods', linking exactly to <base>/tips/runs",
-              f'<a href="{BASE}/tips/runs">Validate saved periods</a>' in page)
+              re.search(r'<a href="' + re.escape(BASE) + r'/tips/runs(\?restaurant_id=\d+)?">Validate saved periods</a>', page)
+              is not None)
 
         detail_ok = True
         for run_id in (1, 7, 8):
@@ -176,11 +178,13 @@ def main() -> int:
 
         authz_detail = signed_in.get("/tips-runs/7").get_data(as_text=True)
         check("8. no local Validate form, even for an authorized RF-One session",
-              "<form" not in authz_detail and 'method="post"' not in authz_detail.lower()
+              # the only form allowed is the GET restaurant selector (CLOVER_MULTISITE_001)
+              "<form" not in authz_detail.replace('<form class="site-select" method="get"', "")
+              and 'method="post"' not in authz_detail.lower()
               and "Validate this period as" not in authz_detail and 'name="csrf_token"' not in authz_detail)
 
         check("security: RF-One Web links carry no token, credentials or query",
-              all("?" not in h and "@" not in h and "csrf" not in h.lower() and "session" not in h.lower()
+              all(re.sub(r"\?restaurant_id=\d+$", "", h).count("?") == 0 and "@" not in h and "csrf" not in h.lower() and "session" not in h.lower()
                   for h in hrefs(page) + hrefs(authz_detail) if h.startswith(BASE)))
 
         check("11. Saved Periods content is otherwise unchanged",

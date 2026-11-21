@@ -134,6 +134,8 @@ def main() -> int:
         s.flush()
         account_service.set_domain_access(s, account_id=operator.id, domain_code="CLOVER_ACQUISITION",
                                           enabled=True, role_code=None)
+        # Tips itself needs TIPS access (Registry gate): the operator holds both.
+        account_service.set_domain_access(s, account_id=operator.id, domain_code="TIPS", enabled=True, role_code=None)
         account_service.set_domain_access(s, account_id=tips_only.id, domain_code="TIPS", enabled=True,
                                           role_code=None)
         s.commit()
@@ -164,7 +166,8 @@ def main() -> int:
     check("2. Sync Now is enabled (no job running, a sync point exists)",
           re.search(r'<button type="submit" id="sync-now-btn"\s*>Sync Now</button>', card) is not None)
     check("2. 'Open Clover Acquisition' is offered, optional",
-          f'href="{BASE}/clover-acquisition?from=tips"' in card and ">Open Clover Acquisition<" in card)
+          (f'href="{BASE}/clover-acquisition?from=tips"' in card or f'href="{BASE}/clover-acquisition?from=tips&amp;restaurant_id=' in card)
+          and ">Open Clover Acquisition<" in card)
     visible = re.sub(r"<script.*?</script>|<[^>]+>", " ", card, flags=re.S)
     check("2. the tab carries no technical explanation of acquisitions",
           "Fargate" not in visible and "ECS" not in visible and "lock" not in visible.lower(), visible)
@@ -238,8 +241,8 @@ def main() -> int:
           '<a href="/tips/configuration">Configuration</a>' in roles
           and '<a href="/tips/roles">Roles</a>' in roles and '<span aria-current="page">New Role</span>' in roles)
     templates_dir = os.path.join(BASE_DIR, "templates")
-    leftovers = [f for f in os.listdir(templates_dir)
-                 if re.search(r"&larr; (Back to|All saved|Home)", open(os.path.join(templates_dir, f), encoding="utf-8").read())]
+    leftovers = [f for f in os.listdir(templates_dir) if os.path.isfile(os.path.join(templates_dir, f))
+                 and re.search(r"&larr; (Back to|All saved|Home)", open(os.path.join(templates_dir, f), encoding="utf-8").read())]
     check("6. no Tips template keeps a generic back link", not leftovers, str(leftovers))
 
     print(f"Tips Clover Acquisition tab HTTP tests: {'SUCCESS' if not failed else 'FAILURE'} "
