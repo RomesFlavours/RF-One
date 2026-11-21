@@ -3043,6 +3043,89 @@ class TipPaymentAuditEvent(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+TIP_SUBMISSION_PENDING = "PENDING"          # durably recorded, provider about to be / being called
+TIP_SUBMISSION_ACCEPTED = "ACCEPTED"        # the provider answered with a transaction
+TIP_SUBMISSION_REJECTED = "REJECTED"        # the provider refused the request: certainly no payment
+TIP_SUBMISSION_UNCERTAIN = "UNCERTAIN"      # no certain answer: awaiting reconciliation, never resent as new
+TIP_SUBMISSION_VERIFIED_FAILED = "VERIFIED_FAILED"  # its transaction was read back failed/blocked/cancelled
+TIP_SUBMISSION_STATES = (TIP_SUBMISSION_PENDING, TIP_SUBMISSION_ACCEPTED, TIP_SUBMISSION_REJECTED,
+                         TIP_SUBMISSION_UNCERTAIN, TIP_SUBMISSION_VERIFIED_FAILED)
+TIP_SUBMISSION_OPEN_STATES = (TIP_SUBMISSION_PENDING, TIP_SUBMISSION_UNCERTAIN)
+
+
+class TipPaymentSubmission(Base):
+    """One attempt to send one Payment Instruction to the payment provider (CLOVER_MULTISITE_001,
+    Product Owner 2026-11-21). The row is COMMITTED before the provider is called, with everything the
+    call carries — operation identity (this row's id), restaurant and cycle, recipient and source
+    account, amount, idempotency key, who asked and when — so a provider answer lost after a commit
+    failure, a crash or a timeout can never be mistaken for "nothing was sent".
+
+    PENDING or UNCERTAIN means the outcome is not known: the instruction waits for reconciliation and
+    can never be sent again as a new payment (`uq_tip_payment_submission_open`: at most one such
+    attempt per instruction). A retry is a NEW row, only after the previous one is REJECTED or
+    VERIFIED_FAILED."""
+
+    __tablename__ = "tip_payment_submissions"
+    __table_args__ = (
+        CheckConstraint("state IN ('PENDING','ACCEPTED','REJECTED','UNCERTAIN','VERIFIED_FAILED')",
+                        name="ck_tip_payment_submission_state"),
+        CheckConstraint(
+            "(actor_kind = 'ACCOUNT' AND account_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND account_id IS NULL)",
+            name="ck_tip_payment_submission_actor"),
+        Index("uq_tip_payment_submission_open", "payment_instruction_id", unique=True,
+              sqlite_where=text("state IN ('PENDING','UNCERTAIN')"),
+              postgresql_where=text("state IN ('PENDING','UNCERTAIN')")),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payment_instruction_id: Mapped[int] = mapped_column(
+        ForeignKey("tip_payment_instructions.id"), nullable=False, index=True)
+    payment_cycle_id: Mapped[int] = mapped_column(ForeignKey("tip_payment_cycles.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider_account_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    recipient_reference_id: Mapped[int] = mapped_column(
+        ForeignKey("employee_external_payment_accounts.id"), nullable=False)
+    provider_recipient_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    actor_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    acting_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default=TIP_SUBMISSION_PENDING)
+    provider_transaction_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TipPaymentRecipientChange(Base):
+    """Who linked or changed an Employee's payment recipient, for which restaurant, and when
+    (CLOVER_MULTISITE_001). Append-only; the recipient references themselves are never deleted."""
+
+    __tablename__ = "tip_payment_recipient_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "(actor_kind = 'ACCOUNT' AND account_id IS NOT NULL) OR (actor_kind = 'SYSTEM' AND account_id IS NULL)",
+            name="ck_tip_payment_recipient_change_actor"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False, index=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    previous_reference_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employee_external_payment_accounts.id"), nullable=True)
+    new_reference_id: Mapped[int] = mapped_column(ForeignKey("employee_external_payment_accounts.id"), nullable=False)
+    provider_recipient_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    acting_identity_id: Mapped[int | None] = mapped_column(ForeignKey("acting_identities.id"), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 # `TipCalculationRun`/`TipAllocation`/`TipCalculationIssue` — the legacy
 # engine's own RESULT tables — were removed entirely (models + tables) by
 # TIPS_LEGACY_ENGINE_RETIREMENT_001: confirmed empty (0 rows each) in the

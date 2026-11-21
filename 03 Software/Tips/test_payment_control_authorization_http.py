@@ -74,6 +74,18 @@ class PaymentControlAuthorizationTest(unittest.TestCase):
             instruction = m.TipPaymentInstruction(payment_cycle_id=cycle.id, employee_id=employee.id,
                                                   amount_minor=1200, status=pi_svc.STATUS_READY)
             s.add(instruction)
+            s.flush()
+            # The authorized amount: one FINAL period's entitlement aggregated into the instruction.
+            run = m.TipDistributionCalculationRun(restaurant_id=self.restaurant_id, period_start=pv.T0,
+                                                  period_end=pv.T0, status="COMPLETE", state=m.TIPS_RUN_STATE_FINAL)
+            s.add(run)
+            s.flush()
+            s.add(m.TipEntitlement(calculation_run_id=run.id, restaurant_id=self.restaurant_id, employee_id=employee.id,
+                                   gross_amount_minor=1200, outbound_amount_minor=0, inbound_amount_minor=0,
+                                   payable_amount_minor=1200, tip_payment_instruction_id=instruction.id))
+            s.add(m.EmployeeCloverLink(employee_id=employee.id, location_id=location_id, merchant_id="M",
+                                       external_employee_id=employee.source_employee_id, state="PRESENT"))
+            self.employee_id = employee.id
             # An identity authorized for every restaurant, NOT bound to any account:
             # posting its id must never let someone approve "as" it.
             other = m.ActingIdentity(kind="HUMAN_USER", display_name="Someone Else", is_active=True)
@@ -99,8 +111,13 @@ class PaymentControlAuthorizationTest(unittest.TestCase):
     def client(self, account):
         c = tips_app.app.test_client()
         sign_in(c, account)
-        c.get(f"/payment-control?site={self.restaurant_id}")
+        c.get(f"/payment-control?site={self.restaurant_id}", follow_redirects=True)  # renders the forms: CSRF token
         return c
+
+    @staticmethod
+    def post(c, url, data=None, **kwargs):
+        """A form post as the page sends it, with the RF-One session's CSRF token."""
+        return c.post(url, data={**(data or {})}, **kwargs)
 
     def cycle(self):
         with tips_app.SessionFactory() as s:
@@ -120,53 +137,47 @@ class PaymentControlAuthorizationTest(unittest.TestCase):
 
     def test_unauthorized_account_cannot_approve_even_posting_another_identity(self):
         c = self.client(self.account("intruder"))
-        c.post("/payment-control/approve-and-pay", data={"acting_identity_id": self.other_identity_id})
+        self.post(c, "/payment-control/approve-and-pay", data={"acting_identity_id": self.other_identity_id})
         self.assertEqual(self.cycle().status, m.TIP_PAYMENT_CYCLE_STATUS_OPEN)
         self.assertEqual(self.provider.create_transaction_calls, 0)
 
     def test_authorized_account_approves_as_itself_and_only_once(self):
         account = self.account("payer", pay=True)
         c = self.client(account)
-        c.post("/payment-control/approve-and-pay", data={"acting_identity_id": self.other_identity_id})
+        self.post(c, "/payment-control/approve-and-pay", data={"acting_identity_id": self.other_identity_id})
         cycle = self.cycle()
         self.assertEqual(cycle.status, m.TIP_PAYMENT_CYCLE_STATUS_APPROVED)
         with tips_app.SessionFactory() as s:
             mine = fin.existing_identity_for_account(s, s.get(m.RFOneAccount, account[0]))
             self.assertEqual(cycle.approved_by_identity_id, mine.id)
             self.assertNotEqual(cycle.approved_by_identity_id, self.other_identity_id)
-        c.post("/payment-control/approve-and-pay", data={})
+        self.post(c, "/payment-control/approve-and-pay", data={})
         self.assertEqual(self.provider.create_transaction_calls, 1)
 
-    def test_retry_needs_the_payment_authorization_and_never_pays_twice(self):
+    def test_retry_needs_the_payment_authorization_and_a_verified_failure(self):
         payer = self.account("payer", pay=True)
-        self.client(payer).post("/payment-control/approve-and-pay", data={})
+        self.post(self.client(payer), "/payment-control/approve-and-pay", data={})
         tx_id = self.instruction().provider_transaction_id
+        retry = f"/payment-control/instruction/{self.instruction_id}/retry"
+        # Not failed at the provider: refused, nothing sent.
+        with tips_app.SessionFactory() as s:
+            s.get(m.TipPaymentInstruction, self.instruction_id).status = pi_svc.STATUS_NEEDS_ATTENTION
+            s.commit()
+        resp = self.post(self.client(payer), retry, follow_redirects=True)
+        self.assertIn("already paid or in progress", resp.get_data(as_text=True))
+        self.assertEqual(self.instruction().status, pi_svc.STATUS_SENT)
+        # Verified failed at the provider: a stranger is refused, the payer retries once with a new key.
         self.provider.set_transaction_status(tx_id, status="failed")
         with tips_app.SessionFactory() as s:
             s.get(m.TipPaymentInstruction, self.instruction_id).status = pi_svc.STATUS_NEEDS_ATTENTION
             s.commit()
-        retry = f"/payment-control/instruction/{self.instruction_id}/retry"
-
-        self.client(self.account("stranger")).post(retry)
+        self.post(self.client(self.account("stranger")), retry)
         self.assertEqual(self.provider.create_transaction_calls, 1)
-        self.assertEqual(self.instruction().status, pi_svc.STATUS_NEEDS_ATTENTION)
-
-        # Authorized retry: the provider replays the same key -> its duplicate
-        # protection answers, and no second payment exists.
-        self.client(payer).post(retry)
-        self.assertEqual(len(self.provider._transactions_by_id), 1)
-
-    def test_retry_of_a_payment_still_pending_is_refused(self):
-        payer = self.account("payer", pay=True)
-        c = self.client(payer)
-        c.post("/payment-control/approve-and-pay", data={})
-        with tips_app.SessionFactory() as s:
-            s.get(m.TipPaymentInstruction, self.instruction_id).status = pi_svc.STATUS_NEEDS_ATTENTION
-            s.commit()
-        resp = c.post(f"/payment-control/instruction/{self.instruction_id}/retry", follow_redirects=True)
-        self.assertIn("already paid or in progress", resp.get_data(as_text=True))
-        self.assertEqual(self.provider.create_transaction_calls, 1)
+        self.post(self.client(payer), retry)
+        self.assertEqual(self.provider.create_transaction_calls, 2)
         self.assertEqual(self.instruction().status, pi_svc.STATUS_SENT)
+        statuses = sorted(t.status for t in self.provider._transactions_by_id.values())
+        self.assertEqual(statuses, ["failed", "sent"])              # exactly one payment that counts
 
 
 if __name__ == "__main__":

@@ -194,7 +194,9 @@
           {% endif %}
         </td>
         <td data-label="">
-          {% if instruction.status == "NEEDS_ATTENTION" %}
+          {% if instruction.status == "SUBMITTING" or instruction.failure_class == "OUTCOME_UNKNOWN" %}
+          <span class="badge warn" style="font-size:.72rem;">{{ ui('Awaiting reconciliation') }}</span>
+          {% elif instruction.status == "NEEDS_ATTENTION" %}
           <form method="post" action="{{ url_for('payment_control_retry_instruction', instruction_id=instruction.id) }}">
             <button type="submit" style="font-size:.78rem;">Retry this instruction only</button>
           </form>
@@ -206,7 +208,7 @@
   </table>
   </div>
   <p class="muted" style="font-size:.78rem; margin-top:.8rem;">
-    {{ ui('Retrying needs the same authorization as Approve & Pay and resubmits only the selected instruction of an approved cycle. A payment the provider shows as pending, sent or posted is never sent again; a reversed payment or one whose outcome cannot be confirmed is not resubmitted.') }} Every
+    {{ ui("Retrying needs the same authorization as Approve & Pay and resubmits only the selected instruction of an approved cycle, only after its previous attempt is verified as failed, to the authorized recipient and for the authorized amount. A payment the provider shows as pending, sent or posted is never sent again; a payment without a certain answer from the provider is awaiting reconciliation and is never resent; a reversed payment needs a person's review.") }} Every
     other instruction is unaffected. A NEEDS_ATTENTION row without a linked recipient must be linked first.
     "Detail" expands gross/source tips, amounts transferred, and final payable per Business Date — never a
     full account number, routing number, token, or secret (task §7).

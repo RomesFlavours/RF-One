@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import acting_identity_service
@@ -187,7 +188,17 @@ class _recipient_reference_override:
         def _fake_lookup(session, emp_id, *, connector_code):
             if emp_id != employee_id:
                 return None
-            return _FakeReference(id=1, provider_recipient_id=recipient_id)
+            # CLOVER_MULTISITE_001: every provider attempt references a real recipient row
+            # (`TipPaymentSubmission.recipient_reference_id`); the table only accepts real providers, so the
+            # synthetic reference borrows the id of a real (MERCURY) row of the same employee.
+            anchor = session.scalars(select(m.EmployeeExternalPaymentAccount).where(
+                m.EmployeeExternalPaymentAccount.employee_id == emp_id)).first()
+            if anchor is None:
+                anchor = m.EmployeeExternalPaymentAccount(employee_id=emp_id, provider="MERCURY",
+                                                          provider_recipient_id=f"anchor-{emp_id}", is_active=False)
+                session.add(anchor)
+                session.flush()
+            return _FakeReference(id=anchor.id, provider_recipient_id=recipient_id)
 
         pi_svc._active_recipient_reference = _fake_lookup
         return self

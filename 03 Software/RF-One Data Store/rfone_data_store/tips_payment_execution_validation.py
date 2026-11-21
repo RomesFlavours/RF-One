@@ -491,6 +491,16 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     session.commit()
     _link_recipient(session, server_b, "recipient-b-ok")
     client._recipient_behavior["recipient-b-ok"] = "ok"
+    # CLOVER_MULTISITE_001: a retry to a different recipient needs an authorized, recorded recipient change
+    # (in Payment Control: `payment_recipients.change_recipient`); recorded here as that service records it.
+    new_ref = session.scalars(select(m.EmployeeExternalPaymentAccount).where(
+        m.EmployeeExternalPaymentAccount.employee_id == server_b.id,
+        m.EmployeeExternalPaymentAccount.is_active.is_(True))).first()
+    session.add(m.TipPaymentRecipientChange(
+        employee_id=server_b.id, restaurant_id=restaurant.id, provider="MERCURY", previous_reference_id=existing_ref.id,
+        new_reference_id=new_ref.id, provider_recipient_id="recipient-b-ok", actor_kind="SYSTEM", account_id=None,
+        acting_identity_id=approver.id, changed_at=datetime.now(UTC)))
+    session.commit()
 
     cycle_svc.retry_instruction(session, server_b_instruction, connector, source_account_id="acct-1", acting_identity=approver)
     session.commit()

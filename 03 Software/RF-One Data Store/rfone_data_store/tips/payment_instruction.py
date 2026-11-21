@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
@@ -49,6 +49,9 @@ STATUS_SENT = "SENT"
 STATUS_OUTCOME_VERIFIED = "OUTCOME_VERIFIED"
 STATUS_NEEDS_ATTENTION = "NEEDS_ATTENTION"
 STATUS_CANCELLED = "CANCELLED"
+# CLOVER_MULTISITE_001: the attempt is durably recorded and the provider is being called; the outcome is
+# not known until it is recorded. Never sent again from this state (awaiting reconciliation).
+STATUS_SUBMITTING = "SUBMITTING"
 
 # Failure classes — plus the two conditions specific to this pilot's own
 # resolution step (no recipient reference on file, and Outcome Reopened by
@@ -59,6 +62,11 @@ FAILURE_DUPLICATE_PROTECTION = "DUPLICATE_PROTECTION"
 FAILURE_PROVIDER_STATUS_FAILURE = "PROVIDER_STATUS_FAILURE"
 FAILURE_PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
 FAILURE_OUTCOME_REOPENED = "OUTCOME_REOPENED"
+# CLOVER_MULTISITE_001: the provider gave no certain answer (timeout, unavailable, duplicate/idempotency
+# collision): a payment may exist. Awaiting reconciliation; never retried as a new payment.
+FAILURE_OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN"
+# The provider refused the credentials: certainly no payment was created.
+FAILURE_PROVIDER_AUTH_REJECTED = "PROVIDER_AUTH_REJECTED"
 
 PRIORITY_CRITICAL = "CRITICAL"
 PRIORITY_HIGH = "HIGH"
@@ -112,84 +120,118 @@ def mark_needs_attention(
     instruction.priority = priority
 
 
-def submit_payment_instruction(
-    session: Session, instruction: "m.TipPaymentInstruction", connector: "connector_svc.PaymentConnector", *,
-    account_id: str,
-) -> None:
-    """Submits exactly ONE Payment Instruction. Never touches any other
-    instruction — a caller iterating a batch (`payment_cycle_service.py`)
-    wraps each call independently so one failure can never block or roll
-    back the others. Safe to call again on an instruction already in
-    NEEDS_ATTENTION: the SAME idempotency_key is reused, so a retry after a
-    transient provider failure is exactly the resubmission a connector's
-    own duplicate protection is designed to make safe."""
-    if instruction.status not in (STATUS_READY, STATUS_NEEDS_ATTENTION):
-        return  # already submitted/terminal — never resubmit a SENT/OUTCOME_VERIFIED instruction.
+# `submit_payment_instruction` (a provider call with no durable record of the attempt first) was removed
+# by CLOVER_MULTISITE_001: every send goes through `prepare_submission` (committed) + `send_submission`.
 
-    reference = _active_recipient_reference(
-        session, instruction.employee_id, connector_code=connector.connector_code,
-    )
+
+class SubmissionRefused(ValueError):
+    """A submission cannot be prepared (an attempt with an unknown outcome is still open)."""
+
+
+def open_submission(session: Session, instruction_id: int) -> "m.TipPaymentSubmission | None":
+    """The attempt of this instruction whose outcome is not known yet (PENDING or UNCERTAIN), if any."""
+    return session.scalars(select(m.TipPaymentSubmission).where(
+        m.TipPaymentSubmission.payment_instruction_id == instruction_id,
+        m.TipPaymentSubmission.state.in_(m.TIP_SUBMISSION_OPEN_STATES))).first()
+
+
+def latest_submission(session: Session, instruction_id: int) -> "m.TipPaymentSubmission | None":
+    return session.scalars(select(m.TipPaymentSubmission).where(
+        m.TipPaymentSubmission.payment_instruction_id == instruction_id)
+        .order_by(m.TipPaymentSubmission.id.desc())).first()
+
+
+def prepare_submission(
+    session: Session, instruction: "m.TipPaymentInstruction", *, restaurant_id: int, connector_code: str,
+    account_id: str, actor: tuple[str, int | None, int | None], now: datetime, retry: bool = False,
+) -> "m.TipPaymentSubmission | None":
+    """CLOVER_MULTISITE_001 — records the attempt BEFORE the provider is called: operation identity
+    (the row), restaurant and cycle, recipient reference and provider recipient, source account,
+    amount, idempotency key, actor (`actor` = (actor_kind, account_id, acting_identity_id)) and time;
+    the instruction becomes SUBMITTING. The caller COMMITS, then calls `send_submission`.
+
+    Returns None (and marks the instruction) when no recipient is configured: nothing is sent.
+    A retry gets a new idempotency key: the previous attempt is verified failed, so its key must not
+    replay the failed transaction."""
+    if open_submission(session, instruction.id) is not None:
+        raise SubmissionRefused(
+            f"Payment Instruction {instruction.id} has an attempt whose outcome is not known yet: it is "
+            "awaiting reconciliation and is never sent again as a new payment.")
+    reference = _active_recipient_reference(session, instruction.employee_id, connector_code=connector_code)
     if reference is None:
         mark_needs_attention(
             instruction, failure_class=FAILURE_RECIPIENT_NOT_CONFIGURED,
-            reason=(
-                f"Employee {instruction.employee_id} has no active {connector.connector_code} recipient "
-                f"reference on file."
-            ),
+            reason=f"Employee {instruction.employee_id} has no active {connector_code} recipient reference on file.",
             priority=PRIORITY_HIGH,
         )
-        return
-
-    instruction.provider = connector.connector_code
+        return None
+    key = build_idempotency_key(instruction.payment_cycle_id, instruction.employee_id, reference.id)
+    if retry:
+        attempts = session.scalar(select(func.count(m.TipPaymentSubmission.id)).where(
+            m.TipPaymentSubmission.payment_instruction_id == instruction.id)) or 0
+        key = f"{key}-R{attempts + 1}"
+    actor_kind, actor_account_id, acting_identity_id = actor
+    submission = m.TipPaymentSubmission(
+        payment_instruction_id=instruction.id, payment_cycle_id=instruction.payment_cycle_id,
+        restaurant_id=restaurant_id, employee_id=instruction.employee_id, provider=connector_code,
+        provider_account_id=account_id, recipient_reference_id=reference.id,
+        provider_recipient_id=reference.provider_recipient_id, amount_minor=instruction.amount_minor,
+        idempotency_key=key, actor_kind=actor_kind, account_id=actor_account_id,
+        acting_identity_id=acting_identity_id, requested_at=now, state=m.TIP_SUBMISSION_PENDING,
+    )
+    session.add(submission)
+    instruction.status = STATUS_SUBMITTING
+    instruction.provider = connector_code
     instruction.provider_account_id = account_id
-    # A key already derived from THIS SAME reference is reused as-is (a
-    # transient-failure retry against the same recipient must stay
-    # deduplicated); the reference changed since the last attempt (or none
-    # was derived yet) derives a fresh one — see `build_idempotency_key`.
-    if instruction.provider_recipient_id != reference.provider_recipient_id or instruction.idempotency_key is None:
-        instruction.idempotency_key = build_idempotency_key(
-            instruction.payment_cycle_id, instruction.employee_id, reference.id,
-        )
     instruction.provider_recipient_id = reference.provider_recipient_id
+    instruction.idempotency_key = key
+    instruction.failure_class = None
+    instruction.reason_for_failure = None
+    instruction.priority = None
+    session.flush()
+    return submission
 
-    amount = _amount_decimal(instruction.amount_minor)
+
+def send_submission(
+    session: Session, submission: "m.TipPaymentSubmission", instruction: "m.TipPaymentInstruction",
+    connector: "connector_svc.PaymentConnector",
+) -> None:
+    """Calls the provider for one durably recorded attempt and records the outcome on the attempt and
+    the instruction (the caller commits). A certain refusal (credentials, validation) means no payment;
+    anything without a certain answer leaves the attempt UNCERTAIN: awaiting reconciliation."""
     try:
         transaction = connector.create_transaction(
-            account_id=account_id, recipient_id=reference.provider_recipient_id, amount=amount,
-            payment_method="ach", idempotency_key=instruction.idempotency_key,
+            account_id=submission.provider_account_id, recipient_id=submission.provider_recipient_id,
+            amount=_amount_decimal(submission.amount_minor), payment_method="ach",
+            idempotency_key=submission.idempotency_key,
         )
     except connector_svc.ConnectorAuthError as exc:
-        mark_needs_attention(
-            instruction, failure_class=FAILURE_PROVIDER_UNAVAILABLE,
-            reason=f"Connector authentication failed: {exc}", priority=PRIORITY_CRITICAL,
-        )
+        _resolve(submission, m.TIP_SUBMISSION_REJECTED, f"Credentials refused: {exc}")
+        mark_needs_attention(instruction, failure_class=FAILURE_PROVIDER_AUTH_REJECTED,
+                             reason=f"Connector authentication failed (no payment created): {exc}",
+                             priority=PRIORITY_CRITICAL)
         return
     except connector_svc.ConnectorDuplicateError as exc:
-        # Should not happen in normal operation — RF-One's own idempotency
-        # check above is the primary guard. Seeing this means either a
-        # genuine race, or an operator manually resubmitted outside this
-        # code path; either way it is itself worth surfacing, not silently
-        # treated as a benign no-op (a connector's own duplicate protection
-        # is only a safety net — when it fires, RF-One's own guard should
-        # be reviewed).
-        mark_needs_attention(
-            instruction, failure_class=FAILURE_DUPLICATE_PROTECTION,
-            reason=f"Connector rejected this as a duplicate: {exc}", priority=PRIORITY_HIGH,
-        )
+        _resolve(submission, m.TIP_SUBMISSION_UNCERTAIN, f"Duplicate/idempotency protection: {exc}")
+        mark_needs_attention(instruction, failure_class=FAILURE_OUTCOME_UNKNOWN,
+                             reason=("The provider reports an earlier or similar payment for this request: it may "
+                                     f"already be paid. Awaiting reconciliation. {exc}"), priority=PRIORITY_HIGH)
         return
     except connector_svc.ConnectorValidationError as exc:
-        mark_needs_attention(
-            instruction, failure_class=FAILURE_SYNCHRONOUS_VALIDATION,
-            reason=str(exc), priority=PRIORITY_HIGH,
-        )
+        _resolve(submission, m.TIP_SUBMISSION_REJECTED, f"Refused by the provider: {exc}")
+        mark_needs_attention(instruction, failure_class=FAILURE_SYNCHRONOUS_VALIDATION, reason=str(exc),
+                             priority=PRIORITY_HIGH)
         return
-    except connector_svc.ConnectorUnavailableError as exc:
-        mark_needs_attention(
-            instruction, failure_class=FAILURE_PROVIDER_UNAVAILABLE,
-            reason=f"Connector unavailable: {exc}", priority=PRIORITY_MEDIUM,
-        )
+    except Exception as exc:  # noqa: BLE001 — unavailable, timeout, anything: the outcome is not known
+        _resolve(submission, m.TIP_SUBMISSION_UNCERTAIN, f"No certain answer: {exc}")
+        mark_needs_attention(instruction, failure_class=FAILURE_OUTCOME_UNKNOWN,
+                             reason=("The provider gave no certain answer: the payment may have been made. "
+                                     f"Awaiting reconciliation; it is never sent again as a new payment. {exc}"),
+                             priority=PRIORITY_HIGH)
         return
-
+    _resolve(submission, m.TIP_SUBMISSION_ACCEPTED, None)
+    submission.provider_transaction_id = transaction.id
+    submission.provider_status = transaction.status
     instruction.provider_transaction_id = transaction.id
     instruction.provider_status = transaction.status
     instruction.submitted_at = _utc_now()
@@ -197,6 +239,12 @@ def submit_payment_instruction(
     instruction.failure_class = None
     instruction.reason_for_failure = None
     instruction.priority = None
+
+
+def _resolve(submission: "m.TipPaymentSubmission", state: str, detail: str | None) -> None:
+    submission.state = state
+    submission.detail = detail
+    submission.resolved_at = _utc_now()
 
 
 def refresh_outcome(

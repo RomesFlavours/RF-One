@@ -23,6 +23,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from decimal import Decimal
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -253,16 +254,59 @@ class TipsPaymentAuthorizationTest(_Fixture):
         self.employee = m.Employee(location_id=location_id, source_system_id=location.source_system_id,
                                    source_employee_id="E1", display_name="Payee One", system_role="EMPLOYEE")
         self.db.add(self.employee)
+        self.db.flush()
+        # Registry links the person to Winter Park (a Clover identity of its site).
+        self.db.add(m.EmployeeCloverLink(employee_id=self.employee.id, location_id=location_id, merchant_id="WP",
+                                         external_employee_id="E1", state="PRESENT"))
         self.db.commit()
         pv._link_recipient(self.db, self.employee, "recipient-1")
+
+    def entitlement(self, restaurant=None, *, amount=1500, employee=None):
+        """A FINAL period's unpaid entitlement (the authorized amount of a payment)."""
+        restaurant = restaurant or self.wp
+        run = m.TipDistributionCalculationRun(restaurant_id=restaurant.id, period_start=pv.T0,
+            period_end=pv.T0 + pv.timedelta(days=1), status="COMPLETE", state=m.TIPS_RUN_STATE_FINAL)
+        self.db.add(run)
+        self.db.flush()
+        row = m.TipEntitlement(calculation_run_id=run.id, restaurant_id=restaurant.id,
+            employee_id=(employee or self.employee).id, gross_amount_minor=amount, outbound_amount_minor=0,
+            inbound_amount_minor=0, payable_amount_minor=amount)
+        self.db.add(row)
+        self.db.flush()
+        return row
 
     def cycle_with_instruction(self, restaurant=None, *, amount=1500):
         cycle = pv._open_cycle(self.db, restaurant_id=(restaurant or self.wp).id)
         instruction = m.TipPaymentInstruction(payment_cycle_id=cycle.id, employee_id=self.employee.id,
                                               amount_minor=amount, status=pi_svc.STATUS_READY)
         self.db.add(instruction)
+        self.db.flush()
+        self.entitlement(restaurant, amount=amount).tip_payment_instruction_id = instruction.id
         self.db.commit()
         return cycle, instruction
+
+    def recipient_manager(self, name="manager"):
+        return self.account(name)
+
+    def change_recipient(self, account, recipient_id):
+        """An authorized, recorded recipient change (as Payment Control records it)."""
+        from datetime import datetime, timezone
+        previous = self.db.scalars(select(m.EmployeeExternalPaymentAccount).where(
+            m.EmployeeExternalPaymentAccount.employee_id == self.employee.id,
+            m.EmployeeExternalPaymentAccount.is_active.is_(True))).first()
+        if previous is not None:
+            previous.is_active = False
+        new = m.EmployeeExternalPaymentAccount(employee_id=self.employee.id, provider="MERCURY",
+                                               provider_recipient_id=recipient_id, is_active=True)
+        self.db.add(new)
+        self.db.flush()
+        self.db.add(m.TipPaymentRecipientChange(
+            employee_id=self.employee.id, restaurant_id=self.wp.id, provider="MERCURY",
+            previous_reference_id=previous.id if previous else None, new_reference_id=new.id,
+            provider_recipient_id=recipient_id, actor_kind=m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, account_id=account.id,
+            acting_identity_id=fin.acting_identity_for_account(self.db, account).id,
+            changed_at=datetime.now(timezone.utc)))
+        self.db.commit()
 
     def approve(self, account, cycle):
         identity = cycle_svc.account_payment_identity(self.db, account=account, restaurant_id=cycle.restaurant_id)
@@ -370,55 +414,93 @@ class TipsPaymentAuthorizationTest(_Fixture):
 
     def test_failed_payment_is_retried_once_and_audited(self):
         payer, cycle, instruction = self.failed_after_approval()
+        first_key = instruction.idempotency_key
         self.client.set_transaction_status(instruction.provider_transaction_id, status="failed")
-        instruction.status = pi_svc.STATUS_NEEDS_ATTENTION
+        cycle_svc.refresh_outcomes_for_cycle(self.db, cycle, self.connector)
         self.db.commit()
-        # Corrected recipient -> new idempotency key, one new provider call.
-        self.db.execute(m.EmployeeExternalPaymentAccount.__table__.update().values(is_active=False))
-        self.db.commit()
-        pv._link_recipient(self.db, self.employee, "recipient-2")
+        self.assertEqual(instruction.status, pi_svc.STATUS_NEEDS_ATTENTION)
+        # Corrected recipient through the authorized, recorded change -> one new provider call, new key.
+        self.change_recipient(self.recipient_manager(), "recipient-2")
         self.assertEqual(self.retry(payer, instruction), cycle_svc.RETRY_SUBMITTED)
         self.assertEqual(instruction.status, pi_svc.STATUS_SENT)
         self.assertEqual(self.client.create_transaction_calls, 2)
+        self.assertNotEqual(instruction.idempotency_key, first_key)
+        states = [s.state for s in self.db.scalars(select(m.TipPaymentSubmission).order_by(m.TipPaymentSubmission.id))]
+        self.assertEqual(states, [m.TIP_SUBMISSION_VERIFIED_FAILED, m.TIP_SUBMISSION_ACCEPTED])
         retried = [e for e in audit.events_for_cycle(self.db, cycle.id) if e.event == m.TIP_PAYMENT_AUDIT_RETRIED]
         self.assertEqual([(e.actor_kind, e.account_id, e.outcome) for e in retried],
                          [(m.TIP_PAYMENT_AUDIT_ACTOR_ACCOUNT, payer.id, pi_svc.STATUS_SENT)])
-        self.assertEqual(retried[0].payment_instruction_id, instruction.id)
-        self.assertIsNotNone(retried[0].occurred_at)
         # A second click after success is refused: no third call.
         with self.assertRaises(cycle_svc.PaymentRetryError):
             self.retry(payer, instruction)
         self.assertEqual(self.client.create_transaction_calls, 2)
 
-    def test_unknown_outcome_with_changed_recipient_is_not_resubmitted(self):
-        payer = self.account("payer")
-        self.grant_pay(payer, self.wp)
-        cycle, instruction = self.cycle_with_instruction()
-        self.approve(payer, cycle)
-        # Simulate: the earlier attempt reached the provider but its answer was lost.
-        instruction.status = pi_svc.STATUS_NEEDS_ATTENTION
-        instruction.failure_class = pi_svc.FAILURE_PROVIDER_UNAVAILABLE
-        instruction.provider_transaction_id = None
-        self.db.commit()
+    def test_retry_to_a_recipient_changed_without_authorization_is_refused(self):
+        payer, cycle, instruction = self.failed_after_approval()
+        self.client.set_transaction_status(instruction.provider_transaction_id, status="failed")
+        cycle_svc.refresh_outcomes_for_cycle(self.db, cycle, self.connector)
         self.db.execute(m.EmployeeExternalPaymentAccount.__table__.update().values(is_active=False))
         self.db.commit()
-        pv._link_recipient(self.db, self.employee, "recipient-2")
-        with self.assertRaisesRegex(cycle_svc.PaymentRetryError, "different recipient"):
+        pv._link_recipient(self.db, self.employee, "recipient-2")      # changed outside the recorded service
+        with self.assertRaisesRegex(cycle_svc.PaymentRetryError, "without an authorized, recorded recipient change"):
             self.retry(payer, instruction)
         self.assertEqual(self.client.create_transaction_calls, 1)
 
-    def test_unknown_outcome_same_recipient_is_deduplicated_by_the_provider(self):
+    def test_retry_with_an_amount_other_than_the_authorized_one_is_refused(self):
+        payer, cycle, instruction = self.failed_after_approval()
+        self.client.set_transaction_status(instruction.provider_transaction_id, status="failed")
+        cycle_svc.refresh_outcomes_for_cycle(self.db, cycle, self.connector)
+        instruction.amount_minor += 100
+        self.db.commit()
+        with self.assertRaisesRegex(cycle_svc.PaymentRetryError, "not the authorized one"):
+            self.retry(payer, instruction)
+        self.assertEqual(self.client.create_transaction_calls, 1)
+
+    def test_lost_provider_answer_is_awaiting_reconciliation_and_never_resent(self):
         payer = self.account("payer")
         self.grant_pay(payer, self.wp)
         cycle, instruction = self.cycle_with_instruction()
+        real_create = self.client.create_transaction
+
+        def accepted_then_lost(**kwargs):
+            real_create(**kwargs)                         # the provider accepts the payment...
+            raise pv.MercuryUnavailableError("timeout reading the answer")   # ...the answer is lost
+        self.client.create_transaction = accepted_then_lost
         self.approve(payer, cycle)
-        instruction.status = pi_svc.STATUS_NEEDS_ATTENTION
-        instruction.failure_class = pi_svc.FAILURE_PROVIDER_UNAVAILABLE
-        instruction.provider_transaction_id = None
-        self.db.commit()
-        self.retry(payer, instruction)
-        # Same idempotency key: the provider refuses a second payment.
-        self.assertEqual(instruction.failure_class, pi_svc.FAILURE_DUPLICATE_PROTECTION)
+        self.client.create_transaction = real_create
+        [submission] = self.db.scalars(select(m.TipPaymentSubmission)).all()
+        self.assertEqual(submission.state, m.TIP_SUBMISSION_UNCERTAIN)
+        self.assertEqual((submission.amount_minor, submission.provider_recipient_id, submission.account_id),
+                         (1500, "recipient-1", payer.id))
+        self.assertEqual(instruction.failure_class, pi_svc.FAILURE_OUTCOME_UNKNOWN)
+        with self.assertRaisesRegex(cycle_svc.PaymentRetryError, "awaiting reconciliation"):
+            self.retry(payer, instruction)
+        with self.assertRaises(cycle_svc.ApproveAndPayError):
+            self.approve(payer, cycle)                    # the cycle is no longer OPEN
+        self.assertEqual(self.client.create_transaction_calls, 1)
+        self.assertEqual(len(self.client._transactions_by_id), 1)    # paid exactly once
+
+    def test_local_rollback_after_provider_accepted_keeps_the_durable_attempt(self):
+        payer = self.account("payer")
+        self.grant_pay(payer, self.wp)
+        cycle, instruction = self.cycle_with_instruction()
+        real_send = pi_svc.send_submission
+
+        def accepted_then_crash(session, submission, instr, connector):
+            real_send(session, submission, instr, connector)   # the provider accepted the payment
+            raise RuntimeError("process died before the outcome was committed")
+        with mock.patch.object(pi_svc, "send_submission", accepted_then_crash):
+            with self.assertRaises(RuntimeError):
+                self.approve(payer, cycle)
+        self.db.rollback()
+        self.db.expire_all()
+        [submission] = self.db.scalars(select(m.TipPaymentSubmission)).all()
+        self.assertEqual(submission.state, m.TIP_SUBMISSION_PENDING)          # recorded before the call
+        self.assertEqual(self.db.get(m.TipPaymentInstruction, instruction.id).status, pi_svc.STATUS_SUBMITTING)
+        self.assertEqual(self.db.get(m.TipPaymentCycle, cycle.id).status, m.TIP_PAYMENT_CYCLE_STATUS_APPROVED)
+        with self.assertRaisesRegex(cycle_svc.PaymentRetryError, "awaiting reconciliation"):
+            self.retry(payer, self.db.get(m.TipPaymentInstruction, instruction.id))
+        self.assertEqual(self.client.create_transaction_calls, 1)
         self.assertEqual(len(self.client._transactions_by_id), 1)
 
 
@@ -427,14 +509,7 @@ class TipsPaymentAuditTest(TipsPaymentAuthorizationTest):
     approval, execution and retry (CLOVER_MULTISITE_001)."""
 
     def prepared_cycle(self, prepared_by=None, triggered_by="MANUAL"):
-        run = m.TipDistributionCalculationRun(restaurant_id=self.wp.id, period_start=pv.T0,
-            period_end=pv.T0 + pv.timedelta(days=1), status="COMPLETE", state=m.TIPS_RUN_STATE_FINAL)
-        self.db.add(run)
-        self.db.flush()
-        entitlement = m.TipEntitlement(calculation_run_id=run.id, restaurant_id=self.wp.id,
-            employee_id=self.employee.id, gross_amount_minor=1200, outbound_amount_minor=0,
-            inbound_amount_minor=0, payable_amount_minor=1200)
-        self.db.add(entitlement)
+        entitlement = self.entitlement(amount=1200)
         self.db.commit()
         cycle = cycle_svc.start_payment_cycle(self.db, restaurant_id=self.wp.id, triggered_by=triggered_by,
                                               prepared_by=prepared_by)
