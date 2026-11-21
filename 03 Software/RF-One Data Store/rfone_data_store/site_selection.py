@@ -60,17 +60,60 @@ def list_sites(session: Session) -> list[Site]:
             for r in session.scalars(select(m.Restaurant).order_by(m.Restaurant.id))]
 
 
-def sites_for_account(session: Session, account, domain_code: str) -> list[Site]:
-    """The sites `account` may work on in `domain_code` — the ONE place every
-    site-aware page and operation asks (Tips, Clover Acquisition, Tips period
-    validation). Today RF-One's central authorization is per Domain
-    (`rfone_web_session.account_may_enter_domain`): with that access, every
-    site; without it, none. A per-company/per-site extension of the central
-    model, once approved, changes only this function."""
+def account_restaurant_ids(session: Session, account, domain_code: str) -> frozenset[int]:
+    """The restaurants `account` may work on in `domain_code` — the ONE
+    central per-company/per-site authorization of RF-One (CLOVER_MULTISITE_001,
+    model approved by the Product Owner on 2026-11-21). Every site-aware page,
+    operation and financial action asks here (directly or through
+    `sites_for_account` / `financial_authorization`); no Domain keeps its own
+    list of who sees which restaurant.
+
+    1. No entry into the Domain (`rfone_web_session.account_may_enter_domain`)
+       -> no restaurant.
+    2. An RF-One administrator or owner -> every restaurant (already reaches
+       every company in `access_profiles.company_ids_for_account`).
+    3. A direct access with company scope ALL (every access that existed
+       before this model) -> every restaurant: existing users keep their reach.
+       With company scope SELECTED -> the restaurants of the chosen companies.
+    4. Role profiles add the restaurants of the companies where the person is a
+       current member with a role that opens this Domain
+       (`access_profiles.profile_company_ids_for_domain`).
+    RFGroup (a GROUP company) stands for every company — operational reach
+    only; it grants no administrator role (that stays the access row's role).
+    A restaurant without a legal entity is reached only by rules 2–3 ALL or a
+    GROUP: never by guessing its company."""
     from . import rfone_web_session
-    if not rfone_web_session.account_may_enter_domain(session, account, domain_code):
-        return []
-    return list_sites(session)
+    from . import access_profiles as profiles
+    if account is None or not rfone_web_session.account_may_enter_domain(session, account, domain_code):
+        return frozenset()
+    every = frozenset(session.scalars(select(m.Restaurant.id)))
+    if account.is_admin or account.is_owner:
+        return every
+    allowed: set[int] = set()
+    direct = session.scalars(select(m.RFOneAccountDomainAccess).where(
+        m.RFOneAccountDomainAccess.account_id == account.id,
+        m.RFOneAccountDomainAccess.domain_code == domain_code,
+        m.RFOneAccountDomainAccess.enabled.is_(True))).first()
+    if direct is not None:
+        if direct.company_scope != m.DOMAIN_COMPANY_SCOPE_SELECTED:
+            return every
+        allowed |= profiles.restaurant_ids_for_companies(
+            session, profiles.domain_company_ids(session, account.id, domain_code))
+    allowed |= profiles.restaurant_ids_for_companies(
+        session, profiles.profile_company_ids_for_domain(session, account.id, domain_code))
+    return frozenset(allowed & every)
+
+
+def sites_for_account(session: Session, account, domain_code: str) -> list[Site]:
+    """The selectable sites `account` may work on in `domain_code` (the
+    selector of Tips, Clover Acquisition and Tips period validation): the
+    sites of `list_sites` that `account_restaurant_ids` allows."""
+    allowed = account_restaurant_ids(session, account, domain_code)
+    return [site for site in list_sites(session) if site.restaurant_id in allowed]
+
+
+def account_may_use_restaurant(session: Session, account, domain_code: str, restaurant_id: int | None) -> bool:
+    return restaurant_id is not None and restaurant_id in account_restaurant_ids(session, account, domain_code)
 
 
 def resolve_site(session: Session, *candidates: int | None, sites: list[Site] | None = None) -> Site | None:

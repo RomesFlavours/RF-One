@@ -66,6 +66,8 @@ PRIORITY_MEDIUM = "MEDIUM"
 PRIORITY_LOW = "LOW"
 
 _TERMINAL_FAILURE_STATUSES = {"failed", "blocked", "cancelled"}
+# Public name: the provider outcomes after which a new attempt cannot pay twice.
+TERMINAL_FAILURE_STATUSES = frozenset(_TERMINAL_FAILURE_STATUSES)
 
 
 def build_idempotency_key(payment_cycle_id: int, employee_id: int, reference_id: int) -> str:
@@ -92,6 +94,13 @@ def _active_recipient_reference(
             m.EmployeeExternalPaymentAccount.is_active.is_(True),
         )
     ).first()
+
+
+def active_recipient_reference(
+    session: Session, employee_id: int, *, connector_code: str,
+) -> "m.EmployeeExternalPaymentAccount | None":
+    """The recipient reference a submit would use now (public, read-only)."""
+    return _active_recipient_reference(session, employee_id, connector_code=connector_code)
 
 
 def mark_needs_attention(

@@ -492,7 +492,7 @@ def _run_all_scenarios(session: Session, result: ValidationResult) -> None:
     _link_recipient(session, server_b, "recipient-b-ok")
     client._recipient_behavior["recipient-b-ok"] = "ok"
 
-    cycle_svc.retry_instruction(session, server_b_instruction, connector, source_account_id="acct-1")
+    cycle_svc.retry_instruction(session, server_b_instruction, connector, source_account_id="acct-1", acting_identity=approver)
     session.commit()
     result.check(
         "retry-only: the retried instruction (ServerB) now succeeded", server_b_instruction.status in ("SENT", "OUTCOME_VERIFIED"),

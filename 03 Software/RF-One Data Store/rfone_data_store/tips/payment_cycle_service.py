@@ -71,6 +71,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from .. import financial_authorization
 from ..site_selection import require_operational
 from ..attention_service import create_attention, route_attention
 from ..authority_service import AuthorizationContext, authorize
@@ -355,6 +356,15 @@ class PaymentNotReadyError(ApproveAndPayError):
         super().__init__(f"Payment Cycle for Restaurant {readiness.restaurant_id} is NOT READY: {readiness.reason}")
 
 
+def _payment_authority(session: Session, *, acting_identity: "m.ActingIdentity", restaurant_id: int):
+    """The ONE Authority gate of every Tips payment action (Approve & Pay and
+    retry of a failed instruction alike)."""
+    return authorize(
+        session, actor=acting_identity, action=AUTHORITY_ACTION_APPROVE_AND_PAY,
+        context=AuthorizationContext(domain=AUTHORITY_DOMAIN_TIPS, scope_type=m.SCOPE_RESTAURANT, scope_id=restaurant_id),
+    )
+
+
 def can_approve_and_pay(session: Session, *, acting_identity: "m.ActingIdentity", restaurant_id: int) -> bool:
     """Read-only convenience wrapper around the SAME gate `approve_and_pay_
     cycle` enforces server-side (never a second, divergent check) — for a
@@ -362,11 +372,22 @@ def can_approve_and_pay(session: Session, *, acting_identity: "m.ActingIdentity"
     submit attempt. Never itself a substitute for the server-side gate:
     `approve_and_pay_cycle` re-checks Authority unconditionally regardless
     of what this returned."""
-    decision = authorize(
-        session, actor=acting_identity, action=AUTHORITY_ACTION_APPROVE_AND_PAY,
-        context=AuthorizationContext(domain=AUTHORITY_DOMAIN_TIPS, scope_type=m.SCOPE_RESTAURANT, scope_id=restaurant_id),
-    )
-    return decision.allowed
+    return _payment_authority(session, acting_identity=acting_identity, restaurant_id=restaurant_id).allowed
+
+
+def account_payment_identity(session: Session, *, account, restaurant_id: int) -> "m.ActingIdentity":
+    """CLOVER_MULTISITE_001 (Product Owner 2026-11-21): a person approves or
+    retries a Tips payment only as the account they are signed in with — the
+    central `financial_authorization.require` (restaurant access in TIPS, an
+    operational site, and the account's own Approve & Pay authority). Returns
+    that account's Acting Identity; raises `ApproveAndPayError` otherwise."""
+    try:
+        return financial_authorization.require(
+            session, account=account, permission=financial_authorization.TIPS_APPROVE_AND_PAY,
+            restaurant_id=restaurant_id,
+        )
+    except financial_authorization.FinancialAuthorizationError as exc:
+        raise ApproveAndPayError(str(exc)) from exc
 
 
 @dataclass
@@ -402,15 +423,15 @@ def approve_and_pay_cycle(
     CALLER from this Restaurant's own configured `connector_code` — this
     function never resolves or defaults one itself."""
     require_operational(session, cycle.restaurant_id)  # CLOVER_MULTISITE_001
+    # Lock the cycle row so two simultaneous approvals cannot both see it OPEN
+    # (PostgreSQL row lock; a no-op on SQLite, which serializes writers).
+    session.flush()
+    session.execute(select(m.TipPaymentCycle.id).where(m.TipPaymentCycle.id == cycle.id).with_for_update())
+    session.refresh(cycle)
     if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_OPEN:
         raise ApproveAndPayError(f"Payment Cycle {cycle.id} is not OPEN (status={cycle.status!r}).")
 
-    decision = authorize(
-        session, actor=acting_identity, action=AUTHORITY_ACTION_APPROVE_AND_PAY,
-        context=AuthorizationContext(
-            domain=AUTHORITY_DOMAIN_TIPS, scope_type=m.SCOPE_RESTAURANT, scope_id=cycle.restaurant_id,
-        ),
-    )
+    decision = _payment_authority(session, acting_identity=acting_identity, restaurant_id=cycle.restaurant_id)
     if not decision.allowed:
         raise ApproveAndPayError(
             f"Acting Identity {acting_identity.id} is not authorized to Approve & Pay Tips for Restaurant "
@@ -445,19 +466,99 @@ def approve_and_pay_cycle(
     return ApproveAndPayResult(cycle=cycle, submitted_count=submitted, needs_attention_count=needs_attention, funding=funding)
 
 
+class PaymentRetryError(ApproveAndPayError):
+    """A retry was refused: nothing was submitted and no state changed, or
+    (for "already paid") only the read-back outcome was recorded."""
+
+
+RETRY_SUBMITTED = "SUBMITTED"
+
+
 def retry_instruction(
     session: Session, instruction: "m.TipPaymentInstruction", connector: "connector_svc.PaymentConnector", *,
-    source_account_id: str,
-) -> None:
-    """Resumes exactly ONE failed/unresolved Payment Instruction; never
-    touches any sibling instruction in the same cycle, and never resubmits
-    an already-terminal (SENT/OUTCOME_VERIFIED) one (`payment_instruction.
-    submit_payment_instruction`'s own guard)."""
-    cycle = session.get(m.TipPaymentCycle, instruction.payment_cycle_id)
-    pi_svc.submit_payment_instruction(session, instruction, connector, account_id=source_account_id)
-    if cycle is not None:
-        _maybe_raise_attention(session, instruction, restaurant_id=cycle.restaurant_id)
+    source_account_id: str, acting_identity: "m.ActingIdentity", now: datetime | None = None,
+) -> str:
+    """Resumes exactly ONE failed Payment Instruction of an APPROVED cycle;
+    never touches any sibling instruction.
+
+    Same authorization as the initial payment (CLOVER_MULTISITE_001, Product
+    Owner 2026-11-21): an operational site and the Approve & Pay Authority
+    for the cycle's restaurant — the person-facing caller first resolves
+    `acting_identity` with `account_payment_identity`.
+
+    Never a duplicate payment:
+    - the instruction row is locked and re-read, so two simultaneous retries
+      cannot both submit;
+    - only an instruction of an APPROVED cycle that is NEEDS_ATTENTION is
+      retried (READY ones are paid only by Approve & Pay; SUBMITTED/SENT/
+      OUTCOME_VERIFIED are already paid or in progress; CANCELLED is final);
+    - when a provider transaction already exists, its current outcome is read
+      back first: a transaction pending, sent or posted means already paid
+      (nothing is resubmitted); a reversed one needs a person's review; an
+      outcome that cannot be read is not guessed. Only a transaction the
+      provider reports failed, blocked or cancelled is resubmitted;
+    - when an earlier attempt may have reached the provider without a known
+      outcome (provider unavailable, or the provider's own duplicate
+      protection fired), the retry reuses the same idempotency key; if the
+      recipient changed in the meantime (which would need a new key) the
+      retry is refused until the earlier attempt is verified with the
+      provider. A request the provider rejected synchronously, or one never
+      sent (no recipient), created no payment and may be retried.
+    Returns `RETRY_SUBMITTED`; raises `PaymentRetryError` when refused."""
     session.flush()
+    session.execute(select(m.TipPaymentInstruction.id).where(
+        m.TipPaymentInstruction.id == instruction.id).with_for_update())
+    session.refresh(instruction)
+    cycle = session.get(m.TipPaymentCycle, instruction.payment_cycle_id)
+    if cycle is None:
+        raise PaymentRetryError(f"Payment Instruction {instruction.id} has no Payment Cycle.")
+    require_operational(session, cycle.restaurant_id)
+    decision = _payment_authority(session, acting_identity=acting_identity, restaurant_id=cycle.restaurant_id)
+    if not decision.allowed:
+        raise PaymentRetryError(
+            f"Acting Identity {acting_identity.id} is not authorized to pay Tips for Restaurant "
+            f"{cycle.restaurant_id}: {decision.reason}")
+    if cycle.status != m.TIP_PAYMENT_CYCLE_STATUS_APPROVED:
+        raise PaymentRetryError(
+            f"Payment Cycle {cycle.id} is not approved (status={cycle.status!r}): use Approve & Pay.")
+    if instruction.status != pi_svc.STATUS_NEEDS_ATTENTION:
+        raise PaymentRetryError(
+            f"Payment Instruction {instruction.id} is {instruction.status}: there is no failed payment to retry.")
+
+    if instruction.provider_transaction_id is not None:
+        pi_svc.refresh_outcome(session, instruction, connector)
+        if instruction.status in (pi_svc.STATUS_SENT, pi_svc.STATUS_SUBMITTED, pi_svc.STATUS_OUTCOME_VERIFIED):
+            session.flush()
+            raise PaymentRetryError(
+                f"Payment Instruction {instruction.id} is already paid or in progress at the provider "
+                f"(status {instruction.provider_status!r}): nothing was resubmitted.")
+        if instruction.failure_class == pi_svc.FAILURE_OUTCOME_REOPENED:
+            session.flush()
+            raise PaymentRetryError(
+                f"Payment Instruction {instruction.id} was reversed by the provider: it needs a person's "
+                "review, not an automatic resubmission.")
+        if (instruction.provider_status or "").lower() not in pi_svc.TERMINAL_FAILURE_STATUSES:
+            session.flush()
+            raise PaymentRetryError(
+                f"The outcome of the earlier payment of instruction {instruction.id} cannot be confirmed "
+                "with the provider: nothing was resubmitted.")
+    elif instruction.idempotency_key is not None and instruction.failure_class in (
+            pi_svc.FAILURE_PROVIDER_UNAVAILABLE, pi_svc.FAILURE_DUPLICATE_PROTECTION):
+        reference = pi_svc.active_recipient_reference(
+            session, instruction.employee_id, connector_code=connector.connector_code)
+        if reference is not None and reference.provider_recipient_id != instruction.provider_recipient_id:
+            raise PaymentRetryError(
+                f"An earlier attempt of instruction {instruction.id} reached the provider for a different "
+                "recipient and its outcome is unknown: verify it with the provider before retrying.")
+
+    pi_svc.submit_payment_instruction(session, instruction, connector, account_id=source_account_id)
+    _maybe_raise_attention(session, instruction, restaurant_id=cycle.restaurant_id)
+    stamp = (now or datetime.now(UTC)).isoformat(timespec="seconds")
+    line = (f"{stamp} retry of instruction {instruction.id} by Acting Identity {acting_identity.id}: "
+            f"{instruction.status}")
+    cycle.notes = f"{cycle.notes}\n{line}" if cycle.notes else line
+    session.flush()
+    return RETRY_SUBMITTED
 
 
 def refresh_outcomes_for_cycle(
