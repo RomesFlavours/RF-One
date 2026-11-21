@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
-{% set help_section = 'admin_account_access' %}
 {% block page_title %}Domain Access · RF-One{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Domain Access', None)]) }}
@@ -73,40 +72,8 @@
             {% endfor %}
           </ul>
         {% endif %}
-        {% if row.domain.site_scoped %}
-          {#- CLOVER_MULTISITE_001 — which companies (and so which restaurants)
-              this direct access reaches. All companies = every restaurant, as
-              before; RFGroup = every company, operational reach only. #}
-          <div class="access-row access-companies">
-            Restaurants:
-            <label class="access-choice"><input type="radio" name="company_scope_{{ code }}" value="all"
-                   {{ "checked" if row.company_scope != "SELECTED" }}> All companies</label>
-            <label class="access-choice"><input type="radio" name="company_scope_{{ code }}" value="selected"
-                   {{ "checked" if row.company_scope == "SELECTED" }}> Only the companies ticked</label>
-          </div>
-          <ul class="access-items access-company-list">
-            {% for company in companies %}
-              <li><label class="access-choice"><input type="checkbox" name="companies_{{ code }}" value="{{ company.id }}"
-                     {{ "checked" if company.id in row.selected_companies }}> {{ company.name }}{% if company.kind == 'GROUP' %} (all companies){% endif %}</label></li>
-            {% endfor %}
-          </ul>
-        {% endif %}
       </fieldset>
     {% endfor %}
-    <fieldset class="access-domain" data-payments>
-      <legend class="access-name">Payment authorizations</legend>
-      <input type="hidden" name="payment_permissions_form" value="1">
-      <p class="muted">A payment also needs access to the restaurant above. The person always approves as themselves.</p>
-      {% for row in payment_view %}
-        <div class="access-row">{{ row.permission.label }}:
-          {% for site in sites %}
-            <label class="access-choice"><input type="checkbox" name="pay_{{ row.permission.domain_code }}_{{ row.permission.action }}"
-                   value="{{ site.restaurant_id }}" {{ "checked" if site.restaurant_id in row.granted }}> {{ site.name }}{% if not site.active %} (inactive){% endif %}</label>
-          {% endfor %}
-          {% if row.global %}<span class="muted">Also holds an authorization for every restaurant, not managed here.</span>{% endif %}
-        </div>
-      {% endfor %}
-    </fieldset>
     <div class="btn-row">
       <button type="submit">Save</button>
     </div>
@@ -114,18 +81,10 @@
 </div>
 <script>
   // Ticking an item means "only selected items" for that Domain.
-  // Ticking a company means "only the companies ticked" for that Domain.
-  document.querySelectorAll('.access-company-list').forEach(function (list) {
-    var box = list.closest('.access-domain');
-    var selected = box.querySelector('.access-companies input[type=radio][value=selected]');
-    list.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
-      cb.addEventListener('change', function () { if (cb.checked) selected.checked = true; });
-    });
-  });
   document.querySelectorAll('.access-domain').forEach(function (box) {
-    var selected = box.querySelector('.access-row:not(.access-companies) input[type=radio][value=selected]');
+    var selected = box.querySelector('input[type=radio][value=selected]');
     if (!selected) return;
-    box.querySelectorAll('.access-items:not(.access-company-list) input[type=checkbox]').forEach(function (cb) {
+    box.querySelectorAll('.access-items input[type=checkbox]').forEach(function (cb) {
       cb.addEventListener('change', function () { if (cb.checked) selected.checked = true; });
     });
   });

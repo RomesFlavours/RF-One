@@ -14,7 +14,7 @@
       "workingDirectory": "/app/RF-One Data Store",
       "command": [
         "python", "-m", "rfone_data_store.technical.connectors.clover.correction_sync",
-        "--all-active-locations", "--interval-seconds", "60", "--skip-migrations"
+        "--location-id", "1", "--interval-seconds", "60", "--skip-migrations"
       ],
       "stopTimeout": 120,
       "environment": [

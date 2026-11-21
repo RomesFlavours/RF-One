@@ -109,7 +109,7 @@ def main() -> int:
             def add_shifts(emp, days, hours):
                 for day in days:  # 10:00 local, on the week of Monday 7 September 2026
                     start = datetime(2026, 9, day, 10, tzinfo=ZoneInfo("America/New_York")).astimezone(timezone.utc)
-                    s.add(m.Shift(employee_id=emp.id, location_id=emp.location_id, clock_in=start, clock_out=start + timedelta(hours=hours)))
+                    s.add(m.Shift(employee_id=emp.id, clock_in=start, clock_out=start + timedelta(hours=hours)))
 
             add_shifts(employee, (7, 8, 9, 10, 11), 9)  # 45 h -> 40 Regular + 5 Overtime
             term = m.EmployeeCompensationTerm(

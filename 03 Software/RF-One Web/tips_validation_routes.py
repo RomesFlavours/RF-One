@@ -37,55 +37,39 @@ in the Tips app, unchanged. Registered from `app.py` via
 
 from __future__ import annotations
 
-import os
-
-from flask import abort, flash, redirect, render_template, request, url_for
-from flask import session as flask_session
+from flask import flash, redirect, render_template, url_for
 from sqlalchemy import select
 
 from rfone_data_store import models as m
 from rfone_data_store import rfone_web_session as shared_session
-from rfone_data_store import site_selection
 from rfone_data_store.tips import calculation_run_service as run_svc
 from rfone_data_store.tips import validation_mode_service as validation_mode_svc
 
 TIPS_DOMAIN_CODE = "TIPS"
-SITE_SESSION_KEY = "tips_validation_restaurant_id"
 
 
 def register_tips_validation_routes(
     app, *, require_domain_access, SessionFactory, load_current_account, require_csrf,
 ) -> None:
 
-    def _account_sites(db, account):
-        """CLOVER_MULTISITE_001 — the restaurants this account may see and validate (central rule)."""
-        return site_selection.sites_for_account(db, account, TIPS_DOMAIN_CODE)
-
-    def _require_site_access(db, account, restaurant_id):
-        if restaurant_id not in {site.restaurant_id for site in _account_sites(db, account)}:
-            abort(403, description="This RF-One account may not use Tips for this restaurant.")
-
     @app.route("/tips/runs")
     @require_domain_access(TIPS_DOMAIN_CODE)
     def tips_validation_runs():
-        """The saved Calculation Runs of the SELECTED restaurant (CLOVER_MULTISITE_001), newest
-        first, final and non-final alike, as in the Tips app's own history."""
+        """Every saved Calculation Run, per Restaurant, newest first —
+        final and non-final alike, as in the Tips app's own history."""
         with SessionFactory() as db:
-            account = load_current_account(db)
-            sites = _account_sites(db, account)
-            site = site_selection.resolve_site(db, request.args.get("restaurant_id", type=int),
-                                               flask_session.get(SITE_SESSION_KEY), sites=sites)
-            sections = []
-            if site is not None:
-                flask_session[SITE_SESSION_KEY] = site.restaurant_id
-                restaurant = db.get(m.Restaurant, site.restaurant_id)
-                sections = [{
+            restaurants = list(db.scalars(select(m.Restaurant).order_by(m.Restaurant.id)))
+            sections = [
+                {
                     "restaurant": restaurant,
                     "runs": run_svc.list_runs(db, restaurant_id=restaurant.id),
-                    "validation_mode": validation_mode_svc.get_validation_mode(db, restaurant_id=restaurant.id),
-                }]
-            return render_template("tips_validation_runs.html", sections=sections, sites=sites, site=site,
-                                   ui_it=os.environ.get("RFONE_UI_LANGUAGE") == "it")
+                    "validation_mode": validation_mode_svc.get_validation_mode(
+                        db, restaurant_id=restaurant.id,
+                    ),
+                }
+                for restaurant in restaurants
+            ]
+            return render_template("tips_validation_runs.html", sections=sections)
 
     @app.route("/tips/runs/<int:run_id>")
     @require_domain_access(TIPS_DOMAIN_CODE)
@@ -98,8 +82,6 @@ def register_tips_validation_routes(
                 return redirect(url_for("tips_validation_runs"))
             account = load_current_account(db)
             run = report["run"]
-            _require_site_access(db, account, run.restaurant_id)
-            flask_session[SITE_SESSION_KEY] = run.restaurant_id  # the list reopens on this run's restaurant
             return render_template(
                 "tips_validation_run.html", report=report, run=run,
                 restaurant=db.get(m.Restaurant, run.restaurant_id),
@@ -108,7 +90,6 @@ def register_tips_validation_routes(
                 ),
                 identified_as=shared_session.account_display_name(account),
                 finalization_blockers=run_svc.finalization_blockers(db, run),
-                site_active=site_selection.restaurant_is_operational(db, run.restaurant_id),
             )
 
     @app.route("/tips/runs/<int:run_id>/validate", methods=["POST"])
@@ -121,14 +102,6 @@ def register_tips_validation_routes(
         require_csrf()
         with SessionFactory() as db:
             account = load_current_account(db)
-            target = db.get(m.TipDistributionCalculationRun, run_id)
-            if target is not None:
-                # Server-side, whatever the page showed: the account must be allowed this
-                # restaurant, and an inactive restaurant is never finalized.
-                _require_site_access(db, account, target.restaurant_id)
-                if not site_selection.restaurant_is_operational(db, target.restaurant_id):
-                    flash("This restaurant is not active yet: its Tips periods cannot be validated.", "error")
-                    return redirect(url_for("tips_validation_run", run_id=run_id))
             run, reason = run_svc.validate_run(
                 db, run_id=run_id, account_id=account.id if account is not None else None,
             )

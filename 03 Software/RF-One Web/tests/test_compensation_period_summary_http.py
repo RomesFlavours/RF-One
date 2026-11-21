@@ -85,7 +85,7 @@ def main() -> int:
             for offset in range(5):
                 for day, hours in ((week1, 9), (week2, 7)):
                     start = _local(day + timedelta(days=offset), 10)
-                    s.add(m.Shift(employee_id=ceban.id, location_id=ceban.location_id, clock_in=start, clock_out=start + timedelta(hours=hours)))
+                    s.add(m.Shift(employee_id=ceban.id, clock_in=start, clock_out=start + timedelta(hours=hours)))
             run = m.TipDistributionCalculationRun(
                 restaurant_id=restaurant.id, period_start=_local(week1, 4), period_end=_local(week2 + timedelta(days=7), 4),
                 status="COMPLETE", state=m.TIPS_RUN_STATE_FINAL, first_business_date=week1,
@@ -148,8 +148,7 @@ def main() -> int:
               bool(row_ceban) and "$0.00" in row_ceban.group(3))
         check("tips-only employee is a row with $42.00", "Andrew M." in html and "$42.00" in html)
         check("Surname-first format is not used on this page", "Ceban T." not in html and "Muller A." not in html)
-        # CLOVER_MULTISITE_001: no home-Location attribution any more; these Shifts carry their own Location.
-        check("Location attribution: every Shift carries its own Location", "every Shift in this period carries its own Location" in html)
+        check("home-Location attribution is visible (10 of 10 Shifts)", "10 of 10 Shifts" in html and "home Location &times;10" in html)
         check("the FINAL run used is linked", f'href="/tips/runs/{run_id}"' in html)
         check("Bonus is 'to be defined'", "to be defined" in html)
         check("settings used are displayed", "America/New_York" in html and "04:00" in html and "Monday" in html)
