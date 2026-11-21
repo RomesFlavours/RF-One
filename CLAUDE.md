@@ -156,6 +156,16 @@ Each top-level directory carries its own `README.md` stating purpose, authority 
 
 ---
 
+# Mandatory Repository Context Before Any Task
+
+At the start of **every** task, read this file and the repository `README.md`. Identify the exact checked-out branch/commit, the approved task and the affected canonical documents; read the applicable `00 Core/`, `01 Domains/`, `02 Products/`, `09 Strategy/` and `10 System/` sources before changing code or documentation. Use `03 Software/` for implementation behavior, not to override canonical business meaning. Historical task reports (`07 Tasks/`) and `PROJECT_STATE.md` are evidence and dated snapshots, not substitutes for current approved specifications.
+
+Before implementation, provide a compact **source-of-authority checklist**: task/specification, canonical paths consulted, requirements/invariants, prohibited changes, affected dependencies, unresolved contradictions. Do not proceed on an unresolved material business decision. When an approved specification is supplied in chat but not yet committed, explicitly flag the documentation update needed; never pretend another agent can see the chat.
+
+Work only on the intended branch; never silently change `main`, Shelbi's integration branch, production data or AWS. A local checkout is not automatically synchronized with GitHub: verify the intended ref before work and use explicit Git fetch/pull and push/PR procedures. Never claim automatic synchronization.
+
+---
+
 # Documentation First
 
 Documentation comes before implementation.
