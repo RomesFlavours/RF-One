@@ -1,0 +1,565 @@
+"""Registry Role/Department table (REGISTRY_CLOVER_DEPARTMENTS_001, Product Owner 2026-11-20/21).
+
+One central organizational table, owned by Registry and readable by every Domain (Bank, Tips,
+Compensation, Training, Organization) through `classification` / `department_of`:
+
+    original role (Clover role of a site, or a historical code such as Note sheet "2-Serv")
+        -> RF-One role (shared Registry role catalog)      `RegistryRoleMapping`, per Restaurant
+        -> department (FOH, BOH, ... inside Restaurant Operations)   `RegistryRoleDepartment`
+
+When the RF-One role of an original role is not certain, the mapping may still carry a certain
+department (Clover "BOH"). Every change closes the current row and opens a new one (history kept).
+
+`sync_site` runs at the end of every Clover employee import (`employee_directory.import_snapshot`), so
+it is part of the import, never a separate procedure. For every confirmed person of the site:
+  - the current Clover role decides the RF-One role through the table; a change closes the previous
+    Clover-synced assignment and opens the new one (one open assignment per person and Restaurant);
+  - a person no longer in Clover keeps the person and the history; the open assignment is closed;
+  - an assignment kept by hand in Registry (source MANUAL) is never closed or replaced;
+  - effective from the moment of the sync, never backdated; identities still pending confirmation get
+    nothing (no duplicate person across sites).
+Historical roles from documents (`RegistryPersonSourceRole`) never open assignments and never replace
+the current Clover role. Clover data and Tips' `SourceRoleMapping` are never read for writing or changed.
+No commits: the caller owns the transaction.
+"""
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from sqlalchemy import inspect, select
+
+from . import models as m
+
+ASSIGNMENT_SOURCE = "CLOVER_ROLE_SYNC"      # the same source the former one-off Winter Park sync used
+CLOVER = "CLOVER"
+EXCEL_WP_NOTE = "EXCEL_WP_NOTE"             # "2026 - WP Control Bank.xlsb", sheet Note
+SOURCE_LABELS = {CLOVER: "Clover", EXCEL_WP_NOTE: "Excel WP Control Bank · Note"}
+ORIGIN_SEED, ORIGIN_PERSON = "SEED", "PERSON"
+ROOT_AREA_CODE = "ROOT"                     # "Restaurant Operations"
+TABLES = {"registry_departments", "registry_role_departments", "registry_role_mappings", "registry_person_source_roles"}
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def available(db) -> bool:
+    """False on a database without the migration a1c220261121: the import then works exactly as before."""
+    return TABLES <= set(inspect(db.connection()).get_table_names())
+
+
+def _named_roles(snapshot):
+    from .employee_directory import named_roles
+    return named_roles(snapshot)
+
+
+def site_restaurant_id(db, location_id) -> int | None:
+    return db.scalar(select(m.RestaurantLocation.restaurant_id).where(
+        m.RestaurantLocation.location_id == location_id, m.RestaurantLocation.valid_to.is_(None)
+    ).order_by(m.RestaurantLocation.id))
+
+
+def operations_area(db, restaurant_id=None):
+    """The Restaurant's own Restaurant Operations area, else the one the departments live in."""
+    area = db.scalar(select(m.OperationalArea).where(
+        m.OperationalArea.restaurant_id == restaurant_id, m.OperationalArea.code == ROOT_AREA_CODE
+    ).order_by(m.OperationalArea.id)) if restaurant_id is not None else None
+    return area or db.scalar(select(m.OperationalArea).where(
+        m.OperationalArea.code == ROOT_AREA_CODE, m.OperationalArea.restaurant_id.is_not(None)
+    ).order_by(m.OperationalArea.id))
+
+
+def role_departments(db) -> dict[int, int | None]:
+    return {r.restaurant_role_id: r.department_id for r in db.scalars(select(m.RegistryRoleDepartment).where(
+        m.RegistryRoleDepartment.valid_to.is_(None)))}
+
+
+def current_mappings(db, restaurant_id) -> dict[tuple[str, str], "m.RegistryRoleMapping"]:
+    return {(r.source, r.original_key): r for r in db.scalars(select(m.RegistryRoleMapping).where(
+        m.RegistryRoleMapping.restaurant_id == restaurant_id, m.RegistryRoleMapping.valid_to.is_(None)))}
+
+
+def effective(mapping, role_deps) -> tuple[int | None, int | None]:
+    """(RF-One role id, department id) an original role means: the department of the RF-One role, or the
+    mapping's own certain department when the RF-One role is not set or has no department."""
+    if mapping is None:
+        return None, None
+    role = mapping.restaurant_role_id
+    department = role_deps.get(role) if role else None
+    return role, department if department is not None else mapping.department_id
+
+
+def ensure_source_roles(db, *, location_id, links) -> dict[str, int]:
+    """Clover role id -> `SourceRole.id` for every role seen on this site's roster (name kept current)."""
+    location = db.get(m.Location, location_id)
+    seen = {}
+    for link in links:
+        seen.update(_named_roles(link.snapshot))
+    result = {}
+    for clover_id, name in seen.items():
+        row = db.scalar(select(m.SourceRole).where(
+            m.SourceRole.source_system_id == location.source_system_id, m.SourceRole.source_role_id == clover_id))
+        if row is None:
+            row = m.SourceRole(location_id=location_id, source_system_id=location.source_system_id,
+                               source_role_id=clover_id, name=name)
+            db.add(row)
+            db.flush()
+        elif row.name != name:
+            row.name = name
+        result[clover_id] = row.id
+    return result
+
+
+# ---------------------------------------------------------------- Clover import: assignments
+
+@dataclass
+class SyncSummary:
+    location_id: int
+    restaurant_id: int | None = None
+    opened: int = 0              # new assignment for a person who had none from Clover at this site
+    changed: int = 0             # Clover role changed: previous closed, new opened
+    closed_left: int = 0         # no longer in Clover: assignment closed, person kept
+    closed_unmapped: int = 0     # Clover role has no RF-One role in the table: previous closed
+    unchanged: int = 0
+    manual_kept: int = 0         # an assignment kept by hand in Registry: left untouched
+    pending_identity: int = 0    # Clover person not yet confirmed: reported, not assigned
+    multiple_roles: int = 0      # more than one Clover role at the site: reported, not decided
+    without_rf_role: int = 0     # Clover role without an RF-One role in the table (department may still be known)
+    issues: list[str] = field(default_factory=list)
+
+    def as_dict(self):
+        return dict(self.__dict__)
+
+
+def sync_site(db, *, location_id, merchant_id, now=None, dry_run=False) -> SyncSummary:
+    """Align the Registry assignments of one Clover site with its current roster. Reads only what the
+    import stored (`EmployeeCloverLink`), never calls Clover. `dry_run`: compute, then undo (savepoint)."""
+    summary = SyncSummary(location_id=location_id)
+    if not available(db):
+        summary.issues.append("Registry Role/Department tables are not installed.")
+        return summary
+    if dry_run:
+        savepoint = db.begin_nested()
+        try:
+            return _sync(db, summary, location_id, merchant_id, now or utc_now())
+        finally:
+            savepoint.rollback()
+    return _sync(db, summary, location_id, merchant_id, now or utc_now())
+
+
+def _sync(db, summary, location_id, merchant_id, now):
+    restaurant_id = summary.restaurant_id = site_restaurant_id(db, location_id)
+    if restaurant_id is None:
+        summary.issues.append("This Clover site is not linked to an RF-One Restaurant.")
+        return summary
+    links = list(db.scalars(select(m.EmployeeCloverLink).where(
+        m.EmployeeCloverLink.merchant_id == merchant_id).order_by(m.EmployeeCloverLink.id)))
+    ensure_source_roles(db, location_id=location_id, links=links)
+    mappings, role_deps = current_mappings(db, restaurant_id), role_departments(db)
+    area = operations_area(db, restaurant_id)
+    by_employee = defaultdict(list)
+    for link in links:
+        if link.employee_id is None:
+            summary.pending_identity += link.state == "PRESENT"
+            continue
+        by_employee[link.employee_id].append(link)
+    for employee_id, employee_links in sorted(by_employee.items()):
+        present = [l for l in employee_links if l.state == "PRESENT"]
+        roles = {}
+        for link in present:
+            roles.update(_named_roles(link.snapshot))
+        if len(roles) > 1:
+            summary.multiple_roles += 1
+            summary.issues.append(f"Employee #{employee_id}: {len(roles)} Clover roles at the same site; not decided.")
+            continue
+        target = None
+        if roles:
+            role_id, _department = effective(mappings.get((CLOVER, next(iter(roles)))), role_deps)
+            if role_id is None:
+                summary.without_rf_role += 1
+            elif area is None:
+                summary.issues.append("No Restaurant Operations area exists.")
+            else:
+                target = (role_id, area.id)
+        open_rows = list(db.scalars(select(m.EmployeeAssignment).where(
+            m.EmployeeAssignment.employee_id == employee_id, m.EmployeeAssignment.restaurant_id == restaurant_id,
+            m.EmployeeAssignment.valid_to.is_(None))))
+        if any(a.assignment_source != ASSIGNMENT_SOURCE for a in open_rows):
+            summary.manual_kept += 1
+            continue
+        synced = open_rows[0] if open_rows else None
+        if synced is not None and target == (synced.restaurant_role_id, synced.operational_area_id):
+            summary.unchanged += 1
+            continue
+        if synced is not None:
+            synced.valid_to = now
+            db.flush()          # close before opening: one open assignment per Restaurant
+            if target is not None:
+                summary.changed += 1
+            elif not present:
+                summary.closed_left += 1
+            else:
+                summary.closed_unmapped += 1
+        elif target is not None:
+            summary.opened += 1
+        if target is not None:
+            db.add(m.EmployeeAssignment(
+                employee_id=employee_id, restaurant_id=restaurant_id, operational_area_id=target[1],
+                restaurant_role_id=target[0], location_id=location_id, valid_from=now,
+                assignment_source=ASSIGNMENT_SOURCE,
+                source_note="Clover role at this site, synchronized by the Clover employee import "
+                            "(REGISTRY_CLOVER_DEPARTMENTS_001)"))
+            db.flush()
+    return summary
+
+
+# ---------------------------------------------------------------- data interface for every Domain
+
+def classification(db, *, employee_ids=None, include_history=False) -> list[dict]:
+    """Department of each confirmed person, one row per person and Restaurant.
+
+    basis CLOVER: the person's current Clover role at that site (people present in Clover today).
+    basis HISTORICAL (only with include_history): a role recorded by a source document, for people
+    without a current Clover role there. Keys: employee_id, restaurant_id, basis, source, original_role,
+    rf_role, department_code, department_name. Read-only."""
+    if not available(db):
+        return []
+    role_deps = role_departments(db)
+    departments = {d.id: d for d in db.scalars(select(m.RegistryDepartment))}
+    roles = {r.id: r for r in db.scalars(select(m.RestaurantRole))}
+    mappings, rows, current = {}, [], set()
+
+    def mapped(restaurant_id, source, key):
+        if restaurant_id not in mappings:
+            mappings[restaurant_id] = current_mappings(db, restaurant_id)
+        return effective(mappings[restaurant_id].get((source, key)), role_deps)
+
+    def row(employee_id, restaurant_id, basis, source, label, role_id, department_id):
+        department = departments.get(department_id)
+        department = department if department is not None and department.active else None
+        return {"employee_id": employee_id, "restaurant_id": restaurant_id, "basis": basis, "source": source,
+                "original_role": label, "rf_role": roles[role_id].name if role_id in roles else None,
+                "department_code": department.code if department else None,
+                "department_name": department.name if department else None}
+
+    query = select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id.is_not(None),
+                                               m.EmployeeCloverLink.state == "PRESENT")
+    if employee_ids is not None:
+        query = query.where(m.EmployeeCloverLink.employee_id.in_(list(employee_ids)))
+    for link in db.scalars(query.order_by(m.EmployeeCloverLink.employee_id, m.EmployeeCloverLink.id)):
+        restaurant_id = site_restaurant_id(db, link.location_id)
+        named = _named_roles(link.snapshot)
+        if len(named) == 1:
+            clover_id, label = next(iter(named.items()))
+            role_id, department_id = mapped(restaurant_id, CLOVER, clover_id) if restaurant_id else (None, None)
+        else:
+            label, role_id, department_id = ", ".join(sorted(named.values())) or None, None, None
+        rows.append(row(link.employee_id, restaurant_id, "CLOVER", CLOVER, label, role_id, department_id))
+        current.add((link.employee_id, restaurant_id))
+    if include_history:
+        query = select(m.RegistryPersonSourceRole)
+        if employee_ids is not None:
+            query = query.where(m.RegistryPersonSourceRole.employee_id.in_(list(employee_ids)))
+        for record in db.scalars(query.order_by(m.RegistryPersonSourceRole.employee_id)):
+            if (record.employee_id, record.restaurant_id) in current:
+                continue
+            role_id, department_id = mapped(record.restaurant_id, record.source, record.original_key)
+            rows.append(row(record.employee_id, record.restaurant_id, "HISTORICAL", record.source,
+                            record.original_key, role_id, department_id))
+    return rows
+
+
+def department_of(db, employee_id, *, include_history=False) -> set[str]:
+    """Department codes a person belongs to today (all sites); with include_history also from documents."""
+    return {r["department_code"] for r in classification(db, employee_ids=[employee_id], include_history=include_history)
+            if r["department_code"]}
+
+
+# ---------------------------------------------------------------- Registry management (Anagrafica page)
+
+def save_department(db, *, name, code, department_id=None, active=True, account_id=None):
+    name, code = (name or "").strip(), (code or "").strip().upper()
+    if not name or len(name) > 120:
+        raise ValueError("Inserisci il nome del reparto (massimo 120 caratteri).")
+    if not code or len(code) > 32:
+        raise ValueError("Inserisci un codice breve del reparto (massimo 32 caratteri).")
+    for other in db.scalars(select(m.RegistryDepartment)):
+        if other.id != department_id and (other.code == code or other.name.casefold() == name.casefold()):
+            raise ValueError("Esiste già un reparto con questo nome o codice.")
+    if department_id:
+        row = db.get(m.RegistryDepartment, department_id)
+        if row is None:
+            raise ValueError("Reparto non trovato.")
+    else:
+        area = operations_area(db)
+        if area is None:
+            raise ValueError("L’area Restaurant Operations non esiste.")
+        row = m.RegistryDepartment(operational_area_id=area.id)
+        db.add(row)
+    row.name, row.code, row.active = name, code, bool(active)
+    row.updated_by_account_id, row.updated_at = account_id, utc_now()
+    db.flush()
+    return row
+
+
+def _department(db, department_id):
+    if not department_id:
+        return None
+    department = db.get(m.RegistryDepartment, department_id)
+    if department is None:
+        raise ValueError("Reparto non trovato.")
+    return department
+
+
+def set_role_department(db, *, restaurant_role_id, department_id, account_id=None, now=None, origin=ORIGIN_PERSON):
+    """The department of an RF-One role (history kept). The classification of everybody with that role follows."""
+    now = now or utc_now()
+    role = db.get(m.RestaurantRole, restaurant_role_id)
+    if role is None:
+        raise ValueError("Ruolo RF-One non trovato.")
+    _department(db, department_id)
+    current = db.scalar(select(m.RegistryRoleDepartment).where(
+        m.RegistryRoleDepartment.restaurant_role_id == role.id, m.RegistryRoleDepartment.valid_to.is_(None)))
+    if current is not None and current.department_id == (department_id or None):
+        return current
+    if current is not None:
+        current.valid_to = now
+        db.flush()
+    row = m.RegistryRoleDepartment(restaurant_role_id=role.id, department_id=department_id or None, valid_from=now,
+                                   origin=origin, changed_by_account_id=account_id)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def save_role(db, *, name, department_id, role_id=None, account_id=None):
+    """Create or rename an RF-One role through the one Registry role implementation, then set its department.
+    A new role belongs to the Restaurant Operations area; an existing role keeps its areas."""
+    from . import access_profiles as profiles
+    if role_id:
+        area_ids = [p.operational_area_id for p in db.scalars(select(m.OperationalAreaRole).where(
+            m.OperationalAreaRole.restaurant_role_id == role_id))]
+        if not area_ids:
+            area_ids = [operations_area(db).id]
+    else:
+        area = operations_area(db)
+        if area is None:
+            raise ValueError("L’area Restaurant Operations non esiste.")
+        area_ids = [area.id]
+    role = profiles.save_role(db, name=name, area_ids=area_ids, role_id=role_id or None, actor=account_id)
+    set_role_department(db, restaurant_role_id=role.id, department_id=department_id, account_id=account_id)
+    return role
+
+
+def set_role_mapping(db, *, restaurant_id, source, original_key, original_label=None, restaurant_role_id=None,
+                     department_id=None, account_id=None, now=None):
+    """What an original role means at one Restaurant (history kept); a Clover change realigns the site at once."""
+    now = now or utc_now()
+    if db.get(m.Restaurant, restaurant_id) is None:
+        raise ValueError("Ristorante non trovato.")
+    source_role = None
+    if source == CLOVER:
+        source_role = db.scalar(select(m.SourceRole).where(m.SourceRole.source_role_id == original_key))
+        if source_role is None or site_restaurant_id(db, source_role.location_id) != restaurant_id:
+            raise ValueError("Questo ruolo Clover non appartiene a questa sede.")
+        original_label = source_role.name
+    elif source not in SOURCE_LABELS or not (original_key or "").strip():
+        raise ValueError("Ruolo originale non valido.")
+    role = db.get(m.RestaurantRole, restaurant_role_id) if restaurant_role_id else None
+    if restaurant_role_id and (role is None or role.active is False
+                               or role.restaurant_id not in (None, restaurant_id)):
+        raise ValueError("Scegli un ruolo RF-One attivo valido per questo ristorante.")
+    _department(db, department_id)
+    current = current_mappings(db, restaurant_id).get((source, original_key))
+    if current is not None and current.restaurant_role_id == (restaurant_role_id or None) \
+            and current.department_id == (department_id or None):
+        return current
+    if current is not None:
+        current.valid_to = now
+        db.flush()
+    row = m.RegistryRoleMapping(
+        restaurant_id=restaurant_id, source=source, original_key=original_key,
+        original_label=original_label or original_key, source_role_id=source_role.id if source_role else None,
+        restaurant_role_id=restaurant_role_id or None, department_id=department_id or None, valid_from=now,
+        origin=ORIGIN_PERSON, changed_by_account_id=account_id)
+    db.add(row)
+    db.flush()
+    if source_role is not None:
+        location = db.get(m.Location, source_role.location_id)
+        if location is not None and location.source_location_id:
+            sync_site(db, location_id=location.id, merchant_id=location.source_location_id, now=now)
+    return row
+
+
+def _history(db, model, **where):
+    query = select(model)
+    for key, value in where.items():
+        query = query.where(getattr(model, key) == value)
+    return list(db.scalars(query.order_by(model.valid_from.desc(), model.id.desc())))
+
+
+def overview(db) -> dict:
+    """Everything the Anagrafica > Reparti e ruoli page shows."""
+    if not available(db):
+        return {"roles": [], "sites": [], "missing": 0}
+    role_deps = role_departments(db)
+    departments = {d.id: d for d in db.scalars(select(m.RegistryDepartment))}
+    roles = {r.id: r for r in db.scalars(select(m.RestaurantRole))}
+    restaurants = {r.id: r for r in db.scalars(select(m.Restaurant))}
+    holders, pending = Counter(), Counter()
+    for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.state == "PRESENT")):
+        for clover_id in _named_roles(link.snapshot):
+            holders[(link.location_id, clover_id)] += 1
+            pending[(link.location_id, clover_id)] += link.employee_id is None
+    historical = Counter((r.restaurant_id, r.source, r.original_key) for r in db.scalars(select(m.RegistryPersonSourceRole)))
+    open_by_role = Counter(a.restaurant_role_id for a in db.scalars(select(m.EmployeeAssignment).where(
+        m.EmployeeAssignment.valid_to.is_(None))))
+    by_role_today, by_role_history = Counter(), Counter()
+    for item in classification(db, include_history=True):
+        role_id = next((rid for rid, r in roles.items() if r.name == item["rf_role"]), None)
+        (by_role_today if item["basis"] == "CLOVER" else by_role_history)[role_id] += 1
+
+    def describe(row, model_dep):
+        return {"valid_from": row.valid_from, "valid_to": row.valid_to, "origin": row.origin,
+                "account_id": row.changed_by_account_id,
+                "department": departments[model_dep].name if model_dep in departments else None}
+
+    role_rows = []
+    for role in sorted(roles.values(), key=lambda r: r.name.casefold()):
+        if role.active is False:
+            continue
+        department = departments.get(role_deps.get(role.id))
+        role_rows.append({
+            "id": role.id, "name": role.name, "code": role.code, "department": department,
+            "department_id": department.id if department else None, "missing_department": department is None,
+            "people_today": by_role_today[role.id], "people_history": by_role_history[role.id],
+            "open_assignments": open_by_role[role.id],
+            "history": [describe(h, h.department_id) for h in _history(db, m.RegistryRoleDepartment, restaurant_role_id=role.id)]})
+
+    sites = defaultdict(list)
+    site_locations = defaultdict(list)
+    for rl, location in db.execute(select(m.RestaurantLocation, m.Location).join(
+            m.Location, m.Location.id == m.RestaurantLocation.location_id).where(m.RestaurantLocation.valid_to.is_(None))):
+        site_locations[rl.restaurant_id].append(location)
+    restaurant_ids = set(site_locations) | {r.restaurant_id for r in db.scalars(select(m.RegistryRoleMapping))}
+    for restaurant_id in restaurant_ids:
+        mappings = current_mappings(db, restaurant_id)
+        keys = {}
+        for location in site_locations.get(restaurant_id, []):
+            for source_role in db.scalars(select(m.SourceRole).where(m.SourceRole.location_id == location.id)):
+                if holders[(location.id, source_role.source_role_id)] or (CLOVER, source_role.source_role_id) in mappings:
+                    keys[(CLOVER, source_role.source_role_id)] = (source_role.name, location)
+        for (source, key), mapping in mappings.items():
+            keys.setdefault((source, key), (mapping.original_label, None))
+        for (source, key), (label, location) in keys.items():
+            mapping = mappings.get((source, key))
+            role_id, department_id = effective(mapping, role_deps)
+            department = departments.get(department_id)
+            people = holders[(location.id, key)] if location is not None else historical[(restaurant_id, source, key)]
+            sites[restaurant_id].append({
+                "restaurant_id": restaurant_id, "source": source, "source_label": SOURCE_LABELS.get(source, source),
+                "original_key": key, "original_label": label, "location": location.name if location else None,
+                "timezone": location.timezone if location else None,
+                "people": people, "pending": pending[(location.id, key)] if location is not None else 0,
+                "restaurant_role_id": role_id, "own_department_id": mapping.department_id if mapping else None,
+                "department": department, "role_has_department": bool(role_id and role_deps.get(role_id)),
+                "missing_department": department is None,
+                "history": [dict(describe(h, h.department_id), rf_role=roles[h.restaurant_role_id].name
+                                 if h.restaurant_role_id in roles else None)
+                            for h in _history(db, m.RegistryRoleMapping, restaurant_id=restaurant_id, source=source,
+                                              original_key=key)]})
+    site_rows = []
+    for restaurant_id, rows in sites.items():
+        rows.sort(key=lambda r: (r["source"] != CLOVER, r["original_label"].casefold()))
+        name = restaurants[restaurant_id].name if restaurant_id in restaurants else f"#{restaurant_id}"
+        site_rows.append({"restaurant_id": restaurant_id, "restaurant": name, "rows": rows})
+    site_rows.sort(key=lambda s: s["restaurant"])
+    missing = sum(r["missing_department"] for r in role_rows) + sum(r["missing_department"] for s in site_rows for r in s["rows"])
+    return {"roles": role_rows, "sites": site_rows, "missing": missing}
+
+
+# ---------------------------------------------------------------- historical roles from a document
+
+@dataclass
+class HistoryLoad:
+    rows_read: int = 0
+    people: int = 0
+    reconciled: int = 0
+    already_loaded: int = 0
+    loaded: int = 0
+    not_found: list = field(default_factory=list)       # identities not in Registry: reported, never created
+    incomplete: list = field(default_factory=list)      # rows without identity or role
+    duplicates: list = field(default_factory=list)
+    name_differences: list = field(default_factory=list)
+    department_differences: list = field(default_factory=list)   # document HOUSE vs role table
+    current_role_differences: list = field(default_factory=list) # document role vs current Clover role
+
+    def as_dict(self):
+        return dict(self.__dict__)
+
+
+def load_source_roles(db, records, *, restaurant_id, merchant_id, source=EXCEL_WP_NOTE, reference, dry_run=False):
+    """Record each person's historical role from a document (records: row, register_id = Clover employee id,
+    name, house, role). Reuses the existing person through its Clover identity; never creates people, never
+    changes names, status, assignments or the current Clover role. Re-running changes nothing."""
+    from .employee_directory import _normalized, resolve_employee_id
+    from difflib import SequenceMatcher
+    report = HistoryLoad(rows_read=len(records))
+    savepoint = db.begin_nested() if dry_run else None
+    try:
+        mappings, role_deps = current_mappings(db, restaurant_id), role_departments(db)
+        departments = {d.id: d.code for d in db.scalars(select(m.RegistryDepartment))}
+        seen = {}
+        for record in records:
+            key, name, role = (record.get("register_id") or "").strip(), (record.get("name") or "").strip(), record.get("role")
+            if not key or not name:
+                report.incomplete.append({"row": record.get("row"), "reason": "missing Register ID or name"})
+                continue
+            if key in seen:
+                report.duplicates.append({"row": record.get("row"), "same_as_row": seen[key], "register_id": key})
+                continue
+            seen[key] = record.get("row")
+            report.people += 1
+            link = db.scalar(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id == merchant_id, m.EmployeeCloverLink.external_employee_id == key))
+            employee_id = resolve_employee_id(db, link.employee_id) if link is not None and link.employee_id else None
+            if employee_id is None:
+                report.not_found.append({"row": record.get("row"), "register_id": key, "name": name})
+                continue
+            report.reconciled += 1
+            employee = db.get(m.Employee, employee_id)
+            if SequenceMatcher(None, _normalized(employee.display_name), _normalized(name)).ratio() < 0.8:
+                report.name_differences.append({"row": record.get("row"), "document": name, "registry": employee.display_name})
+            if not role:
+                report.incomplete.append({"row": record.get("row"), "employee_id": employee_id, "reason": "no role"})
+                continue
+            _role_id, department_id = effective(mappings.get((source, role)), role_deps)
+            house = (record.get("house") or None)
+            if house and departments.get(department_id) and departments[department_id] != house:
+                report.department_differences.append({"row": record.get("row"), "employee_id": employee_id,
+                                                      "document": house, "table": departments[department_id]})
+            if link.state == "PRESENT":
+                named = _named_roles(link.snapshot)
+                now_role, now_dep = effective(mappings.get((CLOVER, next(iter(named)))) if len(named) == 1 else None, role_deps)
+                doc_role, doc_dep = effective(mappings.get((source, role)), role_deps)
+                # Discordant only when something certain differs: the department, or two known RF-One roles.
+                if (now_dep and doc_dep and now_dep != doc_dep) or (now_role and doc_role and now_role != doc_role):
+                    report.current_role_differences.append({"row": record.get("row"), "employee_id": employee_id,
+                        "document_role": role, "clover_role_now": ", ".join(named.values())})
+            existing = db.scalar(select(m.RegistryPersonSourceRole).where(
+                m.RegistryPersonSourceRole.employee_id == employee_id,
+                m.RegistryPersonSourceRole.restaurant_id == restaurant_id, m.RegistryPersonSourceRole.source == source))
+            if existing is not None:
+                report.already_loaded += 1
+                continue
+            db.add(m.RegistryPersonSourceRole(employee_id=employee_id, restaurant_id=restaurant_id, source=source,
+                                              original_key=str(role), declared_department=house,
+                                              source_reference=f"{reference} row {record.get('row')}"))
+            report.loaded += 1
+        db.flush()
+    finally:
+        if savepoint is not None:
+            savepoint.rollback()
+    return report

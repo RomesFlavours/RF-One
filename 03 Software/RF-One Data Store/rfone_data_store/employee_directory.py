@@ -342,6 +342,11 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
                    details={"run_id": run_id})
             link.state = "MISSING_REVIEW"
     db.flush()
+    # REGISTRY_CLOVER_DEPARTMENTS_001: every import also realigns the Registry assignments of this
+    # site with the current Clover roles, in the same transaction (part of the import, not a later step).
+    from . import registry_departments
+    if registry_departments.available(db):
+        registry_departments.sync_site(db, location_id=location_id, merchant_id=merchant_id)
     # Historical work can still refer to people absent from today's roster.
     resolved.update({l.external_employee_id: l.employee_id for l in db.scalars(
         select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
