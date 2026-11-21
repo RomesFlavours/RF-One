@@ -45,6 +45,8 @@ from db import SessionFactory  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
+from rfone_data_store import site_selection  # noqa: E402
+from unittest.mock import patch  # noqa: E402
 
 HOST = "https://rfone-web.example"
 UTC = timezone.utc
@@ -175,6 +177,22 @@ class CloverAcquisitionMultisiteTest(unittest.TestCase):
         before = self.runs(self.wp_loc)
         c.post("/clover-acquisition/sync-now", base_url=HOST, data={"csrf_token": self.token, "restaurant_id": self.wp_id})
         self.assertEqual(self.runs(self.wp_loc), before)
+
+
+    def test_wp_only_account_never_sees_or_acquires_md(self):
+        # The central extension point (`site_selection.sites_for_account`) restricting an account to WP.
+        only_wp = lambda db, account, domain: [x for x in site_selection.list_sites(db) if x.restaurant_id == self.wp_id]
+        with patch.object(site_selection, "sites_for_account", only_wp):
+            c = self.client()
+            html = c.get(f"/clover-acquisition?restaurant_id={self.md_id}", base_url=HOST).get_data(as_text=True)
+            self.assertNotIn(f'value="{self.md_id}"', html)
+            self.assertIn(f'<option value="{self.wp_id}" selected', html)
+            wp_before, md_before = self.runs(self.wp_loc), self.runs(self.md_loc)
+            resp = c.post("/clover-acquisition/sync-now", base_url=HOST,
+                          data={"csrf_token": self.token, "restaurant_id": self.md_id})
+            self.assertEqual(resp.status_code, 403)
+            self.assertEqual((self.runs(self.wp_loc), self.runs(self.md_loc)), (wp_before, md_before),
+                             "a refused MD request must not fall back to a WP job")
 
 
 if __name__ == "__main__":

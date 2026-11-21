@@ -60,10 +60,24 @@ def list_sites(session: Session) -> list[Site]:
             for r in session.scalars(select(m.Restaurant).order_by(m.Restaurant.id))]
 
 
-def resolve_site(session: Session, *candidates: int | None) -> Site | None:
+def sites_for_account(session: Session, account, domain_code: str) -> list[Site]:
+    """The sites `account` may work on in `domain_code` — the ONE place every
+    site-aware page and operation asks (Tips, Clover Acquisition, Tips period
+    validation). Today RF-One's central authorization is per Domain
+    (`rfone_web_session.account_may_enter_domain`): with that access, every
+    site; without it, none. A per-company/per-site extension of the central
+    model, once approved, changes only this function."""
+    from . import rfone_web_session
+    if not rfone_web_session.account_may_enter_domain(session, account, domain_code):
+        return []
+    return list_sites(session)
+
+
+def resolve_site(session: Session, *candidates: int | None, sites: list[Site] | None = None) -> Site | None:
     """The first valid candidate restaurant id (explicit request, then the
-    remembered choice), else the first site. Never an unknown id."""
-    sites = list_sites(session)
+    remembered choice), else the first site. Never an unknown id, never a site
+    outside `sites` when given (e.g. `sites_for_account`)."""
+    sites = list_sites(session) if sites is None else sites
     by_id = {site.restaurant_id: site for site in sites}
     for candidate in candidates:
         if candidate is not None and candidate in by_id:
