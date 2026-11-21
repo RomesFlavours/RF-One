@@ -112,7 +112,8 @@ class AccountAccessMultisiteTest(unittest.TestCase):
         self.assertNotIn('name="company_scope_BANK"', html)
         self.assertIn("RFGroup (all companies)", html)
         self.assertIn('name="pay_TIPS_APPROVE_AND_PAY"', html)
-        self.assertIn('data-how-works="admin_account_access"', html)
+        self.assertIn('data-how-works', html)  # live web How Works component
+        self.assertIn('id="admin-account-access"', html)
 
     def test_default_keeps_every_restaurant(self):
         self.assertIn(self.post(self.client()).status_code, (302, 303))

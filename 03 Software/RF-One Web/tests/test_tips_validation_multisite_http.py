@@ -111,7 +111,8 @@ class TipsValidationMultisiteTest(unittest.TestCase):
         self.assertIn(f'href="/tips/runs/{self.md_run}"', md)
         self.assertNotIn(f'href="/tips/runs/{self.wp_run}"', md)
         self.assertIn("Inactive: periods cannot be validated.", md)
-        self.assertIn('data-how-works="tips_validation_runs"', md)
+        self.assertIn('data-how-works', md)  # live web How Works component
+        self.assertIn('id="tips-validation-runs"', md)
 
     def test_opening_a_run_remembers_its_restaurant(self):
         c = self.client()

@@ -27,7 +27,7 @@
 {% endif %}
 <h1>Clover Acquisition</h1>
 <hr>
-<div style="display:flex;justify-content:flex-end">{% include '_how_works.html' %}</div>
+<div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
 {# CLOVER_MULTISITE_001 — the restaurant site: every status, history and job below is this site's. #}
 {% if acquisition.sites %}
 <form method="get" action="{{ url_for('clover_acquisition_home') }}" style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.5rem 0;">

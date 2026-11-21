@@ -125,7 +125,8 @@ class CloverAcquisitionMultisiteTest(unittest.TestCase):
         self.assertIn('id="site-select"', html)
         self.assertIn(f'<option value="{self.wp_id}" selected', html)
         self.assertIn("Rome&#39;s Flavours - MD — inactive", html)
-        self.assertIn('data-how-works="clover_acquisition"', html)
+        self.assertIn('data-how-works', html)  # live web How Works component
+        self.assertIn('id="clover-acquisition"', html)
         self.assertIn("Choosing the restaurant", html)
         self.assertNotIn("disabled>Run Historical Backfill", html)
 
