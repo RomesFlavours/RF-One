@@ -3129,6 +3129,9 @@ class SourceRoleMapping(Base):
     across Restaurants (a second Restaurant importing the same Clover
     merchant, hypothetically, would need its own mapping rows)."""
 
+    # RETIRED for Tips (TIPS_REGISTRY_ROLES_001, Product Owner 2026-11-21): Tips reads the Clover role ->
+    # RF-One role correspondence only from Registry (`RegistryRoleMapping`). This table is kept, unchanged and
+    # not deleted, for history; nothing in Tips reads it any more. Do not add rows for Tips.
     __tablename__ = "source_role_mappings"
     __table_args__ = (
         UniqueConstraint("restaurant_id", "source_role_id", "valid_from"),
