@@ -74,13 +74,14 @@ def _person(account) -> str:
 SITE_SESSION_KEY = "clover_acquisition_restaurant_id"
 
 
-def _selected_site(db) -> "site_selection.Site | None":
+def _selected_site(db, account=None) -> "site_selection.Site | None":
     """The restaurant site this page works on (CLOVER_MULTISITE_001): an
     explicit `restaurant_id` (selector, form, Tips link), else the choice
     remembered for this browser session, else the first site — the original
     single-site default. Every view, history and job of the page uses it."""
+    sites = site_selection.sites_for_account(db, account, CLOVER_ACQUISITION_ACCESS_CODE) if account is not None else None
     return site_selection.resolve_site(
-        db, request.values.get("restaurant_id", type=int), flask_session.get(SITE_SESSION_KEY))
+        db, request.values.get("restaurant_id", type=int), flask_session.get(SITE_SESSION_KEY), sites=sites)
 
 
 def _default_clover_location_id(db) -> int | None:
@@ -160,12 +161,12 @@ def register_clover_acquisition_routes(
             account, refusal = _authorized_account(db)
             if refusal is not None:
                 return refusal
-            site = _selected_site(db)
+            site = _selected_site(db, account)
             if site is not None:
                 flask_session[SITE_SESSION_KEY] = site.restaurant_id
             location_id = site.location_id if site is not None else None
             acquisition = _view(db, location_id)
-            acquisition["sites"] = site_selection.list_sites(db)
+            acquisition["sites"] = site_selection.sites_for_account(db, account, CLOVER_ACQUISITION_ACCESS_CODE)
             acquisition["site"] = site
             # Prefill From date with the latest operational Business Date on
             # file, as the Tips page did; an explicit value always wins.
@@ -189,7 +190,11 @@ def register_clover_acquisition_routes(
             require_csrf()
             # The site the submitted page was showing (hidden `restaurant_id`),
             # never whatever another tab selected meanwhile.
-            site = _selected_site(db)
+            site = _selected_site(db, account)
+            posted = request.form.get("restaurant_id", type=int)
+            if posted is not None and (site is None or site.restaurant_id != posted):
+                # Never fall back to another restaurant than the one the page was showing.
+                abort(403, description="This RF-One account may not acquire Clover data for this restaurant.")
             location_id = site.location_id if site is not None else None
             if location_id is None:
                 flash("No Clover-sourced Location is configured for this Restaurant — nothing to acquire.", "error")
@@ -281,7 +286,8 @@ def register_clover_acquisition_routes(
                 return jsonify({"error": "Sign in to RF-One."}), 401
             if not shared_session.account_may_enter_domain(db, account, CLOVER_ACQUISITION_ACCESS_CODE):
                 return jsonify({"error": "No Clover Acquisition access."}), 403
-            location_id = _default_clover_location_id(db)
+            site = _selected_site(db, account)
+            location_id = site.location_id if site is not None else None
             active = clover_jobs.get_active_run(db, location_id=location_id) if location_id else None
             return jsonify({
                 "active_run_id": active.id if active is not None else None,

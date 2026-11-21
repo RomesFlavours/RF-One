@@ -237,7 +237,12 @@ def _selected_site(session) -> "site_selection.Site | None":
     """The restaurant site chosen with the selector (CLOVER_MULTISITE_001),
     remembered for this browser session; without a choice, the first site
     (lowest Restaurant id), exactly the original single-site resolution."""
-    return site_selection.resolve_site(session, flask_session.get(SITE_SESSION_KEY))
+    return site_selection.resolve_site(session, flask_session.get(SITE_SESSION_KEY), sites=_account_sites(session))
+
+
+def _account_sites(session) -> "list[site_selection.Site]":
+    """The sites the signed-in account may use in Tips (central rule, `site_selection.sites_for_account`)."""
+    return site_selection.sites_for_account(session, rfone_identity.current_account(session), "TIPS")
 
 
 def _default_restaurant(session) -> "m.Restaurant | None":
@@ -253,17 +258,24 @@ def _follow_record_site(session, restaurant_id: int | None) -> None:
     """A link to a record of another site (a saved period, a payment cycle, a
     rule, a role) opens it on ITS site: the selector switches and says so, so
     the page never mixes one site's record with another site's data."""
-    site = _selected_site(session)
-    if restaurant_id is None or site is None or site.restaurant_id == restaurant_id:
+    if restaurant_id is None:
         return
-    target = site_selection.resolve_site(session, restaurant_id)
-    if target is not None and target.restaurant_id == restaurant_id:
+    allowed = {s.restaurant_id: s for s in _account_sites(session)}
+    if restaurant_id not in allowed:  # central authorization: never shown, never switched to
+        abort(403)
+    site = _selected_site(session)
+    if site is None or site.restaurant_id == restaurant_id:
+        return
+    target = allowed[restaurant_id]
+    if target is not None:
         flask_session[SITE_SESSION_KEY] = restaurant_id
         flash(ui("Restaurant switched to") + f" {target.name} " + ui("to show this record."), "info")
 
 
 def _refuse_other_site_record(session, restaurant_id: int | None):
     """An operation on a record of a site other than the selected one is refused, never redirected."""
+    if restaurant_id is not None and restaurant_id not in {s.restaurant_id for s in _account_sites(session)}:
+        abort(403)
     site = _selected_site(session)
     if restaurant_id is not None and site is not None and site.restaurant_id != restaurant_id:
         flash(ui("This record belongs to another restaurant: select that restaurant first. Nothing was changed."),
@@ -282,7 +294,7 @@ def _site_selection_guard():
         return None
     if request.method == "GET" and "site" in request.args:
         with SessionFactory() as db:
-            chosen = site_selection.resolve_site(db, request.args.get("site", type=int))
+            chosen = site_selection.resolve_site(db, request.args.get("site", type=int), sites=_account_sites(db))
         if chosen is not None:
             flask_session[SITE_SESSION_KEY] = chosen.restaurant_id
         args = {k: v for k, v in request.args.items(multi=True) if k != "site"}
@@ -421,7 +433,7 @@ def inject_brand_context() -> dict:
         location_id = _resolve_clover_location_id(session, restaurant.id) if restaurant is not None else None
         location = session.get(m.Location, location_id) if location_id is not None else None
         return {
-            "site_choices": site_selection.list_sites(session),
+            "site_choices": _account_sites(session),
             "selected_site": _selected_site(session),
             "site_form_field": SITE_FORM_FIELD,
             "brand_name": restaurant.name if restaurant is not None else "RF-One",

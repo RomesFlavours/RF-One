@@ -87,7 +87,9 @@
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
         "employee_departments.html": "help/employee_departments.html#employee-departments",
-        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition"
+        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition",
+        "tips_validation_runs.html": "help/tips_validation_runs.html#tips-validation-runs",
+        "tips_validation_run.html": "help/tips_validation.html#tips-validation"
       },
       "not_operational": {
         "base.html": "layout of RF-One Web",
@@ -135,8 +137,6 @@
         "compensation_run_detail.html": "Administration / Compensation",
         "compensation_run_new.html": "Administration / Compensation",
         "compensation_snapshot_detail.html": "Administration / Compensation",
-        "tips_validation_runs.html": "Tips validation",
-        "tips_validation_run.html": "Tips validation",
         "dev_journal_list.html": "Dev Journal",
         "dev_journal_entry_form.html": "Dev Journal",
         "dev_journal_entry_versions.html": "Dev Journal",
@@ -226,7 +226,9 @@
       "pages": {
         "role_profiles.html": "help/registry.html#registry",
         "employee_departments.html": "help/employee_departments.html#employee-departments",
-        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition"
+        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition",
+        "tips_validation_runs.html": "help/tips_validation_runs.html#tips-validation-runs",
+        "tips_validation_run.html": "help/tips_validation.html#tips-validation"
       },
       "not_operational": {},
       "help_missing": {
@@ -287,8 +289,6 @@
         "restaurant_wine_availability.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "restaurant_wine_list.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "restaurant_wine_types.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "tips_validation_run.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "tips_validation_runs.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "training_trainer_new_student.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "training_trainer_students.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "work_in_progress.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here."

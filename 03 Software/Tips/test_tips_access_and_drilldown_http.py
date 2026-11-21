@@ -196,6 +196,9 @@ def main() -> int:
         rule_id = rule.id
         restaurant_id = restaurant.id
         editor = account_service.create_account(s, username="ad-editor", display_name="Ad Editor", password=PASSWORD)
+        s.flush()
+        # Authentication alone no longer grants Tips access (Registry gate).
+        account_service.set_domain_access(s, account_id=editor.id, domain_code="TIPS", enabled=True, role_code=None)
         s.commit()
         account = (editor.id, editor.session_version)
 

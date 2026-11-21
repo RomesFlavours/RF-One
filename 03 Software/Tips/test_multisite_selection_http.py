@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import date, time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -201,6 +202,22 @@ class TipsMultisiteSelectionTest(unittest.TestCase):
             rule = s.get(m.TipDistributionRule, self.wp_rule_id)
             rule.is_active = before
             s.commit()
+
+    def test_account_allowed_only_wp_never_reaches_md(self):
+        # The central extension point (`site_selection.sites_for_account`) restricting an account to WP.
+        only_wp = lambda db, account, domain: [x for x in site_selection.list_sites(db) if x.restaurant_id == self.wp_id]
+        with patch.object(site_selection, "sites_for_account", only_wp):
+            c = self.client()
+            c.get(f"/configuration?site={self.md_id}")
+            self.assertEqual(self.selected(c), self.wp_id)
+            html = c.get("/configuration").get_data(as_text=True)
+            self.assertNotIn("Rome&#39;s Flavours - MD", html)
+            self.assertEqual(c.get(f"/distribution-rules/{self.md_rule_id}").status_code, 403)
+            with tips_app.SessionFactory() as s:
+                before = s.get(m.TipDistributionRule, self.md_rule_id).is_active
+            self.assertEqual(c.post(f"/distribution-rules/{self.md_rule_id}/toggle-active", data={}).status_code, 403)
+            with tips_app.SessionFactory() as s:
+                self.assertEqual(s.get(m.TipDistributionRule, self.md_rule_id).is_active, before)
 
     # -- permissions --------------------------------------------------------
     def test_domain_permission_applies_to_both_sites(self):
