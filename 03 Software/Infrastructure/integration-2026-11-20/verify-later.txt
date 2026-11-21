@@ -5,3 +5,4 @@ WEB uses Tips' newer distribution_engine via payroll/compensation: verify web co
 TRAINING/* merged with web's managed-sign-in mode: verify both web and training services.
 VERIFY: kitchen lists row-return with web's script (3 data-rr-key uses)
 TEST: test_shared_schema_compatibility TREE_HEAD must become the integration head (e9a120261117)
+FIXED 2026-11-21: RF-One Data Store/rfone_data_store/purchasing/repository.py was taken from Kitchen, but Kitchen's version writes purchase_lines columns (piece_content_value, actual_weight_*, unit_price_basis) that exist only in Kitchen's excluded models and NOT in the live database. Restored the version live web, tips, email and clover-jobs run (same as main, 27ed420). Found by test_purchasing_engine, test_purchased_alignment, test_bank_invoice_evidence_collaboration, test_bank_reporting_configuration; all four pass after the fix.
