@@ -4,6 +4,14 @@ TIPS_REGISTRY_ROLES_001 (Product Owner, 2026-11-21): the Clover role -> RF-One r
 ONLY from Registry (`RegistryRoleMapping`, Anagrafica > Reparti e ruoli), per Restaurant and over time.
 Tips' former table `SourceRoleMapping` is no longer read (retired, kept unchanged for history).
 A Clover role without an RF-One role in Registry is "to be defined": never guessed.
+
+Product Owner decisions, 2026-11-21 (TIPS_REGISTRY_ROLES_002):
+- the first Registry version of a correspondence applies retroactively, unless it contradicts historical
+  evidence: a human-confirmed (MANUAL) Registry assignment valid at that instant with another role is an
+  explicit exception (uncertain, named in the reason);
+- before the first Clover observation of a person, the role is the Registry assignment documented and
+  valid at that instant (any source, never one that starts later: the current role is never projected
+  into the past); none, or two different ones, is an explicit exception.
 """
 from collections import defaultdict
 from dataclasses import dataclass
@@ -24,6 +32,7 @@ class RoleCorrespondence:
     valid_from: datetime | None
     valid_to: datetime | None
     mapping_status: str = "ACTIVE"
+    recorded_from: datetime | None = None   # when Registry recorded it (for a version applied since always)
 
 
 def registry_correspondences(session, restaurant_id):
@@ -41,7 +50,8 @@ def registry_correspondences(session, restaurant_id):
                 if row.valid_to is None:
                     undefined[key] = row.original_label
                 continue
-            out[key].append(RoleCorrespondence(row.restaurant_role_id, None if index == 0 else row.valid_from, row.valid_to))
+            out[key].append(RoleCorrespondence(row.restaurant_role_id, None if index == 0 else row.valid_from, row.valid_to,
+                                               recorded_from=row.valid_from))
     return out, undefined
 
 
@@ -58,6 +68,7 @@ class CloverRoleHistory:
         self.observations = defaultdict(dict)
         self.mappings = defaultdict(list)
         self.confirmed = defaultdict(list)
+        self.documented = defaultdict(list)   # every Registry assignment of these employees at this restaurant
         self.undefined = {}          # Clover role id -> name: no RF-One role in Registry yet
         self.role_names = {}
         links = session.scalars(select(m.EmployeeCloverLink).where(
@@ -98,9 +109,10 @@ class CloverRoleHistory:
         for row in session.scalars(select(assignment).where(
             assignment.restaurant_id == restaurant_id,
             assignment.employee_id.in_({employee for employee, _ in keys.values()}),
-            assignment.assignment_source == "MANUAL",
         )):
-            self.confirmed[row.employee_id].append(row)
+            self.documented[row.employee_id].append(row)
+            if row.assignment_source == "MANUAL":
+                self.confirmed[row.employee_id].append(row)
 
     def map_roles(self, source_roles, instant):
         mapped = set()
@@ -118,6 +130,36 @@ class CloverRoleHistory:
                    for _, observed in self.observations.get((employee, location), ())
                    for source_id in observed for mapping in self.mappings[source_id])
 
+    def documented_roles(self, employee, location, instant, *, manual_only=False):
+        """RF-One roles of the Registry assignments valid at `instant` (documented history, never later ones)."""
+        rows = self.confirmed[employee] if manual_only else self.documented[employee]
+        return {row.restaurant_role_id for row in rows if row.location_id in (None, location)
+                and utc(row.valid_from) <= instant and (row.valid_to is None or instant < utc(row.valid_to))}
+
+    def _retroactive(self, source_roles, instant):
+        """True when the mapping used at `instant` is a first version applied before Registry recorded it."""
+        return any(entry.valid_from is None and entry.recorded_from is not None and instant < utc(entry.recorded_from)
+                   for source_id in source_roles for entry in self.mappings[source_id])
+
+    def explain(self, employee, location, instant):
+        """Why the role at `instant` is uncertain, in words (None when it is not)."""
+        points = self.observations.get((employee, location))
+        if not points or len(self.roles_at(employee, location, instant) or ()) == 1:
+            return None
+        previous = next(((at, roles) for at, roles in reversed(points) if at <= instant), None)
+        if previous is None:
+            found = self.documented_roles(employee, location, instant)
+            return (f"no Clover role observed before {points[0][0]:%Y-%m-%d} and no Registry assignment valid on {instant:%Y-%m-%d}"
+                    if not found else f"{len(found)} different Registry assignments valid on {instant:%Y-%m-%d}")
+        undefined = [self.role_names.get(r) or self.undefined.get(r) or r for r in previous[1] if not self.mappings.get(r)]
+        if undefined:
+            return "Clover role without an RF-One role in Registry: " + ", ".join(sorted(undefined))
+        mapped = self.map_roles(previous[1], instant)
+        manual = self.documented_roles(employee, location, instant, manual_only=True)
+        if len(mapped) == 1 and manual and manual != mapped:
+            return "a confirmed Registry assignment contradicts the Clover role for that date"
+        return "Clover role changed between two observations; the effective time is not documented"
+
     def roles_at(self, employee, location, instant):
         """None means legacy assignment; empty means the tracked role is uncertain."""
         points = self.observations.get((employee, location))
@@ -125,7 +167,9 @@ class CloverRoleHistory:
             return None
         previous = next(((at, roles) for at, roles in reversed(points) if at <= instant), None)
         if previous is None:
-            return set()
+            # Before the first Clover observation: the documented Registry assignment valid at that date.
+            found = self.documented_roles(employee, location, instant)
+            return found if len(found) == 1 else set()
         following = next(((at, roles) for at, roles in points if at > instant), previous)
         if previous[0] != instant and previous[1] != following[1]:
             before = self.map_roles(previous[1], previous[0])
@@ -143,7 +187,12 @@ class CloverRoleHistory:
                 if len(handoffs) == 1:
                     return self.map_roles(previous[1] if instant < handoffs.pop() else following[1], instant)
             return set()
-        return self.map_roles(previous[1], instant)
+        mapped = self.map_roles(previous[1], instant)
+        if len(mapped) == 1 and self._retroactive(previous[1], instant):
+            manual = self.documented_roles(employee, location, instant, manual_only=True)
+            if manual and manual != mapped:
+                return set()          # the retroactive mapping contradicts a confirmed assignment
+        return mapped
 
     def undefined_roles(self, employee, location, start, end):
         """Names of the Clover roles held in [start, end) that Registry does not map to an RF-One role."""

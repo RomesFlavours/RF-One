@@ -88,6 +88,52 @@ class TipsRegistryRolesTest(unittest.TestCase):
         h = self.history()
         self.assertEqual(h.roles_at(self.alice.id, self.wp.id, T0 + timedelta(hours=5)), {self.server.id})
 
+    def assignment(self, role, valid_from, valid_to=None, source="CLOVER_ROLE_SYNC"):
+        area = self.db.query(m.OperationalArea).first()
+        if area is None:
+            area = m.OperationalArea(restaurant_id=self.r_wp.id, name="Restaurant Operations", code="ROOT", active=True)
+            self.db.add(area); self.db.flush()
+        self.db.add(m.EmployeeAssignment(employee_id=self.alice.id, restaurant_id=self.r_wp.id, operational_area_id=area.id,
+                                         restaurant_role_id=role.id, location_id=self.wp.id, valid_from=valid_from,
+                                         valid_to=valid_to, assignment_source=source))
+        self.db.commit()
+
+    def test_before_first_observation_uses_documented_registry_assignment(self):
+        self.mapping("R-SERV", "Server", self.server)
+        self.assignment(self.host, T0 - timedelta(days=60))
+        h = self.history()
+        self.assertEqual(h.roles_at(self.alice.id, self.wp.id, T0 - timedelta(days=10)), {self.host.id})
+
+    def test_before_first_observation_without_assignment_is_explicit(self):
+        self.mapping("R-SERV", "Server", self.server)
+        h = self.history()
+        at = T0 - timedelta(days=10)
+        self.assertEqual(h.roles_at(self.alice.id, self.wp.id, at), set())
+        self.assertIn("no Registry assignment valid", h.explain(self.alice.id, self.wp.id, at))
+
+    def test_current_role_is_never_projected_into_the_past(self):
+        self.mapping("R-SERV", "Server", self.server)
+        self.assignment(self.server, SEED)                  # today's synced assignment
+        h = self.history()
+        self.assertEqual(h.roles_at(self.alice.id, self.wp.id, T0 - timedelta(days=10)), set())
+
+    def test_two_documented_roles_are_contradictory(self):
+        self.mapping("R-SERV", "Server", self.server)
+        self.assignment(self.host, T0 - timedelta(days=60))
+        self.assignment(self.server, T0 - timedelta(days=50), valid_to=T0, source="MANUAL")   # overlapping, closed
+        h = self.history()
+        at = T0 - timedelta(days=10)
+        self.assertEqual(h.roles_at(self.alice.id, self.wp.id, at), set())
+        self.assertIn("different Registry assignments", h.explain(self.alice.id, self.wp.id, at))
+
+    def test_retroactive_mapping_contradicted_by_confirmed_assignment_is_explicit(self):
+        self.mapping("R-SERV", "Server", self.server)
+        self.assignment(self.host, T0 - timedelta(days=60), source="MANUAL")
+        h = self.history()
+        at = T0 + timedelta(hours=5)                        # observed Server, before Registry recorded the mapping
+        self.assertEqual(h.roles_at(self.alice.id, self.wp.id, at), set())
+        self.assertIn("contradicts", h.explain(self.alice.id, self.wp.id, at))
+
 
 if __name__ == "__main__":
     unittest.main()
