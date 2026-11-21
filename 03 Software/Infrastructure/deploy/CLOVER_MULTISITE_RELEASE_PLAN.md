@@ -3,6 +3,19 @@
 Status: **PLAN ONLY — not executed** (updated 2026-11-21 for the multi-site permissions and payment security fixes). Every step needs the Product Owner's explicit authorization.
 Mount Dora (MD) stays **inactive** throughout; activation is a separate, later decision.
 
+## 0. Pre-release verification (2026-11-21, read-only, nothing changed on AWS)
+
+| Check | Result |
+|---|---|
+| Live services | unchanged since this plan: web `…-web2` (digest `sha256:90704712…`), tips `tip-role-history-20261118c-tips` (`sha256:fb453257…`), correction `:12`, acquisition `:12`, live sync `:1`, all ACTIVE |
+| RDS | PostgreSQL 18.3, alembic `a1c220261121` |
+| Migration `b2c320261121` against RDS | compatible: `rfone_account_domain_access` has no `company_scope` and no conflicting constraint; the new table and index do not exist; FK targets `rfone_accounts`, `rfone_company_contexts` exist; 72 access rows (TIPS 7, CLOVER_ACQUISITION 6, all scope ALL). Adding a column with a constant default is a catalogue-only change on PostgreSQL ≥ 11 (no table rewrite). `check_migration_chain.py`: head `b2c320261121` contains `a1c220261121`. |
+| Company mapping | WP restaurant #1 → legal entity 1 → company WP; MD restaurant #4 → legal entity 2 → company MD; RFGroup = GROUP |
+| Tips payments on AWS | 0 payment cycles, 0 payment instructions, 0 TIPS authority grants, 0 account identities: no payment can be duplicated or lost by release or rollback; nobody can approve today either |
+| Compensation status constraint on RDS | already includes EXPORTED and CLOSED (= the corrected model) |
+| Live code not in the branch | none: every live-only line (web, Tips, workers) is an older version replaced by the branch |
+| Branch content not live | the branch is built on the integration tree `6633f05`, which also carries other sessions' work not published in `rfone-web`/`rfone-tips` (e.g. Training courses and activation links, Kitchen menu areas, Bank WHO picker styles, AI client timeouts, database pool options). See §3 precondition 7. |
+
 ## 1. What is released
 
 | Component | Service | Source | Change for people |
@@ -33,8 +46,11 @@ Re-read all of these immediately before step 1; if anything changed, stop and re
 2. Branch pushed to GitHub; release commit fixed (no further commits during the release).
 3. Local regression green on the release commit (suites listed in §7).
 4. No other session deploying Clover workers, Tips or RF-One Web (coordinate with the Registry session).
-5. Read-only inventory (no change) of the active `AuthorityGrant` rows for `TIPS`/`APPROVE_AND_PAY` and of the WP Restaurant's `legal_entity_id`, attached to the authorization request (see step 7).
-6. Local UI in English for the release build (UI_DEVELOPMENT_LANGUAGE_001): the new strings are English by default and Italian only with `RFONE_UI_LANGUAGE=it`.
+5. Read-only inventory done on 2026-11-21 (§0): no TIPS grant exists; WP restaurant has legal entity 1. Repeat it immediately before step 1.
+7. **Release builds contain only what is authorized.** Either (a) each image is built from that service's live code (`release/registry-web-20261121` for rfone-web, the live snapshot `76b32c8` for rfone-tips, `release/registry-clover-jobs-20261121` for the workers) with only the CLOVER_MULTISITE_001 changes ported onto it and the suites of §7 re-run there, as done for the Registry release; or (b) the PO explicitly authorizes publishing the whole integrated tree. Recommended: (a).
+8. **One Tips release at a time.** The session on `feature/tips-registry-roles` is preparing an `rfone-tips` release from the same live image: the two are combined into one release (or released one after the other, the second rebased on the first), never deployed independently.
+9. Image references are recorded by digest (the ECR repositories have mutable tags): rollback uses the digests of §0.
+10. Local UI in English for the release build (UI_DEVELOPMENT_LANGUAGE_001): the new strings are English by default and Italian only with `RFONE_UI_LANGUAGE=it`.
 
 ## 4. Steps (one component at a time, verify before the next)
 
@@ -84,7 +100,8 @@ Re-read all of these immediately before step 1; if anything changed, stop and re
 | Step 4 | App Runner rfone-tips back to `tip-role-history-20261118c-tips` | ~5 min |
 | Step 5 | App Runner rfone-web back to `registry-departments-20261121t030713z-web2` | ~5 min |
 | Step 7 | Untick the authorization on the Access page (the grant is revoked, kept in history). | seconds |
-| Data anomaly | One additive schema change and no data migration, so code rollback is sufficient. Data written by the new code (IngestionRuns, links) is the same shape as before. Restore the snapshot only if a data defect is proven. | — |
+| Payments | None exist on AWS (§0); a rollback never re-executes anything. If payments existed, the old code would lose only the retry guards, not the instructions' idempotency keys. |
+| Data anomaly | One additive schema change and no data migration, so code rollback is sufficient. Never downgrade the migration after release: it would delete the company selections made on the Access page. Data written by the new code (IngestionRuns, links) is the same shape as before. Restore the snapshot only if a data defect is proven. | — |
 
 ## 6. Conditions to activate Mount Dora (separate authorization)
 
