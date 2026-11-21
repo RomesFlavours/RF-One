@@ -307,11 +307,14 @@ def ingest_employee_source_roles(
         employee_id = employee_by_source_id.get(employee_source_id)
         if employee_id is None:
             continue
+        current, complete = set(), "roles" in raw
         for role_ref in (raw.get("roles") or {}).get("elements", []):
             role_source_id = role_ref.get("id")
             source_role_id = catalog.source_role_by_source_id.get(role_source_id)
             if source_role_id is None:
+                complete = False
                 continue
+            current.add(source_role_id)
             existing = session.scalars(
                 select(m.EmployeeSourceRole).filter_by(employee_id=employee_id, source_role_id=source_role_id)
             ).first()
@@ -324,7 +327,20 @@ def ingest_employee_source_roles(
                         source_system_id=source_system_id, observed_at=retrieved_at,
                     )
                 )
+        if complete:
+            _drop_stale_source_roles(session, employee_id, source_system_id, current)
     session.flush()
+
+
+def _drop_stale_source_roles(session: Session, employee_id: int, source_system_id: int, current: set[int]) -> None:
+    """REGISTRY_CLOVER_DEPARTMENTS_001: this table is Clover's CURRENT role only. A role Clover no longer
+    reports for the employee is removed, so a role change never leaves two current roles. The history of
+    role changes stays in the Employee Directory events (CLOVER_ROLE_CHANGE)."""
+    for row in session.scalars(select(m.EmployeeSourceRole).where(
+            m.EmployeeSourceRole.employee_id == employee_id,
+            m.EmployeeSourceRole.source_system_id == source_system_id)):
+        if row.source_role_id not in current:
+            session.delete(row)
 
 
 def _resolve_item_override_tax_rate(

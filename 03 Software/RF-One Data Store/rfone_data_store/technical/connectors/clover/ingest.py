@@ -595,12 +595,15 @@ def ingest_employee_source_roles(
         employee_id = employee_map.get(employee_source_id)
         if employee_id is None:
             continue
+        current, complete = set(), "roles" in emp_raw
         for role_ref in (emp_raw.get("roles") or {}).get("elements", []):
             role_source_id = role_ref.get("id")
             source_role_id = source_role_map.get(role_source_id)
             if source_role_id is None:
                 stats.bump("employee_source_roles_unresolved_role")
+                complete = False
                 continue
+            current.add(source_role_id)
             existing = session.scalars(
                 select(m.EmployeeSourceRole).filter_by(
                     employee_id=employee_id, source_role_id=source_role_id
@@ -618,6 +621,10 @@ def ingest_employee_source_roles(
                     )
                 )
             stats.bump("employee_source_roles")
+        if complete:
+            # REGISTRY_CLOVER_DEPARTMENTS_001: only Clover's current role(s) stay (no accumulation).
+            from .historical_backfill_detail import _drop_stale_source_roles
+            _drop_stale_source_roles(session, employee_id, source_system_id, current)
     session.flush()
 
 

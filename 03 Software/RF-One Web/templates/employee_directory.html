@@ -8,6 +8,7 @@
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', none)]) }}
 <h1>Anagrafica dipendenti</h1>
 <p>Anagrafica RF1 condivisa per dipendenti, candidati e collaboratori. Funziona anche senza POS.</p>
+<p><a href="{{ url_for('employee_departments') }}">Reparti e ruoli</a> · tabella Ruolo/Reparto di RF-One</p>
 {% for site in sites %}
 <div class="employee-sync">
   {% if sites|length > 1 %}<strong>{{ site.location.name }}</strong>{% endif %}
