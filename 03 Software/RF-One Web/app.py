@@ -45,6 +45,9 @@ from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
+from rfone_data_store import access_profiles as profiles  # noqa: E402
+from rfone_data_store import financial_authorization  # noqa: E402
+from rfone_data_store import site_selection  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
@@ -729,13 +732,34 @@ def admin_account_access(account_id: int):
                         scope=m.DOMAIN_ACCESS_SCOPE_SELECTED if mode == _ACCESS_SELECTED else m.DOMAIN_ACCESS_SCOPE_ALL,
                         item_codes=item_codes,
                     )
+                    if domain.site_scoped:
+                        # CLOVER_MULTISITE_001: which companies (restaurants)
+                        # this direct access reaches; all companies by default.
+                        profiles.set_domain_companies(
+                            db, account_id=account.id, domain_code=domain.code,
+                            company_scope=(m.DOMAIN_COMPANY_SCOPE_SELECTED
+                                           if request.form.get(f"company_scope_{domain.code}") == "selected"
+                                           else m.DOMAIN_COMPANY_SCOPE_ALL),
+                            company_ids=[int(v) for v in request.form.getlist(f"companies_{domain.code}") if v.isdigit()],
+                            actor=current_account_id(),
+                        )
                     if domain.code == "TRAINING":
                         # Explicit, authorized sync point (task: "assegnano o
                         # modificano il ruolo TRAINING di un account già
                         # collegato") — same transaction as the access change
                         # itself, committed together below.
                         training_integration.sync_training_role_if_linked(db, account.id, role_code)
-            except ValueError as exc:
+                # Specific payment authorizations, per restaurant (Product
+                # Owner rule 4), granted to the account's own Acting Identity.
+                if request.form.get("payment_permissions_form") == "1":
+                    granter = account_service.get_account(db, current_account_id())
+                    for permission in financial_authorization.PAYMENT_PERMISSIONS:
+                        financial_authorization.set_restaurant_grants(
+                            db, account=account, permission=permission, granted_by_account=granter,
+                            restaurant_ids=[int(v) for v in request.form.getlist(
+                                f"pay_{permission.domain_code}_{permission.action}") if v.isdigit()],
+                        )
+            except (ValueError, financial_authorization.FinancialAuthorizationError) as exc:
                 db.rollback()
                 flash(f"Nothing saved. {exc}", "error")
                 return redirect(url_for("admin_account_access", account_id=account_id))
@@ -757,6 +781,7 @@ def admin_account_access(account_id: int):
             domains_view.append({
                 "domain": d, "access": access, "mode": mode,
                 "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
+                "company_scope": company_scope, "selected_companies": selected_companies,
             })
         return render_template("admin_account_access.html", account=account, domains_view=domains_view)
 

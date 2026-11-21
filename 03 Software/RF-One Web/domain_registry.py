@@ -67,6 +67,10 @@ class DomainDefinition:
     # When set, the account's access page offers this one checkbox instead
     # of the "No access / Whole Domain" choice (a Domain without items).
     access_label: str | None = None
+    # CLOVER_MULTISITE_001: the Domain works on one restaurant site at a time,
+    # so the account's access page also offers which companies (and so which
+    # restaurants) the access reaches (`site_selection.account_restaurant_ids`).
+    site_scoped: bool = False
 
     def item(self, code: str) -> DomainItem | None:
         return next((i for i in self.items if i.code == code), None)
@@ -88,6 +92,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         display_name="Tips",
         description="Tip Distribution Rule configuration and the Tip Distribution Engine.",
         future_path="/tips",
+        site_scoped=True,
         link=TIPS_HOME_URL,  # Tips's own App Runner service, same host under /tips/
     ),
     DomainDefinition(
@@ -157,6 +162,7 @@ DOMAINS: tuple[DomainDefinition, ...] = (
         display_name="Clover Acquisition",
         description="Start Sync Now and Historical Backfill from Clover, and follow their progress.",
         future_path="/clover-acquisition",
+        site_scoped=True,
         # Product Owner decision (CLOVER_ACQUISITION_IDENTITY_001,
         # 2026-09-26): the access that allows starting a manual Clover
         # acquisition is a dedicated entry of THIS list, granted account by

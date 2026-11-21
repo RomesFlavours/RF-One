@@ -446,7 +446,10 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.addCleanup(http_engine.dispose)
         module.SessionFactory = create_session_factory(http_engine)
         # A signed-in account with TIPS access (Registry gate) — this test is about the selector, not access.
-        with patch.object(module.rfone_identity, "current_account", return_value=object()),                 patch.object(module.shared_session, "account_may_enter_domain", return_value=True):
+        # The stub carries the attributes the central site authorization reads (an administrator: every site).
+        from types import SimpleNamespace
+        signed_in = SimpleNamespace(id=0, status="ACTIVE", is_admin=True, is_owner=False, display_name="Test", username="test")
+        with patch.object(module.rfone_identity, "current_account", return_value=signed_in),                 patch.object(module.shared_session, "account_may_enter_domain", return_value=True):
             response = module.app.test_client().get(f"/host-audit?employee_id={retired_id}")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)

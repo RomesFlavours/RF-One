@@ -63,6 +63,19 @@ class RolePermission(m.Base):
     items=Column(JSON,nullable=False,default=list)
 
 
+class AccountDomainCompanyAccess(m.Base):
+    """One company whose restaurant sites an account's DIRECT access opens in a
+    site-scoped Domain, when that access row's `company_scope` is SELECTED
+    (CLOVER_MULTISITE_001, Product Owner 2026-11-21). Ignored when ALL."""
+    __tablename__='rfone_account_domain_company_access'
+    __table_args__=(UniqueConstraint('account_id','domain_code','company_id',name='uq_account_domain_company_access'),)
+    id=Column(Integer,primary_key=True)
+    account_id=Column(ForeignKey('rfone_accounts.id'),nullable=False,index=True)
+    domain_code=Column(String(32),nullable=False)
+    company_id=Column(ForeignKey('rfone_company_contexts.id'),nullable=False)
+    created_at=Column(DateTime(timezone=True),nullable=False,server_default=func.now())
+
+
 class ProfileEvent(m.Base):
     __tablename__='rfone_access_profile_events'
     id=Column(Integer,primary_key=True)
@@ -416,3 +429,85 @@ def ensure_profile_account(db,target,actor=None):
     db.add(account);db.flush();db.add(m.EmployeeContextLink(employee_id=employee,rfone_account_id=account.id));db.flush()
     event(db,'ACCOUNT_PROVISIONED',actor,employee_id=employee,account_id=account.id)
     return account
+
+
+# ---------------------------------------------------------------------------
+# Company/site scope of an access (CLOVER_MULTISITE_001, Product Owner
+# 2026-11-21). The ONE resolution "which restaurants may this account work on
+# in this Domain" is `site_selection.account_restaurant_ids`; these helpers
+# hold the company part of it. Rules approved by the Product Owner:
+#   1. RFGroup (kind GROUP) covers every company for the operational scope; it
+#      never confers administrative privileges (nothing here reads a role).
+#   2. Existing direct accesses keep company_scope ALL, i.e. their current reach.
+#   3. A role profile opens a Domain only in the companies where the person is
+#      a current member AND holds a current role whose permissions include it.
+# ---------------------------------------------------------------------------
+
+def domain_company_ids(db,account_id,domain_code):
+    """Companies selected for the account's direct access to `domain_code`."""
+    return set(db.scalars(select(AccountDomainCompanyAccess.company_id).where(
+        AccountDomainCompanyAccess.account_id==account_id,AccountDomainCompanyAccess.domain_code==domain_code)))
+
+
+def set_domain_companies(db,*,account_id,domain_code,company_scope,company_ids=(),actor=None):
+    """Sets the company reach of the account's direct access to `domain_code`.
+    SELECTED requires at least one active company; the selection is replaced
+    as a whole, and cleared when ALL or when the access is disabled, so a stale
+    selection never comes back."""
+    if company_scope not in m.DOMAIN_COMPANY_SCOPES:raise ValueError(f'Unknown company scope {company_scope!r}.')
+    row=db.scalar(select(m.RFOneAccountDomainAccess).where(m.RFOneAccountDomainAccess.account_id==account_id,
+        m.RFOneAccountDomainAccess.domain_code==domain_code))
+    wanted={int(v) for v in company_ids}
+    if row is None or not row.enabled:company_scope,wanted=m.DOMAIN_COMPANY_SCOPE_ALL,set()
+    if company_scope==m.DOMAIN_COMPANY_SCOPE_SELECTED:
+        companies=list(db.scalars(select(CompanyContext).where(CompanyContext.id.in_(wanted)))) if wanted else []
+        if not wanted or len(companies)!=len(wanted) or not all(active(c) for c in companies):
+            raise ValueError(f'{domain_code}: choose at least one active company, or all companies.')
+    else:wanted=set()
+    before=(row.company_scope if row is not None else None,sorted(domain_company_ids(db,account_id,domain_code)))
+    for existing in db.scalars(select(AccountDomainCompanyAccess).where(AccountDomainCompanyAccess.account_id==account_id,
+            AccountDomainCompanyAccess.domain_code==domain_code)):
+        if existing.company_id not in wanted:db.delete(existing)
+    for company_id in wanted-set(before[1]):
+        db.add(AccountDomainCompanyAccess(account_id=account_id,domain_code=domain_code,company_id=company_id))
+    if row is not None:row.company_scope=company_scope
+    if before!=(company_scope if row is not None else None,sorted(wanted)):
+        event(db,'DOMAIN_COMPANY_SCOPE',actor,account_id=account_id,domain_code=domain_code,
+              before={'scope':before[0],'company_ids':before[1]},after={'scope':company_scope,'company_ids':sorted(wanted)})
+    db.flush()
+
+
+def profile_company_ids_for_domain(db,account_id,domain_code):
+    """Rule 3: the companies where a current role profile of the person opens
+    `domain_code` — independent of the company currently chosen in the session,
+    never a company the person is not a current member of."""
+    account=db.get(m.RFOneAccount,account_id)
+    if account is None or account.status!='ACTIVE':return set()
+    condition,identity=_target_condition(db,account_id)
+    if identity is not None and not account.is_owner and not directory.employee_is_active(db.get(m.Employee,identity),[]):return set()
+    now=datetime.now(timezone.utc)
+    query=select(CompanyMembership.company_id,RolePermission.scope,RolePermission.items).join(RoleProfileAssignment,
+        RoleProfileAssignment.membership_id==CompanyMembership.id).join(RolePermission,
+        RolePermission.role_id==RoleProfileAssignment.role_id).join(CompanyContext,CompanyContext.id==CompanyMembership.company_id).join(
+        m.RestaurantRole,m.RestaurantRole.id==RoleProfileAssignment.role_id).join(m.OperationalArea,
+        m.OperationalArea.id==RoleProfileAssignment.area_id).join(m.OperationalAreaRole,
+        (m.OperationalAreaRole.operational_area_id==RoleProfileAssignment.area_id)&(m.OperationalAreaRole.restaurant_role_id==RoleProfileAssignment.role_id)).where(
+            condition,RolePermission.domain_code==domain_code,CompanyContext.active.is_(True),
+            CompanyMembership.valid_from<=now,(CompanyMembership.valid_to.is_(None)|(CompanyMembership.valid_to>now)),
+            RoleProfileAssignment.valid_from<=now,(RoleProfileAssignment.valid_to.is_(None)|(RoleProfileAssignment.valid_to>now)),
+            m.RestaurantRole.active.is_not(False),m.OperationalArea.active.is_not(False))
+    return {company for company,scope,items in db.execute(query) if scope=='ALL' or items}
+
+
+def restaurant_ids_for_companies(db,company_ids):
+    """Restaurants of the given active companies: a COMPANY covers the
+    restaurants of its legal entity; the GROUP (RFGroup) covers every
+    restaurant (rule 1, operational scope only). A restaurant without a legal
+    entity belongs to no company and is reached only through a GROUP or an ALL
+    access (fail closed)."""
+    if not company_ids:return set()
+    companies=list(db.scalars(select(CompanyContext).where(CompanyContext.id.in_(set(company_ids)),CompanyContext.active.is_(True))))
+    if any(c.kind=='GROUP' for c in companies):return set(db.scalars(select(m.Restaurant.id)))
+    entities={c.legal_entity_id for c in companies if c.legal_entity_id is not None}
+    if not entities:return set()
+    return set(db.scalars(select(m.Restaurant.id).where(m.Restaurant.legal_entity_id.in_(entities))))
