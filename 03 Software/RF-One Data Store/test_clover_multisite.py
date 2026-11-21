@@ -25,6 +25,10 @@ from rfone_data_store.shift_location import pending_shift_count, resolve_shift_l
 from rfone_data_store.technical.connectors.clover import acquisition, acquisition_jobs, correction_sync, live_sync
 from rfone_data_store.tips import distribution_engine
 
+# The Clover worker image ships the shift-location resolver but not its Tips/Compensation consumers
+# (those ship in the rfone-tips/rfone-web images, where this test checks them too).
+CONSUMERS_SHIP_HERE = hasattr(distribution_engine, "shift_counts_at")
+
 UTC = timezone.utc
 WP_MERCHANT, MD_MERCHANT = "WPMERCHANT01", "MDMERCHANT01"
 PERIOD_START = datetime(2026, 6, 1, tzinfo=UTC)
@@ -257,6 +261,10 @@ class TwoCloverSitesTest(unittest.TestCase):
         resolved = resolve_shift_locations(self.db, [proven_wp, proven_md, conflicting, no_location_run, orphan])
         self.assertEqual(resolved, {proven_wp.id: self.wp.id, proven_md.id: self.md.id, conflicting.id: None,
                                     no_location_run.id: None, orphan.id: None})
+        self.assertFalse(shift_counts_at(orphan, self.md.id, resolved))
+        self.assertEqual(pending_shift_count(self.db, start=PERIOD_START, end=PERIOD_END), 3)
+        if not CONSUMERS_SHIP_HERE:
+            return
         # Tips presence and Compensation hours read the same certain Location.
         self.assertEqual(distribution_engine._employees_shift_active_at(self.db, location_id=self.wp.id, at=T0),
                          {self.luca.id})
