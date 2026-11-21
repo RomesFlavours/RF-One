@@ -11,13 +11,15 @@ When the RF-One role of an original role is not certain, the mapping may still c
 department (Clover "BOH"). Every change closes the current row and opens a new one (history kept).
 
 `sync_site` runs at the end of every Clover employee import (`employee_directory.import_snapshot`), so
-it is part of the import, never a separate procedure. For every confirmed person of the site:
-  - the current Clover role decides the RF-One role through the table; a change closes the previous
-    Clover-synced assignment and opens the new one (one open assignment per person and Restaurant);
-  - a person no longer in Clover keeps the person and the history; the open assignment is closed;
-  - an assignment kept by hand in Registry (source MANUAL) is never closed or replaced;
-  - effective from the moment of the sync, never backdated; identities still pending confirmation get
-    nothing (no duplicate person across sites).
+it is part of the import, never a separate procedure.
+
+TIPS_REGISTRY_ONLY_001 (Product Owner, 2026-11-21): Clover is not a reliable source of roles, departments
+or duties; Registry is the only authority. The import therefore NEVER opens, closes or changes a Registry
+assignment (`EmployeeAssignment`): a role changed in Clover changes nothing in Registry, and so nothing in
+Tips. It only keeps the catalogue of the Clover roles seen at the site (`SourceRole`) and REPORTS, per
+confirmed person, where the Clover role (read through the table) differs from the open Registry
+assignment — information for a person to review in Registry, never applied. Assignments written by the
+former automatic sync (source `CLOVER_ROLE_SYNC`) stay as they are: they are Registry history.
 Historical roles from documents (`RegistryPersonSourceRole`) never open assignments and never replace
 the current Clover role. Clover data and Tips' `SourceRoleMapping` are never read for writing or changed.
 No commits: the caller owns the transaction.
@@ -118,12 +120,10 @@ def ensure_source_roles(db, *, location_id, links) -> dict[str, int]:
 class SyncSummary:
     location_id: int
     restaurant_id: int | None = None
-    opened: int = 0              # new assignment for a person who had none from Clover at this site
-    changed: int = 0             # Clover role changed: previous closed, new opened
-    closed_left: int = 0         # no longer in Clover: assignment closed, person kept
-    closed_unmapped: int = 0     # Clover role has no RF-One role in the table: previous closed
-    unchanged: int = 0
-    manual_kept: int = 0         # an assignment kept by hand in Registry: left untouched
+    # Reported only (TIPS_REGISTRY_ONLY_001): the import never writes a Registry assignment.
+    differs: int = 0             # Clover role (through the table) differs from the open Registry assignment
+    unchanged: int = 0           # Clover role matches the open Registry assignment
+    no_registry_role: int = 0    # confirmed person with no open Registry assignment at this Restaurant
     pending_identity: int = 0    # Clover person not yet confirmed: reported, not assigned
     multiple_roles: int = 0      # more than one Clover role at the site: reported, not decided
     without_rf_role: int = 0     # Clover role without an RF-One role in the table (department may still be known)
@@ -134,8 +134,9 @@ class SyncSummary:
 
 
 def sync_site(db, *, location_id, merchant_id, now=None, dry_run=False) -> SyncSummary:
-    """Align the Registry assignments of one Clover site with its current roster. Reads only what the
-    import stored (`EmployeeCloverLink`), never calls Clover. `dry_run`: compute, then undo (savepoint)."""
+    """Compare the Registry assignments of one Clover site with its current roster and report the
+    differences; never writes an assignment. Reads only what the import stored (`EmployeeCloverLink`),
+    never calls Clover. `dry_run`: compute, then undo (savepoint) — the role catalogue is not kept either."""
     summary = SyncSummary(location_id=location_id)
     if not available(db):
         summary.issues.append("Registry Role/Department tables are not installed.")
@@ -186,32 +187,17 @@ def _sync(db, summary, location_id, merchant_id, now):
         open_rows = list(db.scalars(select(m.EmployeeAssignment).where(
             m.EmployeeAssignment.employee_id == employee_id, m.EmployeeAssignment.restaurant_id == restaurant_id,
             m.EmployeeAssignment.valid_to.is_(None))))
-        if any(a.assignment_source != ASSIGNMENT_SOURCE for a in open_rows):
-            summary.manual_kept += 1
-            continue
-        synced = open_rows[0] if open_rows else None
-        if synced is not None and target == (synced.restaurant_role_id, synced.operational_area_id):
+        held = {a.restaurant_role_id for a in open_rows}
+        if not held:
+            summary.no_registry_role += 1
+            summary.issues.append(f"Employee #{employee_id}: no Registry assignment at this Restaurant "
+                                  "(Clover role not used to create one).")
+        elif target is not None and target[0] not in held:
+            summary.differs += 1
+            summary.issues.append(f"Employee #{employee_id}: Clover role differs from the Registry assignment "
+                                  "(Registry kept; review it in Registry if needed).")
+        else:
             summary.unchanged += 1
-            continue
-        if synced is not None:
-            synced.valid_to = now
-            db.flush()          # close before opening: one open assignment per Restaurant
-            if target is not None:
-                summary.changed += 1
-            elif not present:
-                summary.closed_left += 1
-            else:
-                summary.closed_unmapped += 1
-        elif target is not None:
-            summary.opened += 1
-        if target is not None:
-            db.add(m.EmployeeAssignment(
-                employee_id=employee_id, restaurant_id=restaurant_id, operational_area_id=target[1],
-                restaurant_role_id=target[0], location_id=location_id, valid_from=now,
-                assignment_source=ASSIGNMENT_SOURCE,
-                source_note="Clover role at this site, synchronized by the Clover employee import "
-                            "(REGISTRY_CLOVER_DEPARTMENTS_001)"))
-            db.flush()
     return summary
 
 

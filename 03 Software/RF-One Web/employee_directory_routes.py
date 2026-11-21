@@ -296,7 +296,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                             original_label=request.form.get("original_label"),
                             restaurant_role_id=number("restaurant_role_id"), department_id=number("department_id"),
                             account_id=account.id)
-                        flash("Corrispondenza salvata. Le assegnazioni della sede sono state aggiornate.", "info")
+                        flash("Corrispondenza salvata. Le assegnazioni restano decise in Registry: non sono state modificate.", "info")
                     elif action == "role":
                         role = departments.save_role(db, role_id=number("role_id"), name=request.form.get("name"),
                                                      department_id=number("department_id"), account_id=account.id)
