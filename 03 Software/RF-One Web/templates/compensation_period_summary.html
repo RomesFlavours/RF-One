@@ -52,10 +52,15 @@
         </td></tr>
         <tr><th>Overtime hours</th><td>hours past {{ '%g' % summary.overtime_threshold_hours }} in each Workweek, in chronological order; weeks are never netted; earlier hours of a partial first week count towards the {{ '%g' % summary.overtime_threshold_hours }}</td></tr>
         <tr><th>Location attribution</th><td>
-          {% if summary.home_location_fallback_shifts %}
-            <span class="badge warn">home Location</span>
-            {{ summary.home_location_fallback_shifts }} of {{ summary.shifts_counted }} Shifts in this period carry no Location of their own and are attributed to {{ summary.location_name }} because it is the Employee's home Location. The Shifts themselves are unchanged.
-          {% else %}
+          {% if summary.reconstructed_location_shifts %}
+            <span class="badge warn">from Clover record</span>
+            {{ summary.reconstructed_location_shifts }} of {{ summary.shifts_counted }} Shifts in this period carry no Location of their own; {{ summary.location_name }} is proven by the Clover acquisition record of each Shift. The Shifts themselves are unchanged.
+          {% endif %}
+          {% if summary.pending_location_shifts %}
+            <span class="badge warn">no certain Location</span>
+            {{ summary.pending_location_shifts }} Shift(s) in this period have no certain Location and are counted at no Location (see Hours warnings).
+          {% endif %}
+          {% if not summary.reconstructed_location_shifts and not summary.pending_location_shifts %}
             every Shift in this period carries its own Location
           {% endif %}
         </td></tr>
@@ -104,7 +109,7 @@
         <tbody>
           {% for row in summary.rows %}
           <tr>
-            <td>{{ row.display_name|first_name_initial }}{% if not row.hours_complete %} <span class="badge warn" title="{% for i in row.issues %}{{ i.detail }} {% endfor %}">check shifts</span>{% endif %}{% if row.home_location_fallback_shifts %} <span class="badge warn" title="{{ row.home_location_fallback_shifts }} Shift(s) without their own Location, attributed through the home Location">home Location &times;{{ row.home_location_fallback_shifts }}</span>{% endif %}</td>
+            <td>{{ row.display_name|first_name_initial }}{% if not row.hours_complete %} <span class="badge warn" title="{% for i in row.issues %}{{ i.detail }} {% endfor %}">check shifts</span>{% endif %}{% if row.reconstructed_location_shifts %} <span class="badge warn" title="{{ row.reconstructed_location_shifts }} Shift(s) without their own Location, located by their Clover acquisition record">Clover record &times;{{ row.reconstructed_location_shifts }}</span>{% endif %}</td>
             <td>{{ row.worked_hours }}</td>
             <td>{% if summary.overtime_available %}{{ row.overtime_hours }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
             <td>{% if row.tips_payable is not none %}${{ row.tips_payable }}{% else %}<span class="muted">not available</span>{% endif %}</td>

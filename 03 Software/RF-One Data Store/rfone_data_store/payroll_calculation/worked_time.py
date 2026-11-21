@@ -36,6 +36,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from ..shift_location import shift_at_locations
 from ..tips.distribution_engine import business_date_window_utc
 from . import workweek as workweek_service
 
@@ -104,10 +105,8 @@ def load_location_shifts(
     margin = timedelta(days=1)
     return list(session.scalars(
         select(m.Shift)
-        .join(m.Employee, m.Employee.id == m.Shift.employee_id)
         .where(
-            (m.Shift.location_id == location_id)
-            | (m.Shift.location_id.is_(None) & (m.Employee.location_id == location_id)),
+            shift_at_locations([location_id]),
             func.coalesce(m.Shift.override_in_time, m.Shift.clock_in) < window_end + margin,
             (func.coalesce(m.Shift.override_out_time, m.Shift.clock_out).is_(None)
              & (func.coalesce(m.Shift.override_in_time, m.Shift.clock_in) >= window_start - margin))
@@ -120,11 +119,7 @@ def load_location_shifts(
 def shift_history_bounds(session: Session, location_id: int) -> tuple[datetime | None, datetime | None]:
     first, last = session.execute(
         select(func.min(m.Shift.clock_in), func.max(m.Shift.clock_in))
-        .join(m.Employee, m.Employee.id == m.Shift.employee_id)
-        .where(
-            (m.Shift.location_id == location_id)
-            | (m.Shift.location_id.is_(None) & (m.Employee.location_id == location_id)),
-        )
+        .where(shift_at_locations([location_id]))
     ).one()
     return aware_utc(first), aware_utc(last)
 

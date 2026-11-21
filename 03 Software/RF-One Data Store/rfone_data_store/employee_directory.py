@@ -261,6 +261,32 @@ def ensure_legacy_links(db):
             db.flush()
 
 
+def _other_site_states(db, merchant_id, location_id):
+    """What a roster import of ONE site must never change (CLOVER_MULTISITE_001): every Clover link of the
+    other merchants, and every Workforce assignment outside this site's own Restaurant(s)."""
+    links = {link.id: (link.employee_id, link.location_id, link.state, link.last_seen_at, link.last_run_id,
+                       dict(link.snapshot or {}))
+             for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id != merchant_id))}
+    own_restaurants = select(m.RestaurantLocation.restaurant_id).where(m.RestaurantLocation.location_id == location_id)
+    assignments = {a.id: (a.employee_id, a.restaurant_id, a.location_id, a.restaurant_role_id, a.operational_area_id,
+                          a.valid_from, a.valid_to, a.assignment_source)
+                   for a in db.scalars(select(m.EmployeeAssignment).where(
+                       ~m.EmployeeAssignment.restaurant_id.in_(own_restaurants)))}
+    return links, assignments
+
+
+def _refuse_other_site_changes(db, merchant_id, location_id, before):
+    """If the import changed anything belonging to another site (e.g. a Winter Park update altering a
+    Mount Dora link state or assignment), it is refused and the caller's transaction rolls back."""
+    db.flush()
+    after = _other_site_states(db, merchant_id, location_id)
+    changed = sum(1 for b, a in zip(before, after) for key, state in b.items() if a.get(key) != state)
+    if changed:
+        raise ValueError(
+            f"Roster import for merchant {merchant_id} would change {changed} record(s) of another "
+            "Clover site; nothing was written.")
+
+
 def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, run_id=None, complete=True):
     """Apply one complete, validated employee collection atomically in caller's transaction.
 
@@ -290,6 +316,7 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
     # acquisition lock. Simultaneous WP/MD imports must see each other's people.
     db.scalar(select(m.SourceSystem).where(m.SourceSystem.id == source.id).with_for_update())
     ensure_legacy_links(db)
+    other_sites_before = _other_site_states(db, merchant_id, location_id)
     observed_at = observed_at or datetime.now(timezone.utc)
     observed_at = observed_at.replace(tzinfo=observed_at.tzinfo or timezone.utc)
     resolved = {}
@@ -347,6 +374,7 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
     from . import registry_departments
     if registry_departments.available(db):
         registry_departments.sync_site(db, location_id=location_id, merchant_id=merchant_id)
+    _refuse_other_site_changes(db, merchant_id, location_id, other_sites_before)
     # Historical work can still refer to people absent from today's roster.
     resolved.update({l.external_employee_id: l.employee_id for l in db.scalars(
         select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,

@@ -244,8 +244,8 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     )
     session.flush()
     # host_emp has a Shift ONLY on day 1; non_host_emp has a Shift on day 1 too (G: active Shift, non-HOST role).
-    session.add(m.Shift(employee_id=host_emp.id, source_system_id=source_system.id, source_shift_id="EAO-SHIFT-1", clock_in=_at(1, 0), clock_out=_at(1, 23)))
-    session.add(m.Shift(employee_id=non_host_emp.id, source_system_id=source_system.id, source_shift_id="EAO-SHIFT-2", clock_in=_at(1, 0), clock_out=_at(1, 23)))
+    session.add(m.Shift(employee_id=host_emp.id, source_system_id=source_system.id, source_shift_id="EAO-SHIFT-1", location_id=host_emp.location_id, clock_in=_at(1, 0), clock_out=_at(1, 23)))
+    session.add(m.Shift(employee_id=non_host_emp.id, source_system_id=source_system.id, source_shift_id="EAO-SHIFT-2", location_id=non_host_emp.location_id, clock_in=_at(1, 0), clock_out=_at(1, 23)))
     session.flush()
 
     ts_day1 = _at(1, 12)

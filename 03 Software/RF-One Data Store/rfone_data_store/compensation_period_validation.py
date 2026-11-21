@@ -120,7 +120,8 @@ def _site(session: Session, name: str = "Winter Park", *, linked: bool = True, w
         session.flush()
         for day in (date(2026, 8, 3), date(2026, 12, 1)):
             start = _local(day, 10)
-            session.add(m.Shift(employee_id=anchor.id, clock_in=start, clock_out=start + timedelta(hours=1)))
+            session.add(m.Shift(employee_id=anchor.id, location_id=location.id, clock_in=start,
+                                clock_out=start + timedelta(hours=1)))
         session.flush()
     return _Site(location, restaurant, legal_entity)
 
@@ -137,6 +138,7 @@ def _local(day: date, hour: int, minute: int = 0) -> datetime:
 
 
 def _shift(session: Session, employee: m.Employee, start: datetime, hours: float | None, **extra) -> m.Shift:
+    extra.setdefault("location_id", employee.location_id)  # acquired Shifts carry their Location (CLOVER_MULTISITE_001)
     shift = m.Shift(
         employee_id=employee.id, clock_in=start,
         clock_out=start + timedelta(hours=hours) if hours is not None else None, **extra,

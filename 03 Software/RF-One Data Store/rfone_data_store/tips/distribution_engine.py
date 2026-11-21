@@ -48,6 +48,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from ..shift_location import pending_shift_count, resolve_shift_locations, shift_at_locations, shift_counts_at
 from ..ingestion.common import utc_now
 from ..technical.connectors.clover.acquisition import get_order_settlement_time, order_settlement_times_subquery
 from . import distribution_rule_service as rule_svc
@@ -70,6 +71,8 @@ _CENT = Decimal("1")
 class CalculationSummary:
     orders_considered: int = 0
     orders_with_no_settlement_time: int = 0
+    # Shifts in the period without a certain Location: excluded, reported (CLOVER_MULTISITE_001).
+    shifts_without_certain_location: int = 0
     orders_skipped_no_employee: int = 0
     rules_applied: int = 0
     rules_not_implemented: int = 0
@@ -431,16 +434,13 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
         clock_in <= at AND (clock_out IS NULL OR at < clock_out)
 
-    Scoped to `location_id` when a Shift carries its own Location evidence
-    (`Shift.location_id`); a Shift with no Location evidence is treated as
-    matching. Rome's Flavours is single-Location today, and this task
-    explicitly scopes to its first configuration and forbids "broad
-    architecture/integrity reviews" — the legacy engine's fuller
-    multi-Location epistemic-gap handling (TASK_TIPS_004) is deliberately
-    not reproduced here; see the implementation report."""
+    Scoped to `location_id` by the shared Shift-Location rule
+    (`shift_location.py`, CLOVER_MULTISITE_001): only a Shift whose Location
+    is certain (its own, or proven by its Clover acquisition record) counts,
+    and only there; a Shift without a certain Location counts nowhere."""
     rows = session.scalars(
         select(m.Shift.employee_id).where(
-            (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
+            shift_at_locations([location_id]),
             m.Shift.clock_in.is_not(None),
             m.Shift.clock_in <= at,
             (m.Shift.clock_out.is_(None)) | (at < m.Shift.clock_out),
@@ -451,8 +451,9 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
 class _PeriodEligibility:
     """Request-local persisted facts; never retained across calculations."""
-    def __init__(self, assignments, shifts, history):
+    def __init__(self, assignments, shifts, history, shift_locations=None):
         self.history = history
+        self.shift_locations = shift_locations or {}
         self.assignments = {}
         self.shifts = {}
         for row in assignments:
@@ -475,7 +476,7 @@ class _PeriodEligibility:
 
     def on_shift(self, candidates, location_id, at):
         return {employee for employee in candidates if any(
-            row.location_id in (None, location_id) and _aware_utc(row.clock_in) <= at
+            shift_counts_at(row, location_id, self.shift_locations) and _aware_utc(row.clock_in) <= at
             and (row.clock_out is None or at < _aware_utc(row.clock_out))
             for row in self.shifts.get(employee, ()))}
 
@@ -728,11 +729,12 @@ def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: i
         return {}
     if shifts is None:
         shifts = session.scalars(select(m.Shift).where(m.Shift.employee_id.in_(coverage),
-            (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
+            shift_at_locations([location_id]),
             m.Shift.clock_in < end, (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > start))).all()
     intervals = {}
+    homes = resolve_shift_locations(session, shifts)
     for shift in shifts:
-        if shift.employee_id not in coverage or shift.location_id not in (None, location_id):
+        if shift.employee_id not in coverage or not shift_counts_at(shift, location_id, homes):
             continue
         lo = max(start, _aware_utc(shift.clock_in))
         hi = min(end, _aware_utc(shift.clock_out) if shift.clock_out else end)
@@ -861,17 +863,19 @@ def calculate_tips(
     summary.orders_with_no_settlement_time = session.scalar(select(func.count(m.Order.id)).outerjoin(
         settled, settled.c.order_id == m.Order.id).where(m.Order.location_id.in_(location_ids),
         m.Order.created_at <= period_end, settled.c.order_id.is_(None))) or 0
+    summary.shifts_without_certain_location = pending_shift_count(session, start=period_start, end=period_end)
     tips, gratuities = _gross_tip_components_for_orders(session, [o.id for o, _ in rows])
     assignments = session.scalars(select(m.EmployeeAssignment).where(
         m.EmployeeAssignment.restaurant_id == restaurant_id)).all()
     # Include opening instants of long-open orders as well as complete daily context.
     first_instant = min([context_start] + [_aware_utc(o.created_at) for o, _ in rows])
     shifts = session.scalars(select(m.Shift).where(
-        (m.Shift.location_id.is_(None)) | m.Shift.location_id.in_(location_ids),
+        shift_at_locations(location_ids),
         m.Shift.clock_in.is_not(None), m.Shift.clock_in < context_end,
         (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > first_instant))).all()
     history = CloverRoleHistory(session, restaurant_id, location_ids)
-    eligibility = _PeriodEligibility(assignments, shifts, history)
+    eligibility = _PeriodEligibility(assignments, shifts, history,
+                                     resolve_shift_locations(session, shifts))
     tip_roles = {role for items in versions.values() for version in items
                  if version.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
                  and _aware_utc(version.effective_from) < period_end
@@ -1002,6 +1006,7 @@ def summarize_notes(result: TipCalculationResult) -> str:
     return (
         f"orders_considered={s.orders_considered} "
         f"orders_with_no_settlement_time={s.orders_with_no_settlement_time} "
+        f"shifts_without_certain_location={s.shifts_without_certain_location} "
         f"orders_skipped_no_employee={s.orders_skipped_no_employee} "
         f"rules_applied={s.rules_applied} allocations_produced={s.allocations_produced} "
         f"rules_not_implemented={s.rules_not_implemented}"

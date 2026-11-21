@@ -723,11 +723,11 @@ def _build_fixture(s) -> dict:
     # The Host works night one only, and goes home BEFORE the guest pays —
     # which under ACTIVE_AT_ORDER_OPEN still earns them the tip-out.
     s.add(m.Shift(
-        employee_id=host.id, source_system_id=source_system.id, source_shift_id="SH-HOST-1",
+        employee_id=host.id, source_system_id=source_system.id, source_shift_id="SH-HOST-1", location_id=host.location_id,
         clock_in=local(DAY_ONE, 17), clock_out=local(DAY_ONE, 20),
     ))
     s.add(m.Shift(
-        employee_id=server.id, source_system_id=source_system.id, source_shift_id="SH-SRV-1",
+        employee_id=server.id, source_system_id=source_system.id, source_shift_id="SH-SRV-1", location_id=server.location_id,
         clock_in=local(DAY_ONE, 16), clock_out=local(DAY_TWO, 2),
     ))
     s.flush()

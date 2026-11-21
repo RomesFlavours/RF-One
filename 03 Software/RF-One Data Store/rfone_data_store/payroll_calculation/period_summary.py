@@ -53,6 +53,7 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from ..tips.distribution_engine import business_date_window_utc
 from . import worked_time as wt
+from ..shift_location import pending_shift_count, reconstructed_shift_ids
 # Hours are counted by the shared `worked_time` module (also used by the
 # Compensation Run, `compensation_period.py`); these names stay importable
 # from here unchanged.
@@ -97,10 +98,10 @@ class EmployeeSummaryRow:
     tips_payable_minor: int | None = None
     has_tip_entitlement: bool = False
     issues: list[ShiftIssue] = field(default_factory=list)
-    # Shifts counted in the period that carry no Location of their own and
-    # were attributed through the Employee's home Location (existing rule,
-    # `Shift.location_id` docstring) — shown, never hidden.
-    home_location_fallback_shifts: int = 0
+    # Shifts counted in the period that carry no Location of their own but
+    # whose Location is proven by their Clover acquisition record
+    # (`shift_location.py`, CLOVER_MULTISITE_001) - shown, never hidden.
+    reconstructed_location_shifts: int = 0
 
     @property
     def worked_hours(self) -> Decimal:
@@ -149,10 +150,12 @@ class PeriodSummary:
     # Coverage notes about the Shift data itself (history start, period not over, ...).
     hours_warnings: list[str] = field(default_factory=list)
     shifts_counted: int = 0
+    # Shifts of the period whose Location is not certain: counted at no site (anomaly).
+    pending_location_shifts: int = 0
 
     @property
-    def home_location_fallback_shifts(self) -> int:
-        return sum(r.home_location_fallback_shifts for r in self.rows)
+    def reconstructed_location_shifts(self) -> int:
+        return sum(r.reconstructed_location_shifts for r in self.rows)
 
     @property
     def overtime_available(self) -> bool:
@@ -357,6 +360,13 @@ def build_period_summary(
         period_start=period_start, period_end=period_end, now=now,
     ))
 
+    summary.pending_location_shifts = pending_shift_count(session, start=period_start, end=period_end)
+    if summary.pending_location_shifts:
+        summary.hours_warnings.append(
+            f"{summary.pending_location_shifts} Clover Shift(s) in this period have no certain Location "
+            "(neither their own nor one proven by their Clover acquisition record). They are counted at no "
+            "Location, so they are missing from these hours until the Location is resolved.")
+
     by_employee: dict[int, list[m.Shift]] = {}
     for shift in wt.load_location_shifts(session, location_id=location.id, window_start=window_start, window_end=window_end):
         by_employee.setdefault(shift.employee_id, []).append(shift)
@@ -374,7 +384,7 @@ def build_period_summary(
             continue  # only a week-context Shift before the period: not a row
         row = EmployeeSummaryRow(employee_id=employee_id, display_name=None,
                                  worked_seconds=worked, overtime_seconds=overtime, issues=issues,
-                                 home_location_fallback_shifts=sum(1 for sh in in_period if sh.location_id is None))
+                                 reconstructed_location_shifts=len(reconstructed_shift_ids(session, in_period)))
         summary.shifts_counted += len(in_period)
         rows[employee_id] = row
         summary.issues.extend(issues)

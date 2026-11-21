@@ -134,7 +134,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     def make_shift(employee, clock_in, clock_out, suffix):
         session.add(
             m.Shift(
-                employee_id=employee.id, source_system_id=source_system.id,
+                employee_id=employee.id, source_system_id=source_system.id, location_id=employee.location_id,
                 source_shift_id=f"SHIFT-{employee.id}-{suffix}", clock_in=clock_in, clock_out=clock_out,
             )
         )
@@ -201,6 +201,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.add(
         m.Shift(
             employee_id=role_host_emp.id, source_system_id=role_source_system.id, source_shift_id="ROLE-SHIFT-1",
+            location_id=role_host_emp.location_id,
             clock_in=_at(1, 0), clock_out=_at(12, 23),
         )
     )

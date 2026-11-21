@@ -63,6 +63,7 @@ from rfone_data_store.database import (  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import local_calendar  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
+from rfone_data_store.shift_location import shift_at_locations  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical.connectors.clover import acquisition_jobs as clover_jobs  # noqa: E402
 from rfone_data_store.tips import calculation_run_service as run_svc  # noqa: E402
@@ -486,7 +487,7 @@ def home():
                 shift_stmt = (
                     select(m.Shift)
                     .where(
-                        m.Shift.location_id.in_(location_ids_subq) | m.Shift.location_id.is_(None),
+                        shift_at_locations(location_ids_subq),
                         m.Shift.clock_in >= start,
                         m.Shift.clock_in <= end,
                     )
