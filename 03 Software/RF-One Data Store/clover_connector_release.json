@@ -2,9 +2,9 @@
   "release": "registry-clover-departments-20261121b-jobs",
   "scope": "RF-One-owned included person directory, confirmed POS/domain links; GET-only POS, no authority changes",
   "files": {
-    "RF-One Data Store/rfone_data_store/models.py": "d4db89d7390c2400f1f1b760498779a2f839797c741245285e373b78263222f5",
+    "RF-One Data Store/rfone_data_store/models.py": "2fd59e60111bd366e7259ea163393bcc289e29798c333bf2a1adcd3b7641833f",
     "RF-One Data Store/rfone_data_store/employee_directory.py": "77e279db9a151bceea43e7c5214e2c880e6c6ffc8b8a700b49c6586e22c7d4ef",
-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "3623bc1a3c905201250516a923795f9d8c31acb834d421995475a6aead7419c3",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "b23b5ea2ec77974a7d39bf36da0956737108176ac4cfb479a4de823cfb131bb5",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "607a750c265d40bb56dd800189ddb43055d64100bba5ea2eb05f2bb31fcb8f08",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "cad7dd0aaddc59f0b1898058ad6553756cbf1eee65fe3249c64d600c31d291d7",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py": "2b4dc5f409bd55d9aad85fcec4be5be7ba1d2bdd801fd25705573b143f44f12f",
