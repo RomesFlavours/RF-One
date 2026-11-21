@@ -16,3 +16,13 @@ Anagrafica > Reparti e ruoli.
   the role is named in the reason. Nothing is guessed.
 - Distribution rules, percentages, hours, history, finalized runs, entitlements and payments are
   unchanged. Deleting the table needs a separate decision and migration.
+
+## Product Owner decisions, 2026-11-21 (TIPS_REGISTRY_ROLES_002)
+
+- Retroactive first version: allowed unless a confirmed (MANUAL) Registry assignment valid at that
+  instant shows another role; then the role is uncertain and the reason says so.
+- Before a person's first Clover observation: the Registry assignment documented and valid at that
+  date (never one that starts later: today's role is never projected into the past). None, or two
+  different ones, is an explicit exception in the blocked reason.
+- Verified on AWS data (read-only): for closed periods the result with Registry history equals the
+  result with assignments only; finalized runs and entitlements are never recomputed or changed.

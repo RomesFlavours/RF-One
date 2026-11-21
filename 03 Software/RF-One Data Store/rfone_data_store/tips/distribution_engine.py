@@ -897,7 +897,10 @@ def calculate_tips(
         entries = []
         for shift in sorted(uncertain, key=lambda row: (row.clock_in, row.id)):
             employee = session.get(m.Employee, shift.employee_id)
-            entries.append(f"{employee.display_name} ({_aware_utc(shift.clock_in):%Y-%m-%d %H:%M} UTC)")
+            start = max(period_start, _aware_utc(shift.clock_in))
+            why = history.explain(shift.employee_id, shift.location_id, start)
+            entries.append(f"{employee.display_name} ({_aware_utc(shift.clock_in):%Y-%m-%d %H:%M} UTC"
+                           + (f": {why}" if why else "") + ")")
         undefined = sorted({name for shift in uncertain for name in history.undefined_roles(
             shift.employee_id, shift.location_id, max(period_start, _aware_utc(shift.clock_in)),
             min(period_end, _aware_utc(shift.clock_out)) if shift.clock_out else period_end)})
@@ -931,7 +934,9 @@ def calculate_tips(
             if len(observed) == 1:
                 result.order_role_ids[order.id] = next(iter(observed))
             elif in_window and (voluntary_minor or gratuity_minor):
-                result.blocked_reason = f"Clover role uncertain for Order {order.id}. Confirm the effective role."
+                why = history.explain(order.employee_id, order.location_id, settlement_time)
+                result.blocked_reason = (f"Clover role uncertain for Order {order.id}"
+                                         + (f" ({why})" if why else "") + ". Confirm the effective role.")
                 return result
         for rule in active_rules:
             effective = [v for v in versions[rule.id] if v.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
