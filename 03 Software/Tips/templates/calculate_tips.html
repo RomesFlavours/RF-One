@@ -85,6 +85,12 @@
       {{ result.no_eligible_recipient_lines|length }} {{ ui("order(s) had no eligible Host, so their Service Owner keeps 100%.") }}
     {% endif %}
   </p>
+  {% if result.registry_anomalies %}
+  <details class="muted" style="font-size:.8rem; margin-top:.4rem;">
+    <summary>{{ result.registry_anomalies|length }} {{ ui("person(s) worked without a Registry role: no role is assumed. Complete Registry if this is wrong.") }}</summary>
+    <ul>{% for anomaly in result.registry_anomalies %}<li>{{ anomaly }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
 </div>
 {% endif %}
 

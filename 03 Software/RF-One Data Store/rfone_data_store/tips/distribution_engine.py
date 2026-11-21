@@ -52,7 +52,6 @@ from ..shift_location import pending_shift_count, resolve_shift_locations, shift
 from ..ingestion.common import utc_now
 from ..technical.connectors.clover.acquisition import get_order_settlement_time, order_settlement_times_subquery
 from . import distribution_rule_service as rule_svc
-from .clover_role_history import CloverRoleHistory
 
 UTC_TZ = timezone.utc
 from .rounding import equal_split
@@ -74,6 +73,9 @@ class CalculationSummary:
     # Shifts in the period without a certain Location: excluded, reported (CLOVER_MULTISITE_001).
     shifts_without_certain_location: int = 0
     orders_skipped_no_employee: int = 0
+    # People with a Shift in the period and no Registry assignment valid during it (TIPS_REGISTRY_ONLY_001):
+    # they hold no role for Tips; listed in `TipCalculationResult.registry_anomalies`, never guessed.
+    shifts_without_registry_role: int = 0
     rules_applied: int = 0
     rules_not_implemented: int = 0
     allocations_produced: int = 0
@@ -175,6 +177,9 @@ class TipCalculationResult:
     first_business_date: date | None = None
     last_business_date: date | None = None
     order_facts: dict[int, tuple] | None = None
+    # TIPS_REGISTRY_ONLY_001: explicit Registry anomalies found by this calculation (person, time, cause).
+    # A blocking one also sets `blocked_reason`; the others are reported and change nothing.
+    registry_anomalies: list[str] = field(default_factory=list)
 
     @property
     def recipient_lines(self) -> list[AllocationLine]:
@@ -450,9 +455,9 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
 
 class _PeriodEligibility:
-    """Request-local persisted facts; never retained across calculations."""
-    def __init__(self, assignments, shifts, history, shift_locations=None):
-        self.history = history
+    """Request-local persisted facts; never retained across calculations. Roles come only from the
+    Registry assignments (TIPS_REGISTRY_ONLY_001): a Clover role is never read."""
+    def __init__(self, assignments, shifts, shift_locations=None):
         self.shift_locations = shift_locations or {}
         self.assignments = {}
         self.shifts = {}
@@ -462,17 +467,9 @@ class _PeriodEligibility:
             self.shifts.setdefault(row.employee_id, []).append(row)
 
     def holders(self, role_id, location_id, at):
-        holders = {a.employee_id for a in self.assignments.get(role_id, ())
+        return {a.employee_id for a in self.assignments.get(role_id, ())
             if a.location_id in (None, location_id) and _aware_utc(a.valid_from) <= at
             and (a.valid_to is None or at < _aware_utc(a.valid_to))}
-
-        for employee, location in self.history.observations:
-            if location == location_id:
-                if role_id in self.history.roles_at(employee, location, at):
-                    holders.add(employee)
-                else:
-                    holders.discard(employee)
-        return holders
 
     def on_shift(self, candidates, location_id, at):
         return {employee for employee in candidates if any(
@@ -700,7 +697,7 @@ def _merged_seconds(intervals: list[tuple[datetime, datetime]]) -> Decimal:
 
 
 def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: int,
-    role_id: int, start: datetime, end: datetime, assignments=None, shifts=None, history=None) -> dict[int, Decimal]:
+    role_id: int, start: datetime, end: datetime, assignments=None, shifts=None) -> dict[int, Decimal]:
     """Intersect recorded shifts, effective role coverage and the local day.
 
     Union intersections so duplicate/overlapping records never double hours.
@@ -717,14 +714,6 @@ def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: i
         lo, hi = max(start, _aware_utc(a.valid_from)), min(end, _aware_utc(a.valid_to) if a.valid_to else end)
         if lo < hi:
             coverage.setdefault(a.employee_id, []).append((lo, hi))
-    if history is not None:
-        for employee, location in history.observations:
-            if location != location_id:
-                continue
-            coverage.pop(employee, None)
-            spans = history.coverage(employee, location, role_id, start, end)
-            if spans:
-                coverage[employee] = spans
     if not coverage:
         return {}
     if shifts is None:
@@ -873,44 +862,63 @@ def calculate_tips(
         shift_at_locations(location_ids),
         m.Shift.clock_in.is_not(None), m.Shift.clock_in < context_end,
         (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > first_instant))).all()
-    history = CloverRoleHistory(session, restaurant_id, location_ids)
-    eligibility = _PeriodEligibility(assignments, shifts, history,
-                                     resolve_shift_locations(session, shifts))
-    tip_roles = {role for items in versions.values() for version in items
-                 if version.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
-                 and _aware_utc(version.effective_from) < period_end
-                 and (version.effective_to is None or _aware_utc(version.effective_to) > period_start)
-                 for role in (version.source_role_id, version.recipient_role_id) if role is not None}
-    owners = {(order.employee_id, order.location_id) for order, at in rows
-              if period_start <= _aware_utc(at) < period_end
-              and (tips.get(order.id) or gratuities.get(order.id))}
-    uncertain = []
+    eligibility = _PeriodEligibility(assignments, shifts, resolve_shift_locations(session, shifts))
+
+    # TIPS_REGISTRY_ONLY_001 (Product Owner, 2026-11-21): Clover ID -> RF-One person (the Directory link,
+    # already resolved on every Order and Shift) -> Registry assignment valid at that date, site and role
+    # -> Tips rules. The role a person has in Clover is never read, for nothing: not for checks, not for
+    # correspondences, not as a fallback.
+    def registry_roles_at(employee_id, location_id, at):
+        return {a.restaurant_role_id for a in assignments if a.employee_id == employee_id
+                and a.location_id in (None, location_id) and _aware_utc(a.valid_from) <= at
+                and (a.valid_to is None or at < _aware_utc(a.valid_to))}
+
+    def person(employee_id):
+        employee = session.get(m.Employee, employee_id)
+        return f"{employee.display_name if employee is not None else 'Employee'} (#{employee_id})"
+
+    def role_rules_at(at):
+        """Effective rule versions at `at` whose source is a role: only they need the owner's role."""
+        return [v for items in versions.values() for v in items
+                if v.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
+                and v.source_semantics == m.TIP_SOURCE_SEMANTICS_ROLE
+                and _aware_utc(v.effective_from) <= at and (v.effective_to is None or at < _aware_utc(v.effective_to))]
+
+    # Blocking: an Order with tips, under a rule whose source is a role, whose owner has no single Registry
+    # role at its Settlement Time — whether the rule applies cannot be decided without one.
+    blocking = []
+    for order, at in rows:
+        settlement_time = _aware_utc(at)
+        if (order.employee_id is None or not (period_start <= settlement_time < period_end)
+                or not (tips.get(order.id) or gratuities.get(order.id)) or not role_rules_at(settlement_time)):
+            continue
+        held = registry_roles_at(order.employee_id, order.location_id, settlement_time)
+        if len(held) != 1:
+            cause = ("no Registry role valid at that time" if not held
+                     else f"{len(held)} Registry roles valid at the same time")
+            blocking.append(f"{person(order.employee_id)}, Order {order.id} at {settlement_time:%Y-%m-%d %H:%M} UTC: {cause}")
+    # Reported, not blocking: a person working in the period without any Registry role during the Shift
+    # holds no Tips role (Registry decides); named so Registry can be completed if that is wrong.
+    unassigned = {}
     for shift in shifts:
-        location = shift.location_id
-        start = max(period_start, _aware_utc(shift.clock_in))
-        end = min(period_end, _aware_utc(shift.clock_out)) if shift.clock_out else period_end
-        relevant = ((shift.employee_id, location) in owners
-                    or history.has_any_role(shift.employee_id, location, tip_roles)
-                    or any(a.employee_id == shift.employee_id and a.restaurant_role_id in tip_roles
-                           and a.location_id in (None, location)
-                           and _aware_utc(a.valid_from) < end
-                           and (a.valid_to is None or _aware_utc(a.valid_to) > start) for a in assignments))
-        if relevant and start < end and history.uncertain_shift(shift.employee_id, location, start, end):
-            uncertain.append(shift)
-    if uncertain:
-        entries = []
-        for shift in sorted(uncertain, key=lambda row: (row.clock_in, row.id)):
-            employee = session.get(m.Employee, shift.employee_id)
-            start = max(period_start, _aware_utc(shift.clock_in))
-            why = history.explain(shift.employee_id, shift.location_id, start)
-            entries.append(f"{employee.display_name} ({_aware_utc(shift.clock_in):%Y-%m-%d %H:%M} UTC"
-                           + (f": {why}" if why else "") + ")")
-        undefined = sorted({name for shift in uncertain for name in history.undefined_roles(
-            shift.employee_id, shift.location_id, max(period_start, _aware_utc(shift.clock_in)),
-            min(period_end, _aware_utc(shift.clock_out)) if shift.clock_out else period_end)})
-        result.blocked_reason = (
-            ("Clover role without an RF-One role in Registry (to be defined in Anagrafica > Reparti e ruoli): "
-             + ", ".join(undefined) + ". ") if undefined else "") + "Clover role uncertain for these shifts: " + ", ".join(entries)
+        lo = max(period_start, _aware_utc(shift.clock_in))
+        hi = min(period_end, _aware_utc(shift.clock_out)) if shift.clock_out else period_end
+        where = eligibility.shift_locations.get(shift.id, shift.location_id)   # certain Location, or None
+        if shift.employee_id is None or lo >= hi or where is None:
+            continue
+        covered = any(a.employee_id == shift.employee_id and a.location_id in (None, where)
+                      and _aware_utc(a.valid_from) < hi and (a.valid_to is None or _aware_utc(a.valid_to) > lo)
+                      for a in assignments)
+        if not covered:
+            unassigned.setdefault(shift.employee_id, []).append(lo)
+    summary.shifts_without_registry_role = sum(len(v) for v in unassigned.values())
+    result.registry_anomalies = [f"BLOCKING: {entry}" for entry in blocking] + [
+        f"{person(employee_id)}: {len(starts)} shift(s) in the period without a Registry role "
+        f"(first {min(starts):%Y-%m-%d %H:%M} UTC); no Tips role is assumed"
+        for employee_id, starts in sorted(unassigned.items())]
+    if blocking:
+        result.blocked_reason = ("Registry role missing or ambiguous for Orders with tips "
+                                 "(complete the assignment in Registry, then calculate again): " + "; ".join(blocking))
         return result
     role_names = dict(session.execute(select(m.RestaurantRole.id, m.RestaurantRole.name).where(
         m.RestaurantRole.id.in_({v.recipient_role_id for items in versions.values() for v in items}))).all())
@@ -929,19 +937,9 @@ def calculate_tips(
             if in_window:
                 summary.orders_skipped_no_employee += 1
             continue
-        owner_role_ids = {a.restaurant_role_id for a in assignments if a.employee_id == order.employee_id
-            and a.location_id in (None, order.location_id) and _aware_utc(a.valid_from) <= settlement_time
-            and (a.valid_to is None or settlement_time < _aware_utc(a.valid_to))}
-        observed = history.roles_at(order.employee_id, order.location_id, settlement_time)
-        if observed is not None:
-            owner_role_ids = observed
-            if len(observed) == 1:
-                result.order_role_ids[order.id] = next(iter(observed))
-            elif in_window and (voluntary_minor or gratuity_minor):
-                why = history.explain(order.employee_id, order.location_id, settlement_time)
-                result.blocked_reason = (f"Clover role uncertain for Order {order.id}"
-                                         + (f" ({why})" if why else "") + ". Confirm the effective role.")
-                return result
+        owner_role_ids = registry_roles_at(order.employee_id, order.location_id, settlement_time)
+        if len(owner_role_ids) == 1:
+            result.order_role_ids[order.id] = next(iter(owner_role_ids))
         for rule in active_rules:
             effective = [v for v in versions[rule.id] if v.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
                 and _aware_utc(v.effective_from) <= settlement_time
@@ -987,7 +985,7 @@ def calculate_tips(
             if cache_key not in weights_cache:
                 weights_cache[cache_key] = _worked_time_weights(session, restaurant_id=restaurant_id,
                     location_id=group["location"].id, role_id=version.recipient_role_id,
-                    start=group["start"], end=group["end"], assignments=assignments, shifts=shifts, history=history)
+                    start=group["start"], end=group["end"], assignments=assignments, shifts=shifts)
             weights = weights_cache[cache_key]
             lines = _allocate_group(group, weights)
             result.lines.extend(line for line in lines if period_start <= line.settlement_time < period_end)
@@ -1008,6 +1006,7 @@ def summarize_notes(result: TipCalculationResult) -> str:
         f"orders_with_no_settlement_time={s.orders_with_no_settlement_time} "
         f"shifts_without_certain_location={s.shifts_without_certain_location} "
         f"orders_skipped_no_employee={s.orders_skipped_no_employee} "
+        f"shifts_without_registry_role={s.shifts_without_registry_role} "
         f"rules_applied={s.rules_applied} allocations_produced={s.allocations_produced} "
         f"rules_not_implemented={s.rules_not_implemented}"
     )

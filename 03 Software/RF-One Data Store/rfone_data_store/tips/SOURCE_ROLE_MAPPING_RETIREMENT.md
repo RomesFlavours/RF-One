@@ -26,3 +26,22 @@ Anagrafica > Reparti e ruoli.
   different ones, is an explicit exception in the blocked reason.
 - Verified on AWS data (read-only): for closed periods the result with Registry history equals the
   result with assignments only; finalized runs and entitlements are never recomputed or changed.
+
+## Superseded — Registry only (TIPS_REGISTRY_ONLY_001, Product Owner, 2026-11-21)
+
+Clover is not a reliable source for roles, departments or duties; Registry is the only authority. The
+Tips engine no longer reads any Clover role, nor any Clover role -> RF-One role correspondence (neither
+`source_role_mappings` nor `registry_role_mappings`), not even for checks or completeness:
+`tips/clover_role_history.py` was removed. The path is
+
+    Clover employee ID -> RF-One person (Directory link) -> Registry assignment valid at the date,
+    site and role of the work (`EmployeeAssignment`) -> Tips rules.
+
+- An Order with tips under a rule whose source is a role, whose owner has no single Registry role at
+  its Settlement Time, blocks the calculation with person, Order, time and cause. Nothing is assumed.
+- A person who worked without any Registry role is listed (`TipCalculationResult.registry_anomalies`,
+  `shifts_without_registry_role` in the run notes) and holds no Tips role.
+- The Clover employee import no longer opens, closes or changes Registry assignments
+  (`registry_departments.sync_site` only reports differences); assignments written by the former
+  automatic sync stay as Registry history.
+- The two sections above describe the replaced behaviour and are kept for history.

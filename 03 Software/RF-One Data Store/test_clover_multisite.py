@@ -269,7 +269,7 @@ class TwoCloverSitesTest(unittest.TestCase):
                              {self.luca.id})
             self.assertEqual(distribution_engine._employees_shift_active_at(self.db, location_id=self.md.id, at=T0),
                              {self.luca.id}, "Luca's MD record wins over his WP home; Sara's uncertain shifts count nowhere")
-            eligibility = distribution_engine._PeriodEligibility([], [proven_wp, orphan], history=None,
+            eligibility = distribution_engine._PeriodEligibility([], [proven_wp, orphan],
                                                                  shift_locations=resolved)
             self.assertEqual(eligibility.on_shift({self.luca.id, self.sara.id}, self.wp.id, T0), {self.luca.id})
         if COMPENSATION_CONSUMER_HERE:
