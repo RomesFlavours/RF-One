@@ -1,5 +1,5 @@
 {
-  "release": "registry-clover-departments-20261121-jobs",
+  "release": "registry-clover-departments-20261121b-jobs",
   "scope": "RF-One-owned included person directory, confirmed POS/domain links; GET-only POS, no authority changes",
   "files": {
     "RF-One Data Store/rfone_data_store/models.py": "d4db89d7390c2400f1f1b760498779a2f839797c741245285e373b78263222f5",
@@ -18,7 +18,6 @@
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/identity_holds.py": "01bd8660b7863ca652e6556a2ec48e3b9da235bb42883d5ca09a5ab124a94d5b",
     "RF-One Data Store/test_clover_identity_record_holds.py": "f4f03e06b8e64c7e8fc2d61cfbe2070bd36af77cc7d8eb6fbc5a0ef321433fe4",
     "RF-One Data Store/rfone_data_store/registry_departments.py": "6252b6bbac85423e59e8ccc0234d8eca80d1c0a424923e6c3be99293b3efb09d",
-    "RF-One Data Store/test_registry_departments.py": "9db6b0b1452910f9018f65705c6dfc741ad319b525fde58e1a66abf8f9176a7d",
-    "RF-One Data Store/migrations/versions/a1c220261121_registry_departments.py": "458bb5d6634c2602954504c68ef2845bd3b6375d4d3bbedfd1c39b17ba35fdac"
+    "RF-One Data Store/test_registry_departments.py": "9db6b0b1452910f9018f65705c6dfc741ad319b525fde58e1a66abf8f9176a7d"
   }
 }
