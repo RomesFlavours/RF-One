@@ -6,7 +6,10 @@ import unittest
 from sqlalchemy import func, select
 
 from rfone_data_store import models as m
-from rfone_data_store import access_profiles  # noqa: F401 — registers the Registry role catalog tables
+try:  # registers the Registry role catalog tables where that module is shipped (not in the Clover worker image)
+    from rfone_data_store import access_profiles  # noqa: F401
+except ImportError:
+    access_profiles = None
 from rfone_data_store import employee_directory as directory
 from rfone_data_store import registry_departments as reg
 from rfone_data_store.database import create_configured_engine, create_session_factory
@@ -176,6 +179,7 @@ class RegistryDepartmentsTest(unittest.TestCase):
         manager = [r for r in data["roles"] if r["name"] == "Manager"][0]
         self.assertTrue(manager["missing_department"])
 
+    @unittest.skipIf(access_profiles is None, "Registry role catalog not shipped in this image")
     def test_save_role_uses_registry_catalog_and_sets_department(self):
         role = reg.save_role(self.db, name="Server Help", department_id=self.foh.id)
         self.assertIsNone(role.restaurant_id)                            # shared Registry catalog
