@@ -45,6 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from ..site_selection import restaurant_is_operational
 from . import distribution_engine as engine
 from . import validation_mode_service as mode_svc
 
@@ -75,6 +76,8 @@ def save_calculation_run(
 
     In AUTOMATIC mode (§16), and only when the §11 control passes, the run
     is finalized here, in the same transaction, with no person named."""
+    if not restaurant_is_operational(session, restaurant_id):  # CLOVER_MULTISITE_001: inactive site
+        return None, "This restaurant site is not active yet: no Tips calculation is saved for it."
     result = engine.calculate_tips_for_business_dates(
         session, restaurant_id=restaurant_id,
         first_business_date=first_business_date, last_business_date=last_business_date,

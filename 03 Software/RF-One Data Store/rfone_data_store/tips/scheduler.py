@@ -81,7 +81,10 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _all_restaurant_ids(session: Session) -> list[int]:
-    return list(session.scalars(select(m.Restaurant.id)))
+    """Only operational sites: an inactive one (Mount Dora before activation) is never calculated or paid
+    automatically (CLOVER_MULTISITE_001)."""
+    from ..site_selection import restaurant_is_operational
+    return [rid for rid in session.scalars(select(m.Restaurant.id)) if restaurant_is_operational(session, rid)]
 
 
 def _last_calculation_at(session: Session, restaurant_id: int) -> datetime | None:
