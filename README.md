@@ -25,7 +25,7 @@ RF-One Core 2.0 (Subject ↔ Reality, Desire sovereignty, continuous Reality Che
 | `10 System/` | System-level capabilities spanning the whole platform (e.g. Identity & Access) — not a Domain, not a Product | Canonical for system-level architecture/boundary; implementation code stays in `03 Software/` |
 | `90 Archive/` | Historical/superseded repository material | **Never** current authority, regardless of status text inside |
 
-Each top-level directory has its own `README.md` explaining its purpose, authority level, and what does/does not belong there.
+Top-level directories may contain a `README.md` explaining purpose and authority; check the actual tree before relying on it. In this baseline `07 Tasks/README.md` is absent.
 
 ---
 
