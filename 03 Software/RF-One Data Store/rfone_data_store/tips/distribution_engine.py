@@ -48,6 +48,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from ..shift_location import employee_home_locations, shift_at_locations, shift_counts_at
 from ..ingestion.common import utc_now
 from ..technical.connectors.clover.acquisition import get_order_settlement_time, order_settlement_times_subquery
 from . import distribution_rule_service as rule_svc
@@ -431,16 +432,13 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
         clock_in <= at AND (clock_out IS NULL OR at < clock_out)
 
-    Scoped to `location_id` when a Shift carries its own Location evidence
-    (`Shift.location_id`); a Shift with no Location evidence is treated as
-    matching. Rome's Flavours is single-Location today, and this task
-    explicitly scopes to its first configuration and forbids "broad
-    architecture/integrity reviews" — the legacy engine's fuller
-    multi-Location epistemic-gap handling (TASK_TIPS_004) is deliberately
-    not reproduced here; see the implementation report."""
+    Scoped to `location_id` by the shared Shift-Location rule
+    (`shift_location.py`, CLOVER_MULTISITE_001): a Shift carrying a Location
+    counts only there; one without counts only at its Employee's home
+    Location — never at every site."""
     rows = session.scalars(
         select(m.Shift.employee_id).where(
-            (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
+            shift_at_locations([location_id]),
             m.Shift.clock_in.is_not(None),
             m.Shift.clock_in <= at,
             (m.Shift.clock_out.is_(None)) | (at < m.Shift.clock_out),
@@ -451,8 +449,9 @@ def _employees_shift_active_at(session: Session, *, location_id: int, at: dateti
 
 class _PeriodEligibility:
     """Request-local persisted facts; never retained across calculations."""
-    def __init__(self, assignments, shifts, history):
+    def __init__(self, assignments, shifts, history, home_locations=None):
         self.history = history
+        self.home_locations = home_locations or {}
         self.assignments = {}
         self.shifts = {}
         for row in assignments:
@@ -475,7 +474,7 @@ class _PeriodEligibility:
 
     def on_shift(self, candidates, location_id, at):
         return {employee for employee in candidates if any(
-            row.location_id in (None, location_id) and _aware_utc(row.clock_in) <= at
+            shift_counts_at(row, location_id, self.home_locations) and _aware_utc(row.clock_in) <= at
             and (row.clock_out is None or at < _aware_utc(row.clock_out))
             for row in self.shifts.get(employee, ()))}
 
@@ -728,11 +727,12 @@ def _worked_time_weights(session: Session, *, restaurant_id: int, location_id: i
         return {}
     if shifts is None:
         shifts = session.scalars(select(m.Shift).where(m.Shift.employee_id.in_(coverage),
-            (m.Shift.location_id.is_(None)) | (m.Shift.location_id == location_id),
+            shift_at_locations([location_id]),
             m.Shift.clock_in < end, (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > start))).all()
     intervals = {}
+    homes = employee_home_locations(session, {shift.employee_id for shift in shifts})
     for shift in shifts:
-        if shift.employee_id not in coverage or shift.location_id not in (None, location_id):
+        if shift.employee_id not in coverage or not shift_counts_at(shift, location_id, homes):
             continue
         lo = max(start, _aware_utc(shift.clock_in))
         hi = min(end, _aware_utc(shift.clock_out) if shift.clock_out else end)
@@ -867,11 +867,12 @@ def calculate_tips(
     # Include opening instants of long-open orders as well as complete daily context.
     first_instant = min([context_start] + [_aware_utc(o.created_at) for o, _ in rows])
     shifts = session.scalars(select(m.Shift).where(
-        (m.Shift.location_id.is_(None)) | m.Shift.location_id.in_(location_ids),
+        shift_at_locations(location_ids),
         m.Shift.clock_in.is_not(None), m.Shift.clock_in < context_end,
         (m.Shift.clock_out.is_(None)) | (m.Shift.clock_out > first_instant))).all()
     history = CloverRoleHistory(session, restaurant_id, location_ids)
-    eligibility = _PeriodEligibility(assignments, shifts, history)
+    eligibility = _PeriodEligibility(assignments, shifts, history,
+                                     employee_home_locations(session, {shift.employee_id for shift in shifts}))
     tip_roles = {role for items in versions.values() for version in items
                  if version.status != m.TIP_RULE_VERSION_STATUS_CANCELLED
                  and _aware_utc(version.effective_from) < period_end

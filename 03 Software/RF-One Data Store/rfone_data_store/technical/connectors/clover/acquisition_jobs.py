@@ -89,6 +89,7 @@ from .acquisition import (
     _resolve_clover_merchant,
     _safe_error_summary,
     import_clover_period,
+    location_is_active,
     reap_stale_acquisition_run,
 )
 
@@ -134,6 +135,21 @@ class NoSyncStartingPointError(RuntimeError):
 
 class NotACloverLocationError(ValueError):
     """The Location is not Clover-sourced with a resolved external id."""
+
+
+class LocationNotActiveError(NotACloverLocationError):
+    """The Location (or its merchant) is not active: no acquisition job is
+    accepted for it until it is activated (CLOVER_MULTISITE_001)."""
+
+
+def _require_acquirable(session: Session, location_id: int) -> tuple[int, str]:
+    merchant = _resolve_clover_merchant(session, location_id)
+    if merchant is None:
+        raise NotACloverLocationError(f"location_id={location_id} is not a Clover-sourced Location.")
+    if not location_is_active(session, location_id):
+        raise LocationNotActiveError(
+            f"location_id={location_id} is not active: Clover acquisition starts only after it is activated.")
+    return merchant
 
 
 class JobLaunchError(RuntimeError):
@@ -381,10 +397,7 @@ def _enqueue(
     session: Session, *, location_id: int, mode: str, period_start: datetime, period_end: datetime,
     launcher: Launcher | None, requested_by_account_id: int | None,
 ) -> m.IngestionRun:
-    merchant = _resolve_clover_merchant(session, location_id)
-    if merchant is None:
-        raise NotACloverLocationError(f"location_id={location_id} is not a Clover-sourced Location.")
-    source_system_id, _merchant_id = merchant
+    source_system_id, _merchant_id = _require_acquirable(session, location_id)
 
     # Raises ImportAlreadyRunningError when the Location's lock is held
     # (after reaping it first if its holder is stale) — the existing guard.
@@ -423,8 +436,7 @@ def request_sync_now(
     This service does not authenticate anyone: a caller exposed to people
     (RF-One Web) must establish and authorize the account BEFORE calling,
     and passes it as `requested_by_account_id`."""
-    if _resolve_clover_merchant(session, location_id) is None:
-        raise NotACloverLocationError(f"location_id={location_id} is not a Clover-sourced Location.")
+    _require_acquirable(session, location_id)
     # "Already in progress" is the answer that matters while a job runs —
     # even the first Backfill that will create the starting point. The lock
     # taken in `_enqueue` remains the authoritative guard.

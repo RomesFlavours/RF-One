@@ -261,6 +261,27 @@ def ensure_legacy_links(db):
             db.flush()
 
 
+def _other_merchant_link_states(db, merchant_id):
+    """State of every Clover link of the OTHER merchants, read before a roster
+    import (CLOVER_MULTISITE_001)."""
+    return {link.id: (link.employee_id, link.location_id, link.state, link.last_seen_at, link.last_run_id,
+                      dict(link.snapshot or {}))
+            for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id != merchant_id))}
+
+
+def _refuse_other_merchant_changes(db, merchant_id, before):
+    """One site's roster import may change only that site's Clover links. If
+    any link of another merchant changed during the import (e.g. a Winter Park
+    update altering a Mount Dora state), the import is refused and the
+    caller's transaction rolls back, so nothing is written."""
+    after = _other_merchant_link_states(db, merchant_id)
+    changed = [link_id for link_id, state in before.items() if after.get(link_id) != state]
+    if changed:
+        raise ValueError(
+            f"Roster import for merchant {merchant_id} would change {len(changed)} link(s) of another "
+            "Clover site; nothing was written.")
+
+
 def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, run_id=None, complete=True):
     """Apply one complete, validated employee collection atomically in caller's transaction.
 
@@ -290,6 +311,7 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
     # acquisition lock. Simultaneous WP/MD imports must see each other's people.
     db.scalar(select(m.SourceSystem).where(m.SourceSystem.id == source.id).with_for_update())
     ensure_legacy_links(db)
+    other_sites_before = _other_merchant_link_states(db, merchant_id)
     observed_at = observed_at or datetime.now(timezone.utc)
     observed_at = observed_at.replace(tzinfo=observed_at.tzinfo or timezone.utc)
     resolved = {}
@@ -341,6 +363,7 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
             _event(db, "MISSING_REVIEW", employee_id=link.employee_id, link=link,
                    details={"run_id": run_id})
             link.state = "MISSING_REVIEW"
+    _refuse_other_merchant_changes(db, merchant_id, other_sites_before)
     db.flush()
     # Historical work can still refer to people absent from today's roster.
     resolved.update({l.external_employee_id: l.employee_id for l in db.scalars(
