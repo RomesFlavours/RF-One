@@ -1,4 +1,5 @@
 """Isolated historical payout evidence and Tips HTTP regressions."""
+from types import SimpleNamespace
 import copy
 import importlib.util
 import os
@@ -18,7 +19,7 @@ from rfone_data_store.tips import historical_payments as service
 class HistoricalPaymentsTests(unittest.TestCase):
     def setUp(self):
         self.engine=create_engine('sqlite://')
-        for model in [m.SourceSystem,m.Location,m.Restaurant,m.RestaurantLocation,m.Employee,m.EmployeeIdentityAlias,m.EmployeeCloverLink,m.EmployeeAssignment,m.IngestionRun,m.SourceRecord]:
+        for model in [m.SourceSystem,m.Merchant,m.Location,m.Restaurant,m.RestaurantLocation,m.Employee,m.EmployeeIdentityAlias,m.EmployeeCloverLink,m.EmployeeAssignment,m.IngestionRun,m.SourceRecord]:
             model.__table__.create(self.engine)
         self.factory=sessionmaker(self.engine)
         with self.factory.begin() as session:
@@ -145,7 +146,9 @@ class HistoricalPaymentsTests(unittest.TestCase):
             app=importlib.util.module_from_spec(spec);sys.modules[spec.name]=app;spec.loader.exec_module(app)
         app.SessionFactory=self.factory
         client=app.app.test_client()
-        with patch.object(app.rfone_identity,'current_account',return_value=object()), \
+        # A signed-in administrator: the restaurant selector reads the account (CLOVER_MULTISITE_001).
+        SIGNED_IN=SimpleNamespace(id=0,is_admin=True,is_owner=False,status='ACTIVE',display_name='Test',username='test')
+        with patch.object(app.rfone_identity,'current_account',return_value=SIGNED_IN), \
                 patch.object(app.shared_session,'account_may_enter_domain',return_value=True):
             response=client.get('/historical-tip-payments')
             self.assertEqual(response.status_code,200)
@@ -154,7 +157,7 @@ class HistoricalPaymentsTests(unittest.TestCase):
             self.assertIn(b'Needs identity review',response.data)
             self.assertEqual(client.get('/historical-tip-payments?document=99999').status_code,404)
             self.assertEqual(client.post('/historical-tip-payments').status_code,405)
-        with patch.object(app.rfone_identity,'current_account',return_value=object()), \
+        with patch.object(app.rfone_identity,'current_account',return_value=SIGNED_IN), \
                 patch.object(app.shared_session,'account_may_enter_domain',return_value=False):
             self.assertEqual(client.get('/historical-tip-payments').status_code,403)
         with patch.object(app.rfone_identity,'current_account',return_value=None):
