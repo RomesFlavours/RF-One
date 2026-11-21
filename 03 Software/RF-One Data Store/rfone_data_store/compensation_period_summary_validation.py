@@ -49,7 +49,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
         _test_partial_week_counts_earlier_hours_but_shows_only_period,
         _test_shift_crossing_the_week_boundary_is_split,
         _test_override_times_are_the_official_times,
-        _test_home_location_fallback_is_counted,
+        _test_shift_location_reconstructed_or_pending,
         _test_finalized_tips_are_summed_once_and_only_when_covering,
         _test_zero_is_distinct_from_not_available,
         _test_open_and_overlapping_shifts_are_reported,
@@ -114,6 +114,7 @@ def _local(day: date, hour: int, minute: int = 0) -> datetime:
 
 
 def _shift(session: Session, employee: m.Employee, start: datetime, hours: float | None, **extra) -> m.Shift:
+    extra.setdefault("location_id", employee.location_id)  # acquired Shifts carry their Location (CLOVER_MULTISITE_001)
     shift = m.Shift(
         employee_id=employee.id, clock_in=start,
         clock_out=start + timedelta(hours=hours) if hours is not None else None, **extra,
@@ -217,18 +218,36 @@ def _test_override_times_are_the_official_times(session: Session, result: Valida
                  row and row.worked_hours)
 
 
-def _test_home_location_fallback_is_counted(session: Session, result: ValidationResult) -> None:
+def _test_shift_location_reconstructed_or_pending(session: Session, result: ValidationResult) -> None:
+    """CLOVER_MULTISITE_001: a Shift without its own Location counts only when its Clover acquisition record
+    proves the Location; otherwise it is pending, counted nowhere and reported - never home-Location."""
     site = _site(session)
     emp = _employee(session, site, "Elena Riva")
-    _shift(session, emp, _local(WEEK1, 10), 5)                                   # no Location on the Shift
+    source = m.SourceSystem(code="CLOVER-SUMMARY", name="Clover (summary test)")
+    session.add(source)
+    session.flush()
+    run = m.IngestionRun(source_system_id=source.id, location_id=site.location.id, status="COMPLETE",
+                         started_at=_local(WEEK1, 1))
+    session.add(run)
+    session.flush()
+    _shift(session, emp, _local(WEEK1, 10), 5, source_system_id=source.id, source_shift_id="MIRRORED", location_id=None)
+    session.add(m.SourceRecord(ingestion_run_id=run.id, source_system_id=source.id, entity_type="shift",
+                               source_id="MIRRORED", retrieved_at=_local(WEEK1, 20)))
     _shift(session, emp, _local(WEEK1 + timedelta(days=1), 10), 5, location_id=site.location.id)
+    _shift(session, emp, _local(WEEK1 + timedelta(days=2), 10), 3, source_system_id=source.id, source_shift_id="ORPHAN", location_id=None)
+    session.flush()
     summary = _summary(session, site, WEEK1, WEEK1 + timedelta(days=6))
     row = _row(summary, emp)
-    result.check("both Shifts are counted (10 h)", row is not None and row.worked_hours == Decimal("10.00"))
-    result.check("only the Shift without a Location is reported as home-Location attribution",
-                 row is not None and row.home_location_fallback_shifts == 1
-                 and summary.home_location_fallback_shifts == 1 and summary.shifts_counted == 2,
-                 row and (row.home_location_fallback_shifts, summary.shifts_counted))
+    result.check("the Shift located by its Clover record and the Shift with its own Location count (10 h)",
+                 row is not None and row.worked_hours == Decimal("10.00"), row and row.worked_hours)
+    result.check("the Clover-record Location is reported as such",
+                 row is not None and row.reconstructed_location_shifts == 1
+                 and summary.reconstructed_location_shifts == 1 and summary.shifts_counted == 2,
+                 row and (row.reconstructed_location_shifts, summary.shifts_counted))
+    result.check("the Shift without a certain Location is pending: not counted, reported, summary not ready",
+                 summary.pending_location_shifts == 1 and not summary.hours_definitive
+                 and any("no certain Location" in w for w in summary.hours_warnings),
+                 (summary.pending_location_shifts, summary.hours_warnings))
 
 
 def _test_finalized_tips_are_summed_once_and_only_when_covering(session: Session, result: ValidationResult) -> None:

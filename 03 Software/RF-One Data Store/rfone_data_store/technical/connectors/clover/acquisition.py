@@ -230,22 +230,101 @@ def get_default_client() -> CloverReadClient:
     return get_client()
 
 
-def get_location_client(merchant_id: str) -> CloverReadClient:
-    """Keep WP's existing connection; MD uses explicit, separate credentials."""
+MERCHANT_TOKEN_ENV_PREFIX = "CLOVER_API_TOKEN__"
+
+
+class CloverConnectionNotConfiguredError(ValueError):
+    """No credentials exist for this Location's own merchant. Never answered
+    by borrowing another merchant's token."""
+
+
+def merchant_token_env_name(merchant_id: str) -> str:
+    """CLOVER_MULTISITE_001 — the environment variable that carries one
+    merchant's token, e.g. `CLOVER_API_TOKEN__WP3NHX517C0M1`. On AWS it is
+    injected by the task/service definition from that merchant's own Secrets
+    Manager secret, so adding a Clover site is configuration (a secret plus
+    one mapping line), never a code change. The value never appears in code,
+    logs or Git."""
+    return MERCHANT_TOKEN_ENV_PREFIX + merchant_id.strip().upper()
+
+
+def _merchant_token_from_environment(merchant_id: str) -> str | None:
     import os
+
+    token = os.environ.get(merchant_token_env_name(merchant_id), "").strip()
+    if token:
+        return token
+    # Accepted alias of the first second-site configuration (CLOVER_MD_*).
+    legacy_merchant = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
+    if legacy_merchant and legacy_merchant == merchant_id:
+        token = os.environ.get("CLOVER_MD_API_TOKEN", "").strip()
+        if not token:
+            raise CloverConnectionNotConfiguredError(
+                f"Clover merchant {merchant_id}: CLOVER_MD_MERCHANT_ID is set but its token is empty.")
+        return token
+    return None
+
+
+def get_location_client(merchant_id: str) -> CloverReadClient:
+    """The read-only Clover client of ONE merchant, with that merchant's own
+    token (CLOVER_MULTISITE_001).
+
+    Resolution, in order:
+      1. `CLOVER_API_TOKEN__<MERCHANT_ID>` (one per merchant);
+      2. the `CLOVER_MD_MERCHANT_ID` / `CLOVER_MD_API_TOKEN` pair, kept as an alias;
+      3. the original single pair `CLOVER_MERCHANT_ID` / `CLOVER_API_TOKEN`
+         (environment or local `.env`), only when it names this same merchant.
+         This is Winter Park's existing connection, used unchanged.
+    Anything else raises: a Location is never read with another merchant's
+    credentials, and no data is changed."""
     from clover_explorer.client import CloverClient
     from clover_explorer.config import CloverConfig
 
-    md_merchant = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-    if md_merchant and merchant_id == md_merchant:
-        token = os.environ.get("CLOVER_MD_API_TOKEN", "").strip()
-        if not token:
-            raise ValueError("Mount Dora Clover connection is not configured.")
-        return CloverClient(CloverConfig(merchant_id=md_merchant, api_token=token))
-    client = get_default_client()
+    merchant_id = (merchant_id or "").strip()
+    if not merchant_id:
+        raise CloverConnectionNotConfiguredError("The Location has no Clover merchant identifier.")
+    token = _merchant_token_from_environment(merchant_id)
+    if token:
+        return CloverClient(CloverConfig(merchant_id=merchant_id, api_token=token))
+    try:
+        client = get_default_client()
+    except Exception as exc:  # the default pair is optional once per-merchant tokens exist
+        raise CloverConnectionNotConfiguredError(
+            f"Clover connection is not configured for merchant {merchant_id} "
+            f"(expected {merchant_token_env_name(merchant_id)}).") from exc
     if client.merchant_id != merchant_id:
-        raise ValueError("Clover connection is not configured for this Location; no fallback to another merchant.")
+        raise CloverConnectionNotConfiguredError(
+            f"Clover connection is not configured for merchant {merchant_id} "
+            f"(expected {merchant_token_env_name(merchant_id)}); no fallback to another merchant.")
     return client
+
+
+class LocationNotActiveError(ValueError):
+    """The Location exists but is not active: no Clover data is acquired for
+    it until it is activated (CLOVER_MULTISITE_001)."""
+
+
+def location_is_active(session: Session, location_id: int) -> bool:
+    location = session.get(m.Location, location_id)
+    if location is None or location.active is False:
+        return False
+    merchant = session.get(m.Merchant, location.merchant_id)
+    return merchant is None or merchant.active is not False
+
+
+def active_clover_location_ids(session: Session) -> list[int]:
+    """Every active Clover Location with an active merchant, in id order —
+    what the background workers process when started with
+    `--all-active-locations` instead of a fixed `--location-id`."""
+    rows = session.execute(
+        select(m.Location.id)
+        .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
+        .join(m.Merchant, m.Merchant.id == m.Location.merchant_id)
+        .where(m.SourceSystem.code == "CLOVER", m.Location.source_location_id.is_not(None),
+               m.Location.active.is_(True), m.Merchant.active.is_(True))
+        .order_by(m.Location.id)
+    ).scalars().all()
+    return list(rows)
 
 
 @dataclass
@@ -1185,6 +1264,17 @@ def import_clover_period(
         )
         return summary
     source_system_id, merchant_id = merchant
+    if not location_is_active(session, location_id):
+        summary.errors.append(
+            f"location_id={location_id} is not active: no Clover data is acquired until the Location "
+            "(and its merchant) is activated. Nothing was read or changed."
+        )
+        if ingestion_run is not None and ingestion_run.status == STATUS_RUNNING:
+            ingestion_run.status = "FAILED"
+            ingestion_run.finished_at = utc_now()
+            ingestion_run.lock_key = None
+            ingestion_run.notes = (ingestion_run.notes or "") + "; refused: Location not active"
+        return summary
 
     if ingestion_run is None:
         ingestion_run = _acquire_import_lock(

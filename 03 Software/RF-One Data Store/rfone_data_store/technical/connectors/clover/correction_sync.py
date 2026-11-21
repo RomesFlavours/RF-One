@@ -134,7 +134,9 @@ from .acquisition import (
     _mirror_source_record,
     _resolve_clover_merchant,
     _safe_error_summary,
+    active_clover_location_ids,
     get_location_client,
+    location_is_active,
     paginate,
     resolve_order_business_dates,
 )
@@ -279,15 +281,31 @@ def ensure_roster_site(session, *, restaurant_id: int, merchant_id: str, client,
     return location.id
 
 
+def _restaurant_clover_merchant(session, restaurant_id: int) -> str | None:
+    """The merchant of the Clover site already linked to this Restaurant, if any."""
+    return session.scalar(
+        select(m.Location.source_location_id)
+        .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
+        .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
+        .where(m.RestaurantLocation.restaurant_id == restaurant_id, m.RestaurantLocation.valid_to.is_(None),
+               m.SourceSystem.code == "CLOVER", m.Location.source_location_id.is_not(None))
+        .order_by(m.Location.id).limit(1))
+
+
 def refresh_roster_site(session, *, restaurant_id: int, client=None) -> list[str]:
     """Roster-only refresh of a second Clover site (Mount Dora): employees and their roles, then the
     Registry role sync that is part of every employee import. No orders, payments, shifts or refunds are
     acquired here, so no other Domain's data changes. Uses the site's own credentials
-    (`get_location_client`, CLOVER_MD_*), never another merchant's."""
+    (`get_location_client`), never another merchant's.
+
+    Allowed while the site's Location is still inactive (Product Owner, CLOVER_MULTISITE_001: preparing the
+    Mount Dora employees in Registry is authorized before activation); the operational acquisition of an
+    inactive site stays refused. The merchant is the one already linked to the Restaurant; only when no
+    Clover site is linked yet does `CLOVER_MD_MERCHANT_ID` name the site to onboard."""
     import os
-    merchant_id = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
+    merchant_id = _restaurant_clover_merchant(session, restaurant_id) or os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
     if not merchant_id:
-        return ["Mount Dora Clover connection is not configured; roster not refreshed."]
+        return [f"No Clover site is linked to restaurant #{restaurant_id}; roster not refreshed."]
     try:
         resolved = client or get_location_client(merchant_id)
         location_id = ensure_roster_site(session, restaurant_id=restaurant_id, merchant_id=merchant_id,
@@ -705,6 +723,9 @@ def run_correction_cycle(
         LOG.info("location_id=%s is not a Clover-sourced Location — skipping this correction cycle.", location_id)
         return None
     source_system_id, merchant_id = merchant
+    if not location_is_active(session, location_id):
+        LOG.info("location_id=%s is not active — no correction cycle until it is activated.", location_id)
+        return None
     resolved_client = client or get_location_client(merchant_id)
 
     try:
@@ -821,11 +842,41 @@ def _refresh_roster_sites(session_factory, roster_restaurant_ids) -> None:
                 LOG.warning("roster restaurant_id=%s: %s", restaurant_id, line)
 
 
+def _cycle_locations(session_factory: sessionmaker[Session], location_ids: list[int] | None) -> list[int]:
+    """The Locations of this cycle: the fixed `--location-id` list, or — with
+    `--all-active-locations` (None here) — every active Clover Location,
+    re-read each cycle so activating a site needs no restart or code change
+    (CLOVER_MULTISITE_001)."""
+    if location_ids is not None:
+        return list(location_ids)
+    with session_factory() as session:
+        return active_clover_location_ids(session)
+
+
+def _run_one_location(session_factory: sessionmaker[Session], location_id: int) -> None:
+    """One Location's cycle in its own session: a failure at one site never
+    stops or touches another site's cycle."""
+    try:
+        with session_factory() as session:
+            summary = run_correction_cycle(session, location_id=location_id)
+            if summary is not None:
+                for r in summary.results:
+                    LOG.info(
+                        "location_id=%s resource=%s status=%s seen=%d touched=%d errors=%d",
+                        location_id, r.resource_type, r.status, r.records_seen, r.records_touched, len(r.errors),
+                    )
+    except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
+        LOG.exception("Unhandled error in Correction/Reconciliation cycle for location_id=%s — will retry next interval.",
+                      location_id)
+
+
 def _run_forever(
-    session_factory: sessionmaker[Session], *, location_id: int, interval_seconds: float,
+    session_factory: sessionmaker[Session], *, location_ids: list[int] | None, interval_seconds: float,
     roster_restaurant_ids=(),
 ) -> None:  # pragma: no cover — thin process loop, exercised via run_correction_cycle directly in tests
-    LOG.info("Starting Clover Correction/Reconciliation loop for location_id=%s (interval=%.0fs).", location_id, interval_seconds)
+    LOG.info("Starting Clover Correction/Reconciliation loop for %s (interval=%.0fs).",
+             f"location_id(s)={location_ids}" if location_ids is not None else "all active Clover Locations",
+             interval_seconds)
     # A stop request (ECS sends SIGTERM on a redeploy or scale-down) ends the
     # loop BETWEEN cycles, so a cycle is never cut off while it holds the
     # Location's lock; ECS's stopTimeout leaves time for the cycle in flight.
@@ -836,14 +887,10 @@ def _run_forever(
         pass
     while not stop.is_set():
         try:
-            with session_factory() as session:
-                summary = run_correction_cycle(session, location_id=location_id)
-                if summary is not None:
-                    for r in summary.results:
-                        LOG.info(
-                            "resource=%s status=%s seen=%d touched=%d errors=%d",
-                            r.resource_type, r.status, r.records_seen, r.records_touched, len(r.errors),
-                        )
+            for location_id in _cycle_locations(session_factory, location_ids):
+                if stop.is_set():
+                    break
+                _run_one_location(session_factory, location_id)
         except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
             LOG.exception("Unhandled error in Correction/Reconciliation cycle — will retry next interval.")
         try:
@@ -858,7 +905,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     from ....database import create_configured_engine, create_session_factory, get_database_url, prepare_new_private_database
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--location-id", type=int, required=True)
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--location-id", type=int, action="append",
+                        help="A Clover Location to poll; repeat for several. Inactive Locations are skipped.")
+    target.add_argument("--all-active-locations", action="store_true",
+                        help="Poll every active Clover Location, re-read each cycle (CLOVER_MULTISITE_001).")
     parser.add_argument("--interval-seconds", type=float, default=DEFAULT_POLL_INTERVAL_SECONDS)
     parser.add_argument(
         "--skip-migrations", action="store_true",
@@ -886,19 +937,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     engine = create_configured_engine(db_url)
     session_factory = create_session_factory(engine)
 
+    location_ids = None if args.all_active_locations else args.location_id
     if args.once:
-        with session_factory() as session:
-            summary = run_correction_cycle(session, location_id=args.location_id)
-            if summary is not None:
-                for r in summary.results:
-                    LOG.info(
-                        "resource=%s status=%s seen=%d touched=%d errors=%d",
-                        r.resource_type, r.status, r.records_seen, r.records_touched, len(r.errors),
-                    )
+        for location_id in _cycle_locations(session_factory, location_ids):
+            _run_one_location(session_factory, location_id)
         _refresh_roster_sites(session_factory, args.roster_restaurant_id)
         return 0
 
-    _run_forever(session_factory, location_id=args.location_id, interval_seconds=args.interval_seconds,
+    _run_forever(session_factory, location_ids=location_ids, interval_seconds=args.interval_seconds,
                  roster_restaurant_ids=args.roster_restaurant_id)
     return 0  # unreachable — _run_forever loops until killed
 
