@@ -5,12 +5,15 @@
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
         "role_profiles.html": "help/registry.html#registry",
-        "employee_departments.html": "help/employee_departments.html#employee-departments"
+        "employee_departments.html": "help/employee_departments.html#employee-departments",
+        "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition",
+        "tips_validation_runs.html": "help/tips_validation_runs.html#tips-validation-runs",
+        "tips_validation_run.html": "help/tips_validation.html#tips-validation",
+        "admin_account_access.html": "help/admin_account_access.html#admin-account-access"
       },
       "not_operational": {},
       "help_missing": {
         "admin_accounts.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "admin_account_access.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "admin_account_form.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "admin_account_training_link.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "admin_legal_entities.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
@@ -38,7 +41,6 @@
         "bank_review.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "bank_sources.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "base.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "clover_acquisition.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "compensation_home.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "compensation_period_summary.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "compensation_reconciliation_detail.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
@@ -67,8 +69,6 @@
         "restaurant_wine_availability.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "restaurant_wine_list.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "restaurant_wine_types.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "tips_validation_run.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "tips_validation_runs.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "training_trainer_new_student.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "training_trainer_students.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "work_in_progress.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here."
