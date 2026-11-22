@@ -6,18 +6,18 @@ from rfone_data_store import models as m
 from rfone_data_store.technical.connectors.clover import acquisition,ingest,mapping
 
 class EmployeeHistoryTests(unittest.TestCase):
-    def test_profile_missing_from_catalog_and_404_keeps_details_and_identity(self):
-        existing=SimpleNamespace(id=17,display_name='Archived Name',custom_id='K',system_role='EMPLOYEE',active=True)
-        session=Mock();session.scalars.return_value.first.return_value=existing
-        client=SimpleNamespace(merchant_id='M',get=Mock(return_value=SimpleNamespace(ok=False,status_code=404)))
-        complete=SimpleNamespace(ok=True,truncated_by_safety_guard=False,elements=[])
-        ids=lambda session,model,**kwargs: {'OLD':17} if model is m.Employee else {}
-        with patch('rfone_data_store.employee_directory.import_snapshot',return_value=({'OLD':17},[])),patch.object(acquisition,'_existing_ids_by_source',side_effect=ids),patch.object(acquisition,'paginate',return_value=complete),patch.object(acquisition,'_mirror_source_record'):
+    def test_reference_catalogs_read_identities_only_from_registry_cards(self):
+        # REGISTRY_MULTISITE_001: no staff-list read, no card written; the POS IDs on cards resolve people.
+        session=Mock()
+        client=SimpleNamespace(merchant_id='M',get=Mock())
+        with patch('rfone_data_store.employee_directory.resolved_identities',return_value={'OLD':17}) as resolved,patch.object(acquisition,'_existing_ids_by_source',return_value={}),patch.object(acquisition,'paginate') as page,patch.object(acquisition,'_mirror_source_record') as mirror:
             mapping_ids,_,_=acquisition._fetch_reference_catalogs(client,session,location_id=1,source_system_id=1,ingestion_run_id=1,retrieved_at=datetime.now(timezone.utc),mode='LIVE_SYNC')
-        self.assertEqual(mapping_ids['OLD'],17)
-        self.assertEqual(existing.display_name,'Archived Name')
-        self.assertTrue(existing.active)
-        session.delete.assert_not_called()
+        self.assertEqual(mapping_ids,{'OLD':17})
+        resolved.assert_called_once_with(session,'M')
+        page.assert_not_called()
+        mirror.assert_not_called()
+        client.get.assert_not_called()
+        session.add.assert_not_called()
 
     def test_both_import_paths_keep_known_details_on_id_only_reference(self):
         for writer in (acquisition._get_or_create,ingest.upsert):

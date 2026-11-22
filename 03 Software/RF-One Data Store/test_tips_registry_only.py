@@ -172,9 +172,11 @@ class RegistryOnlyTips(unittest.TestCase):
         assignments = lambda: sorted((a.employee_id, a.restaurant_role_id, a.valid_to)
                                      for a in self.s.scalars(select(m.EmployeeAssignment)))
         before, registry_before = self.calculate(), assignments()
-        directory.import_snapshot(self.s, location_id=self.loc.id, merchant_id="WP", records=roster("Server", "Host"))
-        # Clover now says the server is "Admin", which a correspondence even maps to Host.
-        directory.import_snapshot(self.s, location_id=self.loc.id, merchant_id="WP", records=roster("Admin", "Host"))
+        # REGISTRY_MULTISITE_001: no staff-list import exists any more; even Clover data stored on the links
+        # saying the server is now "Admin" (which a correspondence maps to Host) changes nothing.
+        for link in self.s.scalars(select(m.EmployeeCloverLink)):
+            link.snapshot = {"roles": [{"id": "R-Admin", "name": "Admin"}]}
+        self.s.flush()
         self.assertEqual(assignments(), registry_before)
         self.assertEqual(self.fingerprint(self.calculate()), self.fingerprint(before))
 

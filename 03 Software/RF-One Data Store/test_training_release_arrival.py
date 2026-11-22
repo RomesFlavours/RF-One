@@ -31,7 +31,15 @@ class ReleaseAndArrival(unittest.TestCase):
                                              email="other@example.invalid")
         db.flush()
         accounts.set_domain_access(db, account_id=self.hirer.id, domain_code="SELECTION", enabled=True, role_code="OWNER")
+        for account in (self.hirer, self.trainer):
+            accounts.set_domain_access(db, account_id=account.id, domain_code="TRAINING", enabled=True, role_code="trainer")
         db.flush()
+        # REGISTRY_MULTISITE_001: every Training entry names the training site and the role trained for.
+        self.site = m.Restaurant(name="WP"); db.add(self.site); db.flush()
+        self.area = m.OperationalArea(name="Restaurant Operations", restaurant_id=self.site.id); db.add(self.area)
+        self.role = m.RestaurantRole(name="Server", code="SERVER", restaurant_id=self.site.id); db.add(self.role); db.flush()
+        db.add(m.OperationalAreaRole(operational_area_id=self.area.id, restaurant_role_id=self.role.id)); db.flush()
+        self.at_site = dict(restaurant_id=self.site.id, role_id=self.role.id, area_id=self.area.id)
         requirements = m.RequirementSet(name="Server")
         db.add(requirements); db.flush()
         self.position = ps.WorkspacePosition(title="Server", role_code="SERVER", location_label="Winter Park",
@@ -120,14 +128,14 @@ class ReleaseAndArrival(unittest.TestCase):
 
     def test_enrollment_follows_the_arrival_and_is_never_duplicated(self):
         self.release()
-        invitation, _ = en.issue(self.db, actor=self.trainer, email="maria@example.invalid", selection_id=self.pc.id)
+        invitation, _ = en.issue(self.db, actor=self.trainer, email="maria@example.invalid", selection_id=self.pc.id, **self.at_site)
         self.db.commit()
         self.assertTrue(self.student())
         self.assertEqual((invitation.person_id, invitation.selection_id), (self.person.id, self.pc.id))
         self.assertEqual(len(self.events(en.ARRIVED)), 1)
         invitation.created_at -= timedelta(seconds=61); self.db.commit()   # past the rate limit
         with self.assertRaises(ValueError):
-            en.issue(self.db, actor=self.trainer, email="maria@example.invalid", selection_id=self.pc.id)
+            en.issue(self.db, actor=self.trainer, email="maria@example.invalid", selection_id=self.pc.id, **self.at_site)
         self.db.rollback()
         self.assertEqual(self.count(en.EnrollmentInvitation), 1)
         self.assertEqual(len(self.events(en.ARRIVED)), 1)
@@ -135,7 +143,7 @@ class ReleaseAndArrival(unittest.TestCase):
         invitation = self.db.scalar(select(en.EnrollmentInvitation))
         invitation.consumed_at = en.now(); self.db.commit()
         with self.assertRaises(ValueError):
-            en.issue(self.db, actor=self.trainer, email="maria@example.invalid", selection_id=self.pc.id)
+            en.issue(self.db, actor=self.trainer, email="maria@example.invalid", selection_id=self.pc.id, **self.at_site)
         self.db.rollback()
         self.assertEqual(self.count(en.EnrollmentInvitation), 1)
 
@@ -148,7 +156,7 @@ class ReleaseAndArrival(unittest.TestCase):
             en.confirm_arrival(self.db, actor=self.hirer, selection_id=self.pc.id)
         self.db.rollback()
         with self.assertRaisesRegex(ValueError, "not released"):   # the alternative entry: Invite student
-            en.issue(self.db, actor=self.hirer, email="maria@example.invalid", selection_id=self.pc.id)
+            en.issue(self.db, actor=self.hirer, email="maria@example.invalid", selection_id=self.pc.id, **self.at_site)
         self.db.rollback()
         self.nothing_created_outside_the_hand_off()
         self.assertEqual(self.events(en.ARRIVED), [])
@@ -169,15 +177,20 @@ class ReleaseAndArrival(unittest.TestCase):
                        at=en.now().isoformat())
         self.db.commit()
         with self.assertRaisesRegex(ValueError, "not released"):
-            en.issue(self.db, actor=self.hirer, email="maria@example.invalid", selection_id=self.pc.id)
+            en.issue(self.db, actor=self.hirer, email="maria@example.invalid", selection_id=self.pc.id, **self.at_site)
         self.db.rollback()
         self.assertEqual(self.count(en.EnrollmentInvitation), 0)
 
     def test_direct_invitation_outside_selection_is_unchanged(self):
-        invitation, _ = en.issue(self.db, actor=self.trainer, email="new.person@example.invalid", name="New Person")
+        invitation, _ = en.issue(self.db, actor=self.trainer, email="new.person@example.invalid", name="New Person", **self.at_site)
         self.db.commit()
         self.assertIsNone(invitation.selection_id)
-        self.assertFalse(self.student())                             # Student only after activation, as before
+        # REGISTRY_MULTISITE_001: the direct invitation registers the new person as Trainee with a card at the
+        # training site; the Selection candidate is untouched.
+        self.assertFalse(self.student())
+        new_person = self.db.get(m.CandidatePerson, invitation.person_id)
+        self.assertEqual(new_person.primary_email, "new.person@example.invalid")
+        self.assertIsNotNone(self.db.get(registry.PersonQualification, (new_person.id, "STUDENT")))
 
     def test_a_link_issued_before_the_arrival_is_not_accepted(self):
         # A pending invitation from the former automatic path (sent at release time, no arrival).

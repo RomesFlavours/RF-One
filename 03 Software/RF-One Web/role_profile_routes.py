@@ -64,21 +64,50 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
             for row in people_rows: row['status']='Employee' if row['key'].startswith('employee:') else ''
             return
         trainees=set(db.scalars(select(students.PersonQualification.person_id).where(students.PersonQualification.code=='STUDENT')))
-        employees=set(db.scalars(select(people.PersonEmployeeLink.person_id)))
-        if _inspect(db.connection()).has_table('person_company_statuses'):
+        employees=set()
+        if not _inspect(db.connection()).has_table('person_company_statuses'):
+            employees=set(db.scalars(select(people.PersonEmployeeLink.person_id)))
+        else:
             employees|=set(db.scalars(select(people.PersonCompanyStatus.person_id).where(people.PersonCompanyStatus.code=='EMPLOYEE')))
         person_by_account={l.account_id:l.person_id for l in db.scalars(select(people.PersonAccountLink))}
         listed=set()
+        card_person={l.employee_id:l.person_id for l in db.scalars(select(people.PersonEmployeeLink))}
         for row in people_rows:
             kind,identity=row['key'].split(':');identity=int(identity)
             if kind=='employee':
-                row['status']='Employee';continue
+                # REGISTRY_MULTISITE_001: a card created by Training is a Trainee until Confirm Hire.
+                person=card_person.get(identity)
+                listed.add(person)
+                row['status']='Trainee' if person in trainees and person not in employees else 'Employee';continue
             person=person_by_account.get(identity)
             listed.add(person)
             row['status']='Employee' if person in employees else 'Trainee' if person in trainees else ''
         for person in db.scalars(select(m.CandidatePerson).where(m.CandidatePerson.id.in_(trainees-employees-listed-set(person_by_account.values()))).order_by(m.CandidatePerson.full_name)):
             people_rows.append({'key':f'person:{person.id}','account_label':'Not activated yet','email':person.primary_email,'phone':person.primary_phone,
                 'access_url':None,'name':person.full_name or 'Name to complete','companies':[],'assignments':[],'status':'Trainee','readonly':True})
+
+    def registry_site_view(db, people_rows):
+        """REGISTRY_MULTISITE_001 §1: the list shows only the people with a current explicit assignment to the
+        selected site. No fallback to another site: an unknown or unavailable site shows a notice and an
+        empty list. People without any site (no assignment) are listed apart, to be assigned."""
+        sites=directory.sites(db)
+        by_id={site.id:site for site in sites}
+        requested=request.args.get('site','').strip()
+        if requested:
+            selected=int(requested) if requested.isdecimal() else -1
+            browser_session['rfone_registry_site']=selected
+        else:
+            selected=browser_session.get('rfone_registry_site')
+            if selected is None and sites:selected=sites[0].id
+        available=selected in by_id
+        members=directory.site_employee_ids(db,selected) if available else set()
+        rows=[row for row in people_rows if row['key'].startswith('employee:') and int(row['key'].split(':')[1]) in members]
+        assigned=set()
+        for site in sites:assigned|=directory.site_employee_ids(db,site.id)
+        unsited=[row for row in people_rows if not (row['key'].startswith('employee:') and int(row['key'].split(':')[1]) in assigned)
+                 and (row['key'].startswith('employee:') or row.get('status')=='Trainee')]
+        return {'sites':sites,'selected':selected,'site':by_id.get(selected),'available':available,
+                'rows':rows,'unsited':unsited}
 
     def target_choices(db, account_people, accounts):
         choices={f'employee:{p.id}':p.display_name or 'Name to complete' for p in directory.employee_options(db)}
@@ -113,19 +142,15 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                     action=request.form.get('action','')
                     identity=int(request.form.get('id','0') or 0)
                     anchor=request.form.get('return_to','catalog')
-                    if action == 'clover_confirm':
-                        directory.attach_link(db, link_id=int(request.form.get('link_id', '')),
-                            employee_id=int(request.form['employee_id']) if request.form.get('employee_id') else None,
-                            create_new=request.form.get('create_new') == 'yes', account_id=account.id)
-                        anchor='clover-identities'
-                        flash('Identità confermata e dati di lavoro attribuiti. Ricalcola le mance prima di finalizzarle.' if os.environ.get('RFONE_UI_LANGUAGE') == 'it' else 'Identity confirmed and held work attributed. Recalculate tips before finalizing.', 'info')
-                    elif action in ('person_access','person_password'):
+                    if action in ('person_access','person_password'):
                         linked=profiles.ensure_profile_account(db,person,account.id)
                         db.commit()
                         return redirect(url_for('admin_account_edit',account_id=linked.id,from_person=person,_anchor='reset-password')) if action=='person_password' else redirect(url_for('admin_account_access',account_id=linked.id,from_person=person))
                     elif action=='person_create':
-                        record=profiles.create_profile_person(db,name=request.form.get('name'),company_ids=request.form.getlist('company_ids'),assignments=json.loads(request.form.get('person_roles','[]')),actor=account.id,**{key:request.form[key] for key in ('email','phone') if key in request.form})
-                        person=f'employee:{record.id}';anchor='people-table'
+                        # REGISTRY_MULTISITE_001: a manual card always names its site (and the role there).
+                        site_id,role_id,area_id=directory.parse_site_role(request.form.get('site_role'))
+                        record=profiles.create_profile_person(db,name=request.form.get('name'),company_ids=request.form.getlist('company_ids'),assignments=json.loads(request.form.get('person_roles','[]')),actor=account.id,site=(site_id,role_id,area_id),**{key:request.form[key] for key in ('email','phone') if key in request.form})
+                        person=f'employee:{record.id}';anchor='people-table';browser_session['rfone_registry_site']=site_id
                     elif action=='person_dismiss':
                         profiles.dismiss_profile_person(db,person,dismissal_date=request.form.get('dismissal_date'),actor=account.id)
                         anchor='dismissed-people'
@@ -229,6 +254,9 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                 'assignments':[{'company_id':company_map[a.membership_id],'role_id':a.role_id,'area_id':a.area_id} for a in current_roles]})
         if load_people:
             add_registry_status(db, people_rows)
+        site_view = registry_site_view(db, people_rows) if load_people else {}
+        if load_people:
+            people_rows = site_view.pop('rows')
         dismissed_rows=[]
         dismissal_dates={}
         clover_people = directory.employee_options(db, include_inactive=True) if load_people else []
@@ -240,10 +268,8 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                 if not directory.employee_is_active(target,[]):
                     dismissed_rows.append({'name':target.display_name or 'Name to complete','date':dismissal_dates.get(target.id) or getattr(target,'dismissed_at',None)})
         events=list(db.scalars(select(profiles.ProfileEvent).order_by(profiles.ProfileEvent.id.desc()).limit(25)))
-        from registry_clover import pending_identities
-        clover_pending = pending_identities(db) if tab == 'people' else []
-        return render_template('role_profiles.html',clover_pending=clover_pending,
-            clover_people=clover_people,
+        return render_template('role_profiles.html',site_view=site_view,
+            site_roles=directory.site_role_groups(db, directory.sites(db)) if load_people else [],
             registry_it=os.environ.get('RFONE_UI_LANGUAGE') == 'it',people_rows=people_rows,dismissed_rows=dismissed_rows,tab=tab,person=person,roles=roles,areas=areas,companies=companies,
             pairs=dict(pairs),grants=dict(grants),domains=domains,choices=choices,members=members,assignments=assignments,
             history=history,effective=effective,events=events,dialog=dialog,error=error,can_assign_target=can_assign_target,

@@ -9,9 +9,10 @@ Passing everything unlocks the hire, and a person confirms it.
 - On Training -> Students, a trainee whose course is complete and signed by the
   lead shows "Confirm hire" to trainers. Pressing it adds the EMPLOYEE company
   status to their Registry person; who and when is kept in the existing event log
-  (rfone_access_profile_events, action 'registry.hire_confirmed').
+  (rfone_access_profile_events, action 'registry.hire_confirmed') and in the
+  history of the same Registry card (HIRE_CONFIRMED, REGISTRY_MULTISITE_001).
 - Before that, only the owner sees the button, and must write a reason.
-- The employee record for payroll and scheduling stays a separate step.
+- The Registry card is the one created or reused by the Training entry (REGISTRY_MULTISITE_001).
 """
 import json
 import time
@@ -23,6 +24,7 @@ from flask import abort, flash, redirect, request, url_for
 from sqlalchemy import inspect, select
 
 from rfone_data_store import models as m, people_registry as people
+from rfone_data_store import employee_directory as directory
 from rfone_data_store import access_profiles as profiles
 from rfone_data_store.training import workspace as ws
 from rfone_data_store import rfone_web_session as shared
@@ -123,7 +125,13 @@ def install(app, *, SessionFactory, auth, trainer):
             profiles.event(db, ACTION, actor=actor.id, person_id=person, training_account_id=student_id,
                            rfone_account_id=account.id, by_name=shared.account_display_name(actor),
                            override=override, reason=reason, course=c)
+            # REGISTRY_MULTISITE_001: the same Registry card becomes Employee; its history keeps who and when.
+            card = directory.card_for_person(db, person)
+            if card is not None:
+                directory._event(db, 'HIRE_CONFIRMED', employee_id=card.id, account_id=actor.id,
+                                 details={'person_id': person, 'by_name': shared.account_display_name(actor),
+                                          'at': datetime.now(timezone.utc).isoformat(), 'override': override,
+                                          'reason': reason})
             db.commit()
-        flash('Hire confirmed: now an Employee in the Registry. Create their employee record for payroll and '
-              'scheduling as usual.', 'info')
+        flash('Hire confirmed: the same Registry card is now Employee.', 'info')
         return redirect(url_for('tw_students'))

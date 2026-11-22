@@ -1,4 +1,4 @@
-"""Registry Role/Department table + Clover roster import + historical roles (REGISTRY_CLOVER_DEPARTMENTS_001,
+"""Registry Role/Department table + historical Clover data + historical roles (REGISTRY_CLOVER_DEPARTMENTS_001,
 limited by OQ-7: Clover roles never determine RF-One roles, departments or assignments). Disposable SQLite,
 fake Clover."""
 from datetime import datetime, timezone
@@ -64,11 +64,21 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.db.close(); self.engine.dispose()
 
     def sync(self, records, location=None):
+        """Clover data as it already sits in Registry history (REGISTRY_MULTISITE_001: no import exists any
+        more): one confirmed link per known person, with the stored snapshot. Writes no assignment."""
         location = location or self.wp
-        out = directory.import_snapshot(self.db, location_id=location.id, merchant_id=location.source_location_id,
-                                        records=records)
+        for raw in records:
+            employee = self.db.scalar(select(m.Employee).where(m.Employee.source_employee_id == raw["id"]))
+            link = self.db.scalar(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id == location.source_location_id,
+                m.EmployeeCloverLink.external_employee_id == raw["id"]))
+            if link is None:
+                link = m.EmployeeCloverLink(location_id=location.id, merchant_id=location.source_location_id,
+                                            external_employee_id=raw["id"], state="PRESENT",
+                                            employee_id=employee.id if employee else None)
+                self.db.add(link)
+            link.snapshot = directory.safe_snapshot(raw)
         self.db.commit()
-        return out
 
     def legacy_clover_mapping(self, clover_id, role_code=None, department=None, restaurant=None):
         """A Clover role correspondence written before OQ-7 (as on AWS): kept as history, never used."""
@@ -122,35 +132,6 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.RegistryRoleDepartment).where(
             m.RegistryRoleDepartment.restaurant_role_id == self.roles["SERVER"].id)), 2)   # history kept
 
-    def test_second_import_without_changes_creates_nothing(self):
-        self.first_import_with_table()
-        models = (m.EmployeeAssignment, m.SourceRole, m.RegistryRoleMapping, m.RegistryRoleDepartment,
-                  m.EmployeeDirectoryEvent, m.Employee, m.EmployeeCloverLink)
-        before = {model: self.count(model) for model in models}
-        self.sync(self.roster()); self.sync(self.roster())
-        self.assertEqual(before, {model: self.count(model) for model in models})
-
-    def test_clover_role_change_never_changes_the_registry_assignment(self):
-        self.registry_assignment(self.alice, "SERVER")
-        self.first_import_with_table()
-        self.sync(self.roster(alice_role=("R3", "Host")))
-        self.legacy_clover_mapping("R3", "HOST"); self.db.commit()
-        summary = reg.sync_site(self.db, location_id=self.wp.id, merchant_id="WP")
-        [a] = self.open_assignments(self.alice)
-        self.assertEqual((a.assignment_source, a.restaurant_role_id), ("MANUAL", self.roles["SERVER"].id))
-        self.assertEqual(self.count(m.EmployeeAssignment), 1)
-        # OQ-7: the Clover role is not compared with Registry, so nothing is suggested either.
-        self.assertFalse(any(f"Employee #{self.alice.id}:" in i for i in summary.issues))
-        self.assertFalse(any("Clover role differs" in i for i in summary.issues))
-        self.assertFalse(hasattr(summary, "differs"))
-
-    def test_left_clover_keeps_the_registry_assignment_and_person(self):
-        self.registry_assignment(self.alice, "SERVER")
-        self.first_import_with_table()
-        self.sync(self.roster(alice_role=None))
-        self.assertEqual(len(self.open_assignments(self.alice)), 1)
-        self.assertIsNotNone(self.db.get(m.Employee, self.alice.id))
-
     def test_former_clover_synced_assignment_is_kept_as_registry_history(self):
         self.db.add(m.EmployeeAssignment(employee_id=self.alice.id, restaurant_id=self.r_wp.id,
             operational_area_id=self.area.id, restaurant_role_id=self.roles["MANAGER"].id, location_id=self.wp.id,
@@ -160,28 +141,6 @@ class RegistryDepartmentsTest(unittest.TestCase):
         [a] = self.open_assignments(self.alice)
         self.assertEqual((a.assignment_source, a.restaurant_role_id, a.valid_to),
                          (reg.ASSIGNMENT_SOURCE, self.roles["MANAGER"].id, None))
-
-    def test_dry_run_reports_without_writing(self):
-        self.sync(self.roster())
-        self.db.add(m.RegistryRoleMapping(restaurant_id=self.r_wp.id, source=reg.CLOVER, original_key="R1",
-            original_label="Server", restaurant_role_id=self.roles["SERVER"].id,
-            valid_from=datetime.now(timezone.utc), origin="SEED"))
-        self.db.commit()
-        summary = reg.sync_site(self.db, location_id=self.wp.id, merchant_id="WP", dry_run=True)
-        self.assertEqual(summary.no_registry_role, 2)
-        self.assertEqual(self.count(m.EmployeeAssignment), 0)
-
-    def test_md_identity_reuses_the_person_and_clover_roles_never_classify(self):
-        self.first_import_with_table()
-        _, pending = self.sync([emp("Z", "Alice Hand", "M1", "Server")], self.md)
-        self.assertEqual(len(pending), 1)                               # reported for verification
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.alice.id); self.db.commit()
-        self.sync([emp("Z", "Alice Hand", "M1", "Server")], self.md)
-        self.assertEqual(self.count(m.Employee), 2)                     # no duplicate person
-        links = {l.merchant_id: l for l in self.db.scalars(select(m.EmployeeCloverLink).where(
-            m.EmployeeCloverLink.employee_id == self.alice.id))}
-        self.assertEqual((links["WP"].location_id, links["MD"].location_id), (self.wp.id, self.md.id))
-        self.assertEqual(reg.classification(self.db, employee_ids=[self.alice.id]), [])
 
     def test_overview_lists_registry_roles_and_only_historical_original_roles(self):
         self.first_import_with_table()
@@ -248,6 +207,11 @@ class RegistryDepartmentsTest(unittest.TestCase):
         _drop_stale_source_roles(self.db, self.alice.id, self.source.id, {r2.id})
         self.db.flush()
         self.assertEqual([r.source_role_id for r in self.db.scalars(select(m.EmployeeSourceRole))], [r2.id])
+
+    def test_the_import_step_that_fed_registry_is_gone(self):
+        # REGISTRY_MULTISITE_001: no Clover role catalogue refresh or report at the end of an import.
+        for name in ("sync_site", "ensure_source_roles", "SyncSummary"):
+            self.assertFalse(hasattr(reg, name), name)
 
 
 if __name__ == "__main__":

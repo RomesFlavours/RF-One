@@ -112,7 +112,7 @@
     </p>
   {% else %}
     {% for blocker in finalization_blockers %}
-      <div class="error">{{ blocker }}{% if can_manage_profiles and 'employee identity' in blocker %} <a href="{{ url_for('role_profiles_home', tab='people', _anchor='clover-identities') }}">{{ 'Conferma le identità Clover in Registry' if registry_it else 'Confirm Clover identities in Registry' }}</a>{% endif %}</div>
+      <div class="error">{{ blocker }}{% if can_manage_profiles and 'employee identity' in blocker %} <a href="{{ url_for('role_profiles_home', tab='people') }}">{{ 'Inserisci il POS ID sulla scheda Registry della persona' if registry_it else 'Type the POS ID on the person’s Registry card' }}</a>{% endif %}</div>
     {% endfor %}
     {% if not finalization_blockers %}
       <form method="post" action="{{ url_for('tips_validation_validate', run_id=run.id) }}">

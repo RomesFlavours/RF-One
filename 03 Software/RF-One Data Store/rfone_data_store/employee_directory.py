@@ -1,9 +1,17 @@
-"""Shared employee identity and source observations. No network and no commits.
+"""Registry person cards (Employee), their explicit sites and their manual POS IDs. No network, no commits.
 
-Employee remains the canonical identity used by Tips, Payroll and Sales. A
-provider record stays pending until a human confirms its RF-One identity.
-Only source fields on links change during imports; management stays on Employee
-and its existing assignment/compensation records.
+Employee remains the canonical identity used by Tips, Payroll and Sales.
+
+REGISTRY_MULTISITE_001 (Product Owner specification, 2026-11-22):
+- A card is created only manually (`create_person`, with an explicit site) or by Training
+  (`training_card`). Nothing here reads Clover's staff list or shifts to create, update or propose a card;
+  the former Clover -> Registry import, its proposal queue and its confirmation actions are removed.
+- The site of a person is an explicit Registry assignment (`EmployeeAssignment`) to a restaurant or one of
+  its locations (`site_employee_ids`). Company membership, Clover links and `Employee.location_id` never
+  decide who is listed at a site.
+- The POS ID is typed by an authorized operator on an existing card, for a site the person is assigned to
+  (`set_pos_id`). Tips pairs site (Clover merchant) + POS ID to attribute Clover work. A correction never
+  moves history already attributed; it only lets work still waiting for an identity be attributed.
 """
 from __future__ import annotations
 
@@ -57,29 +65,6 @@ def _event(db, action, *, employee_id=None, link=None, account_id=None, details=
         employee_id=employee_id, link_id=link.id if link else None,
         account_id=account_id, action=action, details=details or {},
     ))
-
-
-def candidates(db, snapshot):
-    """Suggestions only, including email matches; never identity decisions."""
-    name = _normalized(snapshot.get("name"))
-    email = (snapshot.get("email") or "").strip().casefold()
-    email_ids = set()
-    source_names = {}
-    for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id.is_not(None))):
-        source_names.setdefault(link.employee_id, []).append(_normalized((link.snapshot or {}).get("name")))
-        if email and ((link.snapshot or {}).get("email") or "").strip().casefold() == email:
-            email_ids.add(link.employee_id)
-    suggestions = []
-    for employee in db.scalars(canonical_employees().order_by(m.Employee.display_name, m.Employee.id)):
-        names = [_normalized(employee.display_name), *source_names.get(employee.id, [])]
-        score = max((max(SequenceMatcher(None, name, other).ratio(),
-                         SequenceMatcher(None, " ".join(sorted(name.split())), " ".join(sorted(other.split()))).ratio())
-                     for other in names if name and other), default=0)
-        if email and (employee.email or "").strip().casefold() == email:
-            email_ids.add(employee.id)
-        if employee.id in email_ids or score >= 0.80:
-            suggestions.append({"employee": employee, "reason": "Email" if employee.id in email_ids else "Name", "score": score})
-    return sorted(suggestions, key=lambda row: (row["reason"] != "Email", -row["score"]))
 
 
 def canonical_employees():
@@ -241,241 +226,6 @@ def consolidate(db, *, from_employee_id, into_employee_id, account_id=None):
     return db.get(m.Employee, into_employee_id)
 
 
-def ensure_legacy_links(db):
-    """Also supports fixtures/imports made after migration; no matching by name."""
-    rows = db.execute(
-        select(m.Employee, m.Location.source_location_id)
-        .join(m.Location, m.Location.id == m.Employee.location_id)
-        .join(m.SourceSystem, m.SourceSystem.id == m.Employee.source_system_id)
-        .where(m.SourceSystem.code == "CLOVER", m.Employee.source_employee_id.is_not(None),
-               m.Location.source_system_id == m.Employee.source_system_id,
-               m.Location.source_location_id.is_not(None))
-    )
-    for employee, merchant_id in rows:
-        link = db.scalar(select(m.EmployeeCloverLink).where(
-            m.EmployeeCloverLink.merchant_id == merchant_id,
-            m.EmployeeCloverLink.external_employee_id == employee.source_employee_id))
-        if link is None:
-            db.add(m.EmployeeCloverLink(employee_id=employee.id, location_id=employee.location_id,
-                   merchant_id=merchant_id, external_employee_id=employee.source_employee_id, state="UNVERIFIED"))
-            db.flush()
-
-
-def _other_site_states(db, merchant_id, location_id):
-    """What a roster import of ONE site must never change (CLOVER_MULTISITE_001): every Clover link of the
-    other merchants, and every Workforce assignment outside this site's own Restaurant(s)."""
-    links = {link.id: (link.employee_id, link.location_id, link.state, link.last_seen_at, link.last_run_id,
-                       dict(link.snapshot or {}))
-             for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id != merchant_id))}
-    own_restaurants = select(m.RestaurantLocation.restaurant_id).where(m.RestaurantLocation.location_id == location_id)
-    assignments = {a.id: (a.employee_id, a.restaurant_id, a.location_id, a.restaurant_role_id, a.operational_area_id,
-                          a.valid_from, a.valid_to, a.assignment_source)
-                   for a in db.scalars(select(m.EmployeeAssignment).where(
-                       ~m.EmployeeAssignment.restaurant_id.in_(own_restaurants)))}
-    return links, assignments
-
-
-def _refuse_other_site_changes(db, merchant_id, location_id, before):
-    """If the import changed anything belonging to another site (e.g. a Winter Park update altering a
-    Mount Dora link state or assignment), it is refused and the caller's transaction rolls back."""
-    db.flush()
-    after = _other_site_states(db, merchant_id, location_id)
-    changed = sum(1 for b, a in zip(before, after) for key, state in b.items() if a.get(key) != state)
-    if changed:
-        raise ValueError(
-            f"Roster import for merchant {merchant_id} would change {changed} record(s) of another "
-            "Clover site; nothing was written.")
-
-
-def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, run_id=None, complete=True):
-    """Apply one complete, validated employee collection atomically in caller's transaction.
-
-    Incomplete reads are rejected BEFORE any write, including legacy seeding.
-    Every unknown external identity stays unlinked until explicit approval.
-    """
-    if not complete:
-        raise ValueError("Incomplete employee collection; existing site states preserved.")
-    location = db.get(m.Location, location_id)
-    source = db.get(m.SourceSystem, location.source_system_id) if location else None
-    if not location or not source or source.code != "CLOVER" or location.source_location_id != merchant_id:
-        raise ValueError("Employee collection merchant does not match the configured Clover Location.")
-    if not isinstance(records, list):
-        raise ValueError("Invalid employee collection.")
-    seen = set()
-    for raw in records:
-        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str) or not raw["id"].strip():
-            raise ValueError("Employee collection has an invalid identity; site states preserved.")
-        if raw["id"] in seen:
-            raise ValueError("Duplicate external employee identity in collection; site states preserved.")
-        for key in ("name", "email", "customId"):
-            if raw.get(key) is not None and not isinstance(raw[key], str):
-                raise ValueError("Invalid employee source field; site states preserved.")
-        seen.add(raw["id"])
-    snapshots = [safe_snapshot(raw) for raw in records]  # validate before mutations
-    # Serialize identity decisions across merchants, not just within a site's
-    # acquisition lock. Simultaneous WP/MD imports must see each other's people.
-    db.scalar(select(m.SourceSystem).where(m.SourceSystem.id == source.id).with_for_update())
-    ensure_legacy_links(db)
-    other_sites_before = _other_site_states(db, merchant_id, location_id)
-    observed_at = observed_at or datetime.now(timezone.utc)
-    observed_at = observed_at.replace(tzinfo=observed_at.tzinfo or timezone.utc)
-    resolved = {}
-    pending = []
-    for snapshot in snapshots:
-        external_id = snapshot["id"]
-        link = db.scalar(select(m.EmployeeCloverLink).where(
-            m.EmployeeCloverLink.merchant_id == merchant_id,
-            m.EmployeeCloverLink.external_employee_id == external_id).with_for_update())
-        if link is None:
-            link = m.EmployeeCloverLink(location_id=location_id, merchant_id=merchant_id,
-                                       external_employee_id=external_id, state="PRESENT")
-            db.add(link)
-            db.flush()
-        previous = link.snapshot or {}
-        before, after = named_roles(previous), named_roles(snapshot)
-        last_seen = link.last_seen_at
-        if last_seen is not None and last_seen.replace(tzinfo=last_seen.tzinfo or timezone.utc) > observed_at:
-            if link.employee_id is not None:
-                resolved[external_id] = link.employee_id
-            else:
-                pending.append(link.id)
-            continue
-        role_seen = previous.get("roles_observed_at")
-        if role_seen is None and before and last_seen is not None:
-            role_seen = last_seen.replace(tzinfo=last_seen.tzinfo or timezone.utc).isoformat()
-        if after and before.keys() != after.keys():
-            _event(db, "CLOVER_ROLE_CHANGE" if before else "CLOVER_ROLE_OBSERVED",
-                   employee_id=link.employee_id, link=link,
-                   details={"before": before, "after": after, "previous_observed_at": role_seen,
-                            "observed_at": observed_at.isoformat(), "run_id": run_id})
-        if not after and before:
-            snapshot["roles"] = previous.get("roles") or [previous["role"]]
-        if {k: v for k, v in previous.items() if k != "roles_observed_at"} != snapshot or link.state != "PRESENT":
-            _event(db, "IMPORT", employee_id=link.employee_id, link=link,
-                   details={"snapshot": snapshot.copy(), "previous_state": link.state,
-                            "observed_at": observed_at.isoformat() if after else role_seen})
-        snapshot["roles_observed_at"] = observed_at.isoformat() if after else role_seen
-        link.snapshot = snapshot
-        link.last_seen_at = observed_at
-        link.last_run_id = run_id
-        link.state = "PRESENT"
-        if link.employee_id is not None:
-            resolved[external_id] = link.employee_id
-        else:
-            pending.append(link.id)
-    for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id)):
-        if link.external_employee_id not in seen and link.state != "MISSING_REVIEW":
-            _event(db, "MISSING_REVIEW", employee_id=link.employee_id, link=link,
-                   details={"run_id": run_id})
-            link.state = "MISSING_REVIEW"
-    db.flush()
-    # REGISTRY_CLOVER_DEPARTMENTS_001: every import also refreshes this site's Clover role catalogue and its
-    # report, in the same transaction. It never opens, closes or proposes a Registry assignment from a
-    # Clover role (TIPS_REGISTRY_ONLY_001, OQ-7).
-    from . import registry_departments
-    if registry_departments.available(db):
-        registry_departments.sync_site(db, location_id=location_id, merchant_id=merchant_id)
-    _refuse_other_site_changes(db, merchant_id, location_id, other_sites_before)
-    # Historical work can still refer to people absent from today's roster.
-    resolved.update({l.external_employee_id: l.employee_id for l in db.scalars(
-        select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
-                                         m.EmployeeCloverLink.employee_id.is_not(None)))})
-    return resolved, pending
-
-
-def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=None):
-    link = db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.id == link_id).with_for_update())
-    if link is None:
-        raise ValueError("Clover link not found.")
-    if link.employee_id is not None:
-        raise ValueError("This link is already confirmed. Historical identities cannot be reassigned here.")
-    if create_new:
-        location = db.get(m.Location, link.location_id)
-        employee = m.Employee(location_id=link.location_id, display_name=(link.snapshot or {}).get("name"),
-                              custom_id=(link.snapshot or {}).get("customId"),
-                              source_system_id=location.source_system_id,
-                              source_employee_id=link.external_employee_id)
-        db.add(employee)
-        db.flush()
-    else:
-        employee = db.scalar(select(m.Employee).where(m.Employee.id == resolve_employee_id(db, employee_id)).with_for_update()) if employee_id is not None else None
-        if employee is None:
-            raise ValueError("Choose an existing RF-One employee or explicitly create a new person.")
-    link.employee_id = employee.id
-    _event(db, "LINK", employee_id=employee.id, link=link, account_id=account_id,
-           details={"create_new": create_new})
-    db.flush()
-    # EMPLOYEE_DIRECTORY_RECORD_HOLD_001 — work acquired while this identity
-    # was pending is attributed now, through its Clover ID, in the same
-    # transaction as the confirmation.
-    from .technical.connectors.clover.identity_holds import reattribute_link
-    counts = reattribute_link(db, link)
-    _event(db, "REATTRIBUTE", employee_id=employee.id, link=link, account_id=account_id,
-           details={"external_employee_id": link.external_employee_id, "counts": counts})
-    db.flush()
-    return employee
-
-
-def observe_historical_employee(db, *, location_id, merchant_id, raw, available, observed_at, run_id):
-    """Resolve source-backed historical references without changing RF-One management.
-
-    This is a single-object observation, NEVER a complete roster or an absence
-    scan. A 404 retains the reference and last known profile, not a termination.
-    """
-    location = db.get(m.Location, location_id)
-    if not location or location.source_location_id != merchant_id or not raw.get("id"):
-        raise ValueError("Historical employee reference does not match the configured merchant.")
-    ensure_legacy_links(db)
-    link = db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
-        m.EmployeeCloverLink.external_employee_id == raw["id"]).with_for_update())
-    if link and link.employee_id is not None:
-        return db.get(m.Employee, link.employee_id)
-    if link is not None:
-        return None
-    link = m.EmployeeCloverLink(location_id=location_id, merchant_id=merchant_id,
-        external_employee_id=raw["id"], snapshot=safe_snapshot(raw), last_seen_at=observed_at,
-        last_run_id=run_id, state="UNVERIFIED" if available else "MISSING_REVIEW")
-    db.add(link)
-    db.flush()
-    _event(db, "HISTORICAL_PENDING", link=link,
-           details={"snapshot": safe_snapshot(raw), "profile_available": available})
-    return None
-
-
-def source_conflicts(links):
-    """Current observations only. Reviewed spelling differences stay in history."""
-    result = {}
-    present = [link for link in links if link.state == "PRESENT"]
-    for field in ("name", "email", "customId", "role", "roles"):
-        values = {str(link.id): (link.snapshot or {}).get(field) for link in present}
-        if len({json.dumps(value, sort_keys=True) for value in values.values()}) > 1:
-            result[field] = values
-    accounts = {}
-    for link in present:
-        accounts.setdefault(link.merchant_id, []).append(link.external_employee_id)
-    duplicates = {merchant: ids for merchant, ids in accounts.items() if len(ids) > 1}
-    if duplicates:
-        result["duplicate_accounts"] = duplicates
-    return result
-
-
-def review_fingerprint(links):
-    state = [(l.id, l.state, l.snapshot) for l in sorted(links, key=lambda l: l.id)]
-    return sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
-
-
-def is_reviewed(db, employee_id, links):
-    last = db.scalar(select(m.EmployeeDirectoryEvent).where(
-        m.EmployeeDirectoryEvent.employee_id == employee_id,
-        m.EmployeeDirectoryEvent.action == "REVIEW").order_by(m.EmployeeDirectoryEvent.id.desc()))
-    return bool(last and last.details.get("fingerprint") == review_fingerprint(links))
-
-
-def review(db, employee_id, links, account_id):
-    _event(db, "REVIEW", employee_id=employee_id, account_id=account_id,
-           details={"fingerprint": review_fingerprint(links)})
-
-
 _UNSET = object()
 
 
@@ -508,14 +258,273 @@ CONTEXTS = {
 }
 
 
-def create_person(db, *, display_name, email=None, phone=None, account_id=None):
+# ------------------------------------------------------------------ sites (REGISTRY_MULTISITE_001)
+
+ASSIGNMENT_SOURCE_REGISTRY = "REGISTRY"      # explicit site assignment typed in Registry
+ASSIGNMENT_SOURCE_TRAINING = "TRAINING"      # explicit site assignment made by a Training entry
+POS_LINK_STATE = "MANUAL"                    # a POS ID typed by an operator on the card
+POS_CORRECTED_STATE = "CORRECTED"            # a POS ID replaced by a correction (kept for history)
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+def sites(db):
+    """Every RF-One site (Restaurant), lowest id first. Clover is not needed for a site to exist."""
+    return list(db.scalars(select(m.Restaurant).order_by(m.Restaurant.id)))
+
+
+def _current(query, at):
+    return query.where(m.EmployeeAssignment.valid_from <= at,
+                       m.EmployeeAssignment.valid_to.is_(None) | (m.EmployeeAssignment.valid_to > at))
+
+
+def _site_condition(restaurant_id):
+    site_locations = select(m.RestaurantLocation.location_id).where(
+        m.RestaurantLocation.restaurant_id == restaurant_id)
+    return (m.EmployeeAssignment.restaurant_id == restaurant_id) | (
+        m.EmployeeAssignment.restaurant_id.is_(None) & m.EmployeeAssignment.location_id.in_(site_locations))
+
+
+def site_employee_ids(db, restaurant_id, *, at=None):
+    """Canonical people with a current explicit assignment to this site. Nothing else counts."""
+    at = at or _now()
+    query = _current(select(m.EmployeeAssignment.employee_id).where(_site_condition(restaurant_id)), at)
+    return {resolve_employee_id(db, identity) for identity in db.scalars(query)}
+
+
+def employee_site_ids(db, employee_id, *, at=None):
+    """Sites (Restaurant ids) where the person holds a current explicit assignment."""
+    at = at or _now()
+    rows = db.execute(_current(select(m.EmployeeAssignment.restaurant_id, m.RestaurantLocation.restaurant_id)
+        .outerjoin(m.RestaurantLocation, m.RestaurantLocation.location_id == m.EmployeeAssignment.location_id)
+        .where(m.EmployeeAssignment.employee_id == employee_id), at))
+    return {own if own is not None else via for own, via in rows if (own if own is not None else via) is not None}
+
+
+def site_role_choices(db, restaurant_id):
+    """(role, area) pairs usable at a site: active roles of this restaurant or of every restaurant."""
+    rows = db.execute(select(m.RestaurantRole, m.OperationalArea)
+        .join(m.OperationalAreaRole, m.OperationalAreaRole.restaurant_role_id == m.RestaurantRole.id)
+        .join(m.OperationalArea, m.OperationalArea.id == m.OperationalAreaRole.operational_area_id)
+        .where(m.RestaurantRole.active.is_not(False), m.OperationalArea.active.is_not(False),
+               m.RestaurantRole.restaurant_id.is_(None) | (m.RestaurantRole.restaurant_id == restaurant_id))
+        .order_by(m.RestaurantRole.name, m.OperationalArea.name))
+    return [(role, area) for role, area in rows]
+
+
+def site_role_groups(db, site_rows):
+    """For one <select> with an optgroup per site: [(site, [(value 'site:role:area', 'Role · Area')])]."""
+    return [(site, [(f"{site.id}:{role.id}:{area.id}", f"{role.name} · {area.name}")
+                    for role, area in site_role_choices(db, site.id)]) for site in site_rows]
+
+
+def parse_site_role(value):
+    """'site:role:area' -> (restaurant_id, role_id, area_id); ValueError when missing or malformed."""
+    try:
+        restaurant_id, role_id, area_id = (int(part) for part in (value or "").split(":"))
+    except ValueError:
+        raise ValueError("Choose the site and the role of the person.") from None
+    return restaurant_id, role_id, area_id
+
+
+def assign_site(db, *, employee_id, restaurant_id, role_id, area_id, account_id=None,
+                source=ASSIGNMENT_SOURCE_REGISTRY, note=None):
+    """Explicit assignment of an existing card to a site. A person already assigned there keeps the
+    assignment (returns it, nothing changes): changing the role at a site stays an Organization step."""
+    employee_id = resolve_employee_id(db, employee_id)
+    if db.get(m.Employee, employee_id) is None:
+        raise ValueError("Person not found.")
+    if db.get(m.Restaurant, restaurant_id) is None:
+        raise ValueError("Choose a site.")
+    current = db.scalar(_current(select(m.EmployeeAssignment).where(
+        m.EmployeeAssignment.employee_id == employee_id, _site_condition(restaurant_id)), _now()).limit(1))
+    if current is not None:
+        return current
+    if (role_id, area_id) not in {(role.id, area.id) for role, area in site_role_choices(db, restaurant_id)}:
+        raise ValueError("Choose a role available at this site.")
+    assignment = m.EmployeeAssignment(employee_id=employee_id, restaurant_id=restaurant_id, location_id=None,
+        restaurant_role_id=role_id, operational_area_id=area_id, valid_from=_now(), valid_to=None,
+        assignment_source=source, source_note=note)
+    db.add(assignment)
+    db.flush()
+    _event(db, "SITE_ASSIGN", employee_id=employee_id, account_id=account_id,
+           details={"restaurant_id": restaurant_id, "role_id": role_id, "area_id": area_id,
+                    "assignment_id": assignment.id, "source": source})
+    return assignment
+
+
+def find_registered(db, *, email=None, phone=None):
+    """An existing card with the same email or phone (contact evidence, never the name alone)."""
+    email, phone = (email or "").strip().casefold(), (phone or "").strip()
+    if not email and not phone:
+        return None
+    condition = []
+    if email:
+        condition.append(func.lower(m.Employee.email) == email)
+    if phone:
+        condition.append(m.Employee.phone == phone)
+    from sqlalchemy import or_
+    return db.scalar(canonical_employees().where(or_(*condition)).order_by(m.Employee.id).limit(1))
+
+
+def create_person(db, *, display_name, email=None, phone=None, account_id=None,
+                  restaurant_id=None, role_id=None, area_id=None, require_site=True):
+    """Manual card: name, contacts and the explicit site (with its role). A person already registered
+    (same email or phone) is not created twice: the operator adds the site to the existing card."""
+    if require_site and restaurant_id is None:
+        raise ValueError("Choose the site of the person.")
+    existing = find_registered(db, email=email, phone=phone)
+    if existing is not None:
+        raise ValueError(f"{existing.display_name or 'This person'} is already registered (RF1 {existing.id}): "
+                         "open the card and add the site there.")
     person = m.Employee()
     update_management(db, person, display_name=(display_name or "").strip(), custom_id="",
                       active=None, email=email, phone=phone, account_id=account_id)
     db.add(person)
     db.flush()
     _event(db, "RF1_CREATE", employee_id=person.id, account_id=account_id)
+    if restaurant_id is not None:
+        assign_site(db, employee_id=person.id, restaurant_id=restaurant_id, role_id=role_id, area_id=area_id,
+                    account_id=account_id)
     return person
+
+
+def card_for_person(db, person_id):
+    """The Registry card explicitly linked to a physical person (CandidatePerson), if any."""
+    from . import people_registry as people
+    if not people.available(db):
+        return None
+    employee_id = db.scalar(select(people.PersonEmployeeLink.employee_id).where(
+        people.PersonEmployeeLink.person_id == person_id).order_by(people.PersonEmployeeLink.employee_id).limit(1))
+    return db.get(m.Employee, resolve_employee_id(db, employee_id)) if employee_id is not None else None
+
+
+def training_card(db, *, person_id, restaurant_id, role_id, area_id, actor):
+    """Training entry (direct invitation or Send to Training): create or reuse the person's card and assign
+    the training site. Reuse order: the card already linked to the person; otherwise the one card with the
+    same email that is not linked to another person. Repeating it changes nothing. Returns (card, created)."""
+    from . import people_registry as people
+    person = db.get(m.CandidatePerson, person_id)
+    if person is None:
+        raise ValueError("Person not found.")
+    if db.get(m.Restaurant, restaurant_id) is None:
+        raise ValueError("Choose the training site.")
+    card, created = card_for_person(db, person_id), False
+    if card is None and person.primary_email:
+        matches = list(db.scalars(canonical_employees().where(
+            func.lower(m.Employee.email) == person.primary_email.strip().casefold())))
+        linked = set(db.scalars(select(people.PersonEmployeeLink.employee_id))) if people.available(db) else set()
+        free = [employee for employee in matches if employee.id not in linked]
+        if len(free) == 1 and len(matches) == 1:
+            card = free[0]
+    if card is None:
+        card = m.Employee()
+        update_management(db, card, display_name=(person.full_name or "").strip() or "Name to complete",
+                          custom_id="", active=None, email=person.primary_email, phone=person.primary_phone,
+                          account_id=actor.id)
+        db.add(card)
+        db.flush()
+        _event(db, "TRAINING_CREATE", employee_id=card.id, account_id=actor.id, details={"person_id": person_id})
+        created = True
+    if people.available(db) and db.get(people.PersonEmployeeLink, card.id) is None:
+        db.add(people.PersonEmployeeLink(employee_id=card.id, person_id=person_id, linked_by_id=actor.id,
+                                         linked_at=_now()))
+        db.flush()
+        _event(db, "TRAINING_LINK", employee_id=card.id, account_id=actor.id, details={"person_id": person_id})
+    assign_site(db, employee_id=card.id, restaurant_id=restaurant_id, role_id=role_id, area_id=area_id,
+                account_id=actor.id, source=ASSIGNMENT_SOURCE_TRAINING)
+    return card, created
+
+
+# ------------------------------------------------------------------ POS ID (REGISTRY_MULTISITE_001 §4)
+
+def site_clover_location(db, restaurant_id):
+    """The Clover Location (with its merchant) of a site, or None when the site has no POS."""
+    return db.scalar(select(m.Location)
+        .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
+        .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
+        .where(m.RestaurantLocation.restaurant_id == restaurant_id, m.RestaurantLocation.valid_to.is_(None),
+               m.SourceSystem.code == "CLOVER", m.Location.source_location_id.is_not(None))
+        .order_by(m.Location.id).limit(1))
+
+
+def pos_links(db, employee_id):
+    """{restaurant_id: link} — the person's current POS ID per site (confirmed links only)."""
+    result = {}
+    for link in db.scalars(select(m.EmployeeCloverLink).where(
+            m.EmployeeCloverLink.employee_id == employee_id).order_by(m.EmployeeCloverLink.id)):
+        restaurant_id = db.scalar(select(m.RestaurantLocation.restaurant_id).where(
+            m.RestaurantLocation.location_id == link.location_id).order_by(m.RestaurantLocation.id).limit(1))
+        if restaurant_id is not None:
+            result.setdefault(restaurant_id, link)
+    return result
+
+
+def resolved_identities(db, merchant_id):
+    """{Clover employee id: RF-One person} at one merchant — only links confirmed on a card."""
+    return {link.external_employee_id: link.employee_id for link in db.scalars(
+        select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
+                                         m.EmployeeCloverLink.employee_id.is_not(None)))}
+
+
+def set_pos_id(db, *, employee_id, restaurant_id, pos_id, account_id=None):
+    """Type or correct the POS ID of an existing card for a site the person is assigned to.
+
+    - The same POS ID can never belong to two people at the same site (merchant).
+    - A correction detaches the previous ID (state CORRECTED, kept for history): records already attributed
+      to the person stay attributed; nothing consolidated is moved.
+    - Only work still waiting for an identity with the new ID (attribution NULL) is attributed now.
+    Returns (link, counts)."""
+    employee_id = resolve_employee_id(db, employee_id)
+    person = db.scalar(select(m.Employee).where(m.Employee.id == employee_id).with_for_update())
+    if person is None:
+        raise ValueError("Person not found.")
+    pos_id = (pos_id or "").strip()
+    if not pos_id or len(pos_id) > 128 or any(ch.isspace() for ch in pos_id):
+        raise ValueError("Enter the POS ID without spaces (maximum 128 characters).")
+    if restaurant_id not in employee_site_ids(db, employee_id):
+        raise ValueError("The person is not assigned to this site: assign the site first.")
+    location = site_clover_location(db, restaurant_id)
+    if location is None:
+        raise ValueError("This site has no POS connection: a POS ID cannot be recorded.")
+    merchant_id = location.source_location_id
+    # Serialize POS decisions of one merchant.
+    db.scalar(select(m.Location).where(m.Location.id == location.id).with_for_update())
+    target = db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
+        m.EmployeeCloverLink.external_employee_id == pos_id).with_for_update())
+    if target is not None and target.employee_id not in (None, employee_id):
+        other = db.get(m.Employee, target.employee_id)
+        raise ValueError(f"POS ID {pos_id} already belongs to {other.display_name if other else 'another person'} "
+                         "at this site. Nothing was changed.")
+    current = db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
+        m.EmployeeCloverLink.employee_id == employee_id).order_by(m.EmployeeCloverLink.id).with_for_update().limit(1))
+    if current is not None and current.external_employee_id == pos_id:
+        return current, {}
+    previous = None
+    if current is not None:
+        previous = current.external_employee_id
+        current.employee_id = None
+        current.state = POS_CORRECTED_STATE
+        _event(db, "POS_ID_CORRECTED", employee_id=employee_id, link=current, account_id=account_id,
+               details={"restaurant_id": restaurant_id, "before": previous, "after": pos_id})
+        db.flush()
+    if target is None:
+        target = m.EmployeeCloverLink(location_id=location.id, merchant_id=merchant_id,
+                                     external_employee_id=pos_id, state=POS_LINK_STATE)
+        db.add(target)
+    target.employee_id = employee_id
+    target.state = POS_LINK_STATE
+    db.flush()
+    _event(db, "POS_ID_SET", employee_id=employee_id, link=target, account_id=account_id,
+           details={"restaurant_id": restaurant_id, "pos_id": pos_id, "previous": previous})
+    from .technical.connectors.clover.identity_holds import reattribute_link
+    counts = reattribute_link(db, target)
+    _event(db, "REATTRIBUTE", employee_id=employee_id, link=target, account_id=account_id,
+           details={"external_employee_id": pos_id, "counts": counts})
+    db.flush()
+    return target, counts
 
 
 def context_person_id(db, kind, target_id):
@@ -594,21 +603,3 @@ def unlink_context(db, *, employee_id, link_id, account_id=None):
            details={"kind": kind, "target_id": target_id})
     db.delete(link)
     db.flush()
-
-
-def pending_requires_review(db, link):
-    if link.employee_id is not None:
-        return False
-    if link.state != "MISSING_REVIEW":
-        return True
-    # A disappeared, never-used source account leaves the current queue.
-    # A historical work reference still needs attribution and stays visible.
-    return db.scalar(select(m.EmployeeDirectoryEvent.id).where(
-        m.EmployeeDirectoryEvent.link_id == link.id,
-        m.EmployeeDirectoryEvent.action == "HISTORICAL_PENDING").limit(1)) is not None
-
-
-def source_absence_link_ids(links):
-    """Absence is a site condition, not an alarm for retired duplicate accounts."""
-    present_merchants = {link.merchant_id for link in links if link.state == "PRESENT"}
-    return {link.id for link in links if link.state == "MISSING_REVIEW" and link.merchant_id not in present_merchants}

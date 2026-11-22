@@ -29,10 +29,10 @@ class PersonFoundationTests(unittest.TestCase):
         self.db.close(); self.engine.dispose()
 
     def person(self, name="RF-One Person"):
-        return directory.create_person(self.db, display_name=name, email="reference@example.test", phone="123")
-
-    def sync(self, records):
-        return directory.import_snapshot(self.db, location_id=self.site.id, merchant_id="WP", records=records)
+        # Fixture card without a site (REGISTRY_MULTISITE_001 requires one for the manual screens).
+        reference = name == "RF-One Person"
+        return directory.create_person(self.db, display_name=name, email="reference@example.test" if reference else None,
+                                       phone="123" if reference else None, require_site=False)
 
     def test_native_person_needs_no_pos_location_account_or_employment(self):
         person = self.person()
@@ -66,68 +66,13 @@ class PersonFoundationTests(unittest.TestCase):
         self.assertEqual(directory.employee_options(self.db, location_ids=[self.site.id], include_inactive=True)[0].id, person.id)
         assignment.valid_to = None
         self.db.flush()
-        _, pending = self.sync([{"id": "MANUAL-PERSON", "name": person.display_name}])
-        directory.attach_link(self.db, link_id=pending[0], employee_id=person.id)
+        self.db.add(m.EmployeeCloverLink(employee_id=person.id, location_id=self.site.id, merchant_id="WP",
+                                         external_employee_id="MANUAL-PERSON", state="MANUAL"))
+        self.db.flush()
         from rfone_data_store.profile.bootstrap import bootstrap_restaurant_profile, MODE_PERSIST
         bootstrap_restaurant_profile(self.db, restaurant_id=restaurant.id, source_system_id=self.source.id,
             mode=MODE_PERSIST, sync_time=datetime.now(timezone.utc))
         self.assertIsNone(assignment.valid_to)
-
-    def test_unknown_pos_is_pending_even_without_suggestions_and_idempotent(self):
-        for _ in range(3):
-            resolved, pending = self.sync([{"id": "A", "name": "Unknown", "pin": "never-store"}])
-            self.assertEqual(resolved, {})
-            self.assertEqual(len(pending), 1)
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
-        link = self.db.get(m.EmployeeCloverLink, pending[0])
-        self.assertNotIn("pin", link.snapshot)
-        person = self.person("Reference Name")
-        directory.attach_link(self.db, link_id=link.id, employee_id=person.id)
-        resolved, pending = self.sync([{"id": "A", "name": "POS Changed", "email": "source@example.test"}])
-        self.assertEqual(resolved["A"], person.id)
-        self.assertEqual((person.display_name, person.email), ("Reference Name", "reference@example.test"))
-
-    def test_same_merchant_duplicates_are_explicit_and_dynamic(self):
-        person = self.person("Pinco Pallino")
-        _, pending = self.sync([{"id": "A", "name": "Pinco Pallino"}, {"id": "B", "name": "Pallino Pinco"}])
-        for identity in pending:
-            directory.attach_link(self.db, link_id=identity, employee_id=person.id)
-        links = list(self.db.scalars(select(m.EmployeeCloverLink)))
-        self.assertIn("duplicate_accounts", directory.source_conflicts(links))
-        self.sync([{"id": "A", "name": "Pinco Pallino"}])
-        self.assertEqual(directory.source_conflicts(links), {})
-        self.assertEqual(directory.source_absence_link_ids(links), set())
-        self.assertEqual(len(links), 2)
-        self.assertTrue(directory.employee_is_active(person, links))
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 1)
-        self.assertGreater(self.db.scalar(select(func.count()).select_from(m.EmployeeDirectoryEvent)), 0)
-
-    def test_historical_unknown_requires_confirmation_without_creating_person(self):
-        arguments = dict(location_id=self.site.id, merchant_id="WP", raw={"id": "OLD", "name": "Former"},
-                         available=False, observed_at=datetime.now(timezone.utc), run_id=None)
-        for _ in range(2):
-            self.assertIsNone(directory.observe_historical_employee(self.db, **arguments))
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
-        link = self.db.scalar(select(m.EmployeeCloverLink))
-        person = self.person()
-        directory.attach_link(self.db, link_id=link.id, employee_id=person.id)
-        self.assertEqual(directory.observe_historical_employee(self.db, **arguments).id, person.id)
-
-    def test_removed_unconfirmed_source_record_leaves_current_queue_but_history_remains(self):
-        _, pending = self.sync([{"id": "TEMP", "name": "Temporary typo"}])
-        link = self.db.get(m.EmployeeCloverLink, pending[0])
-        self.assertTrue(directory.pending_requires_review(self.db, link))
-        self.sync([])
-        self.assertFalse(directory.pending_requires_review(self.db, link))
-        self.assertIsNotNone(self.db.get(m.EmployeeCloverLink, link.id))
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
-
-    def test_reversed_names_are_suggestions_only(self):
-        person = self.person("Pinco Pallino")
-        _, pending = self.sync([{"id": "REVERSED", "name": "Pallino Pinco"}])
-        self.assertEqual(len(pending), 1)
-        self.assertEqual(directory.candidates(self.db, {"name": "Pallino Pinco"})[0]["employee"].id, person.id)
-        self.assertIsNone(self.db.get(m.EmployeeCloverLink, pending[0]).employee_id)
 
     def test_historical_import_holds_records_of_a_pending_identity_without_inventing_a_person(self):
         # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: an unconfirmed employee no longer fails the import; only
@@ -136,8 +81,13 @@ class PersonFoundationTests(unittest.TestCase):
         from rfone_data_store.technical.connectors.clover import acquisition as acquisition
         client = FakeCloverClient("WP")
         now = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
-        client.payments = [{"id": "PENDING-PAYMENT", "employee": {"id": "HISTORICAL-UNKNOWN"},
-                            "createdTime": int(now.timestamp() * 1000), "amount": 100, "result": "SUCCESS"}]
+        stamp = int(now.timestamp() * 1000)
+        client.orders_by_id["PENDING-ORDER"] = {"id": "PENDING-ORDER", "employee": {"id": "HISTORICAL-UNKNOWN"}, "createdTime": stamp,
+                          "modifiedTime": stamp, "state": "locked", "paymentState": "PAID", "currency": "USD",
+                          "total": 100, "lineItems": {"elements": []}}
+        client.payments = [{"id": "PENDING-PAYMENT", "order": {"id": "PENDING-ORDER"},
+                            "employee": {"id": "HISTORICAL-UNKNOWN"}, "createdTime": stamp, "amount": 100,
+                            "result": "SUCCESS"}]
         location_id = self.site.id
         self.db.commit()
         summary = acquisition.import_clover_period(self.db, location_id=location_id,
@@ -145,11 +95,11 @@ class PersonFoundationTests(unittest.TestCase):
         self.assertTrue(summary.identity_holds)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
         held = self.db.scalars(select(m.Payment)).all()
-        self.assertTrue(all(payment.employee_id is None for payment in held))
-        link = self.db.scalar(select(m.EmployeeCloverLink))
-        self.assertIsNotNone(link)
-        self.assertIsNone(link.employee_id)
-        self.assertTrue(directory.pending_requires_review(self.db, link))
+        self.assertTrue(held and all(payment.employee_id is None for payment in held))
+        # REGISTRY_MULTISITE_001: no pending identity, card or proposal is created for the unknown POS ID.
+        self.assertIsNone(self.db.scalar(select(m.EmployeeCloverLink)))
+        from rfone_data_store.technical.connectors.clover import identity_holds
+        self.assertEqual(identity_holds.pending_external_ids(self.db, ["WP"]), {"HISTORICAL-UNKNOWN"})
         self.assertNotEqual(self.db.scalar(select(m.IngestionRun.status)), "FAILED")
 
     def test_existing_authentication_bridge_resolves_person_without_grants(self):

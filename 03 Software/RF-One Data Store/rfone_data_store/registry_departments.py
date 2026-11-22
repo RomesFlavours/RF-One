@@ -12,8 +12,8 @@ role, a department or an assignment. Clover correspondences written earlier (`so
 `RegistryRoleMapping` as history; new ones are refused and they are no longer read. Every change closes the
 current row and opens a new one (history kept).
 
-`sync_site` runs at the end of every Clover employee import (`employee_directory.import_snapshot`), so
-it is part of the import, never a separate procedure.
+REGISTRY_MULTISITE_001 (Product Owner, 2026-11-22): the Clover staff-list import is removed, and with it
+the former `sync_site` step that refreshed the Clover role catalogue and its report at the end of the import.
 
 TIPS_REGISTRY_ONLY_001 (Product Owner, 2026-11-21): Clover is not a reliable source of roles, departments
 or duties; Registry is the only authority. The import therefore NEVER opens, closes or changes a Registry
@@ -95,86 +95,6 @@ def effective(mapping, role_deps) -> tuple[int | None, int | None]:
     role = mapping.restaurant_role_id
     department = role_deps.get(role) if role else None
     return role, department if department is not None else mapping.department_id
-
-
-def ensure_source_roles(db, *, location_id, links) -> dict[str, int]:
-    """Clover role id -> `SourceRole.id` for every role seen on this site's roster (name kept current)."""
-    location = db.get(m.Location, location_id)
-    seen = {}
-    for link in links:
-        seen.update(_named_roles(link.snapshot))
-    result = {}
-    for clover_id, name in seen.items():
-        row = db.scalar(select(m.SourceRole).where(
-            m.SourceRole.source_system_id == location.source_system_id, m.SourceRole.source_role_id == clover_id))
-        if row is None:
-            row = m.SourceRole(location_id=location_id, source_system_id=location.source_system_id,
-                               source_role_id=clover_id, name=name)
-            db.add(row)
-            db.flush()
-        elif row.name != name:
-            row.name = name
-        result[clover_id] = row.id
-    return result
-
-
-# ---------------------------------------------------------------- Clover import: assignments
-
-@dataclass
-class SyncSummary:
-    location_id: int
-    restaurant_id: int | None = None
-    # Reported only: the import never writes a Registry assignment (TIPS_REGISTRY_ONLY_001) and never
-    # reads a Clover role to propose one (OQ-7).
-    no_registry_role: int = 0    # confirmed person with no open Registry assignment at this Restaurant
-    pending_identity: int = 0    # Clover person not yet confirmed: reported, not assigned
-    issues: list[str] = field(default_factory=list)
-
-    def as_dict(self):
-        return dict(self.__dict__)
-
-
-def sync_site(db, *, location_id, merchant_id, now=None, dry_run=False) -> SyncSummary:
-    """Keep the Clover role catalogue of one site and report its confirmed people without an open Registry
-    assignment; never writes an assignment and never compares Clover roles with Registry (OQ-7). Reads only
-    what the import stored (`EmployeeCloverLink`), never calls Clover. `dry_run`: compute, then undo
-    (savepoint) — the role catalogue is not kept either."""
-    summary = SyncSummary(location_id=location_id)
-    if not available(db):
-        summary.issues.append("Registry Role/Department tables are not installed.")
-        return summary
-    if dry_run:
-        savepoint = db.begin_nested()
-        try:
-            return _sync(db, summary, location_id, merchant_id, now or utc_now())
-        finally:
-            savepoint.rollback()
-    return _sync(db, summary, location_id, merchant_id, now or utc_now())
-
-
-def _sync(db, summary, location_id, merchant_id, now):
-    restaurant_id = summary.restaurant_id = site_restaurant_id(db, location_id)
-    if restaurant_id is None:
-        summary.issues.append("This Clover site is not linked to an RF-One Restaurant.")
-        return summary
-    links = list(db.scalars(select(m.EmployeeCloverLink).where(
-        m.EmployeeCloverLink.merchant_id == merchant_id).order_by(m.EmployeeCloverLink.id)))
-    ensure_source_roles(db, location_id=location_id, links=links)
-    confirmed = set()
-    for link in links:
-        if link.employee_id is None:
-            summary.pending_identity += link.state == "PRESENT"
-        else:
-            confirmed.add(link.employee_id)
-    for employee_id in sorted(confirmed):
-        held = db.scalar(select(m.EmployeeAssignment.id).where(
-            m.EmployeeAssignment.employee_id == employee_id, m.EmployeeAssignment.restaurant_id == restaurant_id,
-            m.EmployeeAssignment.valid_to.is_(None)).limit(1))
-        if held is None:
-            summary.no_registry_role += 1
-            summary.issues.append(f"Employee #{employee_id}: no Registry assignment at this Restaurant "
-                                  "(Clover role not used to create or suggest one).")
-    return summary
 
 
 # ---------------------------------------------------------------- data interface for every Domain

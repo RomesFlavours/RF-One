@@ -113,67 +113,11 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
         self.assertEqual(client.post(path, data=data, base_url=fixture.HOST).status_code, 400)
         data["csrf_token"] = self.csrf(client)
         self.assertEqual(client.post(path, data=data, base_url=fixture.HOST).status_code, 302)
-        with SessionFactory() as db:
-            directory.import_snapshot(db, location_id=self.location_id, merchant_id="DIR-WP",
-                records=[{"id": "E1", "name": "Jane Smith", "customId": "CLOVER", "email": "wp@example.test", "role": "EMPLOYEE"}])
-            db.commit()
+        with SessionFactory() as db:   # REGISTRY_MULTISITE_001: no Clover import can change the card any more
             employee = db.get(m.Employee, self.employee_id)
             self.assertEqual((employee.display_name, employee.custom_id, employee.active), ("Jane Managed", "RF1", True))
             term = db.scalar(select(m.EmployeeCompensationTerm))
             self.assertEqual((term.function_label, term.hourly_rate_minor, term.source_note), ("Manager", 2500, "Management only"))
-
-    def test_04_manual_site_link_conflict_and_review(self):
-        with SessionFactory() as db:
-            wp = db.get(m.Location, self.location_id)
-            md = m.Location(name="Mount Dora", merchant_id=wp.merchant_id, source_system_id=self.source_id,
-                            source_location_id="DIR-MD", timezone="America/New_York")
-            db.add(md)
-            db.flush()
-            _, pending = directory.import_snapshot(db, location_id=md.id, merchant_id="DIR-MD",
-                records=[{"id": "E1", "name": "Jane Smith", "email": "md@example.test", "role": "MANAGER"}])
-            self.assertEqual(len(pending), 1)  # imported name still suggests renamed management identity
-            link_id = pending[0]
-            db.commit()
-        client = self.client("directory-manager")
-        data = {"employee_id": self.employee_id, "csrf_token": self.csrf(client)}
-        self.assertEqual(client.post(f"{ROOT}/links/{link_id}/confirm", data=data, base_url=fixture.HOST).status_code, 302)
-        detail = client.get(f"{ROOT}/{self.employee_id}", base_url=fixture.HOST)
-        self.assertIn(b"wp@example.test", detail.data)
-        self.assertIn(b"md@example.test", detail.data)
-        self.assertIn(b"Da risolvere", detail.data)
-        self.assertIn(b"Mount Dora", detail.data)
-        with SessionFactory() as db:
-            links = list(db.scalars(select(m.EmployeeCloverLink)))
-            fingerprint = directory.review_fingerprint(links)
-        review = {"action": "review", "fingerprint": fingerprint, "csrf_token": self.csrf(client)}
-        client.post(f"{ROOT}/{self.employee_id}", data=review, base_url=fixture.HOST)
-        self.assertIn(b"Esaminate", client.get(f"{ROOT}/{self.employee_id}", base_url=fixture.HOST).data)
-        with SessionFactory() as db:
-            self.assertEqual(len(list(db.scalars(select(m.Employee)))), 1)
-
-    def test_05_sync_reuses_jobs_permissions_and_csrf(self):
-        user = self.client("directory-user")
-        data = {"location_id": self.location_id, "csrf_token": fixture.csrf(user.get('/profile', base_url=fixture.HOST).data)}
-        self.assertEqual(user.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST).status_code, 403)
-        allowed = self.client("directory-sync")
-        self.assertEqual(allowed.post(ROOT + "/sync-now", data={"location_id": self.location_id}, base_url=fixture.HOST).status_code, 400)
-        with SessionFactory() as db:
-            now = datetime.now(timezone.utc)
-            db.add(m.IngestionRun(source_system_id=self.source_id, location_id=self.location_id, status="COMPLETE",
-                started_at=now-timedelta(hours=2), finished_at=now-timedelta(hours=1),
-                acquisition_mode=jobs.MODE_BACKFILL, source_window_end=now-timedelta(hours=1)))
-            db.commit()
-        data["csrf_token"] = fixture.csrf(allowed.get(ROOT, base_url=fixture.HOST).data)
-        response = allowed.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST)
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(len(web.clover_job_launcher.run_ids), 1)
-        page = allowed.get(ROOT, base_url=fixture.HOST).data
-        self.assertIn(b"Ultima sincronizzazione:", page)
-        self.assertNotIn(b"QUEUED", page)
-        self.assertLess(page.index(b"Ultima sincronizzazione:"), page.index(b"Sincronizza ora"))
-        # Duplicate submission uses exactly the existing acquisition lock.
-        allowed.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST)
-        self.assertEqual(len(web.clover_job_launcher.run_ids), 1)
 
     def test_06_consolidation_works_on_migrated_schema_and_preserves_history(self):
         with SessionFactory() as db:
@@ -204,14 +148,13 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
                 external_employee_id="PENDING-SELECTOR", snapshot={"name": "Review person"}, state="PRESENT"))
             db.commit()
         client = self.client("directory-manager")
-        for path in (ROOT, f"{ROOT}/{self.employee_id}"):
+        for path in (f"{ROOT}/{self.employee_id}",):   # the consolidation choice lives on the card
             response = client.get(path, base_url=fixture.HOST)
             self.assertEqual(response.status_code, 200)
             html = response.get_data(as_text=True)
             self.assertIn(f'<option value="{inactive_id}">Inactive &lt;Person&gt;', html)
             self.assertNotIn(f'<option value="{retired_id}">', html)
             self.assertIn("Non attivo", html)
-            self.assertIn("Winter Park", html)
 
     def test_08_native_person_without_pos_and_create_permissions(self):
         ordinary = self.client("directory-user")
@@ -222,14 +165,10 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
         response = manager.post(ROOT + "/new", data={"csrf_token": self.csrf(manager),
             "display_name": "Native RF1 person", "email": "native@example.test", "phone": "123"}, base_url=fixture.HOST)
         self.assertEqual(response.status_code, 302)
-        with SessionFactory() as db:
-            person = db.scalar(select(m.Employee).where(m.Employee.display_name == "Native RF1 person"))
-            self.assertIsNone(person.location_id)
-            self.assertIsNone(person.source_system_id)
-            self.assertEqual(person.email, "native@example.test")
+        with SessionFactory() as db:   # REGISTRY_MULTISITE_001: a manual card always names its site
+            self.assertIsNone(db.scalar(select(m.Employee).where(m.Employee.display_name == "Native RF1 person")))
         home = manager.get(ROOT, base_url=fixture.HOST)
         self.assertEqual(home.status_code, 200)
-        self.assertIn("Senza sede", home.get_data(as_text=True))
 
     def test_09_context_links_require_confirmation_and_target_management_rights(self):
         with SessionFactory() as db:

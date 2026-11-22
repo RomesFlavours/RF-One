@@ -378,8 +378,14 @@ def save_person_profile(db,target,*,name,company_ids,assignments,actor=None,emai
     db.flush()
 
 
-def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET):
-    person=directory.create_person(db,display_name=_name(name),account_id=actor)
+def create_profile_person(db,*,name,company_ids,assignments,actor=None,email=_CONTACT_UNSET,phone=_CONTACT_UNSET,site=None):
+    """REGISTRY_MULTISITE_001: `site` = (restaurant_id, role_id, area_id), the explicit site of the new card."""
+    if site is None:raise ValueError('Choose the site of the person.')
+    restaurant_id,role_id,area_id=site
+    person=directory.create_person(db,display_name=_name(name),account_id=actor,
+        email=None if email is _CONTACT_UNSET else _contact(email,255,'email'),
+        phone=None if phone is _CONTACT_UNSET else _contact(phone,64,'phone'),
+        restaurant_id=restaurant_id,role_id=role_id,area_id=area_id)
     if hasattr(directory,'ensure_employee_account'):
         directory.ensure_employee_account(db,person)
     else:

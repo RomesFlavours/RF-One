@@ -55,11 +55,10 @@ differently:
   reverted-to-unmodified Refund has no signal to resume from) — only
   `source_window_end` still only advances on success, which is all the Tips
   readiness gate (§7, `tips/readiness.py`) actually needs.
-- **employees** — Employee Directory also refreshes the complete roster in
-  this active AWS poller before work corrections, through the SAME importer
-  used by Live Sync and Sync Now. It has no modification cursor of its own:
-  failures preserve source state and leave the work cursors unchanged.
-  A pending identity confirmation no longer stops the cycle
+- **employees** — not read any more (REGISTRY_MULTISITE_001, Product Owner
+  2026-11-22): Clover's staff list never creates, updates or proposes a
+  Registry card. People are attributed only through the POS IDs typed on
+  Registry cards. Work of an unknown Clover ID never stops the cycle
   (EMPLOYEE_DIRECTORY_RECORD_HOLD_001, Product Owner 2026-11-02): its
   records are acquired without a person, counted and logged every cycle,
   and attributed when the identity is confirmed (`identity_holds.py`).
@@ -213,107 +212,22 @@ class CorrectionCycleSummary:
     identity_holds: list[str] = field(default_factory=list)
 
 
+class _Unresolved:
+    """`x in pending`: a Clover employee ID that no Registry card carries as POS ID at this site
+    (REGISTRY_MULTISITE_001: unknown IDs are no longer pre-registered as pending identities)."""
+
+    def __init__(self, resolved):
+        self.resolved = resolved
+
+    def __contains__(self, external_id):
+        return bool(external_id) and external_id not in self.resolved
+
+
 def _employee_ids_for_location(session, location_id):
-    from ....employee_directory import ensure_legacy_links
-    ensure_legacy_links(session)
+    """Clover employee id -> RF-One person: only POS IDs typed on Registry cards (REGISTRY_MULTISITE_001)."""
+    from ....employee_directory import resolved_identities
     location = session.get(m.Location, location_id)
-    return {link.external_employee_id: link.employee_id for link in session.scalars(
-        select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == location.source_location_id,
-                                         m.EmployeeCloverLink.employee_id.is_not(None)))}
-
-
-def _refresh_employees(session, client, *, location_id, merchant_id, run_id):
-    """The active AWS poller uses the SAME complete-only directory importer."""
-    from ....employee_directory import import_snapshot
-    from .source_guard import require_complete
-    try:
-        if client.merchant_id != merchant_id:
-            raise ValueError("Clover client does not match this Location's merchant.")
-        records = require_complete(paginate(client, f"/v3/merchants/{merchant_id}/employees",
-                                           extra_params={"expand": "role"}), "Employees")
-        with session.begin_nested():
-            import_snapshot(session, location_id=location_id, merchant_id=merchant_id,
-                            records=records, run_id=run_id)
-        session.commit()
-        # Pending identities are not an error: they hold only their own
-        # records (EMPLOYEE_DIRECTORY_RECORD_HOLD_001), reported per cycle.
-        return []
-    except Exception as exc:
-        session.rollback()
-        return [f"Employee synchronization failed; previous roster preserved: {_safe_error_summary(exc)}"]
-
-
-def ensure_roster_site(session, *, restaurant_id: int, merchant_id: str, client, timezone_name: str | None = None) -> int:
-    """The Location of a Restaurant's Clover site (REGISTRY_CLOVER_DEPARTMENTS_001), created only when it
-    does not exist: an existing Location with this merchant is reused, never duplicated, and a Restaurant
-    already linked to a DIFFERENT merchant is refused. Uses the existing live onboarding upsert."""
-    from .onboarding import onboard_merchant_and_location_live
-    linked = list(session.scalars(select(m.Location).join(
-        m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id).where(
-        m.RestaurantLocation.restaurant_id == restaurant_id, m.RestaurantLocation.valid_to.is_(None))))
-    for location in linked:
-        if location.source_location_id == merchant_id:
-            return location.id
-    if linked:
-        raise ValueError(f"Restaurant #{restaurant_id} is already linked to another Clover site.")
-    if session.get(m.Restaurant, restaurant_id) is None:
-        raise ValueError(f"Restaurant #{restaurant_id} does not exist.")
-    source = session.scalar(select(m.SourceSystem).where(m.SourceSystem.code == "CLOVER"))
-    location = session.scalar(select(m.Location).where(
-        m.Location.source_system_id == source.id, m.Location.source_location_id == merchant_id))
-    now = utc_now()
-    if location is None:
-        run = m.IngestionRun(source_system_id=source.id, started_at=now, finished_at=now, status="COMPLETE",
-                             notes="REGISTRY_CLOVER_DEPARTMENTS_001: Clover site onboarding (merchant only)")
-        session.add(run)
-        session.flush()
-        _merchant_id, location_id = onboard_merchant_and_location_live(session, client, source.id, run.id, now)
-        location = session.get(m.Location, location_id)
-        run.location_id = location.id
-    elif session.scalar(select(m.RestaurantLocation).where(
-            m.RestaurantLocation.location_id == location.id, m.RestaurantLocation.valid_to.is_(None))) is not None:
-        raise ValueError("This Clover site is already linked to another Restaurant.")
-    if location.timezone is None and timezone_name:
-        location.timezone = timezone_name
-    session.add(m.RestaurantLocation(restaurant_id=restaurant_id, location_id=location.id, valid_from=now,
-                                     is_primary=True))
-    session.commit()
-    return location.id
-
-
-def _restaurant_clover_merchant(session, restaurant_id: int) -> str | None:
-    """The merchant of the Clover site already linked to this Restaurant, if any."""
-    return session.scalar(
-        select(m.Location.source_location_id)
-        .join(m.RestaurantLocation, m.RestaurantLocation.location_id == m.Location.id)
-        .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
-        .where(m.RestaurantLocation.restaurant_id == restaurant_id, m.RestaurantLocation.valid_to.is_(None),
-               m.SourceSystem.code == "CLOVER", m.Location.source_location_id.is_not(None))
-        .order_by(m.Location.id).limit(1))
-
-
-def refresh_roster_site(session, *, restaurant_id: int, client=None) -> list[str]:
-    """Roster-only refresh of a second Clover site (Mount Dora): employees and their roles, then the
-    Registry role sync that is part of every employee import. No orders, payments, shifts or refunds are
-    acquired here, so no other Domain's data changes. Uses the site's own credentials
-    (`get_location_client`), never another merchant's.
-
-    Allowed while the site's Location is still inactive (Product Owner, CLOVER_MULTISITE_001: preparing the
-    Mount Dora employees in Registry is authorized before activation); the operational acquisition of an
-    inactive site stays refused. The merchant is the one already linked to the Restaurant; only when no
-    Clover site is linked yet does `CLOVER_MD_MERCHANT_ID` name the site to onboard."""
-    import os
-    merchant_id = _restaurant_clover_merchant(session, restaurant_id) or os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-    if not merchant_id:
-        return [f"No Clover site is linked to restaurant #{restaurant_id}; roster not refreshed."]
-    try:
-        resolved = client or get_location_client(merchant_id)
-        location_id = ensure_roster_site(session, restaurant_id=restaurant_id, merchant_id=merchant_id,
-                                         client=resolved, timezone_name=os.environ.get("CLOVER_MD_TIMEZONE") or None)
-    except Exception as exc:  # noqa: BLE001 — a second site's problem never stops the main poller
-        session.rollback()
-        return [f"Roster site for restaurant #{restaurant_id} not ready: {_safe_error_summary(exc)}"]
-    return _refresh_employees(session, resolved, location_id=location_id, merchant_id=merchant_id, run_id=None)
+    return resolved_identities(session, location.source_location_id)
 
 
 @dataclass(frozen=True)
@@ -462,7 +376,7 @@ def _correct_orders(
     else:
         seen = len(result.elements)
         employee_by_source_id = _employee_ids_for_location(session, location_id)
-        pending = identity_holds.pending_external_ids(session, [merchant_id])
+        pending = _Unresolved(employee_by_source_id)
         for order_raw in result.elements:
             try:
                 # A nested SAVEPOINT (this codebase's established pattern for
@@ -557,7 +471,7 @@ def _correct_payments(
     else:
         seen = len(result.elements)
         employee_by_source_id = _employee_ids_for_location(session, location_id)
-        pending = identity_holds.pending_external_ids(session, [merchant_id])
+        pending = _Unresolved(employee_by_source_id)
         tender_by_source_id = _existing_ids_by_source(
             session, m.Tender, source_system_id=source_system_id, source_id_column="source_tender_id",
         )
@@ -647,7 +561,7 @@ def _correct_refunds(
     else:
         seen = len(result.elements)
         employee_by_source_id = _employee_ids_for_location(session, location_id)
-        pending = identity_holds.pending_external_ids(session, [merchant_id])
+        pending = _Unresolved(employee_by_source_id)
         device_by_source_id = _existing_ids_by_source(
             session, m.Device, source_system_id=source_system_id, source_id_column="source_device_id",
         )
@@ -759,18 +673,8 @@ def run_correction_cycle(
     beat()
     session.commit()
     try:
-        summary.employee_errors = _refresh_employees(
-            session, resolved_client, location_id=location_id, merchant_id=merchant_id, run_id=lock_run.id,
-        )
-        if summary.employee_errors:
-            # Only a failed or incomplete roster read stops the cycle; it is
-            # logged so the stop is never silent.
-            for line in summary.employee_errors:
-                LOG.warning("location_id=%s: %s", location_id, line)
-            _finalize_import_run(lock_run, _CycleLockSummary(errors=summary.employee_errors, window_scan_failed=True),
-                                 location_id=location_id, mode=MODE_CORRECTION)
-            session.commit()
-            return summary
+        # REGISTRY_MULTISITE_001: the cycle no longer reads Clover's staff list (it fed Registry). People
+        # are attributed only through POS IDs typed on Registry cards.
         with session.begin_nested():
             for done in identity_holds.reattribute_untraced_confirmations(session, merchant_id):
                 LOG.info("location_id=%s: held work attributed after identity confirmation: %s", location_id, done)
@@ -835,13 +739,6 @@ def run_correction_cycle(
     return summary
 
 
-def _refresh_roster_sites(session_factory, roster_restaurant_ids) -> None:
-    for restaurant_id in roster_restaurant_ids or ():
-        with session_factory() as session:
-            for line in refresh_roster_site(session, restaurant_id=restaurant_id):
-                LOG.warning("roster restaurant_id=%s: %s", restaurant_id, line)
-
-
 def _cycle_locations(session_factory: sessionmaker[Session], location_ids: list[int] | None) -> list[int]:
     """The Locations of this cycle: the fixed `--location-id` list, or — with
     `--all-active-locations` (None here) — every active Clover Location,
@@ -872,7 +769,6 @@ def _run_one_location(session_factory: sessionmaker[Session], location_id: int) 
 
 def _run_forever(
     session_factory: sessionmaker[Session], *, location_ids: list[int] | None, interval_seconds: float,
-    roster_restaurant_ids=(),
 ) -> None:  # pragma: no cover — thin process loop, exercised via run_correction_cycle directly in tests
     LOG.info("Starting Clover Correction/Reconciliation loop for %s (interval=%.0fs).",
              f"location_id(s)={location_ids}" if location_ids is not None else "all active Clover Locations",
@@ -893,10 +789,6 @@ def _run_forever(
                 _run_one_location(session_factory, location_id)
         except Exception:  # noqa: BLE001 — one bad cycle must never kill the loop
             LOG.exception("Unhandled error in Correction/Reconciliation cycle — will retry next interval.")
-        try:
-            _refresh_roster_sites(session_factory, roster_restaurant_ids)
-        except Exception:  # noqa: BLE001 — a second site's roster never kills the loop
-            LOG.exception("Unhandled error in a roster site refresh — will retry next interval.")
         stop.wait(interval_seconds)
     LOG.info("Stop requested — Correction/Reconciliation loop ended cleanly between cycles.")
 
@@ -921,12 +813,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
         help="Run a single cycle and exit, instead of looping forever — for cron/Task Scheduler-driven "
         "invocation rather than a long-running daemon.",
     )
-    parser.add_argument(
-        "--roster-restaurant-id", type=int, action="append", default=[],
-        help="Also refresh, every cycle, the Clover employee roster (and Registry roles) of this Restaurant's "
-        "second Clover site (Mount Dora, CLOVER_MD_* credentials). Roster only: no sales data "
-        "(REGISTRY_CLOVER_DEPARTMENTS_001).",
-    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -941,11 +827,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover — thin CLI
     if args.once:
         for location_id in _cycle_locations(session_factory, location_ids):
             _run_one_location(session_factory, location_id)
-        _refresh_roster_sites(session_factory, args.roster_restaurant_id)
         return 0
 
-    _run_forever(session_factory, location_ids=location_ids, interval_seconds=args.interval_seconds,
-                 roster_restaurant_ids=args.roster_restaurant_id)
+    _run_forever(session_factory, location_ids=location_ids, interval_seconds=args.interval_seconds)
     return 0  # unreachable — _run_forever loops until killed
 
 

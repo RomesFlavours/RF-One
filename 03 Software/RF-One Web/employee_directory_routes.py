@@ -1,10 +1,13 @@
-"""Administration > Employee Directory; existing RF-One access and Clover jobs."""
+"""Administration > Employee Directory (Anagrafica): person cards, explicit sites and manual POS IDs.
+
+REGISTRY_MULTISITE_001 (Product Owner, 2026-11-22): no Clover staff-list import, no "links to reconcile"
+queue, no Sync Now for that flow. The list of a site shows only the people explicitly assigned to it."""
 from __future__ import annotations
 
 import os
 from types import SimpleNamespace
 
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, session as browser_session, url_for
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
@@ -12,27 +15,6 @@ from rfone_data_store import employee_directory as directory
 from rfone_data_store import models as m
 from rfone_data_store import access_profiles as profiles
 from rfone_data_store import rfone_web_session as shared_session
-from rfone_data_store.technical.connectors.clover import acquisition_jobs as jobs
-from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
-
-
-def _employee_groups(rows, locations):
-    """Presentation only: an absent source roster never changes RF-One status."""
-    by_location = {}
-    dismissed = []
-    for row in rows:
-        employee, links = row["employee"], row["links"]
-        if not directory.employee_is_active(employee, links):
-            dismissed.append(row)
-            continue
-        site_ids = row.get("site_ids") or directory.employee_location_ids(employee, links)
-        for location_id in site_ids or {None}:
-            site_links = [l for l in links if l.location_id == location_id]
-            site_link = next((l for l in site_links if l.state == "PRESENT"), site_links[0] if site_links else None)
-            by_location.setdefault(location_id, []).append({**row, "site_link": site_link})
-    groups = [{"location": locations.get(location_id, SimpleNamespace(id=None, name="Senza sede", timezone=None)), "rows": members} for location_id, members in by_location.items()]
-    groups.sort(key=lambda group: (group["location"].name.casefold(), group["location"].id or 0))
-    return groups, dismissed
 
 
 def register_employee_directory_routes(app, *, require_domain_access, SessionFactory,
@@ -77,8 +59,12 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
                 abort(403)
             try:
+                restaurant_id, role_id, area_id = directory.parse_site_role(request.form.get("site_role"))
+                if restaurant_id not in _site_ids(db, account):
+                    raise ValueError("This site is not available to you.")
                 person = directory.create_person(db, display_name=request.form.get("display_name", ""),
-                    email=request.form.get("email"), phone=request.form.get("phone"), account_id=account.id)
+                    email=request.form.get("email"), phone=request.form.get("phone"), account_id=account.id,
+                    restaurant_id=restaurant_id, role_id=role_id, area_id=area_id)
                 if profiles.employee_scope_ids(db,account) is not None:
                     profiles.membership(db,f'employee:{person.id}',profiles.company_context.get(),account.id)
                 db.commit()
@@ -88,26 +74,10 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 flash(str(exc), "error")
                 return redirect(url_for("employee_directory_home"))
 
-    def _sites(db):
-        locations = list(db.scalars(select(m.Location).join(
-            m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id
-        ).where(m.SourceSystem.code == "CLOVER").order_by(m.Location.id)))
-        sites = []
-        md_id = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-        for location in locations:
-            # Connection configuration belongs to the worker. The web app only
-            # needs the non-secret configured marker for MD, not the token.
-            md = location.source_location_id == md_id if md_id else "dora" in location.name.casefold()
-            configured = bool(location.source_location_id) and (not md or bool(md_id and (
-                os.environ.get("CLOVER_MD_API_TOKEN") or os.environ.get("RFONE_CLOVER_MD_CONFIGURED") == "1")))
-            last_sync = db.scalar(select(func.max(m.IngestionRun.finished_at)).where(
-                m.IngestionRun.location_id == location.id,
-                m.IngestionRun.source_system_id == location.source_system_id,
-                m.IngestionRun.resource_type.is_(None),
-                m.IngestionRun.status == "COMPLETE",
-            ))
-            sites.append({"location": location, "configured": configured, "last_sync": last_sync})
-        return sites
+    def _site_ids(db, account):
+        """Sites the account may see in this Domain (central per-site authorization)."""
+        from rfone_data_store import site_selection
+        return set(site_selection.account_restaurant_ids(db, account, "EMPLOYEES"))
 
     @app.route("/administration/employees")
     @gate
@@ -115,37 +85,48 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
         with SessionFactory() as db:
             account = load_current_account(db)
             query = request.args.get("q", "").strip()
-            scope_ids=profiles.employee_scope_ids(db,account)
-            query_people=directory.canonical_employees().order_by(m.Employee.display_name,m.Employee.id)
-            if scope_ids is not None:query_people=query_people.where(m.Employee.id.in_(scope_ids))
-            employees=list(db.scalars(query_people))
-            all_links = list(db.scalars(select(m.EmployeeCloverLink).order_by(m.EmployeeCloverLink.id)))
-            locations = {loc.id: loc for loc in db.scalars(select(m.Location))}
-            active_options = {option.id: option for option in directory.employee_options(db)}
-            rows = []
-            for employee in employees:
-                links = [l for l in all_links if l.employee_id == employee.id]
-                searchable = [employee.display_name or "", employee.custom_id or "", employee.email or "", employee.phone or ""]
-                searchable.extend(str((l.snapshot or {}).get("email") or "") for l in links)
-                if query and query.casefold() not in " ".join(searchable).casefold():
+            scope_ids = profiles.employee_scope_ids(db, account)
+            all_sites = directory.sites(db)
+            allowed = _site_ids(db, account)
+            sites = [site for site in all_sites if site.id in allowed]
+            requested = request.args.get("site", "").strip()
+            if requested:
+                selected = int(requested) if requested.isdecimal() else -1
+                browser_session["rfone_directory_site"] = selected
+            else:
+                selected = browser_session.get("rfone_directory_site")
+                if selected is None and sites:
+                    selected = sites[0].id
+            # No fallback to another site (REGISTRY_MULTISITE_001 §1): unknown or not accessible -> notice.
+            site = next((row for row in sites if row.id == selected), None)
+            members = directory.site_employee_ids(db, selected) if site is not None else set()
+            assigned = set()
+            for row in all_sites:
+                assigned |= directory.site_employee_ids(db, row.id)
+            people_query = directory.canonical_employees().order_by(m.Employee.display_name, m.Employee.id)
+            if scope_ids is not None:
+                people_query = people_query.where(m.Employee.id.in_(scope_ids))
+            rows, unsited, dismissed = [], [], []
+            for employee in db.scalars(people_query):
+                searchable = " ".join([employee.display_name or "", employee.custom_id or "", employee.email or "",
+                                       employee.phone or ""])
+                if query and query.casefold() not in searchable.casefold():
                     continue
-                conflicts = directory.source_conflicts(links)
-                rows.append({"employee": employee, "links": links, "conflicts": conflicts,
-                             "site_ids": active_options[employee.id].location_ids if employee.id in active_options else (),
-                             "reviewed": directory.is_reviewed(db, employee.id, links),
-                             "absence_link_ids": directory.source_absence_link_ids(links)})
-            pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
-                       for l in all_links if directory.pending_requires_review(db, l)]
-            if scope_ids is not None:pending=[]
-            sites = _sites(db)
-            active_groups, dismissed = _employee_groups(rows, locations)
+                if not directory.employee_is_active(employee, []):
+                    dismissed.append(employee)
+                elif employee.id in members:
+                    rows.append(employee)
+                elif employee.id not in assigned:
+                    unsited.append(employee)
+            pos = {}
+            if site is not None:
+                for employee in rows:
+                    link = directory.pos_links(db, employee.id).get(site.id)
+                    pos[employee.id] = link.external_employee_id if link else None
             return render_template(
-                "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
-                pending=pending, locations=locations,
-                employees=directory.employee_options(db, include_inactive=True), sites=sites, query=query,
-                md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-                                  and s["configured"] for s in sites),
-                can_sync=shared_session.account_may_enter_domain(db, account, "CLOVER_ACQUISITION"),
+                "employee_directory.html", rows=rows, unsited=unsited, dismissed=dismissed, pos=pos,
+                sites=sites, selected=selected, site=site, query=query,
+                site_roles=directory.site_role_groups(db, sites),
                 can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
             )
 
@@ -168,13 +149,22 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
                     abort(403)
                 require_csrf()
+                anchor = ""
                 try:
-                    if request.form.get("action") == "review":
-                        # Recheck the exact snapshots rendered to prevent a stale
-                        # page acknowledging source changes the user never saw.
-                        if request.form.get("fingerprint") != directory.review_fingerprint(links):
-                            raise ValueError("Source data changed. Review the current page before confirming.")
-                        directory.review(db, employee_id, links, account.id)
+                    if request.form.get("action") == "assign_site":
+                        restaurant_id, role_id, area_id = directory.parse_site_role(request.form.get("site_role"))
+                        if restaurant_id not in _site_ids(db, account):
+                            raise ValueError("This site is not available to you.")
+                        directory.assign_site(db, employee_id=employee_id, restaurant_id=restaurant_id,
+                                              role_id=role_id, area_id=area_id, account_id=account.id)
+                        anchor = "sites"
+                    elif request.form.get("action") == "pos_id":
+                        restaurant_id = int(request.form.get("restaurant_id", ""))
+                        if restaurant_id not in _site_ids(db, account):
+                            raise ValueError("This site is not available to you.")
+                        _link, counts = directory.set_pos_id(db, employee_id=employee_id, restaurant_id=restaurant_id,
+                                                             pos_id=request.form.get("pos_id"), account_id=account.id)
+                        anchor = f"site-{restaurant_id}"
                     elif request.form.get("action") == "management":
                         active_text = request.form.get("active", "")
                         if active_text not in ("", "true", "false"):
@@ -220,7 +210,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 except (ValueError, IntegrityError) as exc:
                     db.rollback()
                     flash(str(exc) if isinstance(exc, ValueError) else "The record changed concurrently. Reload and retry.", "error")
-                return redirect(url_for("employee_directory_detail", employee_id=employee_id))
+                return redirect(url_for("employee_directory_detail", employee_id=employee_id) + (f"#{anchor}" if anchor else ""))
             can_org = shared_session.account_may_use_domain_item(db, account, "ORGANIZATION", "chart")
             can_compensation = shared_session.account_may_enter_domain(db, account, "COMPENSATION")
             assignments = list(db.execute(select(m.EmployeeAssignment, m.RestaurantRole.name, m.OperationalArea.name)
@@ -238,39 +228,23 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             actors = {a.id: shared_session.account_display_name(a) for a in db.scalars(select(m.RFOneAccount).where(
                 m.RFOneAccount.id.in_({e.account_id for e in events if e.account_id is not None})))}
             contexts, context_options = _context_view(db, employee_id, _context_permissions(db, account))
+            allowed = _site_ids(db, account)
+            visible_sites = [site for site in directory.sites(db) if site.id in allowed]
+            person_sites = directory.employee_site_ids(db, employee_id)
+            pos = directory.pos_links(db, employee_id)
+            site_cards = [{"site": site, "pos": pos.get(site.id),
+                           "has_pos": directory.site_clover_location(db, site.id) is not None}
+                          for site in visible_sites if site.id in person_sites]
             return render_template(
                 "employee_directory_detail.html", contexts=contexts, context_options=context_options, employee=employee, links=links, locations=locations,
-                conflicts=directory.source_conflicts(links), reviewed=directory.is_reviewed(db, employee_id, links),
-                fingerprint=directory.review_fingerprint(links), assignments=assignments, terms=terms, events=events,
-                actors=actors, absence_link_ids=directory.source_absence_link_ids(links),
-                has_missing=bool(directory.source_absence_link_ids(links)),
+                site_cards=site_cards,
+                site_roles=directory.site_role_groups(db, [site for site in visible_sites if site.id not in person_sites]),
+                assignments=assignments, terms=terms, events=events, actors=actors,
                 other_employees=[option for option in directory.employee_options(db, include_inactive=True)
                                  if option.id != employee_id],
                 can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
                 can_org=can_org, can_compensation=can_compensation,
             )
-
-    @app.route("/administration/employees/links/<int:link_id>/confirm", methods=["POST"])
-    @gate
-    def employee_directory_link(link_id):
-        require_csrf()
-        with SessionFactory() as db:
-            account = load_current_account(db)
-            if not shared_session.account_is_domain_admin(db, account, "EMPLOYEES"):
-                abort(403)
-            try:
-                raw_id = request.form.get("employee_id", "")
-                employee = directory.attach_link(
-                    db, link_id=link_id, employee_id=int(raw_id) if raw_id else None,
-                    create_new=request.form.get("create_new") == "yes", account_id=account.id,
-                )
-                db.commit()
-                flash("Clover identity linked. Run Sync Now to recover any pending work records.", "info")
-                return redirect(url_for("employee_directory_home", q=request.form.get("q", "")))
-            except (ValueError, IntegrityError) as exc:
-                db.rollback()
-                flash(str(exc) if isinstance(exc, ValueError) else "The record changed concurrently. Reload and retry.", "error")
-                return redirect(url_for("employee_directory_home"))
 
     @app.route("/administration/employees/departments", methods=["GET", "POST"])
     @gate
@@ -329,25 +303,3 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 areas={a.id: a for a in db.scalars(select(m.OperationalArea))},
                 accounts={a.id: a.display_name for a in db.scalars(select(m.RFOneAccount))},
                 people_by_department=people_by_department)
-
-    @app.route("/administration/employees/sync-now", methods=["POST"])
-    @gate
-    @require_domain_access("CLOVER_ACQUISITION")
-    def employee_directory_sync():
-        require_csrf()
-        with SessionFactory() as db:
-            account = load_current_account(db)
-            try:
-                location_id = int(request.form.get("location_id", ""))
-                site = next((s for s in _sites(db) if s["location"].id == location_id), None)
-                if site is None or not site["configured"]:
-                    raise ValueError("This site's Clover connection is not configured.")
-                run = jobs.request_sync_now(db, location_id=location_id, launcher=get_launcher(),
-                                            requested_by_account_id=account.id)
-                db.commit()
-                flash(f"Synchronization requested (run {run.id}). Refresh this page to see the outcome.", "info")
-            except (ValueError, ImportAlreadyRunningError, jobs.JobLaunchError, jobs.NoSyncStartingPointError,
-                    jobs.NotACloverLocationError) as exc:
-                db.rollback()
-                flash(str(exc), "error")
-        return redirect(url_for("employee_directory_home"))

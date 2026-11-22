@@ -104,11 +104,13 @@ def operational_identity_ids(db):
     """
     students = set(db.scalars(select(m.TrainingAccount.acting_identity_id).where(m.TrainingAccount.role == 'student')))
     if inspect(db.connection()).has_table('training_person_links') and people.available(db):
-        employed = set(db.scalars(select(m.TrainingAccount.acting_identity_id)
-            .join(TrainingPersonLink, TrainingPersonLink.training_account_id == m.TrainingAccount.id)
-            .join(people.PersonEmployeeLink, people.PersonEmployeeLink.person_id == TrainingPersonLink.person_id)))
-        students -= employed
-        if inspect(db.connection()).has_table('person_company_statuses'):
+        # REGISTRY_MULTISITE_001: a Trainee has a Registry card too, so the card no longer means EMPLOYEE
+        # where explicit statuses exist (see people_registry.company_statuses).
+        if not inspect(db.connection()).has_table('person_company_statuses'):
+            students -= set(db.scalars(select(m.TrainingAccount.acting_identity_id)
+                .join(TrainingPersonLink, TrainingPersonLink.training_account_id == m.TrainingAccount.id)
+                .join(people.PersonEmployeeLink, people.PersonEmployeeLink.person_id == TrainingPersonLink.person_id)))
+        else:
             qualified_employees = set(db.scalars(select(m.TrainingAccount.acting_identity_id)
                 .join(TrainingPersonLink, TrainingPersonLink.training_account_id == m.TrainingAccount.id)
                 .join(people.PersonCompanyStatus, people.PersonCompanyStatus.person_id == TrainingPersonLink.person_id)

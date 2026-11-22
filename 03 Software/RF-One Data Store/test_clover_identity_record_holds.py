@@ -70,6 +70,14 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.known = m.Employee(location_id=self.wp.id, source_system_id=self.source.id,
                                 source_employee_id="E1", display_name="Known Server", active=True)
         self.db.add(self.known)
+        self.db.flush()
+        # REGISTRY_MULTISITE_001: the known person's POS ID is on their Registry card (no staff-list import).
+        self.db.add(m.EmployeeCloverLink(employee_id=self.known.id, location_id=self.wp.id, merchant_id="WP",
+                                         external_employee_id="E1", state="MANUAL"))
+        self.area = m.OperationalArea(name="Restaurant Operations", restaurant_id=self.restaurant.id)
+        self.role = m.RestaurantRole(name="Server", code="SERVER", restaurant_id=self.restaurant.id)
+        self.db.add_all([self.area, self.role]); self.db.flush()
+        self.db.add(m.OperationalAreaRole(operational_area_id=self.area.id, restaurant_role_id=self.role.id))
         self.db.commit()
 
     def tearDown(self):
@@ -112,6 +120,13 @@ class IdentityRecordHoldTest(unittest.TestCase):
     def pending_link(self):
         return self.db.scalar(select(m.EmployeeCloverLink).filter_by(external_employee_id="U1"))
 
+    def hire(self):
+        """The new hire's card (manual, with site) and the POS ID typed on it — the only way to attribute."""
+        person = directory.create_person(self.db, display_name="New Hire", restaurant_id=self.restaurant.id,
+                                         role_id=self.role.id, area_id=self.area.id)
+        directory.set_pos_id(self.db, employee_id=person.id, restaurant_id=self.restaurant.id, pos_id="U1")
+        return person
+
     def run_for(self, day):
         return m.TipDistributionCalculationRun(restaurant_id=self.restaurant.id, first_business_date=day,
                                                last_business_date=day, period_start=NOW, period_end=NOW,
@@ -134,15 +149,16 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertIsNone(refund.employee_id)
         mirrored = self.db.scalar(select(m.SourceRecord).filter_by(entity_type="refund", source_id="R-NEW"))
         self.assertEqual(mirrored.raw_json["employee"]["id"], "U1")
-        # Nobody invented: the unknown identity is still pending, no person created.
-        self.assertIsNone(self.pending_link().employee_id)
+        # Nobody invented: no card, no link and no proposal for the unknown Clover ID (REGISTRY_MULTISITE_001).
+        self.assertIsNone(self.pending_link())
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 1)
+        self.assertEqual(identity_holds.pending_external_ids(self.db, ["WP"]), {"U1"})
         # Visible, never silent: the cycle and its history row say what waits and why.
         self.assertTrue(summary.identity_holds)
         self.assertIn("orders=1", summary.identity_holds[0])
         self.assertIn("payments=1", summary.identity_holds[0])
         self.assertIn("refunds=1", summary.identity_holds[0])
-        self.assertTrue(any("identities pending" in line and "orders=1" in line for line in logs.output))
+        self.assertTrue(any("without a POS ID" in line and "orders=1" in line for line in logs.output))
         lock_row = self.db.scalar(select(m.IngestionRun).where(
             m.IngestionRun.acquisition_mode == "CORRECTION").order_by(m.IngestionRun.id.desc()))
         self.assertEqual(lock_row.status, "COMPLETE")
@@ -153,7 +169,7 @@ class IdentityRecordHoldTest(unittest.TestCase):
 
     def test_confirmation_reattributes_idempotently_and_is_traced(self):
         self.cycle()
-        person = directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        person = self.hire()
         self.db.commit()
         self.db.expire_all()
         self.assertEqual(self.order("O-NEW").employee_id, person.id)
@@ -172,8 +188,6 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertEqual(self.order("O-NEW").employee_id, person.id)
 
     def test_held_shift_waits_in_mirror_then_is_created_on_confirmation(self):
-        directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id="WP",
-                                  records=[{"id": "E1", "name": "Known Server"}, {"id": "U1", "name": "New Hire"}])
         run = m.IngestionRun(source_system_id=self.source.id, location_id=self.wp.id, status="RUNNING", started_at=NOW)
         self.db.add(run)
         self.db.flush()
@@ -194,7 +208,9 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertEqual(len(held), 1)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Shift)), 1)
         self.assertIn("S-NEW", identity_holds.held_shifts(self.db, location_ids=[self.wp.id], external_ids={"U1"}))
-        person = directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        self.assertIsNone(self.pending_link())                      # the shift proposed nothing
+        self.assertEqual(identity_holds.pending_external_ids(self.db, ["WP"]), {"U1"})
+        person = self.hire()
         shift = self.db.scalar(select(m.Shift).filter_by(source_shift_id="S-NEW"))
         self.assertEqual((shift.employee_id, shift.location_id), (person.id, self.wp.id))
         self.assertFalse(identity_holds.held_shifts(self.db, location_ids=[self.wp.id], external_ids={"U1"}))
@@ -208,16 +224,18 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertIn(str(NEW_DAY), blocked[0])
         self.assertIn(blocked[0], calculation_run_service.finalization_blockers(self.db, self.run_for(NEW_DAY)))
         self.assertEqual(calculation_run_service.identity_hold_blockers(self.db, self.run_for(KNOWN_DAY)), [])
-        directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        self.hire()
         self.assertEqual(calculation_run_service.identity_hold_blockers(self.db, self.run_for(NEW_DAY)), [])
 
     def test_poller_attributes_confirmation_made_by_older_web_release(self):
         self.cycle()
-        link = self.pending_link()
         person = m.Employee(location_id=self.wp.id, display_name="New Hire")
         self.db.add(person)
         self.db.flush()
-        link.employee_id = person.id  # what the previous attach_link did: LINK event, no reattribution
+        # What the former web release's confirmation left behind: a LINK event, no reattribution.
+        link = m.EmployeeCloverLink(employee_id=person.id, location_id=self.wp.id, merchant_id="WP",
+                                    external_employee_id="U1", state="PRESENT")
+        self.db.add(link); self.db.flush()
         directory._event(self.db, "LINK", employee_id=person.id, link=link, details={"create_new": True})
         self.db.commit()
         self.assertIsNone(self.order("O-NEW").employee_id)
@@ -233,13 +251,16 @@ class IdentityRecordHoldTest(unittest.TestCase):
             m.EmployeeDirectoryEvent.action == "REATTRIBUTE",
             m.EmployeeDirectoryEvent.employee_id == self.known.id)))
 
-    def test_employee_read_failure_still_preserves_work_checkpoints(self):
+    def test_the_staff_list_is_never_read_by_the_cycle(self):
+        # REGISTRY_MULTISITE_001: the poller no longer reads Clover's staff list, so a failing staff-list
+        # endpoint changes nothing and work is acquired normally.
         client = self.client()
         client.fail_employees = True
         summary = run_correction_cycle(self.db, location_id=self.wp.id, client=client, now=NOW)
-        self.assertTrue(summary.employee_errors)
-        self.assertEqual(summary.results, [])
-        self.assertIsNone(self.order("O-KNOWN"))
+        self.assertEqual(summary.employee_errors, [])
+        self.assertEqual([r.status for r in summary.results], ["COMPLETE"] * 3)
+        self.assertEqual(self.order("O-KNOWN").employee_id, self.known.id)
+        self.assertIsNone(self.pending_link())
 
 
 if __name__ == "__main__":

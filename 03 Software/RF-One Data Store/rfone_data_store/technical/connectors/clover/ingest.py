@@ -512,28 +512,11 @@ def ingest_employees(
     ingestion_run_id: int,
     retrieved_at: datetime,
 ) -> dict[str, int]:
-    from ....employee_directory import import_snapshot
+    """REGISTRY_MULTISITE_001: the bundle's staff list never creates, updates or proposes a Registry card.
+    Only POS IDs already typed on Registry cards at this site resolve a Clover employee."""
+    from ....employee_directory import resolved_identities
     location = session.get(m.Location, location_id)
-    result, pending = import_snapshot(
-        session, location_id=location_id, merchant_id=location.source_location_id,
-        records=bundle.employees, observed_at=retrieved_at, run_id=ingestion_run_id,
-    )
-    if pending:
-        # Do not let historical-stub fallback manufacture another identity
-        # for a current employee whose match still needs human confirmation.
-        raise ValueError("Employee identities require confirmation in Employee Directory before bulk ingestion.")
-    for raw in bundle.employees:
-        source_id = raw["id"]
-        _add_source_record(
-            session,
-            ingestion_run_id=ingestion_run_id,
-            source_system_id=source_system_id,
-            entity_type="employee",
-            source_id=source_id,
-            retrieved_at=retrieved_at,
-            raw_path=str(bundle.run_dir / "employees.json"),
-        )
-    return result
+    return resolved_identities(session, location.source_location_id)
 
 
 def ingest_source_roles(
@@ -646,18 +629,12 @@ def ingest_employee_stub_references(
 
     Unknown historical references now require approval in the RF-One directory.
     No source stub may manufacture an RF-One person."""
-    from ....employee_directory import observe_historical_employee
     referenced = parser.referenced_employee_ids(bundle.shifts, bundle.orders, bundle.payments, bundle.refunds)
     missing = sorted(referenced - set(employee_map.keys()))
-    location = session.get(m.Location, location_id)
-    for source_id in missing:
-        person = observe_historical_employee(session, location_id=location_id,
-            merchant_id=location.source_location_id, raw={"id": source_id}, available=False,
-            observed_at=retrieved_at, run_id=ingestion_run_id)
-        if person is None:
-            raise ValueError("Historical employee requires confirmation in RF-One before bulk ingestion.")
-        employee_map[source_id] = person.id
-    session.flush()
+    if missing:
+        # REGISTRY_MULTISITE_001: no card or proposal is created; the operator types the POS ID on the card.
+        raise ValueError(f"{len(missing)} Clover employee ID(s) have no POS ID on a Registry card at this site; "
+                         "bulk ingestion stopped before writing work records.")
 
 
 @dataclass

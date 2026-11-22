@@ -35,134 +35,36 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
-    def sync(self, records, location=None, **kwargs):
-        location = location or self.wp
-        return directory.import_snapshot(self.db, location_id=location.id,
-            merchant_id=location.source_location_id, records=records, **kwargs)
+    def link(self, location, external_id, employee=None, state="PRESENT", name="Jane Smith"):
+        """A Clover link as it exists in Registry history (REGISTRY_MULTISITE_001: no import creates one)."""
+        row = m.EmployeeCloverLink(employee_id=(employee or self.legacy).id if employee is not False else None,
+                                   location_id=location.id, merchant_id=location.source_location_id,
+                                   external_employee_id=external_id, state=state, snapshot={"id": external_id, "name": name})
+        self.db.add(row)
+        self.db.flush()
+        return row
+
+    def restore(self, location):
+        for row in self.db.scalars(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id == location.source_location_id)):
+            row.state = "PRESENT"
+        self.db.flush()
+
+    def absent(self, location):
+        for row in self.db.scalars(select(m.EmployeeCloverLink).where(
+                m.EmployeeCloverLink.merchant_id == location.source_location_id)):
+            row.state = "MISSING_REVIEW"
+        self.db.flush()
 
     def count(self, model):
         return self.db.scalar(select(func.count()).select_from(model))
 
-    def test_repeated_import_reuses_legacy_id_and_preserves_management(self):
-        records = [{"id": "E1", "name": "Jane Source", "customId": "EXTERNAL", "email": "jane@example.test", "role": "MANAGER"}]
-        for _ in range(3):
-            result, pending = self.sync(records)
-            self.assertEqual(result["E1"], self.legacy.id)
-            self.assertEqual(pending, [])
-        self.assertEqual(self.count(m.Employee), 1)
-        self.assertEqual(self.count(m.EmployeeCloverLink), 1)
-        self.assertEqual(self.count(m.EmployeeDirectoryEvent), 1)
-        self.assertEqual(self.legacy.display_name, "Jane Smith")
-        self.assertEqual(self.legacy.custom_id, "INTERNAL")
-        self.assertTrue(self.legacy.active)
-
-    def test_two_merchants_same_external_id_manual_link_one_person(self):
-        self.sync([{"id": "E1", "name": "Jane Smith", "email": "jane@example.test"}])
-        _, pending = self.sync([{"id": "E1", "name": "Jane Smith", "email": "jane@example.test"}], self.md)
-        self.assertEqual(len(pending), 1)
-        self.assertEqual(self.count(m.Employee), 1)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
-        for _ in range(2):
-            result, pending = self.sync([{"id": "E1", "name": "Jane Smith", "email": "jane@example.test"}], self.md)
-            self.assertEqual(result["E1"], self.legacy.id)
-            self.assertFalse(pending)
-        self.assertEqual(self.count(m.Employee), 1)
-        self.assertEqual(self.count(m.EmployeeCloverLink), 2)
-
-    def test_same_name_never_auto_merges_and_explicit_new_is_possible(self):
-        _, pending = self.sync([{"id": "E2", "name": "Jane Smith"}], self.md)
-        self.assertEqual(self.count(m.Employee), 1)
-        employee = directory.attach_link(self.db, link_id=pending[0], create_new=True)
-        self.assertNotEqual(employee.id, self.legacy.id)
-        self.assertEqual(self.count(m.Employee), 2)
-
-    def test_email_proposes_match_despite_changed_name(self):
-        self.sync([{"id": "E1", "name": "Jane Smith", "email": "jane@example.test"}])
-        _, pending = self.sync([{"id": "MD2", "name": "Completely Different", "email": "JANE@example.test"}], self.md)
-        self.assertEqual(len(pending), 1)
-        suggestions = directory.candidates(self.db, {"name": "Different", "email": "jane@example.test"})
-        self.assertEqual(suggestions[0]["employee"].id, self.legacy.id)
-        self.assertEqual(suggestions[0]["reason"], "Email")
-
-    def test_conflicts_review_reopens_on_change(self):
-        self.sync([{"id": "E1", "name": "Jane Smith", "email": "wp@example.test"}])
-        _, pending = self.sync([{"id": "M1", "name": "Jane Smith", "email": "md@example.test"}], self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
-        links = list(self.db.scalars(select(m.EmployeeCloverLink)))
-        self.assertIn("email", directory.source_conflicts(links))
-        self.assertFalse(directory.is_reviewed(self.db, self.legacy.id, links))
-        directory.review(self.db, self.legacy.id, links, None)
-        self.db.flush()
-        self.assertTrue(directory.is_reviewed(self.db, self.legacy.id, links))
-        self.sync([{"id": "M1", "name": "Jane Smith", "email": "changed@example.test"}], self.md)
-        self.assertFalse(directory.is_reviewed(self.db, self.legacy.id, links))
-        self.assertEqual(self.legacy.display_name, "Jane Smith")
-
-    def test_incomplete_or_malformed_import_cannot_mark_missing(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        for records, kwargs in [([], {"complete": False}), ([{"name": "No ID"}], {}),
-                                ([{"id": "D"}, {"id": "D"}], {}), ([{"id": "E1", "name": []}], {})]:
-            with self.assertRaises(ValueError):
-                self.sync(records, **kwargs)
-        link = self.db.scalar(select(m.EmployeeCloverLink))
-        self.assertEqual(link.state, "PRESENT")
-        self.assertTrue(self.legacy.active)
-
-    def test_complete_absence_retains_person_history_and_historical_resolution(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        result, _ = self.sync([])
-        self.assertEqual(result["E1"], self.legacy.id)
-        link = self.db.scalar(select(m.EmployeeCloverLink))
-        self.assertEqual(link.state, "MISSING_REVIEW")
-        self.assertEqual(self.count(m.Employee), 1)
-        self.assertTrue(self.legacy.active)
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        self.assertEqual(link.state, "PRESENT")
-        self.assertEqual(self.count(m.EmployeeDirectoryEvent), 3)
-
-    def test_failed_transaction_does_not_publish_absence(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        self.db.commit()
-        self.sync([])
-        self.db.rollback()
-        self.assertEqual(self.db.scalar(select(m.EmployeeCloverLink)).state, "PRESENT")
-
-    def test_source_history_excludes_pin_and_preserves_changed_snapshots(self):
-        self.sync([{"id": "E1", "name": "Jane Smith", "pin": "never-store"}])
-        self.sync([{"id": "E1", "name": "Jane Updated", "pin": "never-store"}])
-        events = list(self.db.scalars(select(m.EmployeeDirectoryEvent)))
-        self.assertEqual(len(events), 2)
-        self.assertEqual(events[0].details["snapshot"]["name"], "Jane Smith")
-        self.assertNotIn("never-store", str([e.details for e in events]))
-
-    def test_wrong_merchant_rejected_before_writes(self):
-        with self.assertRaises(ValueError):
-            directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id="MD", records=[])
-        self.assertEqual(self.count(m.EmployeeCloverLink), 0)
-
-    def test_unknown_person_created_only_after_explicit_approval(self):
-        for _ in range(2):
-            result, pending = self.sync([{"id": "NEW", "name": "Robert Jones"}])
-            self.assertEqual(result.get("NEW"), None)
-            self.assertEqual(len(pending), 1)
-        self.assertEqual(self.count(m.Employee), 1)
-        person = directory.attach_link(self.db, link_id=pending[0], create_new=True)
-        result, pending = self.sync([{"id": "NEW", "name": "Robert Jones"}])
-        self.assertEqual(result["NEW"], person.id)
-        self.assertEqual(pending, [])
-        self.assertEqual(self.count(m.Employee), 2)
-
-    def test_duplicate_confirmed_link_cannot_be_reassigned(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        link = self.db.scalar(select(m.EmployeeCloverLink))
-        with self.assertRaises(ValueError):
-            directory.attach_link(self.db, link_id=link.id, create_new=True)
-        self.assertEqual(self.count(m.Employee), 1)
-
     def test_explicit_consolidation_preserves_work_and_retired_id(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        _, pending = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
-        duplicate_id = directory.attach_link(self.db, link_id=pending[0], create_new=True).id
+        self.link(self.wp, "E1")
+        duplicate = m.Employee(location_id=self.md.id, display_name="Different Known Name")
+        self.db.add(duplicate); self.db.flush()
+        duplicate_id = duplicate.id
+        self.link(self.md, "M2", employee=duplicate)
         self.db.add(m.Shift(employee_id=duplicate_id, location_id=self.md.id,
             source_system_id=self.source.id, source_shift_id="MD-SHIFT",
             clock_in=datetime(2026, 10, 1, tzinfo=timezone.utc)))
@@ -176,8 +78,10 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.assertEqual(self.db.get(m.Employee, self.legacy.id).custom_id, "INTERNAL")
 
     def test_consolidation_constraint_conflict_rolls_back_every_reference(self):
-        _, pending = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
-        duplicate_id = directory.attach_link(self.db, link_id=pending[0], create_new=True).id
+        duplicate = m.Employee(location_id=self.md.id, display_name="Different Known Name")
+        self.db.add(duplicate); self.db.flush()
+        duplicate_id = duplicate.id
+        self.link(self.md, "M2", employee=duplicate)
         role = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id,
                             source_role_id="SHARED", name="Source role")
         self.db.add(role)
@@ -193,56 +97,12 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.assertEqual(link.employee_id, duplicate_id)
         self.assertEqual(self.count(m.EmployeeSourceRole), 2)
 
-    def test_source_account_replacement_can_link_to_same_person_after_removal(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        self.sync([])
-        _, pending = self.sync([{"id": "REPLACEMENT", "name": "Jane Smith"}])
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
-        self.assertEqual(self.count(m.Employee), 1)
-        self.assertEqual(self.count(m.EmployeeCloverLink), 2)
-
-    def test_active_poller_imports_and_failed_employee_read_preserves_roster(self):
-        from rfone_data_store.clover_correction_sync_validation import _CorrectionFakeCloverClient
-        from rfone_data_store.technical.connectors.clover.correction_sync import run_correction_cycle
-        client = _CorrectionFakeCloverClient("WP")
-        client.employees = [{"id": "E1", "name": "Jane Source", "email": "poller@example.test"}]
-        summary = run_correction_cycle(self.db, location_id=self.wp.id, client=client)
-        self.assertFalse(summary.employee_errors)
-        self.assertEqual(len(summary.results), 3)
-        self.assertEqual(self.db.scalar(select(m.EmployeeCloverLink)).snapshot["email"], "poller@example.test")
-        client.fail_employees = True
-        failed = run_correction_cycle(self.db, location_id=self.wp.id, client=client)
-        self.assertTrue(failed.employee_errors)
-        self.assertEqual(failed.results, [])
-        self.assertEqual(self.db.scalar(select(m.EmployeeCloverLink)).state, "PRESENT")
-        self.assertEqual(self.db.get(m.Employee, self.legacy.id).custom_id, "INTERNAL")
-
-    def test_pending_md_identity_does_not_block_wp_poller(self):
-        from rfone_data_store.clover_correction_sync_validation import _CorrectionFakeCloverClient
-        from rfone_data_store.technical.connectors.clover.correction_sync import run_correction_cycle
-        md_client = _CorrectionFakeCloverClient("MD")
-        md_client.employees = [{"id": "M1", "name": "Jane Smith"}]
-        summary = run_correction_cycle(self.db, location_id=self.md.id, client=md_client)
-        # EMPLOYEE_DIRECTORY_RECORD_HOLD_001: the pending identity holds only
-        # its own records; MD's work cursors still run and the hold is reported.
-        self.assertFalse(summary.employee_errors)
-        self.assertEqual(len(summary.results), 3)
-        self.assertTrue(summary.identity_holds)
-        self.assertIsNone(self.db.scalar(select(m.EmployeeCloverLink).filter_by(
-            merchant_id="MD", external_employee_id="M1")).employee_id)
-        wp_client = _CorrectionFakeCloverClient("WP")
-        wp_client.employees = [{"id": "E1", "name": "Jane Smith"}]
-        wp_summary = run_correction_cycle(self.db, location_id=self.wp.id, client=wp_client)
-        self.assertFalse(wp_summary.employee_errors)
-        self.assertEqual(len(wp_summary.results), 3)
-
     def test_md_shift_keeps_actual_location_after_linking_to_wp_person(self):
         from types import SimpleNamespace
         from unittest.mock import patch
         from rfone_data_store.technical.connectors.clover import acquisition
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        _, pending = self.sync([{"id": "E1", "name": "Jane Smith"}], self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        self.link(self.wp, "E1")
+        self.link(self.md, "E1")
         observed = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
         run = m.IngestionRun(source_system_id=self.source.id, location_id=self.md.id, status="RUNNING", started_at=observed)
         self.db.add(run)
@@ -258,13 +118,12 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.assertEqual(shift.location_id, self.md.id)
 
     def test_location_scope_includes_shared_person_and_historical_links_once(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        self.link(self.wp, "E1")
+        self.link(self.md, "MD-E1")
         ids = lambda locations: list(self.db.scalars(directory.employees_for_locations(locations)))
         self.assertEqual([e.id for e in ids([self.md.id])], [self.legacy.id])
         self.assertEqual(len(ids([self.wp.id, self.md.id])), 1)
-        self.sync([], location=self.md)
+        self.absent(self.md)
         self.assertEqual([e.id for e in ids([self.md.id])], [self.legacy.id])
         self.assertEqual(ids([]), [])
         self.assertEqual([e.id for e in ids(select(m.Location.id).where(m.Location.id == self.md.id))], [self.legacy.id])
@@ -280,9 +139,8 @@ class EmployeeDirectoryTest(unittest.TestCase):
 
     def test_payroll_resolves_shared_person_in_second_restaurant(self):
         from rfone_data_store.payroll.adp_importer import ParsedEmployeeRow, resolve_employee_mappings
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        self.link(self.wp, "E1")
+        self.link(self.md, "MD-E1")
         restaurant = m.Restaurant(name="MD restaurant")
         self.db.add(restaurant); self.db.flush()
         self.db.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=self.md.id))
@@ -294,9 +152,8 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_role_bootstrap_never_creates_an_assignment_from_clover_roles(self):
         # OQ-7: the Registry is the only authority for assignments, also with second-site Clover evidence.
         from rfone_data_store.profile.bootstrap import bootstrap_restaurant_profile, MODE_PERSIST
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        self.link(self.wp, "E1")
+        self.link(self.md, "MD-E1")
         restaurant = m.Restaurant(name="MD restaurant")
         self.db.add(restaurant); self.db.flush()
         self.db.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=self.md.id))
@@ -321,9 +178,9 @@ class EmployeeDirectoryTest(unittest.TestCase):
 
     def test_selector_state_matches_directory_and_preserves_internal_override(self):
         self.legacy.active = None
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
+        self.link(self.wp, "E1") if not self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.external_employee_id == "E1", m.EmployeeCloverLink.merchant_id == "WP")) else self.restore(self.wp)
         self.assertTrue(directory.employee_options(self.db)[0].is_active)
-        self.sync([])
+        self.absent(self.wp)
         self.assertTrue(directory.employee_options(self.db)[0].is_active)
         historical = directory.employee_options(self.db, include_inactive=True)
         self.assertEqual([option.id for option in historical], [self.legacy.id])
@@ -331,20 +188,19 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.legacy.active = True
         self.assertTrue(directory.employee_options(self.db)[0].is_active)
         self.legacy.active = False
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
+        self.link(self.wp, "E1") if not self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.external_employee_id == "E1", m.EmployeeCloverLink.merchant_id == "WP")) else self.restore(self.wp)
         self.assertEqual(directory.employee_options(self.db), [])
         self.assertFalse(directory.employee_options(self.db, include_inactive=True)[0].is_active)
 
     def test_selector_sites_are_scoped_and_unique_with_historical_absence(self):
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
-        _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        self.link(self.wp, "E1")
+        self.link(self.md, "MD-E1")
         options = directory.employee_options(self.db)
         self.assertEqual(len(options), 1)
         self.assertEqual(set(options[0].location_ids), {self.wp.id, self.md.id})
         scoped = directory.employee_options(self.db, location_ids=[self.md.id])
         self.assertEqual(scoped[0].location_names, (self.md.name,))
-        self.sync([], location=self.md)
+        self.absent(self.md)
         self.assertEqual(directory.employee_options(self.db, location_ids=[self.md.id]), [])
         historical = directory.employee_options(self.db, location_ids=[self.md.id], include_inactive=True)
         self.assertEqual([option.id for option in historical], [self.legacy.id])
@@ -374,7 +230,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
 
     def test_selector_is_readonly_and_unverified_people_stay_available(self):
         self.legacy.active = None
-        directory.ensure_legacy_links(self.db)
+        self.link(self.wp, "E1", state="UNVERIFIED")
         self.db.commit()
         from sqlalchemy import event
         statements = []
@@ -395,7 +251,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_bank_employee_choices_use_shared_state_and_exclude_aliases(self):
         from rfone_data_store.bank_reconciliation.configuration import cardholder_candidates
         self.legacy.active = None
-        self.sync([{"id": "E1", "name": "Jane Smith"}])
+        self.link(self.wp, "E1") if not self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.external_employee_id == "E1", m.EmployeeCloverLink.merchant_id == "WP")) else self.restore(self.wp)
         retired = m.Employee(location_id=self.wp.id, display_name="Old copy")
         self.db.add(retired); self.db.flush()
         self.db.add(m.EmployeeIdentityAlias(employee_id=retired.id, canonical_employee_id=self.legacy.id))
@@ -403,7 +259,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
         choices = cardholder_candidates(self.db)
         self.assertEqual([choice["id"] for choice in choices], [self.legacy.id])
         self.assertEqual(choices[0]["location_names"], (self.wp.name,))
-        self.sync([])
+        self.absent(self.wp)
         self.assertEqual([choice["id"] for choice in cardholder_candidates(self.db)], [self.legacy.id])
 
     def test_tips_history_selector_renders_inactive_and_resolves_alias_in_scope(self):

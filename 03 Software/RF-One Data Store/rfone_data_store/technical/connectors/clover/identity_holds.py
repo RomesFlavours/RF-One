@@ -11,8 +11,9 @@ payloads; only the attribution to an RF-One person waits:
 - Shifts require a person (`shifts.employee_id` is NOT NULL), so a held Shift
   is not created; its raw stays in the Provider Mirror (`source_records`).
 
-Nothing here creates a person or guesses an identity. `reattribute_link` runs
-when a human confirms a link: it fills only still-NULL attributions from the
+Nothing here creates a person, a card or a proposal, or guesses an identity
+(REGISTRY_MULTISITE_001). `reattribute_link` runs when an operator types the
+POS ID on a Registry card (`employee_directory.set_pos_id`): it fills only still-NULL attributions from the
 Clover ID, so repeating it changes nothing, and it records what it moved.
 `unattributed_work` lets Tips refuse to finalize only the affected days.
 """
@@ -31,26 +32,51 @@ from .ingest import upsert
 
 UTC = timezone.utc
 
-HOLD_REASON = "Clover employee identity not yet confirmed in Employee Directory"
+HOLD_REASON = "Clover employee without a POS ID on a Registry card at this site"
 
 
 def pending_external_ids(session: Session, merchant_ids: Iterable[str]) -> set[str]:
-    """Clover employee IDs at these merchants that no RF-One person is linked to yet."""
+    """Clover employee IDs at these merchants whose work waits for an RF-One person.
+
+    REGISTRY_MULTISITE_001: no card or proposal is created for them any more. An ID waits while no Registry
+    card carries it as POS ID at that site: it is referenced by unattributed Orders/Payments or by mirrored
+    Shifts not yet created, or it is an unlinked identity kept from the former import (history)."""
     merchant_ids = [merchant_id for merchant_id in merchant_ids if merchant_id]
     if not merchant_ids:
         return set()
-    return set(session.scalars(select(m.EmployeeCloverLink.external_employee_id).where(
+    resolved = set(session.scalars(select(m.EmployeeCloverLink.external_employee_id).where(
+        m.EmployeeCloverLink.merchant_id.in_(merchant_ids), m.EmployeeCloverLink.employee_id.is_not(None))))
+    pending = set(session.scalars(select(m.EmployeeCloverLink.external_employee_id).where(
         m.EmployeeCloverLink.merchant_id.in_(merchant_ids), m.EmployeeCloverLink.employee_id.is_(None))))
+    location_ids = list(session.scalars(select(m.Location.id).where(m.Location.source_location_id.in_(merchant_ids))))
+    if location_ids:
+        location_orders = select(m.Order.id).where(m.Order.location_id.in_(location_ids))
+        pending |= set(session.scalars(select(m.Order.source_employee_id).where(
+            m.Order.location_id.in_(location_ids), m.Order.employee_id.is_(None),
+            m.Order.source_employee_id.is_not(None)).distinct()))
+        pending |= set(session.scalars(select(m.Payment.source_employee_id).where(
+            m.Payment.order_id.in_(location_orders), m.Payment.employee_id.is_(None),
+            m.Payment.source_employee_id.is_not(None)).distinct()))
+        canonical = select(m.Shift.source_shift_id).where(m.Shift.source_shift_id.is_not(None))
+        for raw in session.scalars(select(m.SourceRecord.raw_json)
+                .join(m.IngestionRun, m.IngestionRun.id == m.SourceRecord.ingestion_run_id)
+                .where(m.SourceRecord.entity_type == "shift", m.IngestionRun.location_id.in_(location_ids),
+                       m.SourceRecord.source_id.not_in(canonical))):
+            if isinstance(raw, dict):
+                main = _shift_employee_refs(raw)[0]
+                if main:
+                    pending.add(main)
+    return pending - resolved
 
 
 def describe(pending: set[str], counts: dict[str, int]) -> list[str]:
     """The one log/history line for a cycle with pending identities."""
     if not pending:
         return []
-    return [f"{len(pending)} Clover employee identities pending in Employee Directory "
+    return [f"{len(pending)} Clover employee IDs without a POS ID on a Registry card "
             f"({', '.join(sorted(pending))}); held without a person: "
             + ", ".join(f"{name}={count}" for name, count in counts.items())
-            + ". Other records were acquired normally; held records are attributed on confirmation."]
+            + ". Other records were acquired normally; held records are attributed when the POS ID is typed on the card."]
 
 
 def _latest_mirrored(session: Session, *, entity_type: str, external_ids: set[str],

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash
 from rfone_data_store import models as m, people_registry as people, student_registry as registry
+from rfone_data_store import employee_directory as directory
 from rfone_data_store import rfone_account_service as accounts
 from rfone_data_store.training import enrollment as enroll, workspace as ws
 from rfone_data_store.technical import account_email
@@ -128,9 +129,11 @@ def install(app, *, SessionFactory, auth, trainer):
                     if mode == 'selection' and (not raw_id.isdecimal() or len(raw_id) > 10):
                         raise ValueError('Choose a confirmed candidate from the Selection list.')
                     selection_id = int(raw_id) if mode == 'selection' else None
+                    restaurant_id, role_id, area_id = directory.parse_site_role(request.form.get('site_role'))
                     invitation, token = enroll.issue(db, actor=actor, email=request.form.get('email', ''),
                         name=request.form.get('name', ''), phone=request.form.get('phone', ''), selection_id=selection_id,
-                        confirmation=request.form.get('confirmation'))
+                        confirmation=request.form.get('confirmation'), restaurant_id=restaurant_id,
+                        role_id=role_id, area_id=area_id)
                     base = request.url_root.rstrip('/') if current_app.config.get('TRAINING_ENROLLMENT_LOCAL') else public_base()
                     link = base + url_for('tw_enrollment_link', token=token)
                     email, invited_name = invitation.email, invitation.name
@@ -148,9 +151,10 @@ def install(app, *, SessionFactory, auth, trainer):
                             flash('Invitation sent.', 'info')
                         except account_email.EmailSendError:
                             flash('Invitation created but email delivery failed. Copy the link or create a new invitation after one minute.', 'error')
+            site_roles = directory.site_role_groups(db, enroll.training_sites(db, actor))
             return protected(app.make_response((render_template('training_workspace/enrollment.html',
                 active_tab='students', help_section='training_enrollment', error=error, draft=draft,
-                confirmed=confirmed, matches=matches, invitation_url=link), 400 if error else 200)))
+                confirmed=confirmed, matches=matches, invitation_url=link, site_roles=site_roles), 400 if error else 200)))
 
     @app.get('/training/activate/<token>')
     def tw_enrollment_link(token):

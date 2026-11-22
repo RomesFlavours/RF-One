@@ -180,9 +180,9 @@ def live_invitation(db, selection_id):
 
 
 def mark_trainee(db, person_id):
-    """The Training operator confirmed the arrival: the person is a Student in the one Registry from now,
-    before activation. The mark is the existing STUDENT qualification, never added to an employee.
-    Called only by `confirm_arrival`."""
+    """The person is a Student (Trainee) in the one Registry from now, before activation: after the arrival
+    confirmation (Selection path) or with the direct invitation. The mark is the existing STUDENT
+    qualification, never added to an employee (an Employee keeps the status)."""
     if person_id and 'EMPLOYEE' not in people.company_statuses(db, person_id)             and not db.get(registry.PersonQualification, (person_id, 'STUDENT')):
         db.add(registry.PersonQualification(person_id=person_id, code='STUDENT'))
         db.flush()
@@ -206,7 +206,43 @@ def is_forwarding_email(email):
     return any(domain == d or domain.endswith('.' + d) for d in FORWARDING_EMAIL_DOMAINS)
 
 
-def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmation=None):
+def training_sites(db, actor):
+    """Sites the Training operator may enter a person at (central per-site authorization)."""
+    from .. import site_selection, employee_directory as directory
+    allowed = site_selection.account_restaurant_ids(db, actor, 'TRAINING')
+    return [site for site in directory.sites(db) if site.id in allowed]
+
+
+def _check_site(db, actor, restaurant_id, role_id, area_id):
+    from .. import employee_directory as directory
+    if restaurant_id is None or restaurant_id not in {site.id for site in training_sites(db, actor)}:
+        raise ValueError('Choose the training site (a site you may work on).')
+    if (role_id, area_id) not in {(r.id, a.id) for r, a in directory.site_role_choices(db, restaurant_id)}:
+        raise ValueError('Choose the role the person trains for at this site.')
+
+
+def _ensure_person(db, actor, *, person_id, account_id, name, email, phone):
+    """REGISTRY_MULTISITE_001: the Training entry creates or reuses the Registry card at once, so the physical
+    person must exist now: reuse the selected person (or the person of the selected account), otherwise
+    create it from the invitation details. Returns the person id."""
+    if person_id:
+        return person_id
+    if account_id:
+        linked = people.person_for_account(db, account_id)
+        if linked is not None:
+            return linked.id
+    person = people.create_identity(db, full_name=name or email, email=email, phone=phone or None,
+                                    normalized_name=' '.join((name or email).casefold().split()),
+                                    normalized_phone=phone_key(phone) or None)
+    if account_id:
+        db.add(people.PersonAccountLink(account_id=account_id, person_id=person.id, linked_by_id=actor.id,
+                                        linked_at=now()))
+        db.flush()
+    return person.id
+
+
+def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmation=None,
+          restaurant_id=None, role_id=None, area_id=None):
     email = accounts._validate_email_format(email)
     if is_forwarding_email(email):
         raise ValueError(FORWARDING_EMAIL_MESSAGE)
@@ -249,6 +285,15 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         raise ValueError('Wait at least one minute before creating another invitation (up to five per hour).')
     for row in prior:
         if not row.consumed_at and not row.revoked_at: row.revoked_at = stamp
+    # REGISTRY_MULTISITE_001: create or reuse the Registry card for the training site; a new entry is a
+    # Trainee, an Employee keeps the status. Repeating it reuses the same identity and card.
+    from .. import employee_directory as directory
+    _check_site(db, actor, restaurant_id, role_id, area_id)
+    person_id = _ensure_person(db, actor, person_id=person_id, account_id=account_id, name=name, email=email,
+                               phone=phone)
+    mark_trainee(db, person_id)
+    directory.training_card(db, person_id=person_id, restaurant_id=restaurant_id, role_id=role_id,
+                            area_id=area_id, actor=actor)
     token = secrets.token_urlsafe(32)
     invitation = EnrollmentInvitation(token_digest=digest(token), email=email, name=name, phone=phone,
         person_id=person_id, account_id=account_id, selection_id=selection_id, created_by_id=actor.id,

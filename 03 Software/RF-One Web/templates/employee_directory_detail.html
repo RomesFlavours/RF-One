@@ -1,17 +1,20 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% set help_section = 'employee_directory_detail' %}
 {% block page_title %}{{ employee.display_name }} · Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
+<hr>
+<div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
 {% set profile_summary=person_profile_summary('employee',employee.id) %}
 <p><strong>Companies:</strong> {{ profile_summary.companies|sort|join(', ') or 'Not assigned' }}</p>
 <p><strong>Roles:</strong> {{ profile_summary.roles|sort|join('; ') or 'Not assigned' }}</p>
 {% if can_manage_profiles %}<p><a href="{{ url_for('role_profiles_home',tab='people',person='employee:'~employee.id) }}">Registry</a></p>{% endif %}
 <p>Identità interna RF1: {{ employee.id }}</p>
 <h2>Dati interni RF-One</h2>
-<p>Questi campi sono gestiti in RF-One e gli import Clover non li sovrascrivono.</p>
+<p>Questi campi sono gestiti solo in RF-One: Clover non li legge né li modifica.</p>
 {% if can_manage %}
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -44,36 +47,29 @@
 <label><input type="checkbox" name="confirm_identity" value="yes" required> Confermo che il record appartiene a questa persona</label>
 <button>Collega alla persona RF1</button></form>{% endif %}
 <p>I collegamenti non assegnano permessi e non modificano i dati dei domini.</p>
-<h2>Sedi e dati importati da Clover</h2>
-{% for link in links %}
-<section class="domain-card">
-  <h3>{{ locations[link.location_id].name }}</h3>
-  <p class="muted">Orari della sede: {{ zone_label(locations[link.location_id].timezone) }}.</p>
-  <p>Merchant ID: {{ link.merchant_id }} · Employee ID: {{ link.external_employee_id }}</p>
-  <p>Ultimo aggiornamento: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</p>
-  {% if link.id in absence_link_ids %}<p><strong>Assente dall’ultimo elenco completo di Clover: {{ 'assenza esaminata' if reviewed else 'posizione della sede da verificare' }}.</strong> Persona, assegnazioni e storico conservati.</p>{% elif link.state == "MISSING_REVIEW" %}<p class="muted">Account storico non più presente; la sede rimane collegata tramite un altro account.</p>{% endif %}
-  {% if link.snapshot %}<dl>
-    <dt>Nome Clover</dt><dd>{{ link.snapshot.name or 'Non fornito' }}</dd>
-    <dt>Email Clover</dt><dd>{{ link.snapshot.email or 'Non fornita' }}</dd>
-    <dt>Codice Clover</dt><dd>{{ link.snapshot.customId or 'Non fornito' }}</dd>
-    <dt>Ruolo Clover</dt><dd>{{ link.snapshot.role or 'Non fornito' }}{% for role in link.snapshot.roles %} · {{ role.name or role.id }}{% endfor %}</dd>
-  </dl>{% else %}<p>Collegamento preesistente: in attesa del primo aggiornamento.</p>{% endif %}
+<h2 id="sites">Sedi e POS ID</h2>
+<p>La persona compare nella lista di una sede solo se ha un’assegnazione esplicita a quella sede. Il POS ID collega i dati Clover della sede (turni, ordini, pagamenti) a questa persona per Tips.</p>
+{% for card in site_cards %}
+<section class="domain-card" id="site-{{ card.site.id }}" data-rr-key="site:{{ card.site.id }}">
+  <h3>{{ card.site.name }}</h3>
+  <p>POS ID: <strong>{{ card.pos.external_employee_id if card.pos else 'Non inserito' }}</strong></p>
+  {% if not card.has_pos %}<p class="muted">Questa sede non ha un collegamento POS: il POS ID non si può inserire.</p>
+  {% elif can_manage %}<form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="pos_id"><input type="hidden" name="restaurant_id" value="{{ card.site.id }}">
+    <label>{{ 'Correggi il POS ID' if card.pos else 'POS ID (Employee ID di Clover)' }} <input name="pos_id" maxlength="128" required value=""></label>
+    <button type="submit">Salva POS ID</button>
+  </form>
+  <p class="muted">Lo stesso POS ID non può appartenere a due persone nella stessa sede. Una correzione non sposta lo storico già attribuito: attribuisce soltanto il lavoro ancora in attesa con il nuovo POS ID.</p>{% endif %}
 </section>
-{% else %}<p>Nessun collegamento Clover.</p>{% endfor %}
-
-{% if conflicts %}
-<h2>Differenze tra sedi · {{ 'Esaminate' if reviewed else 'Da risolvere' }}</h2>
-<p>Nessun import prevale sui valori dell’altra sede. Il nome e il codice scelti per RF-One si modificano nei dati interni.</p>
-<table><thead><tr><th>Campo Clover</th><th>Valori per Merchant</th></tr></thead><tbody>
-{% for field, values in conflicts.items() %}<tr><td>{{ field }}</td><td>{% for merchant, value in values.items() %}<div>{{ merchant }}: {{ value if value is not none else 'Non fornito' }}</div>{% endfor %}</td></tr>{% endfor %}
-</tbody></table>
-{% endif %}
-{% if (conflicts or has_missing) and not reviewed and can_manage %}<form method="post">
+{% else %}<p>Nessuna sede assegnata: la persona non compare in nessuna lista di sede.</p>{% endfor %}
+{% if can_manage and site_roles %}<form method="post" id="assign-site">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <input type="hidden" name="action" value="review">
-  <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
-  <button type="submit">Conferma di aver esaminato differenze e segnalazioni delle sedi</button>
+  <input type="hidden" name="action" value="assign_site">
+  <label>Aggiungi una sede (con il ruolo) <select name="site_role" required><option value="">Scegli la sede e il ruolo</option>{% for row, options in site_roles %}<optgroup label="{{ row.name }}">{% for value, label in options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+  <button type="submit">Assegna la sede</button>
 </form>{% endif %}
+{% if links %}<details><summary>POS ID collegati in tutte le sedi ({{ links|length }})</summary><ul>{% for link in links %}<li>{{ locations[link.location_id].name }} · {{ link.external_employee_id }}</li>{% endfor %}</ul></details>{% endif %}
 
 {% if can_org %}<h2>Ruoli organizzativi RF-One</h2>
 <p>I ruoli RF-One sono distinti dai ruoli Clover.</p>
@@ -93,7 +89,7 @@
 <h2>Storico anagrafica</h2>
 {% set home_location = locations.get(employee.location_id) %}
 <p class="muted">Orari: {{ zone_label(home_location.timezone if home_location else none) }}.</p>
-{% set actions = {'CLOVER_ROLE_CHANGE': 'Clover role change', 'CLOVER_ROLE_OBSERVED': 'First Clover role observation', 'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare', 'INTERVIEW_DELETE': 'Intervista eliminata'} %}
+{% set actions = {'CLOVER_ROLE_CHANGE': 'Clover role change', 'CLOVER_ROLE_OBSERVED': 'First Clover role observation', 'IMPORT': 'Aggiornamento Clover', 'CREATE': 'Identità RF-One creata', 'LINK': 'Identità Clover collegata', 'MANAGEMENT': 'Dati interni modificati', 'REVIEW': 'Segnalazioni esaminate', 'MISSING_REVIEW': 'Assenza da Clover segnalata', 'CONSOLIDATE': 'Identità riconciliate manualmente', 'RF1_CREATE': 'Persona creata in RF1', 'CONTEXT_LINK': 'Collegamento a un dominio confermato', 'CONTEXT_UNLINK': 'Collegamento a un dominio rimosso', 'HISTORICAL_PENDING': 'Identità storica da confermare', 'INTERVIEW_DELETE': 'Intervista eliminata', 'SITE_ASSIGN': 'Sede assegnata', 'POS_ID_SET': 'POS ID inserito', 'POS_ID_CORRECTED': 'POS ID corretto', 'REATTRIBUTE': 'Lavoro in attesa attribuito', 'TRAINING_CREATE': 'Scheda creata da Training', 'TRAINING_LINK': 'Scheda collegata da Training', 'HIRE_CONFIRMED': 'Assunzione confermata (Employee)'} %}
 <ul>{% for event in events %}<li>{{ event.created_at|local_dt(home_location.timezone if home_location else none) }} · {{ actions.get(event.action, event.action) }}{% if event.account_id %} · {{ actors.get(event.account_id, 'Account non disponibile')|short_name }}{% endif %}
 {% if event.action in ('CLOVER_ROLE_CHANGE', 'CLOVER_ROLE_OBSERVED') %}
   <span> · {{ event.details.before.values()|join(', ') or 'Previous role unknown' }} → {{ event.details.after.values()|join(', ') }}</span>
@@ -103,7 +99,7 @@
 {% if event.details.snapshot is defined %}<span> · {{ event.details.snapshot.name or 'Nome non fornito' }} · {{ event.details.snapshot.email or 'Email non fornita' }}</span>{% endif %}</li>{% else %}<li>Nessuna modifica registrata.</li>{% endfor %}</ul>
 {% if can_manage and other_employees %}
 <details><summary>Questa persona esiste già con un’altra identità RF-One?</summary>
-<p>Conferma soltanto se si tratta della stessa persona: collegamenti Clover e riferimenti allo storico saranno ricondotti alla persona selezionata. I suoi dati interni rimangono quelli scelti per la persona selezionata; i valori precedenti restano nello storico. Assegnazioni o risultati economici incompatibili bloccano la riconciliazione.</p>
+<p>Conferma soltanto se si tratta della stessa persona: POS ID e riferimenti allo storico saranno ricondotti alla persona selezionata. I suoi dati interni rimangono quelli scelti per la persona selezionata; i valori precedenti restano nello storico. Assegnazioni o risultati economici incompatibili bloccano la riconciliazione.</p>
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="action" value="consolidate">

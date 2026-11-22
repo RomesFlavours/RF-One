@@ -34,11 +34,15 @@ class PersonCompanyStatus(m.Base):
 
 
 def company_statuses(db, person_id):
-    codes = set(db.scalars(select(PersonCompanyStatus.code).where(PersonCompanyStatus.person_id == person_id))) if inspect(db.connection()).has_table('person_company_statuses') else set()
-    # Existing explicit employee links remain authoritative without a data rewrite.
+    """Explicit company statuses only. REGISTRY_MULTISITE_001: a Registry card (PersonEmployeeLink) no longer
+    implies EMPLOYEE — a Trainee has a card too. Migration c7d820261122 recorded EMPLOYEE for every person
+    linked to a card before this change, so their status is unchanged."""
+    if inspect(db.connection()).has_table('person_company_statuses'):
+        return set(db.scalars(select(PersonCompanyStatus.code).where(PersonCompanyStatus.person_id == person_id)))
+    # Without the status table (older databases) the former rule still applies.
     if available(db) and db.scalar(select(PersonEmployeeLink.employee_id).where(PersonEmployeeLink.person_id == person_id).limit(1)) is not None:
-        codes.add('EMPLOYEE')
-    return codes
+        return {'EMPLOYEE'}
+    return set()
 
 
 def set_company_statuses(db, actor, person_id, codes):

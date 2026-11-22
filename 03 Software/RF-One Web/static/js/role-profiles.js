@@ -112,7 +112,7 @@
     fillAreas();area.value=value.area_id||'';role.addEventListener('change',fillAreas);
     var remove=document.createElement('button');remove.type='button';remove.className='link-button';remove.textContent='Remove';remove.addEventListener('click',function(){row.remove();});row.append(remove);var group=Array.from(roleRows.children).find(function(g){return g.dataset.companyId===String(value.company_id);});if(group)group.querySelector('.company-role-rows').append(row);
   }
-  function editPerson(p,b){
+  function editPerson(p,b){siteField(false);
     if(!p)return;
     reset('person-dialog');field(editor,'person',p.key);field(editor,'name',p.name);field(editor,'email',p.email||'');field(editor,'phone',p.phone||'');field(editor,'tab','people');roleRows.replaceChildren();
     editor.querySelectorAll('[name=company_ids]').forEach(function(cb){cb.checked=p.companies.indexOf(Number(cb.value))>=0;cb.disabled=cb.dataset.companyActive==='false'&&!cb.checked;});
@@ -124,7 +124,8 @@
   var dismissalDate=document.getElementById('person-dismissal-date'),dismissButton=document.getElementById('person-dismiss-button');
   dismissalDate.max=new Date().toISOString().slice(0,10);
   dismissalDate.addEventListener('input',function(){dismissButton.disabled=!dismissalDate.value||!dismissalDate.validity.valid;});
-  document.querySelector('[data-new-person]')?.addEventListener('click',function(e){reset('person-dialog');field(editor,'person','');field(editor,'action','person_create');systemAuthorizations(null);field(editor,'tab','people');roleRows.replaceChildren();document.getElementById('person-dialog-title').textContent='Add person';document.getElementById('person-dismissal').hidden=true;editor.querySelectorAll('[name=company_ids]').forEach(function(cb){cb.checked=false;cb.disabled=cb.dataset.companyActive==='false';});dialogs['person-dialog'].open(e.currentTarget);});
+  function siteField(creating){var box=document.getElementById('person-site-field');if(!box)return;var sel=box.querySelector('select');box.hidden=!creating;sel.disabled=!creating;sel.required=creating;if(!creating)sel.value='';}
+  document.querySelector('[data-new-person]')?.addEventListener('click',function(e){reset('person-dialog');siteField(true);field(editor,'person','');field(editor,'action','person_create');systemAuthorizations(null);field(editor,'tab','people');roleRows.replaceChildren();document.getElementById('person-dialog-title').textContent='Add person';document.getElementById('person-dismissal').hidden=true;editor.querySelectorAll('[name=company_ids]').forEach(function(cb){cb.checked=false;cb.disabled=cb.dataset.companyActive==='false';});dialogs['person-dialog'].open(e.currentTarget);});
   editor.addEventListener('submit',function(e){
     if(e.submitter===dismissButton){if(!dismissalDate.value||!dismissalDate.validity.valid){e.preventDefault();return;}field(editor,'action','person_dismiss');}
     syncPersonRoles();
@@ -146,7 +147,7 @@
       });
       if (id === 'permission-dialog') syncLevels(f);
       if (id === 'assignment-dialog') { assignmentAreas(); field(f, 'area_id', (data.reopen.area_id || [''])[0]); }
-      if (id === 'person-dialog') { systemAuthorizations(people.get(editor.elements.person.value)); document.getElementById('person-dialog-title').textContent=action==='person_create'?'Add person':'Edit person'; document.getElementById('person-dismissal').hidden=action==='person_create'||editor.elements.person.value.indexOf('employee:')!==0;dismissButton.disabled=!dismissalDate.value||!dismissalDate.validity.valid; roleRows.replaceChildren();companyGroups(); try { JSON.parse((data.reopen.person_roles || ['[]'])[0]).forEach(roleRow); } catch (e) {} }
+      if (id === 'person-dialog') { siteField(action==='person_create'); if (action==='person_create') { var siteSel=editor.querySelector('[name=site_role]'); if (siteSel) siteSel.value=(data.reopen.site_role||[''])[0]; } systemAuthorizations(people.get(editor.elements.person.value)); document.getElementById('person-dialog-title').textContent=action==='person_create'?'Add person':'Edit person'; document.getElementById('person-dismissal').hidden=action==='person_create'||editor.elements.person.value.indexOf('employee:')!==0;dismissButton.disabled=!dismissalDate.value||!dismissalDate.validity.valid; roleRows.replaceChildren();companyGroups(); try { JSON.parse((data.reopen.person_roles || ['[]'])[0]).forEach(roleRow); } catch (e) {} }
       if (data.error) { var error = document.createElement('p'); error.className = 'profile-form-error'; error.setAttribute('role', 'alert'); error.textContent = data.error; f.prepend(error); }
       dialogs[id].open();
     }
