@@ -6,6 +6,9 @@ day (Product Owner request, 2026-10-12). Task Responsible added on 2026-10-12 (P
 **Access code:** `PROJECTS`.
 **Language:** the interface, this document, the code and the database are in English. Saved content (project names, chapter titles, task descriptions) is shown as entered.
 
+
+> **Decisioni successive al progetto minimo v1 del 12 ottobre:** [MYRF_MANAGEMENT_DECISIONS_20261122.md](MYRF_MANAGEMENT_DECISIONS_20261122.md) raccoglie People, Organization e PM (owner, backup, checkpoint, attention feed e decision log). Il presente README documenta la v1 storica e non certifica l'implementazione del modello successivo.
+
 ---
 
 ## 1. Purpose
