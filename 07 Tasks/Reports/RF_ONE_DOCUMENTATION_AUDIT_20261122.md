@@ -79,3 +79,25 @@ Il maggior numero di file nei branch feature **non** prova che siano più aggior
 
 ### Conclusione di fase
 L'esistenza di specifiche e piani più recenti in branch differenti rende **non giustificata** una dichiarazione generale di allineamento documentale su `main`. Il consolidamento richiede revisione selettiva per dominio e tracciabilità decisione → testo canonico → implementazione → versione in AWS.
+
+## G. Consolidamento documentale completato in questo passaggio (2026-11-22)
+
+Le seguenti **specifiche funzionali o chiarimenti di autorità** sono stati pubblicati nel percorso canonico di `main`, senza modificare software o database:
+
+| Area | Documento canonico creato | Collegamento |
+|---|---|---|
+| Bank WHO | `01 Domains/Shared Domains/Administration/Bank Reconciliation/BANK_WHO_FUNCTIONAL_MODEL_20261122.md` | `Bank Reconciliation/README.md` |
+| Registry / Organization | `01 Domains/Business Domain/Restaurant/Organization/REGISTRY_ROLE_DEPARTMENT_MAPPING_20261122.md` | `Organization/README.md` |
+| Tips | `01 Domains/Business Domain/Restaurant/Tips/TIPS_REGISTRY_ROLES_AND_TEMPORAL_RULES_20261122.md` | `Tips/README.md` |
+| Registro trasversale | `07 Tasks/Reports/RF_ONE_DECISION_TO_DOCUMENT_REGISTER_20261122.md` | Audit, non specifica |
+
+La specifica WHO è stata trasposta dal branch `rfbank/main`, con provenienza e confini espliciti. La nuova documentazione Tips/Registry registra le decisioni e i risultati dichiarati nei report, **senza** interpretare piani di release come deploy.
+
+### Verifica aggiuntiva su quattro alberi di branch
+Il confronto hash dei file principali `TRAINING_SERVICE_001.md`, `Restaurant/MyRF/Project Management/README.md`, `Selection/README.md` e `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` mostra **lo stesso contenuto** su `main`, `feature/registry-clover-departments`, `feature/tips-registry-roles` e `feature/clover-multisite-registry` (alla data del confronto). Pertanto questi branch **non contengono una revisione più nuova di quei documenti canonici**: il gap verso le decisioni di ottobre–novembre resta reale a livello di documentazione di dominio.
+
+### Ambiti non ancora attestabili come completi
+MyRF/Management, Selection, Training, Wines, Kitchen/Visual Menu, Compensation, Legacy e stato AWS richiedono ulteriore documentazione o controllo della fonte della decisione. Non si deve rilasciare alcuna attestazione generale di conformità finché non sono stati esaminati.
+
+### Privacy e pubblicazione
+Il repository GitHub risulta `public` nel metadata della connessione: le specifiche canoniche devono contenere solo dati di progetto, esempi sintetici e riferimenti non sensibili. Non pubblicare registri nominativi, bancari, payroll, token, segreti o esportazioni reali. Un commit pubblico anche se successivamente modificato resta recuperabile nella cronologia: eventuali rimozioni di dati personali dalle versioni già pubblicate vanno gestite anche rispetto alla cronologia.
