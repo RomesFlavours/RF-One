@@ -12,6 +12,9 @@ Its objective is to create a knowledge-driven system capable of helping restaura
 
 The Restaurant Domain provides the business foundation upon which all Restaurant modules are built.
 
+
+> **Decisioni operative successive (22/11):** [Wines](WINES_TRAINING_AND_CATALOG_DECISIONS_20261122.md), [Kitchen / Visual Menu / Kitchen Call](KITCHEN_VISUAL_MENU_DECISIONS_20261122.md) e [Legacy/Brand: stato master](LEGACY_BRAND_MODEL_STATUS_20261122.md). Sono specifiche e puntatori di audit; non certificano l'esecuzione su AWS né sostituiscono il master Legacy approvato.
+
 ---
 
 # Scope
