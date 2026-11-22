@@ -101,5 +101,19 @@ and the work they attribute.
   identical; probe with one card link → EMPLOYEE added only for that person.
 - Full local copy (3,574 shifts, 13,732 orders, 14,748 payments, 80 tip entitlements): data step applied
   → identities, links, assignments, shift/order/payment/refund attributions and tip entitlements identical.
-- Not exercised on PostgreSQL: `b2c320261121` itself (validated by CLOVER_MULTISITE_001; it needs the Tips
-  payment tables that the registry-only copy does not contain).
+- **Duplicate-column error (diagnosed and fixed).** On any database built from an empty schema the chain
+  stopped at `k9g120261112` with `duplicate column name: elapsed_preparation_minutes`. Cause: its parent
+  `k9a020261110` creates the Kitchen tables from the *current* Python models (`create(checkfirst=True)`), which
+  already carry the columns and indexes that `k9g120261112` then added unconditionally. AWS is not affected
+  (k9a ran there with the older models, and AWS is already past k9g). Fix: every step of `k9g120261112` is
+  skipped when its object already exists; on a database without them it runs exactly as before. No schema
+  change. Result: the full chain now reaches `c7d820261122` on empty SQLite and on empty PostgreSQL.
+- PostgreSQL migration test 2026-11-22 (disposable cluster, port 55498, deleted afterwards): schema built by
+  the real chain from empty to `a1c220261121` (the Selection app's own tables created at `r9a120261113`, as
+  the Selection service does on AWS, because `t9e120261113` references them); every AWS Registry row of the
+  read-only export loaded with **no missing column**; report = WP 21, MD 0, the same doubtful cases as §2;
+  `upgrade head` (runs **`b2c320261121`** and `c7d820261122`) → `compare identical: true`; `downgrade
+  b2c320261121` → identical; upgrade again → head.
+- The canonical local database (`rfone_aws_copy`) is on the local development line (`k9f120261112`,
+  `t9d120261113`), whose revision files are not in the AWS release line this branch follows: `alembic upgrade`
+  cannot run on it from this branch. Not needed for AWS; its read-only report shows WP 15, MD 0.

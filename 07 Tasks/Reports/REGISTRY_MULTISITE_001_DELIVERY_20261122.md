@@ -6,7 +6,8 @@ Branch `feature/registry-multisite` (local, not pushed). Review range: `acd44b2.
 |---|---|
 | `4ab0b04` | Unchanged port of the uncommitted OQ-7 / Selection → Training work of `feature/clover-multisite-registry` (release step 1, arrival confirmation step 2). Reviewed separately by Codex on 2026-11-22 §3; included because Send to Training depends on it. |
 | `e8a44b5` | The new Registry (code, How Works, tests, migration `c7d820261122`, read-only check script). |
-| next | Specification record, release/switch-over plan, this delivery note. |
+| `45da94f` | Specification record, release/switch-over plan, this delivery note. |
+| next | Duplicate-column fix in `k9g120261112` (idempotent steps) and PostgreSQL migration evidence. |
 
 Base choice: `feature/clover-multisite-registry` already holds the site selector, the central per-site
 authorization, Registry-only Tips roles and the OQ-7 work Training needs; its old Clover → Registry parts
@@ -40,8 +41,9 @@ are removed in `e8a44b5` rather than carried. The release branches (`release/reg
 | Updated: employee_directory 15, person_foundation 11, registry_departments 9, clover_multisite 5, identity_record_holds 6, tips_registry_only 9, training_release_arrival 10, employee_history 4, monthly_recovery 3 | all OK |
 | RF-One Web new: `tests.test_registry_multisite_http` 6, `tests.test_registry_training_http` 2 | OK |
 | RF-One Web `test_training_release_http` | 4 OK |
-| `tests.test_employee_directory_http` | not runnable on SQLite at base either (migration chain); obsolete cases removed |
+| `tests.test_employee_directory_http` | chain now upgrades; its setUp still downgrades to `d5a120261021`, which irreversible later migrations (`t9e120261113`) refuse by design — pre-existing, not changed |
 | Migration on AWS data copy and on the full local copy | see release plan §6 — fingerprints identical |
+| Full chain from empty (after the k9g fix) | SQLite: reaches head. PostgreSQL: real chain to `a1c220261121`, AWS rows loaded, `b2c3`+`c7d8` up/down → identical |
 | How Works | RF-One Web / Registry / Training: same errors as base (all inherited), +2 pages with help |
 
 ## Known limits / decisions to confirm

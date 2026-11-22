@@ -4,6 +4,13 @@ AWS is at t9a120261110. The local development chain interleaves the Student
 registry and temporarily scopes Menu Areas to locations before sharing them
 again. This explicit release branch applies only Kitchen's final additive
 schema. It preserves shared areas, published recipes and all identity data.
+
+Every step is skipped when its object already exists. k9a020261110 creates the
+Kitchen tables from the current Python models (create(checkfirst=True)), so on a
+database built from an empty schema those tables already carry the final columns
+and indexes, and an unconditional add_column failed with "duplicate column name:
+elapsed_preparation_minutes". On AWS (where k9a ran with the older models) every
+step still runs exactly as before.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -14,12 +21,25 @@ branch_labels=('kitchen_aws_20261112',)
 depends_on=None
 
 def upgrade():
-    op.add_column('kitchen_recipes',sa.Column('elapsed_preparation_minutes',sa.Numeric(14,4),nullable=True))
-    op.add_column('kitchen_configuration_items',sa.Column('location_id',sa.Integer,nullable=True))
-    op.create_foreign_key('fk_kitchen_configuration_location','kitchen_configuration_items','locations',['location_id'],['id'])
-    op.drop_constraint('uq_kitchen_configuration_name','kitchen_configuration_items',type_='unique')
-    op.create_index('uq_kitchen_configuration_shared_name','kitchen_configuration_items',['section','normalized_name'],unique=True,postgresql_where=sa.text("section <> 'MENU_AREA'"))
-    op.create_index('uq_kitchen_menu_area_location_name','kitchen_configuration_items',['normalized_name'],unique=True,postgresql_where=sa.text("section = 'MENU_AREA'"))
+    bind=op.get_bind()
+    inspector=sa.inspect(bind)
+    tables=set(inspector.get_table_names())
+    def columns(table):return {c['name'] for c in inspector.get_columns(table)}
+    def indexes(table):return {i['name'] for i in inspector.get_indexes(table)}
+    if 'elapsed_preparation_minutes' not in columns('kitchen_recipes'):
+        op.add_column('kitchen_recipes',sa.Column('elapsed_preparation_minutes',sa.Numeric(14,4),nullable=True))
+    if 'location_id' not in columns('kitchen_configuration_items'):
+        op.add_column('kitchen_configuration_items',sa.Column('location_id',sa.Integer,nullable=True))
+        op.create_foreign_key('fk_kitchen_configuration_location','kitchen_configuration_items','locations',['location_id'],['id'])
+    if 'uq_kitchen_configuration_name' in {u['name'] for u in inspector.get_unique_constraints('kitchen_configuration_items')}:
+        op.drop_constraint('uq_kitchen_configuration_name','kitchen_configuration_items',type_='unique')
+    existing=indexes('kitchen_configuration_items')
+    if 'uq_kitchen_configuration_shared_name' not in existing:
+        op.create_index('uq_kitchen_configuration_shared_name','kitchen_configuration_items',['section','normalized_name'],unique=True,postgresql_where=sa.text("section <> 'MENU_AREA'"))
+    if 'uq_kitchen_menu_area_location_name' not in existing:
+        op.create_index('uq_kitchen_menu_area_location_name','kitchen_configuration_items',['normalized_name'],unique=True,postgresql_where=sa.text("section = 'MENU_AREA'"))
+    if 'kitchen_menus' in tables and 'kitchen_menu_entries' in tables:
+        return
     op.create_table('kitchen_menus',
         sa.Column('id',sa.Integer,primary_key=True),
         sa.Column('draft_key',sa.String(32),nullable=False,unique=True),
