@@ -5,6 +5,8 @@
      Registry card at that site (and only there); a missing site is refused with nothing created.
   2. Confirm hire turns the same card into Employee and records who and when on the card's history; the
      owner exception without a signed course still needs a reason.
+  3. Codex review: without a card Confirm hire saves nothing and shows no success; «Resolve card and site»
+     gives a legacy Trainee card and site first; an uncertain card identity is asked before anything is saved.
 Never sends mail, never contacts AWS or Clover.
 """
 from __future__ import annotations
@@ -120,6 +122,98 @@ class RegistryTrainingHttpTest(unittest.TestCase):
             self.assertEqual(event.account_id, self.trainer_id)
             self.assertTrue(event.details["at"])
             self.assertEqual(event.details["by_name"], "Trainer T.")
+
+    # Codex review 3 — no card, no hire
+    def _as_student(self, person_id):
+        import training_hire_confirm as hire
+        from sqlalchemy.orm import Session
+        original_get = Session.get
+
+        def get(session, entity, ident, *args, **kwargs):
+            if entity is m.TrainingAccount and ident == 77:
+                return SimpleNamespace(id=77, role="student")
+            return original_get(session, entity, ident, *args, **kwargs)
+        student = SimpleNamespace(id=self.trainer_id)
+        from contextlib import ExitStack
+        stack = ExitStack()
+        stack.enter_context(patch.object(Session, "get", get))
+        stack.enter_context(patch("rfone_data_store.training.workspace.linked_account", return_value=student))
+        stack.enter_context(patch.object(hire, "person_for", return_value=person_id))
+        stack.enter_context(patch.object(hire, "course_status", return_value={self.trainer_id: {"signed": True}}))
+        return stack
+
+    def _flashes(self):
+        with self.client.session_transaction() as session:
+            return list(session.pop("_flashes", []))
+
+    def _legacy_trainee(self, phone=None):
+        with self.factory() as db:
+            person = people.create_identity(db, full_name="Terry Legacy", email="terry@example.invalid", phone=phone,
+                                            normalized_name="terry legacy")
+            db.add(registry.PersonQualification(person_id=person.id, code="STUDENT"))
+            db.commit()
+            return person.id
+
+    def test_confirm_hire_without_a_card_saves_nothing_and_shows_no_success(self):
+        person_id = self._legacy_trainee()
+        token = self.csrf("/training/manage/enrollment")
+        with self._as_student(person_id):
+            response = self.client.post("/training/manage/students/77/confirm-hire", data={"csrf_token": token})
+        self.assertEqual(response.status_code, 302)
+        flashes = self._flashes()
+        self.assertTrue(any(category == "error" and "no Registry card" in text for category, text in flashes), flashes)
+        self.assertFalse(any("Hire confirmed" in text for _, text in flashes))
+        with self.factory() as db:
+            self.assertNotIn("EMPLOYEE", people.company_statuses(db, person_id))
+            self.assertIsNone(db.scalar(select(profiles.ProfileEvent).where(profiles.ProfileEvent.action == "registry.hire_confirmed")))
+            self.assertIsNone(db.scalar(select(m.EmployeeDirectoryEvent).where(m.EmployeeDirectoryEvent.action == "HIRE_CONFIRMED")))
+
+    def test_legacy_trainee_gets_card_and_site_then_the_hire_is_confirmed(self):
+        person_id = self._legacy_trainee()
+        with self._as_student(person_id):
+            page = self.client.get("/training/manage/students/77/registry-card").get_data(as_text=True)
+            self.assertIn("Resolve card and site", page)
+            self.assertIn("How this page works", page)
+            token = CSRF_RE.search(page).group(1)
+            saved = self.client.post("/training/manage/students/77/registry-card", data={
+                "csrf_token": token, "site_role": f"{self.md_id}:{self.cook_id}:{self.area_id}"})
+            self.assertEqual(saved.status_code, 302, saved.get_data(as_text=True)[:300])
+            self._flashes()
+            with self.factory() as db:
+                card = directory.card_for_person(db, person_id)
+                self.assertEqual(directory.employee_site_ids(db, card.id), {self.md_id})
+                self.assertEqual(db.scalar(select(en.EnrollmentInvitation.id)), None)        # no invitation
+                card_id = card.id
+            done = self.client.post("/training/manage/students/77/confirm-hire",
+                                    data={"csrf_token": self.csrf("/training/manage/enrollment")})
+        self.assertEqual(done.status_code, 302)
+        self.assertTrue(any("Hire confirmed" in text for _, text in self._flashes()))
+        with self.factory() as db:
+            self.assertIn("EMPLOYEE", people.company_statuses(db, person_id))
+            self.assertIsNotNone(db.scalar(select(m.EmployeeDirectoryEvent).where(
+                m.EmployeeDirectoryEvent.employee_id == card_id, m.EmployeeDirectoryEvent.action == "HIRE_CONFIRMED")))
+
+    def test_uncertain_card_identity_is_asked_on_the_pages_before_anything_is_saved(self):
+        with self.factory() as db:
+            wp_card = directory.create_person(db, display_name="Luca Bianchi", phone="407-555-0101",
+                                              restaurant_id=self.wp_id, role_id=self.cook_id, area_id=self.area_id)
+            db.commit(); wp_card_id = wp_card.id
+        data = {"mode": "direct", "email": "luca@example.invalid", "name": "Luca Bianchi", "phone": "(407) 555 0101",
+                "site_role": f"{self.md_id}:{self.cook_id}:{self.area_id}"}
+        asked = self.client.post("/training/manage/enrollment",
+                                 data={**data, "csrf_token": self.csrf("/training/manage/enrollment")})
+        self.assertEqual(asked.status_code, 400)
+        self.assertIn("Is this the same person as an existing Registry card?", asked.get_data(as_text=True))
+        with self.factory() as db:
+            self.assertEqual((db.scalar(select(en.EnrollmentInvitation.id)), db.scalar(select(m.CandidatePerson.id))),
+                             (None, None))
+        done = self.client.post("/training/manage/enrollment", data={**data, "card_confirmation": f"card:{wp_card_id}",
+                                "csrf_token": self.csrf("/training/manage/enrollment")})
+        self.assertEqual(done.status_code, 200, done.get_data(as_text=True)[:400])
+        with self.factory() as db:
+            invitation = db.scalar(select(en.EnrollmentInvitation))
+            self.assertEqual(directory.card_for_person(db, invitation.person_id).id, wp_card_id)
+            self.assertEqual(directory.employee_site_ids(db, wp_card_id), {self.wp_id, self.md_id})
 
 
 if __name__ == "__main__":

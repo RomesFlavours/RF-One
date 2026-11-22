@@ -195,18 +195,12 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.registry_assignment(self.alice, "SERVER")
         self.assertEqual(reg.department_of(self.db, self.alice.id, include_history=True), {"FOH"})   # Registry wins
 
-    def test_legacy_source_roles_do_not_accumulate(self):
-        from rfone_data_store.technical.connectors.clover.historical_backfill_detail import _drop_stale_source_roles
-        r1 = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id, source_role_id="X1", name="Server")
-        r2 = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id, source_role_id="X2", name="Host")
-        self.db.add_all([r1, r2]); self.db.flush()
-        now = datetime.now(timezone.utc)
-        self.db.add_all([m.EmployeeSourceRole(employee_id=self.alice.id, source_role_id=r.id,
-                         source_system_id=self.source.id, observed_at=now) for r in (r1, r2)])
-        self.db.flush()
-        _drop_stale_source_roles(self.db, self.alice.id, self.source.id, {r2.id})
-        self.db.flush()
-        self.assertEqual([r.source_role_id for r in self.db.scalars(select(m.EmployeeSourceRole))], [r2.id])
+    def test_the_staff_list_role_reader_is_gone(self):
+        # REGISTRY_MULTISITE_001 (Codex review): the Historical Backfill no longer reads /employees?expand=role
+        # to write the cards' Clover roles.
+        from rfone_data_store.technical.connectors.clover import historical_backfill_detail as detail
+        for name in ("ingest_employee_source_roles", "_drop_stale_source_roles"):
+            self.assertFalse(hasattr(detail, name), name)
 
     def test_the_import_step_that_fed_registry_is_gone(self):
         # REGISTRY_MULTISITE_001: no Clover role catalogue refresh or report at the end of an import.

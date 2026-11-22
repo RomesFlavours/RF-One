@@ -259,6 +259,100 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.assertIn("EMPLOYEE", people.company_statuses(self.db, person.id))
         self.assertEqual(directory.employee_site_ids(self.db, existing.id), {self.wp.id, self.md.id})
 
+    # Codex review 2 — identity resolved before any card is created or linked
+    def _nothing_saved(self, cards=1):
+        self.assertEqual((self.count(m.Employee), self.count(m.CandidatePerson), self.count(en.EnrollmentInvitation),
+                          self.count(registry.PersonQualification), self.count(m.EmployeeAssignment)),
+                         (cards, self._persons, 0, 0, cards))
+
+    def test_direct_md_invitation_with_the_phone_of_a_manual_wp_card_asks_before_linking(self):
+        trainer = self._trainer()
+        wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="407-555-0101")      # no email
+        self.db.commit(); self._persons = 0
+        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        with self.assertRaises(directory.CardConfirmationRequired) as asked:
+            en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
+                     phone="(407) 555 0101", **md)
+        self.db.rollback()
+        self.assertEqual([c["key"] for c in asked.exception.candidates], [f"card:{wp_card.id}"])
+        self._nothing_saved()                                   # nothing created or linked before the answer
+        invitation, _ = en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
+                                 phone="(407) 555 0101", card_confirmation=f"card:{wp_card.id}", **md)
+        self.db.commit()
+        self.assertEqual(directory.card_for_person(self.db, invitation.person_id).id, wp_card.id)
+        self.assertEqual(self.count(m.Employee), 1)
+        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id, self.md.id})
+        self.assertIn(wp_card.id, directory.site_employee_ids(self.db, self.md.id))
+        # Repeating the invitation: same identity, same card, the previous link replaced (never two live ones).
+        invitation.created_at -= timedelta(seconds=61); self.db.commit()
+        again, _ = en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
+                            phone="(407) 555 0101", confirmation=f"person:{invitation.person_id}", **md)
+        self.db.commit()
+        self.assertEqual((again.person_id, self.count(m.Employee), self.count(m.CandidatePerson)),
+                         (invitation.person_id, 1, 1))
+        live = [r for r in self.db.scalars(select(en.EnrollmentInvitation)) if not r.revoked_at and not r.consumed_at]
+        self.assertEqual([r.id for r in live], [again.id])
+
+    def test_a_different_person_with_the_same_phone_gets_a_new_card_only_when_chosen(self):
+        trainer = self._trainer()
+        wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="4075550101")
+        self.db.commit()
+        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        with self.assertRaisesRegex(ValueError, "match changed"):
+            en.issue(self.db, actor=trainer, email="other@example.invalid", name="Other", phone="407 555 0101",
+                     card_confirmation="card:99999", **md)
+        self.db.rollback()
+        invitation, _ = en.issue(self.db, actor=trainer, email="sister@example.invalid", name="Anna Bianchi",
+                                 phone="407 555 0101", card_confirmation=directory.CARD_NEW, **md)
+        self.db.commit()
+        card = directory.card_for_person(self.db, invitation.person_id)
+        self.assertNotEqual(card.id, wp_card.id)
+        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id})
+
+    def test_send_to_training_with_the_phone_of_a_manual_card_asks_before_the_arrival(self):
+        hirer = accounts.create_account(self.db, username="hirer", display_name="Hirer", password="Hirer-Pass-99",
+                                        email="hirer@example.invalid")
+        trainer = self._trainer()
+        person, pc = self._hired_candidate(hirer)
+        pc.declared_phone = "407-555-0199"
+        self.db.get(m.Candidate, pc.candidate_id).phone = "407-555-0199"
+        wp_card = self.card("Maria Rossi", self.wp, self.server, phone="4075550199")        # no email
+        self.db.commit()
+        en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer); self.db.commit()
+        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        with self.assertRaises(directory.CardConfirmationRequired):
+            en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id, **md)
+        self.db.rollback()
+        self.assertEqual(en._selection_events(self.db, en.ARRIVED), {})                  # arrival not recorded
+        self.assertIsNone(self.db.get(registry.PersonQualification, (person.id, "STUDENT")))
+        self.assertEqual((self.count(m.Employee), self.count(en.EnrollmentInvitation)), (1, 0))
+        invitation, _ = en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
+                                 card_confirmation=f"card:{wp_card.id}", **md)
+        self.db.commit()
+        self.assertEqual(directory.card_for_person(self.db, person.id).id, wp_card.id)
+        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id, self.md.id})
+        # Repetition: Selection's release and the enrollment never produce a second invitation.
+        self.assertEqual(en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer), "already")
+        invitation.created_at -= timedelta(seconds=61); self.db.commit()
+        with self.assertRaisesRegex(ValueError, "already in progress"):
+            en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
+                     card_confirmation=f"card:{wp_card.id}", **md)
+        self.db.rollback()
+        self.assertEqual((self.count(en.EnrollmentInvitation), self.count(m.Employee)), (1, 1))
+
+    def test_a_card_linked_to_another_person_is_never_reused(self):
+        trainer = self._trainer()
+        owner = people.create_identity(self.db, full_name="Owner", email="owner@example.invalid", normalized_name="owner")
+        card = self.card("Owner", self.wp, self.server, phone="4075550111")
+        self.db.add(people.PersonEmployeeLink(employee_id=card.id, person_id=owner.id, linked_by_id=self.admin.id,
+                                              linked_at=NOW))
+        self.db.commit()
+        with self.assertRaisesRegex(ValueError, "another person"):
+            en.issue(self.db, actor=trainer, email="someone@example.invalid", name="Someone", phone="407 555 0111",
+                     restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        self.db.rollback()
+        self.assertEqual(self.count(m.Employee), 1)
+
     def test_card_link_alone_no_longer_means_employee(self):
         person = people.create_identity(self.db, full_name="Trainee Card", email="t@example.invalid",
                                         normalized_name="trainee card")
@@ -332,6 +426,73 @@ class RegistryMultisiteTest(unittest.TestCase):
         other = self.card("Real Owner", self.wp, self.server)
         directory.set_pos_id(self.db, employee_id=other.id, restaurant_id=self.wp.id, pos_id="WRONG")
         self.assertEqual(attributed.employee_id, hire.id)                                # still not moved
+
+    def test_reimport_after_a_pos_id_correction_keeps_the_order_of_a(self):
+        """Codex review 1: order of A, POS ID correction, reimport, old ID given to B, reimport again."""
+        a = self.card("Person A", self.wp, self.server)
+        b = self.card("Person B", self.wp, self.server)
+        directory.set_pos_id(self.db, employee_id=a.id, restaurant_id=self.wp.id, pos_id="X1")
+        self.db.commit()
+        client = _CorrectionFakeCloverClient("WPMERCHANT")
+        at = NOW - timedelta(hours=3)
+        def order(source_id, employee, modified):
+            return {"id": source_id, "employee": {"id": employee}, "createdTime": _ms(at), "modifiedTime": _ms(modified),
+                    "state": "locked", "paymentState": "PAID", "currency": "USD", "total": 2500,
+                    "lineItems": {"elements": []}}
+        def payment(source_id, order_id, employee, modified):
+            return {"id": source_id, "order": {"id": order_id}, "employee": {"id": employee}, "amount": 2500,
+                    "tipAmount": 400, "result": "SUCCESS", "createdTime": _ms(at), "modifiedTime": _ms(modified)}
+        def cycle(now):
+            run_correction_cycle(self.db, location_id=self.wp_loc.id, client=client, now=now)
+            self.db.commit()
+            self.db.expire_all()
+            stored = self.db.scalar(select(m.Order).filter_by(source_order_id="O-A"))
+            paid = self.db.scalar(select(m.Payment).filter_by(source_payment_id="P-A"))
+            return stored.employee_id, paid.employee_id if paid else None
+        client.orders = [order("O-A", "X1", at), order("O-Z", "Z9", at)]
+        client.payments = [payment("P-A", "O-A", "X1", at)]
+        self.assertEqual(cycle(NOW), (a.id, a.id))                                      # order of A
+        # POS ID of A corrected to X2, Clover re-reads the order (modified again)
+        directory.set_pos_id(self.db, employee_id=a.id, restaurant_id=self.wp.id, pos_id="X2"); self.db.commit()
+        client.orders[0] = order("O-A", "X1", NOW + timedelta(minutes=5))
+        client.payments[0] = payment("P-A", "O-A", "X1", NOW + timedelta(minutes=5))
+        self.assertEqual(cycle(NOW + timedelta(minutes=10)), (a.id, a.id))
+        # the freed ID X1 is given to B; Clover re-reads the order once more
+        directory.set_pos_id(self.db, employee_id=b.id, restaurant_id=self.wp.id, pos_id="X1"); self.db.commit()
+        client.orders[0] = order("O-A", "X1", NOW + timedelta(minutes=15))
+        client.payments[0] = payment("P-A", "O-A", "X1", NOW + timedelta(minutes=15))
+        client.orders.append(order("O-B", "X1", NOW + timedelta(minutes=15)))           # new work of B
+        self.assertEqual(cycle(NOW + timedelta(minutes=20)), (a.id, a.id))              # still A
+        self.assertEqual(self.db.scalar(select(m.Order.employee_id).filter_by(source_order_id="O-B")), b.id)
+        # a record still without a person stays attributable
+        self.assertIsNone(self.db.scalar(select(m.Order.employee_id).filter_by(source_order_id="O-Z")))
+        z = self.card("Person Z", self.wp, self.server)
+        directory.set_pos_id(self.db, employee_id=z.id, restaurant_id=self.wp.id, pos_id="Z9")
+        self.assertEqual(self.db.scalar(select(m.Order.employee_id).filter_by(source_order_id="O-Z")), z.id)
+
+    def test_a_reread_shift_keeps_its_resolved_person(self):
+        a = self.card("Person A", self.wp, self.server)
+        b = self.card("Person B", self.wp, self.server)
+        directory.set_pos_id(self.db, employee_id=a.id, restaurant_id=self.wp.id, pos_id="X1")
+        run = m.IngestionRun(source_system_id=self.source.id, location_id=self.wp_loc.id, status="RUNNING",
+                             started_at=NOW)
+        self.db.add(run); self.db.flush()
+        shifts = SimpleNamespace(ok=True, truncated_by_safety_guard=False, elements=[
+            {"id": "S-A", "employee": {"id": "X1"}, "inTime": _ms(NOW - timedelta(hours=4)),
+             "outTime": _ms(NOW - timedelta(hours=1))}])
+        fake = SimpleNamespace(merchant_id="WPMERCHANT", get=lambda path, params=None: None)
+        def read():
+            with patch.object(acquisition, "paginate", return_value=shifts):
+                acquisition._fetch_and_ingest_shifts(
+                    fake, self.db, period_start=NOW - timedelta(days=1), period_end=NOW, source_system_id=self.source.id,
+                    employee_by_source_id=directory.resolved_identities(self.db, "WPMERCHANT"),
+                    ingestion_run_id=run.id, retrieved_at=NOW, held=[])
+            self.db.flush()
+            return self.db.scalar(select(m.Shift.employee_id).filter_by(source_shift_id="S-A"))
+        self.assertEqual(read(), a.id)
+        directory.set_pos_id(self.db, employee_id=a.id, restaurant_id=self.wp.id, pos_id="X2")
+        directory.set_pos_id(self.db, employee_id=b.id, restaurant_id=self.wp.id, pos_id="X1")
+        self.assertEqual(read(), a.id)
 
     def test_existing_links_keep_resolving_tips_history(self):
         veteran = m.Employee(display_name="Veteran", location_id=self.wp_loc.id)

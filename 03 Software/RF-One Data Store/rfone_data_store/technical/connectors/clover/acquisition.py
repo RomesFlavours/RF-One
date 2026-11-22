@@ -153,7 +153,7 @@ from sqlalchemy.orm import Session
 from .... import models as m
 from ....ingestion.common import payload_hash, utc_now
 from . import historical_backfill_detail, mapping
-from .ingest import upsert
+from .ingest import keep_resolved_attribution, upsert
 from .source_guard import (
     CloverAcquisitionError,
     CloverSourceUnavailableError,
@@ -571,7 +571,7 @@ def _get_or_create(session: Session, model: type, unique_filter: dict[str, Any],
         if model is m.Employee:
             values = {k: v for k, v in values.items() if k not in
                       {"display_name", "custom_id", "active", "system_role", "location_id"}}
-        for key, value in values.items():
+        for key, value in keep_resolved_attribution(existing, values).items():
             setattr(existing, key, value)
         return existing, False
     if model is m.Employee:
@@ -1323,10 +1323,8 @@ def import_clover_period(
             catalog.employee_by_source_id = employee_by_source_id
             catalog.tender_by_source_id = tender_by_source_id
             catalog.device_by_source_id = device_by_source_id
-            historical_backfill_detail.ingest_employee_source_roles(
-                session, resolved_client, source_system_id=source_system_id,
-                employee_by_source_id=employee_by_source_id, catalog=catalog, retrieved_at=retrieved_at,
-            )
+            # REGISTRY_MULTISITE_001 (Codex review, validators): Clover's staff list (/employees?expand=role) is
+            # no longer read to update Registry cards' Clover roles; Registry roles are set in Registry.
 
         order_ids_needed: set[str] = set()
         for p in payments_raw:

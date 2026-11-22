@@ -401,10 +401,84 @@ def card_for_person(db, person_id):
     return db.get(m.Employee, resolve_employee_id(db, employee_id)) if employee_id is not None else None
 
 
-def training_card(db, *, person_id, restaurant_id, role_id, area_id, actor):
-    """Training entry (direct invitation or Send to Training): create or reuse the person's card and assign
-    the training site. Reuse order: the card already linked to the person; otherwise the one card with the
-    same email that is not linked to another person. Repeating it changes nothing. Returns (card, created)."""
+CARD_NEW = "card:new"
+
+
+class CardConfirmationRequired(ValueError):
+    """A Training entry found a Registry card whose contact matches but whose identity is not certain."""
+
+    def __init__(self, candidates):
+        super().__init__("A Registry card with the same contact already exists. Confirm whether it is the same "
+                         "person before the invitation is created. Nothing was saved.")
+        self.candidates = candidates
+
+
+def _digits(value):
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def resolve_training_card(db, *, person_id, email, phone, confirmation=None):
+    """REGISTRY_MULTISITE_001 (Codex review 2): resolve the Registry identity BEFORE any card is created or
+    linked by a Training entry (direct invitation or Send to Training). Writes nothing.
+
+    - the card already linked to the person is the identity;
+    - otherwise the cards with the same email or the same phone are the evidence:
+      none → a new card; exactly one with the same email and no different phone → that card;
+      anything else (phone only, several cards, different phone) is uncertain → CardConfirmationRequired,
+      unless `confirmation` is "card:<id>" of one of them or CARD_NEW ("a different person");
+    - a card already linked to another person is never reused (Registry review).
+    Returns the card id to reuse, or None for a new card."""
+    from . import people_registry as people
+    if person_id:
+        linked = card_for_person(db, person_id)
+        if linked is not None:
+            return linked.id
+    email, phone_key = (email or "").strip().casefold(), _digits(phone)
+    if not email and not phone_key:
+        return None
+    found = {}
+    for card in db.scalars(canonical_employees().order_by(m.Employee.id)):
+        by_email = bool(email) and (card.email or "").strip().casefold() == email
+        by_phone = bool(phone_key) and _digits(card.phone) == phone_key
+        if by_email or by_phone:
+            found[card.id] = (card, by_email, by_phone)
+    if not found:
+        return None
+    if people.available(db):
+        owners = {link.employee_id: link.person_id for link in db.scalars(select(people.PersonEmployeeLink).where(
+            people.PersonEmployeeLink.employee_id.in_(found)))}
+        taken = [found[cid][0] for cid, owner in owners.items() if owner != person_id]
+        if taken:
+            raise ValueError(f"This contact belongs to the Registry card of another person ({taken[0].display_name}). "
+                             "Ask for a Registry review. Nothing was saved.")
+    if len(found) == 1:
+        card, by_email, by_phone = next(iter(found.values()))
+        phones_differ = bool(phone_key) and bool(_digits(card.phone)) and not by_phone
+        if by_email and not phones_differ:
+            return card.id
+    if confirmation == CARD_NEW:
+        return None
+    if confirmation and confirmation.startswith("card:") and confirmation[5:].isdecimal()             and int(confirmation[5:]) in found:
+        return int(confirmation[5:])
+    if confirmation:
+        raise ValueError("The Registry match changed. Review the details.")
+    candidates = []
+    for card, by_email, by_phone in found.values():
+        sites = ", ".join(site.name for site in sites_of(db, card.id)) or "no site"
+        matched = " and ".join(word for word, hit in (("email", by_email), ("phone", by_phone)) if hit)
+        candidates.append(dict(key=f"card:{card.id}", name=f"{card.display_name} — same {matched}; sites: {sites}"))
+    raise CardConfirmationRequired(candidates)
+
+
+def sites_of(db, employee_id):
+    ids = employee_site_ids(db, employee_id)
+    return [site for site in sites(db) if site.id in ids]
+
+
+def training_card(db, *, person_id, restaurant_id, role_id, area_id, actor, card_id=None):
+    """Training entry (direct invitation or Send to Training): link the card resolved beforehand by
+    `resolve_training_card` (`card_id`; None = create a new one) to the person and assign the training site.
+    Repeating it changes nothing. Returns (card, created)."""
     from . import people_registry as people
     person = db.get(m.CandidatePerson, person_id)
     if person is None:
@@ -412,13 +486,10 @@ def training_card(db, *, person_id, restaurant_id, role_id, area_id, actor):
     if db.get(m.Restaurant, restaurant_id) is None:
         raise ValueError("Choose the training site.")
     card, created = card_for_person(db, person_id), False
-    if card is None and person.primary_email:
-        matches = list(db.scalars(canonical_employees().where(
-            func.lower(m.Employee.email) == person.primary_email.strip().casefold())))
-        linked = set(db.scalars(select(people.PersonEmployeeLink.employee_id))) if people.available(db) else set()
-        free = [employee for employee in matches if employee.id not in linked]
-        if len(free) == 1 and len(matches) == 1:
-            card = free[0]
+    if card is not None and card_id is not None and card.id != resolve_employee_id(db, card_id):
+        raise ValueError("The person is already linked to another Registry card. Nothing was saved.")
+    if card is None and card_id is not None:
+        card = db.get(m.Employee, resolve_employee_id(db, card_id))
     if card is None:
         card = m.Employee()
         update_management(db, card, display_name=(person.full_name or "").strip() or "Name to complete",

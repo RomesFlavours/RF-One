@@ -1,4 +1,34 @@
 # REGISTRY_MULTISITE_001 — delivery for independent review (Codex)
+## Round 2 — Codex review fixes (review range `8efaba0..HEAD`)
+
+The Codex review report file was not found in the repository; the four findings were taken from the Product
+Owner's command of 2026-11-22.
+
+| # | Finding | Fix | Evidence |
+|---|---|---|---|
+| 1 | Tips: a Clover re-read/correction could move a resolved attribution | `ingest.keep_resolved_attribution` in `upsert` and `acquisition._get_or_create`: `employee_id` / `override_in_employee_id` / `override_out_employee_id` already set are never replaced; NULL stays attributable | `test_registry_multisite`: order of A → POS ID correction → reimport → old ID to B → reimport: order and payment stay A's, new order of B is B's, NULL order attributable later; shift re-read likewise. Both tests fail without the fix |
+| 2 | Training created the card before resolving identity | `employee_directory.resolve_training_card` (no write) before arrival, Trainee mark, person, card or invitation; certain = linked card, or one card with the same email and no different phone; uncertain → `CardConfirmationRequired` (`card:<id>` / `card:new`); a card linked to another person is refused. Selection path: `_arrival_source` checks, arrival written after resolution. Invite page: «Is this the same person as an existing Registry card?» | manual WP card with phone and no email + MD invitation with the same phone: asked, nothing saved; confirmed → same card gets MD; repeat → same identity, one live invitation; Selection path: arrival not recorded until confirmed, repeat refused, release `already`; HTTP test of the page |
+| 3 | Confirm Hire without a card | card required before EMPLOYEE/event; otherwise error flash, nothing saved; Students shows «Trainee without a Registry card» + **Resolve card and site** (new page, same Training entry rules, no invitation; How Works registered) | HTTP: no card → 302, error, no status/events, no success flash; legacy Trainee → card+site → hire confirmed with HIRE_CONFIRMED on the card |
+| 4 | Alembic conflict, exact EMPLOYEE list, rollback | release order a1c2 → b2c3 → **c7d8 (final)** → c4d5 later (re-parented in `rfone-wt/rf1-shared-acquisition`, uncommitted there); c7d8 skips TRAINING_LINK Trainees; `compare` enforces added == expected; `registry_multisite_rollback.py` (plan/detach/reattach); workers never back to `:12` | `registry_multisite_rollback_rehearsal.py`: ALL EXPECTATIONS MET (old code checkout `acd44b2`); AWS data copy: expected `[]`, added `[]`, final `c7d820261122`; with c4d5: one head, up/down |
+
+Also found while re-running the validators (they could not run before `8efaba0` because of the duplicate-column
+error): the Historical Backfill still read `/employees?expand=role` to write the cards' Clover roles, and the
+staff list was a pre-flight source. Both removed (spec §3: no path reads Clover's staff list for Registry).
+Validator fixtures updated to record POS IDs on cards (no staff-list import).
+
+| Validator / suite | Result |
+|---|---|
+| `test_clover_acquisition.py` | SUCCESS 60/60 (incl. «staff list never read») |
+| `test_clover_correction_sync.py` | SUCCESS 69/69 |
+| `test_clover_acquisition_safety.py` | SUCCESS 35/35 (Employees-denied scenario removed: list not read) |
+| `test_clover_acquisition_jobs.py` / `test_clover_live_sync.py` / `test_historical_backfill_extractor.py` | SUCCESS 36/36, 29/29, 29/29 |
+| Data Store unittest set (registry_multisite 22, employee_directory, person_foundation, registry_departments, clover_multisite, identity_record_holds, tips_registry_only, training_release_arrival, employee_history, monthly_recovery) | 94 OK |
+| RF-One Web `tests.test_registry_multisite_http` 6, `tests.test_registry_training_http` 5, `test_training_release_http` 4 | OK |
+| `test_restaurant_profile_bootstrap.py`, `test_sales_validation.py` | SUCCESS |
+
+Open: the Server Course self-invitation (`training_server_course.py`, `enroll.issue` without a site) is refused
+since `e8a44b5` because the Training entry needs a site; not changed (outside these findings).
+
 
 Branch `feature/registry-multisite` (local, not pushed). Review range: `acd44b2..HEAD`.
 

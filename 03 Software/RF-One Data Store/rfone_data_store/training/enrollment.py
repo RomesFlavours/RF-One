@@ -145,6 +145,19 @@ def confirm_arrival(db, *, actor, selection_id):
     """Step 2: the Training operator confirms the candidate arrived. Only this authorizes the enrollment:
     the existing person becomes a Student in the Registry. Idempotent: (person_id, True) the first time,
     (person_id, False) when it was already confirmed."""
+    source = _arrival_source(db, actor=actor, selection_id=selection_id)
+    if source['arrived']:
+        return source['person_id'], False
+    mark_trainee(db, source['person_id'])
+    profiles.event(db, ARRIVED, actor=actor.id, selection_id=selection_id, person_id=source['person_id'],
+                   at=now().isoformat())
+    db.flush()
+    return source['person_id'], True
+
+
+def _arrival_source(db, *, actor, selection_id):
+    """The checks of step 2 (read-only): the candidate exists, is Hired, was released to Training and the
+    actor is the operator in charge. Returns the candidate row of `confirmed_candidates`."""
     if _lock_candidate(db, selection_id) is None:
         raise ValueError('Candidate not found.')
     source = {r['id']: r for r in confirmed_candidates(db, actor)}.get(selection_id)
@@ -160,13 +173,7 @@ def confirm_arrival(db, *, actor, selection_id):
     if source['operator_account_id'] != actor.id:
         raise ValueError('This candidate was released to another Training operator, who confirms the arrival. '
                          'Nothing was changed.')
-    if source['arrived']:
-        return source['person_id'], False
-    mark_trainee(db, source['person_id'])
-    profiles.event(db, ARRIVED, actor=actor.id, selection_id=selection_id, person_id=source['person_id'],
-                   at=now().isoformat())
-    db.flush()
-    return source['person_id'], True
+    return source
 
 
 def live_invitation(db, selection_id):
@@ -241,8 +248,25 @@ def _ensure_person(db, actor, *, person_id, account_id, name, email, phone):
     return person.id
 
 
+def resolve_trainee_card(db, *, actor, person_id, restaurant_id, role_id, area_id, card_confirmation=None):
+    """REGISTRY_MULTISITE_001 (Codex review 3): a legacy Trainee without a Registry card gets the card and the
+    training site through the same authorized Training entry rules (operator's sites, identity resolved
+    first, confirmation when uncertain), without a new invitation. Returns (card, created)."""
+    from .. import employee_directory as directory
+    person = db.get(m.CandidatePerson, person_id)
+    if person is None:
+        raise ValueError('Person not found.')
+    if not db.get(registry.PersonQualification, (person_id, 'STUDENT')) and             'EMPLOYEE' not in people.company_statuses(db, person_id):
+        raise ValueError('This person is not a Trainee in the Registry.')
+    _check_site(db, actor, restaurant_id, role_id, area_id)
+    card_id = directory.resolve_training_card(db, person_id=person_id, email=person.primary_email,
+                                              phone=person.primary_phone, confirmation=card_confirmation)
+    return directory.training_card(db, person_id=person_id, restaurant_id=restaurant_id, role_id=role_id,
+                                   area_id=area_id, actor=actor, card_id=card_id)
+
+
 def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmation=None,
-          restaurant_id=None, role_id=None, area_id=None):
+          restaurant_id=None, role_id=None, area_id=None, card_confirmation=None):
     email = accounts._validate_email_format(email)
     if is_forwarding_email(email):
         raise ValueError(FORWARDING_EMAIL_MESSAGE)
@@ -254,10 +278,11 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
     if selection_id:
         # The invitation from Selection is the enrollment: it follows the arrival confirmation, and a
         # candidate already enrolled (pending or completed invitation) is never enrolled twice.
-        person_id, _ = confirm_arrival(db, actor=actor, selection_id=selection_id)
+        # Checks only (no write yet): the arrival is recorded after the Registry identity is resolved.
+        source = _arrival_source(db, actor=actor, selection_id=selection_id)
+        person_id = source['person_id']
         if live_invitation(db, selection_id):
             raise ValueError('Arrival already confirmed and the enrollment is already in progress for this candidate.')
-        source = {r['id']: r for r in confirmed_candidates(db, actor)}[selection_id]
         name = name or source['name']
         phone = phone or source['phone']
     else:
@@ -279,6 +304,17 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         raise ValueError('This contact belongs to another RF-One identity. Ask for a Registry review.')
     if account and (account.status != 'ACTIVE' or account.email != email):
         raise ValueError('Use the email of the existing active account. No credentials will be changed.')
+    # REGISTRY_MULTISITE_001 (Codex review 2): site and Registry identity are settled before anything is
+    # written — arrival, Trainee mark, person, card or invitation. An uncertain identity raises
+    # CardConfirmationRequired and nothing is saved.
+    from .. import employee_directory as directory
+    _check_site(db, actor, restaurant_id, role_id, area_id)
+    known_person = person_id or (people.person_for_account(db, account_id).id
+                                 if account_id and people.person_for_account(db, account_id) else None)
+    card_id = directory.resolve_training_card(db, person_id=known_person, email=email, phone=phone,
+                                              confirmation=card_confirmation)
+    if selection_id:
+        confirm_arrival(db, actor=actor, selection_id=selection_id)
     stamp = now()
     prior = list(db.scalars(select(EnrollmentInvitation).where(EnrollmentInvitation.email == email).with_for_update()))
     if any(r.created_at > stamp - timedelta(seconds=60) for r in prior) or sum(r.created_at > stamp - timedelta(hours=1) for r in prior) >= 5:
@@ -287,13 +323,11 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         if not row.consumed_at and not row.revoked_at: row.revoked_at = stamp
     # REGISTRY_MULTISITE_001: create or reuse the Registry card for the training site; a new entry is a
     # Trainee, an Employee keeps the status. Repeating it reuses the same identity and card.
-    from .. import employee_directory as directory
-    _check_site(db, actor, restaurant_id, role_id, area_id)
     person_id = _ensure_person(db, actor, person_id=person_id, account_id=account_id, name=name, email=email,
                                phone=phone)
     mark_trainee(db, person_id)
     directory.training_card(db, person_id=person_id, restaurant_id=restaurant_id, role_id=role_id,
-                            area_id=area_id, actor=actor)
+                            area_id=area_id, actor=actor, card_id=card_id)
     token = secrets.token_urlsafe(32)
     invitation = EnrollmentInvitation(token_digest=digest(token), email=email, name=name, phone=phone,
         person_id=person_id, account_id=account_id, selection_id=selection_id, created_by_id=actor.id,

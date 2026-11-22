@@ -685,6 +685,10 @@ def _test_late_tip_like_messick_ceban_is_recovered_and_stays_stable(session: Ses
     server = m.Employee(location_id=location.id, source_system_id=source_system.id, source_employee_id="LT-EMP",
                         display_name="Meagan Messick", system_role="EMPLOYEE")
     session.add(server)
+    session.flush()
+    # REGISTRY_MULTISITE_001: work is attributed through the POS ID recorded on the Registry card.
+    session.add(m.EmployeeCloverLink(employee_id=server.id, location_id=location.id, merchant_id="CORR-LATE-TIP",
+                                     external_employee_id="LT-EMP", state="MANUAL"))
     session.commit()
     paid_at = datetime(2026, 9, 26, 17, 43, 43, tzinfo=UTC)        # 13:43 EDT, like P0WYV4E5J8R60
     order_raw = {

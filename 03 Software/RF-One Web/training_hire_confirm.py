@@ -13,6 +13,8 @@ Passing everything unlocks the hire, and a person confirms it.
   history of the same Registry card (HIRE_CONFIRMED, REGISTRY_MULTISITE_001).
 - Before that, only the owner sees the button, and must write a reason.
 - The Registry card is the one created or reused by the Training entry (REGISTRY_MULTISITE_001).
+  Without a linked card nothing is saved (Codex review 3): a legacy Trainee without a card first gets
+  card and site from "Resolve card and site" (same Training entry rules, no new invitation).
 """
 import json
 import time
@@ -20,13 +22,14 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from flask import abort, flash, redirect, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import inspect, select
 
 from rfone_data_store import models as m, people_registry as people
 from rfone_data_store import employee_directory as directory
 from rfone_data_store import access_profiles as profiles
-from rfone_data_store.training import workspace as ws
+from rfone_data_store.training import enrollment as enroll, workspace as ws
 from rfone_data_store import rfone_web_session as shared
 import training_integration as integration
 from training_server_course import COURSE_URL, make_code
@@ -86,6 +89,8 @@ def hire_rows(db, secret, trainer_account, students):
             out[s['id']] = dict(state='employee', **confirmed.get(p, {}))
         elif s['archived']:
             out[s['id']] = dict(state='archived')
+        elif directory.card_for_person(db, p) is None:
+            out[s['id']] = dict(state='no_card')
         elif status is None:
             out[s['id']] = dict(state='unknown')
         else:
@@ -111,6 +116,12 @@ def install(app, *, SessionFactory, auth, trainer):
             if 'EMPLOYEE' in people.company_statuses(db, person):
                 flash('Already an employee in the Registry.', 'info')
                 return redirect(url_for('tw_students'))
+            # Codex review 3: the hire is confirmed on the person's Registry card; without it nothing is saved.
+            card = directory.card_for_person(db, person)
+            if card is None:
+                flash('This trainee has no Registry card yet: use «Resolve card and site» first. '
+                      'The hire was not confirmed.', 'error')
+                return redirect(url_for('tw_students'))
             if not inspect(db.connection()).has_table('person_company_statuses'):
                 abort(503)
             c = (course_status(app.secret_key, actor, [account.id]) or {}).get(account.id) or {}
@@ -126,12 +137,48 @@ def install(app, *, SessionFactory, auth, trainer):
                            rfone_account_id=account.id, by_name=shared.account_display_name(actor),
                            override=override, reason=reason, course=c)
             # REGISTRY_MULTISITE_001: the same Registry card becomes Employee; its history keeps who and when.
-            card = directory.card_for_person(db, person)
-            if card is not None:
-                directory._event(db, 'HIRE_CONFIRMED', employee_id=card.id, account_id=actor.id,
-                                 details={'person_id': person, 'by_name': shared.account_display_name(actor),
-                                          'at': datetime.now(timezone.utc).isoformat(), 'override': override,
-                                          'reason': reason})
+            directory._event(db, 'HIRE_CONFIRMED', employee_id=card.id, account_id=actor.id,
+                             details={'person_id': person, 'by_name': shared.account_display_name(actor),
+                                      'at': datetime.now(timezone.utc).isoformat(), 'override': override,
+                                      'reason': reason})
             db.commit()
         flash('Hire confirmed: the same Registry card is now Employee.', 'info')
         return redirect(url_for('tw_students'))
+
+
+    @app.route('/training/manage/students/<int:student_id>/registry-card', methods=['GET', 'POST'])
+    @trainer
+    def tw_trainee_registry_card(student_id):
+        """Codex review 3: give a legacy Trainee without a card the Registry card and the training site."""
+        error = None; card_matches = []; draft = request.form
+        with SessionFactory() as db:
+            actor = auth.load_current_account(db)
+            training = db.get(m.TrainingAccount, student_id)
+            account = ws.linked_account(db, student_id) if training and training.role == 'student' else None
+            person_id = person_for(db, account.id if account else None)
+            if person_id is None:
+                abort(404)
+            if directory.card_for_person(db, person_id) is not None:
+                flash('This trainee already has a Registry card.', 'info')
+                return redirect(url_for('tw_students', _anchor=f'student-{student_id}'))
+            if request.method == 'POST':
+                auth.require_csrf()
+                try:
+                    restaurant_id, role_id, area_id = directory.parse_site_role(request.form.get('site_role'))
+                    enroll.resolve_trainee_card(db, actor=actor, person_id=person_id, restaurant_id=restaurant_id,
+                                                role_id=role_id, area_id=area_id,
+                                                card_confirmation=request.form.get('card_confirmation'))
+                    db.commit()
+                except (ValueError, IntegrityError) as exc:
+                    db.rollback()
+                    error = str(exc) if isinstance(exc, ValueError) else 'Another session changed this person. Reload and try again.'
+                    if isinstance(exc, directory.CardConfirmationRequired): card_matches = exc.candidates
+                else:
+                    flash('Registry card and site recorded. The hire can now be confirmed.', 'info')
+                    return redirect(url_for('tw_students', _anchor=f'student-{student_id}'))
+            person = db.get(m.CandidatePerson, person_id)
+            site_roles = directory.site_role_groups(db, enroll.training_sites(db, actor))
+            return render_template('training_workspace/registry_card.html', active_tab='students',
+                                   help_section='training_registry_card', error=error, draft=draft, person=person,
+                                   student_id=student_id, site_roles=site_roles, card_matches=card_matches,
+                                   card_new=directory.CARD_NEW), 400 if error else 200

@@ -105,6 +105,8 @@ This document is about the **physical schema**, not restaurant business meaning 
 
 ### `employee_source_roles`
 
+**Update — REGISTRY_MULTISITE_001 (Product Owner, 2026-11-22):** no RF-One job reads Clover's staff list any more, so this table is no longer written by the acquisition (the Historical Backfill read of `/employees?expand=role` was removed). Existing rows are kept as history; Registry roles are set in Registry.
+
 **Purpose:** Employee ↔ named source Role membership (TASK_CLOVER_004), as resolved via Clover's `employees?expand=role` / `roles?expand=employees` relationship — confirmed to return the SPECIFIC named Role, not merely the systemRole tier (correcting TASK_CLOVER_003's earlier "unresolvable" conclusion; see `03 Software/Clover Data Explorer/CLOVER_DATA_CAPABILITY_MATRIX.md` § C and `07 Tasks/Reports/TASK_CLOVER_004_REPORT.md`).
 **PK:** `id`. **FKs:** `employee_id` → `employees` (required, indexed), `source_role_id` → `source_roles` (required, indexed).
 **Direct fields:** `observed_at` (required, server-default now) — the ingestion-time fact "this membership was observed as of this snapshot," nothing more.

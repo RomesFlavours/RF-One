@@ -24,6 +24,19 @@ from . import mapping, parser, reader
 T = TypeVar("T")
 
 
+# Person attribution columns of Clover work (Shift, Order, Payment, Refund).
+ATTRIBUTION_COLUMNS = ("employee_id", "override_in_employee_id", "override_out_employee_id")
+
+
+def keep_resolved_attribution(existing: Any, values: dict[str, Any]) -> dict[str, Any]:
+    """REGISTRY_MULTISITE_001 (Codex review 1): when Clover re-reads or corrects a record already
+    stored, an attribution already resolved to a person is history and is never replaced — not even when
+    the record's POS ID now belongs to somebody else after a correction. A record still without a person
+    (NULL) can still be attributed. Every other column is refreshed from Clover as before."""
+    return {key: value for key, value in values.items()
+            if not (key in ATTRIBUTION_COLUMNS and getattr(existing, key, None) is not None)}
+
+
 def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], values: dict[str, Any]) -> T:
     """Idempotent insert-or-update keyed by `unique_filter` (expected to
     match one of the schema's `UniqueConstraint`s — task §9). Existing rows
@@ -34,7 +47,7 @@ def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], valu
         if model is m.Employee:
             values = {k: v for k, v in values.items() if k not in
                       {"display_name", "custom_id", "active", "system_role", "location_id"}}
-        for key, value in values.items():
+        for key, value in keep_resolved_attribution(existing, values).items():
             setattr(existing, key, value)
         return existing
     if model is m.Employee:

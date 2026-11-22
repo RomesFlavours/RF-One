@@ -228,7 +228,8 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     result.check("OrderType populates canonically", count(m.OrderType) == 1)
     result.check("Item populates canonically (both rows)", count(m.Item) == 2)
     result.check("SourceRole populates canonically", count(m.SourceRole) == 1)
-    result.check("EmployeeSourceRole membership populates canonically", count(m.EmployeeSourceRole) == 1)
+    result.check("REGISTRY_MULTISITE_001: the staff list is not read, so no EmployeeSourceRole is written from Clover",
+                 count(m.EmployeeSourceRole) == 0)
 
     order_a = session.scalars(select(m.Order).filter_by(source_system_id=source_system.id, source_order_id="ORDER-A")).one()
     order_items = session.scalars(select(m.OrderItem).where(m.OrderItem.order_id == order_a.id)).all()

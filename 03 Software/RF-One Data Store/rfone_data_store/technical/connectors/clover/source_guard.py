@@ -102,9 +102,10 @@ class _Client(Protocol):
 
 # Exactly the collections a job reads, by the name a person sees in a
 # message. Read in every mode:
+# REGISTRY_MULTISITE_001: Clover's staff list ("employees") is no longer read by any job, so it is not a
+# precondition either.
 CORE_SOURCES = {
-    "orders": "Orders", "payments": "Payments", "refunds": "Refunds",
-    "employees": "Employees", "shifts": "Shifts",
+    "orders": "Orders", "payments": "Payments", "refunds": "Refunds", "shifts": "Shifts",
 }
 # Read additionally by full-scope modes (Historical Backfill, Sync Now).
 # Live Sync does not read Tenders/Devices from Clover — it resolves them

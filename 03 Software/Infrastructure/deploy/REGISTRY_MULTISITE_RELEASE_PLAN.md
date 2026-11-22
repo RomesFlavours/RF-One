@@ -30,13 +30,20 @@ and copies nothing from WP to MD.
 
 `c7d820261122` (down `b2c320261121`), **data only**: records the explicit EMPLOYEE status for every person
 already linked to a card (`person_employee_links`), because a card alone no longer means Employee (a Trainee
-has a card too). AWS has 0 such links → writes nothing there. No identity, assignment, Clover link or Tips
-row changes. Former pending Clover identities stay in `employee_clover_links` as history; no screen or job
-shows or proposes them.
+has a card too) — **except** the Trainees whose card was linked by the new Training entry (card event
+`TRAINING_LINK`, written only by the new code), so that a re-upgrade after a rollback never turns them into
+Employees. The exact list is computed by the same SQL in the migration and in
+`registry_multisite_migration_check.py` (`report` → `employee_status_to_record`, `snapshot` →
+`employee_status_expected`); `compare` passes only if exactly that list is added. On the AWS data (read-only
+export of 2026-11-22, loaded into a copy): 0 links → **expected list `[]`, added `[]`**. No identity,
+assignment, Clover link or Tips row changes.
 
-Chain on AWS: `a1c220261121` (live) → `b2c320261121` (CLOVER_MULTISITE_001, not yet applied) →
-`c7d820261122`. **Conflict to resolve before release:** `feature/rf1-shared-acquisition` carries
-`c4d520261121`, also with down revision `b2c320261121`; whichever ships second must be re-parented.
+**Final revision and release order (resolved 2026-11-22).** `a1c220261121` (live) → `b2c320261121`
+(CLOVER_MULTISITE_001) → **`c7d820261122`** (this release; final revision on AWS after it). REGISTRY_MULTISITE_001
+ships before RF1 shared acquisition (still waiting for a Product Owner decision on the AWS poller), so
+`c4d520261121` was re-parented onto `c7d820261122` in `rfone-wt/rf1-shared-acquisition` (uncommitted there,
+like the rest of that work); with it the chain has one head (`c4d520261121`), up and down verified locally.
+If RF1 ever had to ship first, the inverse re-parenting (c7d8 onto c4d5) is needed instead.
 
 ## 2. Doubtful cases to verify before the switch-over (from the AWS data)
 
@@ -57,7 +64,7 @@ The report is reproducible: `python registry_multisite_migration_check.py --url 
 |---|---|---|
 | App Runner `rfone-web` | Registry and Anagrafica site lists, manual entry with site, card sites + POS ID, Tips validation link text | «Clover identities to confirm» and its `clover_confirm` action; «Links to reconcile»; «Sync now» on Anagrafica; routes `/administration/employees/links/<id>/confirm` and `/administration/employees/sync-now` |
 | ECS service `rfone-clover-correction-sync` (now `:12`) | jobs image of this branch, **same command** (`--location-id 1`) | staff-list read and Registry import at the start of every cycle (`_refresh_employees`), legacy-link seeding, Registry role sync (`sync_site`); the roster-only Mount Dora refresh and its `--roster-restaurant-id` flag (not used on AWS today — confirm the task definition does not pass it) |
-| ECS task `rfone-clover-acquisition-job` (now `:12`) | same jobs image | staff-list read + Registry import and historical identity reader (`_resolve_historical_employee`) in Sync Now / Historical Backfill |
+| ECS task `rfone-clover-acquisition-job` (now `:12`) | same jobs image | staff-list read + Registry import and historical identity reader (`_resolve_historical_employee`) in Sync Now / Historical Backfill; the Historical Backfill read of `/employees?expand=role` that wrote the cards' Clover roles (`EmployeeSourceRole`); the staff list as a pre-flight source (`source_guard.CORE_SOURCES`) |
 | ECS task `rfone-clover-live-sync` (`:1`) | same jobs image if it is still run | same as the acquisition job |
 | App Runner `rfone-tips` | Data Store of this branch (unattributed-work rule, message text) | — (reads only) |
 | Training service (the one serving `training_cloud`) | invite form with training site and role; Confirm hire writes on the card | — |
@@ -73,10 +80,11 @@ and the work they attribute.
    check `python "03 Software/Shared UI/check_how_works.py" --app "RF-One Web" --rev <commit> --since <live>`
    with no new error (local result: same 24 inherited errors as the base, +2 pages with help).
 2. **Read-only pre-check** — `registry_multisite_migration_check.py report` and `snapshot --json before.json`
-   on RDS (read-only task as in §0).
+   on RDS (read-only task as in §0). Record `employee_status_to_record` (expected today: `[]`).
 3. **Migration** — one-off migration task (image built from the full development tree, as for
    `a1c220261121`): `alembic upgrade c7d820261122`.
-4. **Post-check** — `snapshot --json after.json`; `compare before.json after.json` must be `identical: true`.
+4. **Post-check** — `snapshot --json after.json`; `compare before.json after.json` must be `identical: true`
+   with `employee_status_exact: true` (added = the list of step 2); `alembic current` = `c7d820261122`.
 5. **Workers** — new revisions of `rfone-clover-correction-sync` and `rfone-clover-acquisition-job` with
    the jobs image, same command. Never ship a migration file whose parent is missing in the worker image.
 6. **rfone-web**, then **rfone-tips**, then the **Training service**. English release interface
@@ -85,14 +93,25 @@ and the work they attribute.
    notice; no Clover queue anywhere; one correction cycle runs without calling `/employees`
    (CloudWatch); a manual test card at MD appears only at MD (then dismissed).
 
-## 5. Rollback
+## 5. Rollback (rehearsed locally, §6)
 
-| Step | Rollback | Time |
+Principle: **the Clover → Registry flow is never reactivated by a rollback.** The previous workers
+(`rfone-clover-correction-sync:12`, `rfone-clover-acquisition-job:12`, `rfone-clover-live-sync:1`) read the staff
+list and create Registry links/proposals at every cycle (proved in the rehearsal, phase 6), so they are never
+restored.
+
+| Component | Rollback | Time |
 |---|---|---|
-| 5 workers | `aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --task-definition rfone-clover-correction-sync:12`; deregister the new acquisition revision (launcher uses the latest ACTIVE → `:12`) | minutes |
-| 6 web / tips / training | App Runner back to the digests recorded in `CLOVER_MULTISITE_RELEASE_PLAN.md` §0 (or the ones live at step 0) | ~5 min each |
-| 3 migration | `alembic downgrade b2c320261121` (no-op: the explicit EMPLOYEE rows equal what the old code derives); restore the step-0 snapshot only if a data defect is proven | minutes |
-| Data written meanwhile | cards, site assignments and POS IDs written by the new code are ordinary Registry rows that the old code reads; unattributed work typed via POS ID stays attributed (the old code would have done the same after a confirmation) | — |
+| Workers already started (correction sync, acquisition job) | Keep the new jobs image. On a worker defect: `aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --desired-count 0` (stop), fix forward, start again. Never `:12`. Do **not** deregister the new acquisition revision: the previous RF-One Web «Sync now» launches the latest ACTIVE revision, which then stays the new one (no staff-list import). While stopped, Tips waits (readiness gate) and nothing is lost: the next cycle re-reads the window. | minutes |
+| Live Sync | Stays off (`rfone-clover-live-sync` not launched; `RFONE_CLOVER_LIVE_SYNC_ENABLED` unchanged). If it must run, only with the new jobs image (rehearsal phase 7: no Registry change). | — |
+| Data step **before** restoring any previous app image | `registry_multisite_rollback.py plan`, then `detach --record links.json --apply`: sets aside (file + removal) the card links the new Training entry wrote for Trainees who are not Employees; otherwise the previous code would show them as Employees (rehearsal phase 4). Cards, site assignments, POS IDs, Tips rows unchanged. | minutes |
+| Migration | `alembic downgrade b2c320261121` (no-op). Restore the step-0 snapshot only if a data defect is proven. | minutes |
+| rfone-tips, Training service | App Runner back to the digests recorded at step 0. | ~5 min each |
+| rfone-web | Prefer fix forward. Restoring the previous image brings back its «Clover identities to confirm» queue, which lists every Clover link without a person: the former pending identity (Anna Friend) and every POS ID detached by a correction (`plan` → `previous_registry_queue_would_show`); confirming one there would attach it from Clover data. Its «Sync now» stays harmless (new acquisition revision). Restore the previous web image only with Pino's explicit decision. | ~5 min |
+| Roll-forward | Deploy the new images again, `reattach --record links.json --apply`, `alembic upgrade head`, `compare` (expected and added: `[]`; the Trainees stay Trainees). | minutes |
+
+Data written by the new code meanwhile: cards, site assignments and POS IDs are ordinary rows the previous code
+reads; POS IDs keep attributing work (rehearsal phase 5); attributions already resolved are never moved.
 
 ## 6. Local evidence (2026-11-22)
 
@@ -117,3 +136,18 @@ and the work they attribute.
 - The canonical local database (`rfone_aws_copy`) is on the local development line (`k9f120261112`,
   `t9d120261113`), whose revision files are not in the AWS release line this branch follows: `alembic upgrade`
   cannot run on it from this branch. Not needed for AWS; its read-only report shows WP 15, MD 0.
+
+### Codex review fixes (2026-11-22, after 8efaba0)
+
+- Tips: a re-read or corrected Clover record keeps an attribution already resolved (`ingest.keep_resolved_attribution`,
+  used by both upsert helpers); records without a person stay attributable. Case reproduced: order of A → POS ID
+  correction → reimport → old ID given to B → reimport: the order stays A's (also payments and shifts); fails
+  without the fix.
+- Training: the Registry identity is resolved before anything is written (`employee_directory.resolve_training_card`);
+  uncertain matches (same phone only, several cards, different phone) ask for confirmation; Selection path records
+  the arrival only after that.
+- Confirm Hire: requires the linked card; legacy Trainees get card and site via «Resolve card and site».
+- Rehearsal `registry_multisite_rollback_rehearsal.py --old-tree <acd44b2 checkout> --extra-versions <dir with
+  c4d520261121>`: ALL EXPECTATIONS MET (phases 1–9 above).
+- AWS data copy (SQLite, chain-built to `a1c220261121`, 924 exported rows, no missing column): report WP 21, MD 0;
+  upgrade → `c7d820261122`; `compare` identical, EMPLOYEE expected `[]`, added `[]`.

@@ -12,8 +12,9 @@ report    — people per site (explicit assignments only) and the doubtful cases
             identities (history only), cards whose person would need the explicit EMPLOYEE status.
 snapshot  — fingerprints of what the migration must preserve: identities, POS links, assignments, Tips
             history attributions (shifts, orders, payments, refunds, tip entitlements and payment lines).
-compare   — exit status 0 only when every fingerprint is identical (the explicit EMPLOYEE statuses written
-            by c7d820261122 are listed, not counted as a difference).
+compare   — exit status 0 only when every fingerprint is identical and the EMPLOYEE statuses added are
+            exactly the list the "before" snapshot expected (`employee_status_expected`, same SQL as
+            c7d820261122); a re-run after a rollback/re-upgrade expects and adds nothing.
 """
 from __future__ import annotations
 
@@ -100,10 +101,18 @@ def report(conn):
             SELECT q.person_id, p.full_name FROM person_qualifications q JOIN candidate_persons p ON p.id = q.person_id
             WHERE q.code = 'STUDENT' AND q.person_id NOT IN (SELECT person_id FROM person_employee_links)""")
         if "person_company_statuses" in tables:
-            result["employee_status_to_record"] = [row["person_id"] for row in _rows(conn, """
-                SELECT DISTINCT person_id FROM person_employee_links WHERE person_id NOT IN (
-                    SELECT person_id FROM person_company_statuses WHERE code = 'EMPLOYEE') ORDER BY person_id""")]
+            result["employee_status_to_record"] = _employee_status_to_record(conn)
     return result
+
+
+def _employee_status_to_record(conn):
+    """The exact persons c7d820261122 gives the EMPLOYEE status (same SQL as the migration)."""
+    import importlib.util
+    path = HERE / "migrations" / "versions" / "c7d820261122_registry_multisite.py"
+    spec = importlib.util.spec_from_file_location("c7d8_registry_multisite", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return [row["person_id"] for row in _rows(conn, module.EMPLOYEE_STATUS_TO_RECORD_SQL)]
 
 
 def _digest(rows):
@@ -141,17 +150,23 @@ def snapshot(conn):
     if "person_company_statuses" in tables:
         out["employee_statuses"] = sorted(row["person_id"] for row in _rows(
             conn, "SELECT person_id FROM person_company_statuses WHERE code = 'EMPLOYEE'"))
+        if "person_employee_links" in tables and "employee_directory_events" in tables:
+            out["employee_status_expected"] = _employee_status_to_record(conn)
     out["alembic"] = [row["version_num"] for row in _rows(conn, "SELECT version_num FROM alembic_version")]
     return out
 
 
 def compare(before, after):
     differences = [name for name in sorted(set(before) | set(after))
-                   if name not in ("alembic", "employee_statuses") and before.get(name) != after.get(name)]
+                   if name not in ("alembic", "employee_statuses", "employee_status_expected")
+                   and before.get(name) != after.get(name)]
     added_status = sorted(set(after.get("employee_statuses", [])) - set(before.get("employee_statuses", [])))
     removed_status = sorted(set(before.get("employee_statuses", [])) - set(after.get("employee_statuses", [])))
-    return {"identical": not differences and not removed_status, "differences": differences,
-            "employee_status_added": added_status, "employee_status_removed": removed_status,
+    expected = sorted(before.get("employee_status_expected", []))
+    exact = added_status == expected
+    return {"identical": not differences and not removed_status and exact, "differences": differences,
+            "employee_status_added": added_status, "employee_status_expected": expected,
+            "employee_status_exact": exact, "employee_status_removed": removed_status,
             "alembic": [before.get("alembic"), after.get("alembic")]}
 
 

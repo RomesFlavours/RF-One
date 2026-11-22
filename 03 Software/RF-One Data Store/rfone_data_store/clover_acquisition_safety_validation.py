@@ -12,7 +12,7 @@ what really happened:
 - invalid token (every call 401)
 - wrong merchant (configured merchant is not the Location's)
 - Clover answering for a different merchant
-- Employees denied (403) / Tenders denied (403) / Shifts denied (403)
+- Tenders denied (403) / Shifts denied (403) (the staff list is no longer read: REGISTRY_MULTISITE_001)
 - a Clover error in the middle of the job, after writes had begun
 - a pagination answer cut short (incomplete)
 
@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
@@ -91,8 +91,10 @@ def _fingerprint(session_factory: sessionmaker[Session]) -> dict[str, list[str]]
     """Every row of every table except the job history itself."""
     out: dict[str, list[str]] = {}
     with session_factory() as s:
+        # Tables the migration chain does not create (e.g. the Selection service's own) are not in this DB.
+        present = set(inspect(s.connection()).get_table_names())
         for table in m.Base.metadata.sorted_tables:
-            if table.name == "ingestion_runs":
+            if table.name == "ingestion_runs" or table.name not in present:
                 continue
             rows = s.execute(text(f'SELECT * FROM "{table.name}"')).fetchall()
             out[table.name] = sorted(repr(tuple(r)) for r in rows)
@@ -185,7 +187,8 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
              ("Wrong Clover merchant", "Safety Test Location", MERCHANT, "OTHER-MERCH"))
     scenario("Clover answers for another merchant", broken(merchant_answers_as="STRANGER"),
              ("Wrong Clover merchant", "different merchant", "STRANGER"))
-    scenario("Employees denied", broken(deny={"employees"}), ("could not read Employees", "HTTP 403"))
+    # REGISTRY_MULTISITE_001: no job reads Clover's staff list any more, so an Employees permission
+    # problem is no longer a failure scenario (proved in clover_acquisition_validation).
     scenario("Tenders denied", broken(deny={"tenders"}), ("could not read Tenders (payment methods)", "HTTP 403"))
     scenario("Shifts denied", broken(deny={"shifts"}), ("could not read Shifts", "HTTP 403"))
     scenario("Clover error in the middle of the job (after writes began)", broken(fail_order_fetch=True),
