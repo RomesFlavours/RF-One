@@ -101,3 +101,29 @@ MyRF/Management, Selection, Training, Wines, Kitchen/Visual Menu, Compensation, 
 
 ### Privacy e pubblicazione
 Il repository GitHub risulta `public` nel metadata della connessione: le specifiche canoniche devono contenere solo dati di progetto, esempi sintetici e riferimenti non sensibili. Non pubblicare registri nominativi, bancari, payroll, token, segreti o esportazioni reali. Un commit pubblico anche se successivamente modificato resta recuperabile nella cronologia: eventuali rimozioni di dati personali dalle versioni già pubblicate vanno gestite anche rispetto alla cronologia.
+
+## H. Riconciliazione delle sei aree residue — eseguita il 22/11
+
+Sono stati creati **sette documenti** e collegati dai rispettivi entrypoint canonici:
+
+| Area | Nuovo documento |
+|---|---|
+| Management / MyRF | `01 Domains/Business Domain/Restaurant/MyRF/Project Management/MYRF_MANAGEMENT_DECISIONS_20261122.md` |
+| Selection | `01 Domains/Shared Domains/Selection/SELECTION_OPERATIONAL_WORKFLOW_DECISIONS_20261122.md` |
+| Training | `01 Domains/Shared Domains/TRAINING_OPERATIONAL_DECISIONS_20261122.md` |
+| Compensation | `01 Domains/Shared Domains/Personnel Management/Compensation/COMPENSATION_OPERATIONAL_BOUNDARIES_20261122.md` |
+| Wines | `01 Domains/Business Domain/Restaurant/WINES_TRAINING_AND_CATALOG_DECISIONS_20261122.md` |
+| Kitchen / Visual Menu / Kitchen Call | `01 Domains/Business Domain/Restaurant/KITCHEN_VISUAL_MENU_DECISIONS_20261122.md` |
+| Legacy / Brand | `01 Domains/Business Domain/Restaurant/LEGACY_BRAND_MODEL_STATUS_20261122.md` |
+
+È stato anche creato `07 Tasks/Reports/RF_ONE_DOCUMENTATION_FILE_MANIFEST_20261122.md`, inventario dei **445 file .md/.txt** presenti al momento dello snapshot (numero maggiore dei 433 iniziali anche per i nuovi documenti). L'inventario contiene path e SHA di ciascun file, **non** una verifica semantica di ogni testo.
+
+### Riscontri sostanziali che impediscono la certificazione piena
+1. **Legacy:** due copie `legacy-1.0-rev2.md` nel branch `feature/clover-multisite-registry` sono identiche per SHA, ma saltano dal titolo `15. Connection` a `17. People`: il punto **16** è assente dal testo esaminato. Inoltre dichiarano una fonte del 24 settembre, mentre la versione di riferimento discussa è del 6 novembre. Serve il master approvato, senza inventare testo.
+2. **Training / Enrollment:** `03 Software/Training/ENROLLMENT.md` (branch feature) stabilisce che un invito pendente non crea account Training fino all'attivazione; la decisione sul Registry/Trainee al Send to Training va distinta dalla creazione dell'account di accesso. Il documento di raccordo registra questa distinzione come verifica necessaria.
+3. **Stato software AWS:** piani di rilascio e feature branch non certificano implementazione né deploy. Nessun dato AWS verificato da questo audit.
+4. **Coerenza di tutti i link:** è stato avviato un controllo automatizzato esteso, ma non è terminato per limite delle chiamate disponibili; **non dichiarare il controllo globale dei link superato**. I nuovi riferimenti canonici sono stati costruiti sui percorsi esistenti e vanno inclusi nella verifica di CI.
+5. **Decisioni con perimetro incompleto:** alcuni workflow, schermate e contenuti dettagliati richiedono confronto con i rispettivi master; i documenti di raccordo non colmano i dettagli mai approvati.
+
+### Conclusione dell'attività documentale
+Le lacune macroscopiche segnalate nel rapporto iniziale hanno ora **un documento di raccordo canonico e un punto di accesso** su `main`, senza modificare software, database o branch release. Questo conclude la fase di *trascrizione e collocazione* delle decisioni note; **non** equivale a certificazione finale di ogni requisito, coerenza di 445 file, conferma del master Legacy o controllo runtime. Per la verifica indipendente serve la revisione Codex; questo rapporto rimane una base di audit tracciabile.
