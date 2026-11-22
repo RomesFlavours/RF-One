@@ -5,6 +5,9 @@
 **Module:** Domain / Personnel Management (Shared Domain) / Compensation
 **Formerly named:** Payroll — renamed by explicit Product Owner decision (see "Why this module is not called Payroll" below). All content below is otherwise unchanged in substance.
 
+
+> **Chiarimento operativo:** [COMPENSATION_OPERATIONAL_BOUNDARIES_20261122.md](COMPENSATION_OPERATIONAL_BOUNDARIES_20261122.md) distingue paga per termini retributivi, ruolo Registry, Tips finalizzate e provider payroll. Non sostituisce le specifiche draft V1 né certifica l'attivazione del connettore.
+
 ---
 
 ## Purpose
