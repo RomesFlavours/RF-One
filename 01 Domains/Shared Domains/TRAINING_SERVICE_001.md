@@ -5,6 +5,9 @@
 **Scope:** Cross-cutting functional decision. Training is named here as an **internal RF-One service** — functionally, in the same sense [Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md) §1 already describes Selection ("internal RF-One services... not external products with their own independent identity or governance") — not as a new top-level Shared Domain folder. This document does not rename, move, or restructure any existing `01 Domains/Shared Domains/` folder, and does not introduce or change any technical identifier or authorization code.
 **Origin:** Product Owner decision (2026-09-11) on the responsibilities of Training, Operational Knowledge and Continuous Productivity Development, closing the open point left by the 2026-09-07 Selection/Training/Guided-Operations documentation audit.
 
+
+> **Decisioni operative successive:** [TRAINING_OPERATIONAL_DECISIONS_20261122.md](TRAINING_OPERATIONAL_DECISIONS_20261122.md) descrive inviti, Registry, percorso Server, prove e conferma assunzione; questo documento continua a governare il confine funzionale del Training Service. Nessun deploy implicito.
+
 ---
 
 ## 1. Why this document exists
