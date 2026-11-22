@@ -129,6 +129,20 @@ class RegistryMultisiteHttpTest(unittest.TestCase):
         self.assertNotIn("Clover identities to confirm", wp)
         self.assertNotIn("clover_confirm", wp)
 
+    def test_home_registry_opens_the_four_tabs_with_card_and_departments(self):
+        home = self.get("/")
+        self.assertIn('href="/admin/roles?tab=people"><strong>Registry', home)
+        people = self.get(f"/admin/roles?tab=people&site={self.md}")
+        for tab in ("people", "roles", "areas", "companies"):
+            self.assertIn(f"/admin/roles?tab={tab}", people)
+            self.get(f"/admin/roles?tab={tab}")
+        self.assertIn(f'href="/administration/employees/{self.anna_id}"', people)          # person card
+        self.assertIn('href="/administration/employees/departments"', people)              # Reparti e ruoli
+        card = self.get(f"/administration/employees/{self.anna_id}")
+        self.assertIn('href="/admin/roles?tab=people"', card.split("<h1>")[0])            # path back to Registry
+        departments = self.get("/administration/employees/departments")
+        self.assertIn('href="/admin/roles?tab=people"', departments.split("<h1>")[0])
+
     def test_anagrafica_lists_only_the_selected_site_and_has_no_clover_queue(self):
         md = self.get(f"/administration/employees?site={self.md}")
         self.assertIn("Anna Both", md); self.assertNotIn("Luca Winter", md)

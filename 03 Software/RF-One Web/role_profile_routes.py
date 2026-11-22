@@ -7,6 +7,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from rfone_data_store import models as m, employee_directory as directory
 from rfone_data_store import access_profiles as profiles
+from rfone_data_store import rfone_web_session as shared_session
 
 
 def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current_account,require_csrf,domains):
@@ -268,7 +269,10 @@ def register_role_profile_routes(app,*,SessionFactory,require_admin,load_current
                 if not directory.employee_is_active(target,[]):
                     dismissed_rows.append({'name':target.display_name or 'Name to complete','date':dismissal_dates.get(target.id) or getattr(target,'dismissed_at',None)})
         events=list(db.scalars(select(profiles.ProfileEvent).order_by(profiles.ProfileEvent.id.desc()).limit(25)))
-        return render_template('role_profiles.html',site_view=site_view,
+        # Reparti e ruoli and the person cards live on the Anagrafica routes (EMPLOYEES Domain gate);
+        # Registry links to them only when that same gate would let the account in.
+        can_open_directory=load_people and shared_session.account_may_enter_domain(db,load_current_account(db),'EMPLOYEES')
+        return render_template('role_profiles.html',site_view=site_view,can_open_directory=can_open_directory,
             site_roles=directory.site_role_groups(db, directory.sites(db)) if load_people else [],
             registry_it=os.environ.get('RFONE_UI_LANGUAGE') == 'it',people_rows=people_rows,dismissed_rows=dismissed_rows,tab=tab,person=person,roles=roles,areas=areas,companies=companies,
             pairs=dict(pairs),grants=dict(grants),domains=domains,choices=choices,members=members,assignments=assignments,

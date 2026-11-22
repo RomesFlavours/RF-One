@@ -4,7 +4,7 @@
 {% block page_title %}{{ employee.display_name }} · Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Registry', url_for('role_profiles_home', tab='people')) if can_manage_profiles else ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
 <hr>
 <div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>

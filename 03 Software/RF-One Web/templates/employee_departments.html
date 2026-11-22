@@ -9,7 +9,7 @@
 {% block content %}
 <script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}"></script>
-{{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Reparti e ruoli', none)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Registry', url_for('role_profiles_home', tab='people')) if can_manage_profiles else ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Reparti e ruoli', none)]) }}
 <h1>Reparti e ruoli</h1>
 <hr>
 <div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
