@@ -5,6 +5,9 @@
 **Module:** Restaurant Domain / Tips
 **Origin:** TASK_TIPS_001
 
+
+> **Registry/role-source and temporal-rule clarification (2026-11-22):** See [TIPS_REGISTRY_ROLES_AND_TEMPORAL_RULES_20261122.md](TIPS_REGISTRY_ROLES_AND_TEMPORAL_RULES_20261122.md). Registry owns the Clover-to-RF-One role correspondence; Tips retains distribution logic, temporal evidence and finalized-period protection. Historical AWS fixes and pending code release are documented separately; this does **not** certify deployed runtime behavior.
+
 ---
 
 ## Purpose
