@@ -1,4 +1,20 @@
 # REGISTRY_MULTISITE_001 — delivery for independent review (Codex)
+## Round 3 — Codex review 3 fixes (review range `2c643b7..HEAD`)
+
+Workspace: `C:\Users\servi\OneDrive\AI-RF-ONE\rf-one-registry-multisite` (verified under the synchronized
+`AI-RF-ONE` root), branch `feature/registry-multisite`, started from `2c643b7`.
+
+| # | Finding | Fix | Evidence |
+|---|---|---|---|
+| 1 | Training: the chosen card was not re-validated at confirmation | the choice carries the evidence digest (`card:<id>@<digest>`, `card:new@<digest>`); a different digest at submission → `CardConfirmationRequired(changed=True)`, updated options shown, nothing written (person, card, Trainee mark, arrival, invitation); pages show «The Registry match changed» and the new options | `test_direct_invitation_choice_is_revalidated_when_the_match_changes_meanwhile`, `test_send_to_training_choice_is_revalidated_before_the_arrival`, HTTP `test_uncertain_card_identity_is_asked_on_the_pages_before_anything_is_saved` (stale choice → 400, updated options, nothing saved) |
+| 1 | US number with/without +1 | `employee_directory.phone_evidence` ("1"+10 digits → 10 digits), also behind `enrollment.phone_key`; same candidates and same keys with "+1 407…", "407…", "1-407…"; operator confirmation still required | `test_a_us_number_with_or_without_plus_one_gives_the_same_evidence_and_asks` |
+| 2 | Rollback record overwritten by a repeated detach; reattach silent on missing links | atomic record write before removal, existing links kept, unreadable record stops detach; `reattach` exit 2 + rollback when record missing/empty/unreadable or a link cannot be back; read-back verification | rehearsal SQLite and PostgreSQL: ALL EXPECTATIONS MET (`REGISTRY_MULTISITE_001_evidence/rollback_rehearsal_round3_*.json`) |
+| 3 | `c4d520261121` verified on an uncommitted change | exact bytes stored in `REGISTRY_MULTISITE_001_evidence/c4d520261121_shared_acquisition_requests_and_tips_period.py.txt` (blob `cc1ae8cea619f9ea746eba60220de3b2b5a8469e`) and used by rehearsal phase 9 | release plan §1 |
+
+Tests round 3: Data Store unittest set 97 OK (registry_multisite 25); RF-One Web registry_training 5 +
+registry_multisite 6 + training_release 4 OK; `test_clover_acquisition.py` 60/60, `test_clover_correction_sync.py`
+69/69, safety 35/35, jobs 36/36, live sync 29/29. How Works: Training 70 errors (unchanged, inherited).
+
 ## Round 2 — Codex review fixes (review range `8efaba0..HEAD`)
 
 The Codex review report file was not found in the repository; the four findings were taken from the Product

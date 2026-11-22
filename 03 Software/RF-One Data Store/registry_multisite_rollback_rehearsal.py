@@ -1,7 +1,11 @@
-"""REGISTRY_MULTISITE_001 — local rehearsal of migration, rollback and roll-forward (disposable SQLite).
+"""REGISTRY_MULTISITE_001 — local rehearsal of migration, rollback and roll-forward (disposable database).
 
     python registry_multisite_rollback_rehearsal.py --old-tree <checkout of the live code, e.g. acd44b2>
+                                                    [--url <empty disposable PostgreSQL database>]
                                                     [--extra-versions <dir with c4d520261121>] [--keep]
+
+Without --url a disposable SQLite file is used. With --url (PostgreSQL) the database must be empty and
+disposable: the copies needed by phases 4 and 6 are made with CREATE DATABASE ... TEMPLATE and dropped.
 
 Every phase runs in its own Python process with the Data Store of either this tree (new code) or the
 old tree (the code live before the switch), against one disposable SQLite database built by the real
@@ -12,15 +16,18 @@ migration chain. Phases:
  2. new  — alembic upgrade head (c7d820261122); compare: identical, EMPLOYEE added = exactly the list.
  3. new  — the new code writes: a Trainee (direct invitation → card + Training link), a POS ID for the
            Trainee and a POS ID correction of the legacy card; a held order is attributed.
- 4. rollback data step — registry_multisite_rollback.py detach (Trainee links set aside), alembic
-           downgrade b2c320261121; cards, assignments, POS IDs and Tips attributions unchanged.
+ 4. rollback data step — registry_multisite_rollback.py detach (Trainee links set aside) run TWICE on the
+           same record path (the second finds nothing and must keep the saved links), alembic downgrade
+           b2c320261121; cards, assignments, POS IDs and Tips attributions unchanged.
  5. old  — the restored previous code reads the data: the Trainee is not an Employee, the legacy card is,
            POS IDs keep attributing work; what the former Registry queue would show is listed.
  6. old worker (proof only, on a throw-away copy) — the previous correction worker imports a new Clover
            name into Registry: this is why the workers are never rolled back to :12.
  7. new worker on the rolled-back database — a new Clover name creates nothing; work is attributed.
- 8. roll-forward — reattach, alembic upgrade head; compare: identical, EMPLOYEE added = [] (the Trainee
-           stays a Trainee).
+ 8. roll-forward — reattach must fail explicitly (exit 2, nothing written) on a copy where the
+           Trainee card was meanwhile linked to someone else and with a missing record; then reattach,
+           every recorded link verified, alembic upgrade head; compare: identical, EMPLOYEE added = []
+           (the Trainee stays a Trainee, linked to the same card).
  9. optional — with --extra-versions: c4d520261121 after c7d820261122 gives one head; up and down.
 Prints one JSON result per phase and exits non-zero on the first failed expectation.
 """
@@ -69,13 +76,52 @@ def _alembic(tree: Path, url: str, *args: str, extra_versions: str | None = None
     return proc.stdout + proc.stderr
 
 
-def _check(script: str, url: str, *args: str) -> dict:
+def _check(script: str, url: str, *args: str, expect_rc: int = 0) -> dict:
     proc = subprocess.run([sys.executable, str(HERE / script), "--url", url, *args], cwd=str(HERE),
                           capture_output=True, text=True, encoding="utf-8", timeout=600)
     start = proc.stdout.find("{")
-    if start < 0:
-        raise SystemExit(f"{script} {' '.join(args)} failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+    if start < 0 or proc.returncode != expect_rc:
+        raise SystemExit(f"{script} {' '.join(args)} exit {proc.returncode} (expected {expect_rc}):\n"
+                         f"{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     return json.loads(proc.stdout[start:])
+
+
+class _Databases:
+    """The rehearsal database and its throw-away copies (SQLite files or PostgreSQL TEMPLATE copies)."""
+
+    def __init__(self, work: Path, url: str | None):
+        self.work, self.copies = work, []
+        self.url = url or f"sqlite:///{(work / 'rehearsal.db').as_posix()}"
+        self.postgres = self.url.startswith("postgresql")
+
+    def clone(self, name: str) -> str:
+        if not self.postgres:
+            source = Path(self.url[len("sqlite:///"):])
+            target = self.work / f"{name}.db"
+            shutil.copyfile(source, target)
+            return f"sqlite:///{target.as_posix()}"
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.engine import make_url
+        base = make_url(self.url)
+        target = f"{base.database}_{name}"
+        admin = create_engine(base.set(database="postgres"), isolation_level="AUTOCOMMIT")
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{target}"'))
+            conn.execute(text(f'CREATE DATABASE "{target}" TEMPLATE "{base.database}"'))
+        admin.dispose()
+        self.copies.append(target)
+        return base.set(database=target).render_as_string(hide_password=False)
+
+    def drop_copies(self):
+        if not self.postgres or not self.copies:
+            return
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.engine import make_url
+        admin = create_engine(make_url(self.url).set(database="postgres"), isolation_level="AUTOCOMMIT")
+        with admin.connect() as conn:
+            for name in self.copies:
+                conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+        admin.dispose()
 
 
 def _compare(before: Path, after: Path) -> dict:
@@ -92,10 +138,13 @@ def _expect(condition: bool, message: str, detail=None):
 def orchestrate(args):
     new_tree, old_tree = HERE, Path(args.old_tree) / "03 Software" / "RF-One Data Store"
     work = Path(tempfile.mkdtemp(prefix="registry_rollback_"))
-    db = work / "rehearsal.db"
-    url = f"sqlite:///{db.as_posix()}"
-    results = {}
+    dbs = _Databases(work, args.url)
+    url = dbs.url
+    results = {"database": "postgresql" if dbs.postgres else "sqlite"}
     try:
+        # The Selection service creates its own tables (as on AWS); t9e120261113 refers to them.
+        _alembic(new_tree, url, "upgrade", "r9a120261113")
+        _run(new_tree, "selection_tables", url)
         _alembic(new_tree, url, "upgrade", "b2c320261121")
         results["1_seed"] = seed = _run(new_tree, "seed", url)
         _check("registry_multisite_migration_check.py", url, "snapshot", "--json", str(work / "before.json"))
@@ -109,13 +158,20 @@ def orchestrate(args):
         results["4_rollback_plan"] = rplan = _check("registry_multisite_rollback.py", url, "plan")
         _expect([l["person_id"] for l in rplan["trainee_links_to_set_aside"]] == [wrote["trainee_person"]],
                 "the rollback sets aside exactly the Trainee link", rplan)
-        hazard = work / "without_detach.db"
-        shutil.copyfile(db, hazard)
-        results["4_old_code_without_detach"] = h = _run(old_tree, "old_reads", f"sqlite:///{hazard.as_posix()}",
+        results["4_old_code_without_detach"] = h = _run(old_tree, "old_reads", dbs.clone("without_detach"),
                                                         "--info", json.dumps({**seed, **wrote}))
         _expect(h["trainee_statuses"] == ["EMPLOYEE"], "without the detach the old code would show the Trainee "
                 "as an Employee (why the rollback sets the link aside)", h)
-        _check("registry_multisite_rollback.py", url, "detach", "--record", str(work / "links.json"), "--apply")
+        record = work / "links.json"
+        first = _check("registry_multisite_rollback.py", url, "detach", "--record", str(record), "--apply")
+        saved = json.loads(record.read_text(encoding="utf-8"))
+        second = _check("registry_multisite_rollback.py", url, "detach", "--record", str(record), "--apply")
+        again = json.loads(record.read_text(encoding="utf-8"))
+        results["4_two_detaches"] = {"first_set_aside": first["set_aside_now"], "second_set_aside": second["set_aside_now"],
+                                     "record_after_first": saved, "record_after_second": again}
+        _expect([l["person_id"] for l in saved] == [wrote["trainee_person"]] and second["set_aside_now"] == []
+                and again == saved, "a second detach on the same path keeps the saved Trainee link",
+                results["4_two_detaches"])
         _alembic(new_tree, url, "downgrade", "b2c320261121")
         _check("registry_multisite_migration_check.py", url, "snapshot", "--json", str(work / "rolled_back.json"))
         cmp = _compare(work / "written.json", work / "rolled_back.json")
@@ -127,9 +183,7 @@ def orchestrate(args):
                 "old code: Trainee is not an Employee, the legacy card is", old)
         _expect(old["resolved"].get("T1") == wrote["trainee_card"] and old["resolved"].get("V2") == seed["veteran_card"],
                 "old code keeps attributing work through the POS IDs", old)
-        copy = work / "old_worker_copy.db"
-        shutil.copyfile(db, copy)
-        results["6_old_worker_proof"] = proof = _run(old_tree, "old_worker", f"sqlite:///{copy.as_posix()}")
+        results["6_old_worker_proof"] = proof = _run(old_tree, "old_worker", dbs.clone("old_worker"))
         _expect(proof["registry_changed"], "the previous worker would import Clover names (why :12 is never restored)",
                 proof)
         results["7_new_worker_after_rollback"] = new_worker = _run(new_tree, "new_worker", url,
@@ -137,8 +191,21 @@ def orchestrate(args):
         _expect(not new_worker["registry_changed"] and new_worker["order_person"] == wrote["trainee_card"],
                 "new worker on the rolled-back database: no Registry change, work attributed", new_worker)
         _check("registry_multisite_migration_check.py", url, "snapshot", "--json", str(work / "before_forward.json"))
-        results["8_reattach"] = _check("registry_multisite_rollback.py", url, "reattach", "--record",
-                                       str(work / "links.json"), "--apply")
+        taken = dbs.clone("card_taken")
+        _run(new_tree, "take_card", taken, "--info", json.dumps({**seed, **wrote}))
+        refused = _check("registry_multisite_rollback.py", taken, "reattach", "--record", str(record), "--apply",
+                         expect_rc=2)
+        taken_state = _run(new_tree, "trainee_state", taken, "--info", json.dumps({**seed, **wrote}))
+        missing = _check("registry_multisite_rollback.py", url, "reattach", "--record", str(work / "absent.json"),
+                         "--apply", expect_rc=2)
+        results["8_reattach_refused"] = {"card_taken": refused, "trainee_after_refusal": taken_state,
+                                         "record_missing": missing}
+        _expect(refused["missing"] and taken_state["card"] is None and "not found" in missing["failed"],
+                "reattach fails explicitly and writes nothing when a link cannot be restored", results["8_reattach_refused"])
+        results["8_reattach"] = done = _check("registry_multisite_rollback.py", url, "reattach", "--record",
+                                              str(record), "--apply")
+        _expect(done["verified"] and done["expected"] == 1 and len(done["restored"]) == 1,
+                "reattach restores and verifies the recorded Trainee link", done)
         _alembic(new_tree, url, "upgrade", "head")
         _check("registry_multisite_migration_check.py", url, "snapshot", "--json", str(work / "forward.json"))
         cmp = _compare(work / "before_forward.json", work / "forward.json")
@@ -162,6 +229,7 @@ def orchestrate(args):
         results["outcome"] = "ALL EXPECTATIONS MET"
         print(json.dumps(results, indent=2, default=str))
     finally:
+        dbs.drop_copies()
         if not args.keep:
             shutil.rmtree(work, ignore_errors=True)
 
@@ -178,12 +246,6 @@ def phase_seed(url):
     from rfone_data_store import models as m, people_registry as people
     from rfone_data_store import rfone_account_service as accounts
     engine, db = _session(url)
-    # The Selection service creates its own tables (as on AWS); the Training invitation table refers to them.
-    from rfone_data_store.selection import workspace_models  # noqa: F401
-    from sqlalchemy import inspect
-    have = set(inspect(engine).get_table_names())
-    m.Base.metadata.create_all(engine, tables=[t for n, t in m.Base.metadata.tables.items()
-                                               if n.startswith("selection_") and n not in have])
     source = m.SourceSystem(code="CLOVER", name="Clover", active=True); db.add(source); db.flush()
     merchant = m.Merchant(source_system_id=source.id, source_merchant_id="WPMERCHANT", name="WP", active=True)
     db.add(merchant); db.flush()
@@ -218,6 +280,34 @@ def phase_seed(url):
     db.commit()
     out = dict(veteran_card=veteran.id, veteran_person=person.id, location=location.id, restaurant=restaurant.id,
                role=cook.id, area=area.id, trainer=trainer.id, source=source.id)
+    db.close(); engine.dispose()
+    return out
+
+
+def phase_selection_tables(url):
+    """The Selection service creates its own tables (as on AWS); the Training invitation table refers to them."""
+    from rfone_data_store import models as m
+    from rfone_data_store.selection import workspace_models  # noqa: F401
+    from sqlalchemy import inspect
+    engine, db = _session(url)
+    have = set(inspect(engine).get_table_names())
+    tables = [t for n, t in m.Base.metadata.tables.items() if n.startswith("selection_") and n not in have]
+    m.Base.metadata.create_all(engine, tables=tables)
+    db.close(); engine.dispose()
+    return dict(created=sorted(t.name for t in tables))
+
+
+def phase_take_card(url, info):
+    """On a throw-away copy: the Trainee card is linked to another person while its link is set aside."""
+    from datetime import datetime, timezone
+    from rfone_data_store import people_registry as people
+    engine, db = _session(url)
+    other = people.create_identity(db, full_name="Someone Else", email="someone.else@example.invalid",
+                                   normalized_name="someone else")
+    db.add(people.PersonEmployeeLink(employee_id=info["trainee_card"], person_id=other.id, linked_by_id=info["trainer"],
+                                     linked_at=datetime(2026, 11, 22, 22, tzinfo=timezone.utc)))
+    db.commit()
+    out = dict(other_person=other.id)
     db.close(); engine.dispose()
     return out
 
@@ -330,6 +420,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--old-tree")
     parser.add_argument("--extra-versions")
+    parser.add_argument("--url", help="empty disposable PostgreSQL database (default: disposable SQLite)")
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--phase"); parser.add_argument("--tree"); parser.add_argument("--db"); parser.add_argument("--info")
     args = parser.parse_args(argv)
@@ -340,7 +431,8 @@ def main(argv=None):
         return 0
     sys.path.insert(0, args.tree)
     info = json.loads(args.info) if args.info else None
-    phases = {"seed": lambda: phase_seed(args.db), "write": lambda: phase_write(args.db),
+    phases = {"selection_tables": lambda: phase_selection_tables(args.db), "seed": lambda: phase_seed(args.db),
+              "take_card": lambda: phase_take_card(args.db, info), "write": lambda: phase_write(args.db),
               "old_reads": lambda: phase_old_reads(args.db, info), "old_worker": lambda: phase_old_worker(args.db),
               "new_worker": lambda: phase_new_worker(args.db, info), "trainee_state": lambda: phase_trainee_state(args.db, info)}
     print(json.dumps(phases[args.phase](), default=str))

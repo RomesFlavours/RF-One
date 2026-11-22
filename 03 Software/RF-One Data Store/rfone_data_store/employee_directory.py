@@ -405,27 +405,48 @@ CARD_NEW = "card:new"
 
 
 class CardConfirmationRequired(ValueError):
-    """A Training entry found a Registry card whose contact matches but whose identity is not certain."""
+    """A Training entry found a Registry card whose contact matches but whose identity is not certain.
+    `candidates` = [{key, name}] (one per matching card), `new_key` = the "different person" choice; every key
+    carries the evidence the operator saw. `changed` = a choice was submitted but the evidence is no longer
+    the same: the updated options are shown again and nothing is saved."""
 
-    def __init__(self, candidates):
-        super().__init__("A Registry card with the same contact already exists. Confirm whether it is the same "
-                         "person before the invitation is created. Nothing was saved.")
-        self.candidates = candidates
+    def __init__(self, candidates, new_key, changed=False):
+        super().__init__(
+            "The Registry match changed since your choice. Review the updated options. Nothing was saved."
+            if changed else
+            "A Registry card with the same contact already exists. Confirm whether it is the same "
+            "person before the invitation is created. Nothing was saved.")
+        self.candidates, self.new_key, self.changed = candidates, new_key, changed
 
 
-def _digits(value):
-    return "".join(ch for ch in (value or "") if ch.isdigit())
+def phone_evidence(value):
+    """Phone identity key: digits only; a US/CA number with the country code ("1" + 10 digits, e.g.
+    "+1 407 555 0101") gives the same key as without it ("407 555 0101"), as Selection does
+    (`selection.core.identity_model.normalize_phone`)."""
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    return digits[1:] if len(digits) == 11 and digits.startswith("1") else digits
+
+
+def _evidence_fingerprint(found):
+    """Short digest of the matching cards as shown to the operator (card, what matched, contact, sites)."""
+    payload = json.dumps(sorted([cid, by_email, by_phone, (card.email or "").strip().casefold(),
+                                 phone_evidence(card.phone), card.display_name or "", sorted(sites)]
+                                for cid, (card, by_email, by_phone, sites) in found.items()))
+    return sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def resolve_training_card(db, *, person_id, email, phone, confirmation=None):
-    """REGISTRY_MULTISITE_001 (Codex review 2): resolve the Registry identity BEFORE any card is created or
-    linked by a Training entry (direct invitation or Send to Training). Writes nothing.
+    """REGISTRY_MULTISITE_001 (Codex reviews 2 and 3): resolve the Registry identity BEFORE any person, card
+    or invitation is created or linked by a Training entry (direct invitation, Send to Training, legacy
+    Trainee card). Writes nothing.
 
     - the card already linked to the person is the identity;
-    - otherwise the cards with the same email or the same phone are the evidence:
-      none → a new card; exactly one with the same email and no different phone → that card;
-      anything else (phone only, several cards, different phone) is uncertain → CardConfirmationRequired,
-      unless `confirmation` is "card:<id>" of one of them or CARD_NEW ("a different person");
+    - otherwise the cards with the same email or the same phone (US number with or without +1) are the
+      evidence: none → a new card; exactly one with the same email and no different phone → that card;
+      anything else (phone only, several cards, different phone) is uncertain → CardConfirmationRequired;
+    - the operator's choice ("card:<id>@<evidence>" or "card:new@<evidence>") is accepted only if the
+      evidence is still exactly the one shown; otherwise CardConfirmationRequired(changed=True) with the
+      updated options — also when the evidence would now resolve on its own or has disappeared;
     - a card already linked to another person is never reused (Registry review).
     Returns the card id to reuse, or None for a new card."""
     from . import people_registry as people
@@ -433,41 +454,45 @@ def resolve_training_card(db, *, person_id, email, phone, confirmation=None):
         linked = card_for_person(db, person_id)
         if linked is not None:
             return linked.id
-    email, phone_key = (email or "").strip().casefold(), _digits(phone)
-    if not email and not phone_key:
-        return None
+    email, phone_key = (email or "").strip().casefold(), phone_evidence(phone)
     found = {}
-    for card in db.scalars(canonical_employees().order_by(m.Employee.id)):
-        by_email = bool(email) and (card.email or "").strip().casefold() == email
-        by_phone = bool(phone_key) and _digits(card.phone) == phone_key
-        if by_email or by_phone:
-            found[card.id] = (card, by_email, by_phone)
-    if not found:
-        return None
-    if people.available(db):
+    if email or phone_key:
+        for card in db.scalars(canonical_employees().order_by(m.Employee.id)):
+            by_email = bool(email) and (card.email or "").strip().casefold() == email
+            by_phone = bool(phone_key) and phone_evidence(card.phone) == phone_key
+            if by_email or by_phone:
+                found[card.id] = (card, by_email, by_phone, [site.name for site in sites_of(db, card.id)])
+    if found and people.available(db):
         owners = {link.employee_id: link.person_id for link in db.scalars(select(people.PersonEmployeeLink).where(
             people.PersonEmployeeLink.employee_id.in_(found)))}
         taken = [found[cid][0] for cid, owner in owners.items() if owner != person_id]
         if taken:
             raise ValueError(f"This contact belongs to the Registry card of another person ({taken[0].display_name}). "
                              "Ask for a Registry review. Nothing was saved.")
+    evidence = _evidence_fingerprint(found)
+    candidates = []
+    for card, by_email, by_phone, sites in found.values():
+        matched = " and ".join(word for word, hit in (("email", by_email), ("phone", by_phone)) if hit)
+        candidates.append(dict(key=f"card:{card.id}@{evidence}",
+                               name=f"{card.display_name} — same {matched}; sites: {', '.join(sites) or 'no site'}"))
+    new_key = f"{CARD_NEW}@{evidence}"
+    if confirmation:
+        choice, _, seen = confirmation.partition("@")
+        if seen != evidence:
+            raise CardConfirmationRequired(candidates, new_key, changed=True)
+        if choice == CARD_NEW:
+            return None
+        if choice.startswith("card:") and choice[5:].isdecimal() and int(choice[5:]) in found:
+            return int(choice[5:])
+        raise CardConfirmationRequired(candidates, new_key, changed=True)
+    if not found:
+        return None
     if len(found) == 1:
-        card, by_email, by_phone = next(iter(found.values()))
-        phones_differ = bool(phone_key) and bool(_digits(card.phone)) and not by_phone
+        card, by_email, by_phone, _sites = next(iter(found.values()))
+        phones_differ = bool(phone_key) and bool(phone_evidence(card.phone)) and not by_phone
         if by_email and not phones_differ:
             return card.id
-    if confirmation == CARD_NEW:
-        return None
-    if confirmation and confirmation.startswith("card:") and confirmation[5:].isdecimal()             and int(confirmation[5:]) in found:
-        return int(confirmation[5:])
-    if confirmation:
-        raise ValueError("The Registry match changed. Review the details.")
-    candidates = []
-    for card, by_email, by_phone in found.values():
-        sites = ", ".join(site.name for site in sites_of(db, card.id)) or "no site"
-        matched = " and ".join(word for word, hit in (("email", by_email), ("phone", by_phone)) if hit)
-        candidates.append(dict(key=f"card:{card.id}", name=f"{card.display_name} — same {matched}; sites: {sites}"))
-    raise CardConfirmationRequired(candidates)
+    raise CardConfirmationRequired(candidates, new_key)
 
 
 def sites_of(db, employee_id):

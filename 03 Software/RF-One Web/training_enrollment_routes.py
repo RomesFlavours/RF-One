@@ -116,7 +116,7 @@ def install(app, *, SessionFactory, auth, trainer):
     @app.route('/training/manage/enrollment', methods=['GET', 'POST'])
     @trainer
     def tw_enrollment():
-        error = link = None; matches = []; card_matches = []; draft = request.form
+        error = link = None; matches = []; card_matches = []; card_new = ''; draft = request.form
         with SessionFactory() as db:
             actor = auth.load_current_account(db)
             confirmed = enroll.confirmed_candidates(db, actor)
@@ -141,7 +141,7 @@ def install(app, *, SessionFactory, auth, trainer):
                 except (ValueError, IntegrityError) as exc:
                     db.rollback(); error = str(exc) if isinstance(exc, ValueError) else 'Another session updated the invitation. Reload and try again.'
                     if isinstance(exc, registry.ConfirmationRequired): matches = exc.candidates
-                    if isinstance(exc, directory.CardConfirmationRequired): card_matches = exc.candidates
+                    if isinstance(exc, directory.CardConfirmationRequired): card_matches, card_new = exc.candidates, exc.new_key
                 else:
                     if current_app.config.get('TRAINING_ENROLLMENT_LOCAL'):
                         flash('Invitation ready. Copy the personal link; it works on this computer.', 'info')
@@ -155,7 +155,7 @@ def install(app, *, SessionFactory, auth, trainer):
             site_roles = directory.site_role_groups(db, enroll.training_sites(db, actor))
             return protected(app.make_response((render_template('training_workspace/enrollment.html',
                 active_tab='students', help_section='training_enrollment', error=error, draft=draft,
-                confirmed=confirmed, matches=matches, card_matches=card_matches, card_new=directory.CARD_NEW, invitation_url=link, site_roles=site_roles), 400 if error else 200)))
+                confirmed=confirmed, matches=matches, card_matches=card_matches, card_new=card_new, invitation_url=link, site_roles=site_roles), 400 if error else 200)))
 
     @app.get('/training/activate/<token>')
     def tw_enrollment_link(token):

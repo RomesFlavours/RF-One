@@ -45,6 +45,15 @@ ships before RF1 shared acquisition (still waiting for a Product Owner decision 
 like the rest of that work); with it the chain has one head (`c4d520261121`), up and down verified locally.
 If RF1 ever had to ship first, the inverse re-parenting (c7d8 onto c4d5) is needed instead.
 
+**Exact `c4d520261121` used for the combined graph.** It is not committed on any branch (in
+`feature/rf1-shared-acquisition` the file is only marked intent-to-add, empty blob). The exact bytes used are
+stored, unchanged, in this branch as
+`07 Tasks/Reports/REGISTRY_MULTISITE_001_evidence/c4d520261121_shared_acquisition_requests_and_tips_period.py.txt`:
+Git blob `cc1ae8cea619f9ea746eba60220de3b2b5a8469e`, SHA-256
+`0b9d567c562a0677cf4e2a9680f1be8182bed66fb60d478875a039866fe118be`, `down_revision = 'c7d820261122'`.
+Difference from the original: only `down_revision` (`b2c320261121` → `c7d820261122`) and a "Release order"
+note in the docstring. When RF1 is committed, its `c4d520261121` must have this blob (or be re-verified).
+
 ## 2. Doubtful cases to verify before the switch-over (from the AWS data)
 
 | # | Case | People | What happens after the switch |
@@ -104,11 +113,11 @@ restored.
 |---|---|---|
 | Workers already started (correction sync, acquisition job) | Keep the new jobs image. On a worker defect: `aws ecs update-service --cluster rfone-jobs --service rfone-clover-correction-sync --desired-count 0` (stop), fix forward, start again. Never `:12`. Do **not** deregister the new acquisition revision: the previous RF-One Web «Sync now» launches the latest ACTIVE revision, which then stays the new one (no staff-list import). While stopped, Tips waits (readiness gate) and nothing is lost: the next cycle re-reads the window. | minutes |
 | Live Sync | Stays off (`rfone-clover-live-sync` not launched; `RFONE_CLOVER_LIVE_SYNC_ENABLED` unchanged). If it must run, only with the new jobs image (rehearsal phase 7: no Registry change). | — |
-| Data step **before** restoring any previous app image | `registry_multisite_rollback.py plan`, then `detach --record links.json --apply`: sets aside (file + removal) the card links the new Training entry wrote for Trainees who are not Employees; otherwise the previous code would show them as Employees (rehearsal phase 4). Cards, site assignments, POS IDs, Tips rows unchanged. | minutes |
+| Data step **before** restoring any previous app image | `registry_multisite_rollback.py plan`, then `detach --record links.json --apply`: sets aside (file + removal) the card links the new Training entry wrote for Trainees who are not Employees; otherwise the previous code would show them as Employees (rehearsal phase 4). Cards, site assignments, POS IDs, Tips rows unchanged. The record file is written atomically before any removal and is never emptied: a repeated `detach` on the same path keeps the saved links and adds only new ones (rehearsed: two consecutive detaches). Copy `links.json` to the step-0 backup folder right after the first detach. | minutes |
 | Migration | `alembic downgrade b2c320261121` (no-op). Restore the step-0 snapshot only if a data defect is proven. | minutes |
 | rfone-tips, Training service | App Runner back to the digests recorded at step 0. | ~5 min each |
 | rfone-web | Prefer fix forward. Restoring the previous image brings back its «Clover identities to confirm» queue, which lists every Clover link without a person: the former pending identity (Anna Friend) and every POS ID detached by a correction (`plan` → `previous_registry_queue_would_show`); confirming one there would attach it from Clover data. Its «Sync now» stays harmless (new acquisition revision). Restore the previous web image only with Pino's explicit decision. | ~5 min |
-| Roll-forward | Deploy the new images again, `reattach --record links.json --apply`, `alembic upgrade head`, `compare` (expected and added: `[]`; the Trainees stay Trainees). | minutes |
+| Roll-forward | Deploy the new images again, `reattach --record links.json --apply`, `alembic upgrade head`, `compare` (expected and added: `[]`; the Trainees stay Trainees). `reattach` exits with code 2 and writes nothing when the record is missing, empty or unreadable, or when a recorded link cannot be back exactly (card meanwhile linked to another person): stop and review those cards before continuing. On success every recorded link is read back (`verified: true`). | minutes |
 
 Data written by the new code meanwhile: cards, site assignments and POS IDs are ordinary rows the previous code
 reads; POS IDs keep attributing work (rehearsal phase 5); attributions already resolved are never moved.
@@ -151,3 +160,19 @@ reads; POS IDs keep attributing work (rehearsal phase 5); attributions already r
   c4d520261121>`: ALL EXPECTATIONS MET (phases 1–9 above).
 - AWS data copy (SQLite, chain-built to `a1c220261121`, 924 exported rows, no missing column): report WP 21, MD 0;
   upgrade → `c7d820261122`; `compare` identical, EMPLOYEE expected `[]`, added `[]`.
+
+### Codex review 3 fixes (2026-11-22, after 2c643b7)
+
+- Training: the operator's card choice carries the evidence shown (`card:<id>@<digest>` / `card:new@<digest>`,
+  digest of matching cards, what matched, contact and sites). At submission it is re-checked: if the matching
+  cards changed in the meantime, `CardConfirmationRequired(changed=True)` shows the updated options and no
+  person, card, Trainee mark, arrival or invitation is written. Same rule on the direct invitation, Send to
+  Training and «Resolve card and site».
+- A US number with or without `+1` gives the same phone evidence (`employee_directory.phone_evidence`, also used by
+  `training.enrollment.phone_key`, as Selection's `normalize_phone`); a phone-only match still asks the operator.
+- Rollback: record file protected (atomic write, kept on a repeated detach); `reattach` fails explicitly and
+  verifies every link. Rehearsal (now also on PostgreSQL with `--url`): two consecutive detaches keep the
+  Trainee link in the record; reattach refused on a copy where the card was taken and with a missing record;
+  reattach then restores and verifies it; the Trainee is still a Trainee on the same card. SQLite and
+  PostgreSQL (disposable cluster, port 55499, deleted afterwards): ALL EXPECTATIONS MET. Outputs:
+  `07 Tasks/Reports/REGISTRY_MULTISITE_001_evidence/rollback_rehearsal_round3_{sqlite,postgresql}.json`.

@@ -150,7 +150,7 @@ def install(app, *, SessionFactory, auth, trainer):
     @trainer
     def tw_trainee_registry_card(student_id):
         """Codex review 3: give a legacy Trainee without a card the Registry card and the training site."""
-        error = None; card_matches = []; draft = request.form
+        error = None; card_matches = []; card_new = ''; draft = request.form
         with SessionFactory() as db:
             actor = auth.load_current_account(db)
             training = db.get(m.TrainingAccount, student_id)
@@ -172,7 +172,7 @@ def install(app, *, SessionFactory, auth, trainer):
                 except (ValueError, IntegrityError) as exc:
                     db.rollback()
                     error = str(exc) if isinstance(exc, ValueError) else 'Another session changed this person. Reload and try again.'
-                    if isinstance(exc, directory.CardConfirmationRequired): card_matches = exc.candidates
+                    if isinstance(exc, directory.CardConfirmationRequired): card_matches, card_new = exc.candidates, exc.new_key
                 else:
                     flash('Registry card and site recorded. The hire can now be confirmed.', 'info')
                     return redirect(url_for('tw_students', _anchor=f'student-{student_id}'))
@@ -181,4 +181,4 @@ def install(app, *, SessionFactory, auth, trainer):
             return render_template('training_workspace/registry_card.html', active_tab='students',
                                    help_section='training_registry_card', error=error, draft=draft, person=person,
                                    student_id=student_id, site_roles=site_roles, card_matches=card_matches,
-                                   card_new=directory.CARD_NEW), 400 if error else 200
+                                   card_new=card_new), 400 if error else 200

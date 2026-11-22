@@ -1,0 +1,256 @@
+{
+  "database": "postgresql",
+  "1_seed": {
+    "veteran_card": 1,
+    "veteran_person": 1,
+    "location": 1,
+    "restaurant": 1,
+    "role": 1,
+    "area": 1,
+    "trainer": 2,
+    "source": 1
+  },
+  "2_upgrade": {
+    "identical": true,
+    "differences": [],
+    "employee_status_added": [
+      1
+    ],
+    "employee_status_expected": [
+      1
+    ],
+    "employee_status_exact": true,
+    "employee_status_removed": [],
+    "alembic": [
+      [
+        "b2c320261121"
+      ],
+      [
+        "c7d820261122"
+      ]
+    ]
+  },
+  "3_new_code_writes": {
+    "trainee_person": 2,
+    "trainee_card": 2,
+    "order_person": 2
+  },
+  "4_rollback_plan": {
+    "trainee_links_to_set_aside": [
+      {
+        "employee_id": 2,
+        "person_id": 2,
+        "linked_by_id": 2,
+        "linked_at": "2026-11-22 17:38:55.776741-05:00"
+      }
+    ],
+    "previous_registry_queue_would_show": [
+      {
+        "id": 1,
+        "merchant_id": "WPMERCHANT",
+        "external_employee_id": "V1",
+        "state": "CORRECTED"
+      },
+      {
+        "id": 2,
+        "merchant_id": "WPMERCHANT",
+        "external_employee_id": "ANNA1",
+        "state": "PENDING"
+      }
+    ]
+  },
+  "4_old_code_without_detach": {
+    "trainee_statuses": [
+      "EMPLOYEE"
+    ],
+    "veteran_statuses": [
+      "EMPLOYEE"
+    ],
+    "resolved": {
+      "T1": 2,
+      "V2": 1
+    },
+    "previous_registry_queue_would_show": [
+      [
+        "V1",
+        "CORRECTED"
+      ],
+      [
+        "ANNA1",
+        "PENDING"
+      ]
+    ]
+  },
+  "4_two_detaches": {
+    "first_set_aside": [
+      {
+        "employee_id": 2,
+        "person_id": 2,
+        "linked_by_id": 2,
+        "linked_at": "2026-11-22 17:38:55.776741-05:00"
+      }
+    ],
+    "second_set_aside": [],
+    "record_after_first": [
+      {
+        "employee_id": 2,
+        "person_id": 2,
+        "linked_by_id": 2,
+        "linked_at": "2026-11-22 17:38:55.776741-05:00"
+      }
+    ],
+    "record_after_second": [
+      {
+        "employee_id": 2,
+        "person_id": 2,
+        "linked_by_id": 2,
+        "linked_at": "2026-11-22 17:38:55.776741-05:00"
+      }
+    ]
+  },
+  "4_rollback_data": {
+    "identical": false,
+    "differences": [
+      "person_employee_links"
+    ],
+    "employee_status_added": [],
+    "employee_status_expected": [],
+    "employee_status_exact": true,
+    "employee_status_removed": [],
+    "alembic": [
+      [
+        "c7d820261122"
+      ],
+      [
+        "b2c320261121"
+      ]
+    ]
+  },
+  "5_old_code_reads": {
+    "trainee_statuses": [],
+    "veteran_statuses": [
+      "EMPLOYEE"
+    ],
+    "resolved": {
+      "T1": 2,
+      "V2": 1
+    },
+    "previous_registry_queue_would_show": [
+      [
+        "V1",
+        "CORRECTED"
+      ],
+      [
+        "ANNA1",
+        "PENDING"
+      ]
+    ]
+  },
+  "6_old_worker_proof": {
+    "registry_changed": true,
+    "before": [
+      2,
+      4,
+      [
+        [
+          1,
+          "Veteran V."
+        ],
+        [
+          2,
+          "New Trainee"
+        ]
+      ]
+    ],
+    "after": [
+      2,
+      5,
+      [
+        [
+          1,
+          "Veteran V."
+        ],
+        [
+          2,
+          "New Trainee"
+        ]
+      ]
+    ],
+    "error": null
+  },
+  "7_new_worker_after_rollback": {
+    "registry_changed": false,
+    "staff_list_read": false,
+    "order_person": 2
+  },
+  "8_reattach_refused": {
+    "card_taken": {
+      "failed": "1 recorded link(s) not restored; nothing was written",
+      "missing": [
+        {
+          "employee_id": 2,
+          "person_id": 2,
+          "linked_by_id": 2,
+          "linked_at": "2026-11-22 17:38:55.776741-05:00",
+          "reason": "card already linked to person 3"
+        }
+      ]
+    },
+    "trainee_after_refusal": {
+      "statuses": [],
+      "card": null
+    },
+    "record_missing": {
+      "failed": "record file not found: C:\\Users\\servi\\OneDrive\\AI-RF-ONE\\tmp-registry-old-acd44b2\\tmp\\registry_rollback_dd_7h9st\\absent.json",
+      "missing": null
+    }
+  },
+  "8_reattach": {
+    "applied": true,
+    "restored": [
+      {
+        "employee_id": 2,
+        "person_id": 2,
+        "linked_by_id": 2,
+        "linked_at": "2026-11-22 17:38:55.776741-05:00"
+      }
+    ],
+    "already_present": [],
+    "verified": true,
+    "expected": 1
+  },
+  "8_roll_forward": {
+    "identical": false,
+    "differences": [
+      "person_employee_links"
+    ],
+    "employee_status_added": [],
+    "employee_status_expected": [],
+    "employee_status_exact": true,
+    "employee_status_removed": [],
+    "alembic": [
+      [
+        "b2c320261121"
+      ],
+      [
+        "c7d820261122"
+      ]
+    ]
+  },
+  "8_trainee_after": {
+    "statuses": [],
+    "card": 2
+  },
+  "9_with_c4d5": {
+    "heads": [
+      "c4d520261121 (kitchen_aws_20261112, registry_training_aws_20261113) (head)"
+    ],
+    "current": [
+      "c4d520261121 (head)"
+    ],
+    "after_downgrade": [
+      "c7d820261122"
+    ]
+  },
+  "outcome": "ALL EXPECTATIONS MET"
+}

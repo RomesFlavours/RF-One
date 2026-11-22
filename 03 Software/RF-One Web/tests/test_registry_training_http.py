@@ -207,7 +207,28 @@ class RegistryTrainingHttpTest(unittest.TestCase):
         with self.factory() as db:
             self.assertEqual((db.scalar(select(en.EnrollmentInvitation.id)), db.scalar(select(m.CandidatePerson.id))),
                              (None, None))
-        done = self.client.post("/training/manage/enrollment", data={**data, "card_confirmation": f"card:{wp_card_id}",
+        import re
+        options = lambda page: re.findall(r'name="card_confirmation" value="([^"]+)"', page.get_data(as_text=True))
+        seen = options(asked)
+        self.assertEqual([v.split("@")[0] for v in seen], [f"card:{wp_card_id}", "card:new"])
+        # Codex review 3: meanwhile another card with the same US number (+1) is entered; the stale choice is
+        # not accepted, the page shows the updated options and nothing is saved.
+        with self.factory() as db:
+            other = directory.create_person(db, display_name="Luca B.", phone="+1 407 555 0101",
+                                            restaurant_id=self.wp_id, role_id=self.cook_id, area_id=self.area_id)
+            db.commit(); other_id = other.id
+        stale = self.client.post("/training/manage/enrollment", data={**data, "card_confirmation": seen[0],
+                                 "csrf_token": self.csrf("/training/manage/enrollment")})
+        self.assertEqual(stale.status_code, 400)
+        self.assertIn("The Registry match changed", stale.get_data(as_text=True))
+        updated = options(stale)
+        self.assertEqual(sorted(v.split("@")[0] for v in updated),
+                         sorted([f"card:{wp_card_id}", f"card:{other_id}", "card:new"]))
+        with self.factory() as db:
+            self.assertEqual((db.scalar(select(en.EnrollmentInvitation.id)), db.scalar(select(m.CandidatePerson.id))),
+                             (None, None))
+        choice = next(v for v in updated if v.startswith(f"card:{wp_card_id}@"))
+        done = self.client.post("/training/manage/enrollment", data={**data, "card_confirmation": choice,
                                 "csrf_token": self.csrf("/training/manage/enrollment")})
         self.assertEqual(done.status_code, 200, done.get_data(as_text=True)[:400])
         with self.factory() as db:

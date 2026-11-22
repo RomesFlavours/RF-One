@@ -274,10 +274,10 @@ class RegistryMultisiteTest(unittest.TestCase):
             en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
                      phone="(407) 555 0101", **md)
         self.db.rollback()
-        self.assertEqual([c["key"] for c in asked.exception.candidates], [f"card:{wp_card.id}"])
+        self.assertEqual([c["key"].split("@")[0] for c in asked.exception.candidates], [f"card:{wp_card.id}"])
         self._nothing_saved()                                   # nothing created or linked before the answer
         invitation, _ = en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
-                                 phone="(407) 555 0101", card_confirmation=f"card:{wp_card.id}", **md)
+                                 phone="(407) 555 0101", card_confirmation=asked.exception.candidates[0]["key"], **md)
         self.db.commit()
         self.assertEqual(directory.card_for_person(self.db, invitation.person_id).id, wp_card.id)
         self.assertEqual(self.count(m.Employee), 1)
@@ -298,12 +298,13 @@ class RegistryMultisiteTest(unittest.TestCase):
         wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="4075550101")
         self.db.commit()
         md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
-        with self.assertRaisesRegex(ValueError, "match changed"):
+        with self.assertRaisesRegex(ValueError, "match changed") as changed:
             en.issue(self.db, actor=trainer, email="other@example.invalid", name="Other", phone="407 555 0101",
                      card_confirmation="card:99999", **md)
         self.db.rollback()
+        self.assertTrue(changed.exception.changed)
         invitation, _ = en.issue(self.db, actor=trainer, email="sister@example.invalid", name="Anna Bianchi",
-                                 phone="407 555 0101", card_confirmation=directory.CARD_NEW, **md)
+                                 phone="407 555 0101", card_confirmation=changed.exception.new_key, **md)
         self.db.commit()
         card = directory.card_for_person(self.db, invitation.person_id)
         self.assertNotEqual(card.id, wp_card.id)
@@ -320,14 +321,15 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.db.commit()
         en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer); self.db.commit()
         md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
-        with self.assertRaises(directory.CardConfirmationRequired):
+        with self.assertRaises(directory.CardConfirmationRequired) as asked:
             en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id, **md)
         self.db.rollback()
+        chosen = asked.exception.candidates[0]["key"]
         self.assertEqual(en._selection_events(self.db, en.ARRIVED), {})                  # arrival not recorded
         self.assertIsNone(self.db.get(registry.PersonQualification, (person.id, "STUDENT")))
         self.assertEqual((self.count(m.Employee), self.count(en.EnrollmentInvitation)), (1, 0))
         invitation, _ = en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
-                                 card_confirmation=f"card:{wp_card.id}", **md)
+                                 card_confirmation=chosen, **md)
         self.db.commit()
         self.assertEqual(directory.card_for_person(self.db, person.id).id, wp_card.id)
         self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id, self.md.id})
@@ -336,7 +338,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         invitation.created_at -= timedelta(seconds=61); self.db.commit()
         with self.assertRaisesRegex(ValueError, "already in progress"):
             en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
-                     card_confirmation=f"card:{wp_card.id}", **md)
+                     card_confirmation=chosen, **md)
         self.db.rollback()
         self.assertEqual((self.count(en.EnrollmentInvitation), self.count(m.Employee)), (1, 1))
 
@@ -352,6 +354,104 @@ class RegistryMultisiteTest(unittest.TestCase):
                      restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
         self.db.rollback()
         self.assertEqual(self.count(m.Employee), 1)
+
+    # Codex review 3 — the chosen card is revalidated at confirmation; +1 is the same US phone
+    def test_direct_invitation_choice_is_revalidated_when_the_match_changes_meanwhile(self):
+        trainer = self._trainer()
+        wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="407-555-0101")
+        self.db.commit(); self._persons = 0
+        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        luca = dict(email="luca@example.invalid", name="Luca Bianchi", phone="407 555 0101")
+        with self.assertRaises(directory.CardConfirmationRequired) as asked:
+            en.issue(self.db, actor=trainer, **luca, **md)
+        self.db.rollback()
+        seen_card, seen_new = asked.exception.candidates[0]["key"], asked.exception.new_key
+        # Meanwhile another card with the same phone is entered manually at MD.
+        other = self.card("Luca B. junior", self.md, phone="+1 (407) 555-0101")
+        self.db.commit()
+        for stale in (seen_card, seen_new):
+            with self.assertRaises(directory.CardConfirmationRequired) as again:
+                en.issue(self.db, actor=trainer, card_confirmation=stale, **luca, **md)
+            self.db.rollback()
+            self.assertTrue(again.exception.changed)
+            self.assertIn("match changed", str(again.exception))
+            self.assertEqual(sorted(c["key"].split("@")[0] for c in again.exception.candidates),
+                             sorted([f"card:{wp_card.id}", f"card:{other.id}"]))           # updated options
+            self._nothing_saved(cards=2)                    # no person, card, Trainee mark or invitation
+        # A change of the shown card (here: a new site) is a change of the evidence too.
+        refreshed = again.exception
+        directory.assign_site(self.db, employee_id=wp_card.id, restaurant_id=self.md.id, role_id=self.cook.id,
+                              area_id=self.area.id, account_id=self.admin.id)
+        self.db.commit()
+        chosen = next(c["key"] for c in refreshed.candidates if c["key"].startswith(f"card:{wp_card.id}@"))
+        with self.assertRaises(directory.CardConfirmationRequired) as latest:
+            en.issue(self.db, actor=trainer, card_confirmation=chosen, **luca, **md)
+        self.db.rollback()
+        self.assertTrue(latest.exception.changed)
+        self.assertIn("Flavours - MD", next(c["name"] for c in latest.exception.candidates
+                                         if c["key"].startswith(f"card:{wp_card.id}@")))
+        chosen = next(c["key"] for c in latest.exception.candidates if c["key"].startswith(f"card:{wp_card.id}@"))
+        # The choice made on the updated options is accepted.
+        invitation, _ = en.issue(self.db, actor=trainer, card_confirmation=chosen, **luca, **md)
+        self.db.commit()
+        self.assertEqual(directory.card_for_person(self.db, invitation.person_id).id, wp_card.id)
+        self.assertEqual((self.count(m.Employee), self.count(en.EnrollmentInvitation)), (2, 1))
+
+    def test_send_to_training_choice_is_revalidated_before_the_arrival(self):
+        hirer = accounts.create_account(self.db, username="hirer", display_name="Hirer", password="Hirer-Pass-99",
+                                        email="hirer@example.invalid")
+        trainer = self._trainer()
+        person, pc = self._hired_candidate(hirer)
+        pc.declared_phone = "407-555-0199"
+        self.db.get(m.Candidate, pc.candidate_id).phone = "407-555-0199"
+        wp_card = self.card("Maria Rossi", self.wp, self.server, phone="+1 407 555 0199")    # +1, no email
+        self.db.commit()
+        en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer); self.db.commit()
+        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        with self.assertRaises(directory.CardConfirmationRequired) as asked:   # +1 on the card: same evidence
+            en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id, **md)
+        self.db.rollback()
+        self.assertEqual([c["key"].split("@")[0] for c in asked.exception.candidates], [f"card:{wp_card.id}"])
+        other = self.card("M. Rossi", self.wp, phone="4075550199")
+        self.db.commit()
+        with self.assertRaises(directory.CardConfirmationRequired) as again:
+            en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
+                     card_confirmation=asked.exception.new_key, **md)
+        self.db.rollback()
+        self.assertTrue(again.exception.changed)
+        self.assertEqual(len(again.exception.candidates), 2)
+        self.assertEqual(en._selection_events(self.db, en.ARRIVED), {})                  # arrival not recorded
+        self.assertIsNone(self.db.get(registry.PersonQualification, (person.id, "STUDENT")))
+        self.assertEqual((self.count(m.Employee), self.count(m.CandidatePerson), self.count(en.EnrollmentInvitation)),
+                         (2, 1, 0))
+        invitation, _ = en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
+                                 card_confirmation=again.exception.new_key, **md)
+        self.db.commit()
+        card = directory.card_for_person(self.db, person.id)
+        self.assertNotIn(card.id, {wp_card.id, other.id})                         # "a different person" chosen
+        self.assertEqual(self.count(en.EnrollmentInvitation), 1)
+
+    def test_a_us_number_with_or_without_plus_one_gives_the_same_evidence_and_asks(self):
+        self.assertEqual(directory.phone_evidence("+1 (407) 555-0101"), directory.phone_evidence("407.555.0101"))
+        self.assertEqual(en.phone_key("+1 407 555 0101"), en.phone_key("4075550101"))
+        trainer = self._trainer()
+        card = self.card("Luca Bianchi", self.wp, self.server, phone="407-555-0101")
+        self.db.commit(); self._persons = 0
+        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        keys = []
+        for phone in ("+1 407 555 0101", "407 555 0101", "1-407-555-0101"):
+            with self.assertRaises(directory.CardConfirmationRequired) as asked:          # operator must confirm
+                en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi", phone=phone, **md)
+            self.db.rollback()
+            keys.append(([c["key"] for c in asked.exception.candidates], asked.exception.new_key))
+            self._nothing_saved()
+        self.assertEqual(len(set(map(str, keys))), 1)                                     # identical evidence
+        self.assertEqual(keys[0][0][0].split("@")[0], f"card:{card.id}")
+        # The confirmation made on the number without +1 is valid for the number with +1.
+        invitation, _ = en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
+                                 phone="+1 407 555 0101", card_confirmation=keys[0][0][0], **md)
+        self.db.commit()
+        self.assertEqual(directory.card_for_person(self.db, invitation.person_id).id, card.id)
 
     def test_card_link_alone_no_longer_means_employee(self):
         person = people.create_identity(self.db, full_name="Trainee Card", email="t@example.invalid",

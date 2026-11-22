@@ -50,7 +50,9 @@ def digest(token):
 
 
 def phone_key(phone):
-    return re.sub(r'\D', '', phone or '')
+    # REGISTRY_MULTISITE_001 (Codex review 3): a US/CA number with or without +1 is the same evidence.
+    from ..employee_directory import phone_evidence
+    return phone_evidence(phone)
 
 
 def identity_matches(db, name, email, phone):

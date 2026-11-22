@@ -1,0 +1,73 @@
+"""Shared acquisition service requests and the Tips calculation period length
+(RF1_OPERATIONAL_DATABASE_001 OQ-1 / OQ-3 / OQ-4, Product Owner 2026-11-21).
+
+Additive only — prepared for review, NOT applied anywhere:
+- `operational_acquisition_requests`: one row per request to the shared RF-One
+  acquisition service for one Location — SCHEDULED (midnight run, unique per
+  Location and local date), ON_DEMAND (e.g. Tips "Download data") and LIVE
+  (future live requests). Holds each request's status and outcome.
+- `tips_calculation_period_configs`: per Restaurant, the number of days the
+  Calculate Tips page proposes after its start date (>= 1), distinct from the
+  Calculation Schedule's "Every N days" and available in MANUAL mode.
+No existing row is created, changed or removed.
+
+Release order: a1c220261121 (AWS) -> b2c320261121 (CLOVER_MULTISITE_001) -> c7d820261122
+(REGISTRY_MULTISITE_001) -> this revision. Re-parented from b2c320261121 on 2026-11-22.
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = 'c4d520261121'
+down_revision = 'c7d820261122'  # after REGISTRY_MULTISITE_001, which ships first (release order 2026-11-22)
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        'operational_acquisition_requests',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('location_id', sa.Integer(), sa.ForeignKey('locations.id'), nullable=False),
+        sa.Column('kind', sa.String(length=16), nullable=False),
+        sa.Column('status', sa.String(length=16), nullable=False),
+        sa.Column('requested_by_application', sa.String(length=32), nullable=True),
+        sa.Column('requested_by_account_id', sa.Integer(), sa.ForeignKey('rfone_accounts.id'), nullable=True),
+        sa.Column('requested_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('scheduled_local_date', sa.Date(), nullable=True),
+        sa.Column('refresh_from', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('live_until', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('finished_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('attempts', sa.Integer(), nullable=False, server_default='0'),
+        sa.Column('outcome', sa.Text(), nullable=True),
+        sa.Column('ingestion_run_id', sa.Integer(), sa.ForeignKey('ingestion_runs.id'), nullable=True),
+        sa.UniqueConstraint('location_id', 'kind', 'scheduled_local_date',
+                            name='uq_operational_acquisition_request_schedule'),
+        sa.CheckConstraint("kind IN ('SCHEDULED','ON_DEMAND','LIVE')",
+                           name='ck_operational_acquisition_request_kind'),
+        sa.CheckConstraint("status IN ('PENDING','RUNNING','COMPLETE','FAILED','ACTIVE','ENDED')",
+                           name='ck_operational_acquisition_request_status'),
+    )
+    op.create_index('ix_operational_acquisition_request_location_status',
+                    'operational_acquisition_requests', ['location_id', 'status'])
+    op.create_table(
+        'tips_calculation_period_configs',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('restaurant_id', sa.Integer(), sa.ForeignKey('restaurants.id'), nullable=False),
+        sa.Column('period_days', sa.Integer(), nullable=False),
+        sa.Column('updated_by_account_id', sa.Integer(), sa.ForeignKey('rfone_accounts.id'), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint('restaurant_id', name='uq_tips_calculation_period_config_restaurant'),
+        sa.CheckConstraint('period_days >= 1', name='ck_tips_calculation_period_config_days'),
+    )
+    op.create_index('ix_tips_calculation_period_configs_restaurant_id',
+                    'tips_calculation_period_configs', ['restaurant_id'])
+
+
+def downgrade() -> None:
+    op.drop_index('ix_tips_calculation_period_configs_restaurant_id', table_name='tips_calculation_period_configs')
+    op.drop_table('tips_calculation_period_configs')
+    op.drop_index('ix_operational_acquisition_request_location_status',
+                  table_name='operational_acquisition_requests')
+    op.drop_table('operational_acquisition_requests')
