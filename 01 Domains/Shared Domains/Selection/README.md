@@ -5,6 +5,9 @@
 **Domain:** Selection (Shared Domain)
 **Recovery:** Reconstructed 2026-09-12 after uncommitted working-tree edits to this document were accidentally lost. The terminology above, and in "Universal scope" below, has been corrected from this file's own pre-reorganization wording ("sibling of Restaurant...") to the current Shared Domains / Business Domain taxonomy, consistent with the rest of this same document and with the sibling Shared Domain READMEs. No lost version number is asserted; the Version above is unchanged from the last committed state.
 
+
+> **Workflow operativo più recente:** [SELECTION_OPERATIONAL_WORKFLOW_DECISIONS_20261122.md](SELECTION_OPERATIONAL_WORKFLOW_DECISIONS_20261122.md) riunisce Job Position, candidature, intervista AI e `Send to Training`. I fondamenti concettuali di questo README restano validi; non inferire da questo rinvio che l'integrazione AWS sia pubblicata.
+
 ---
 
 ## Purpose
