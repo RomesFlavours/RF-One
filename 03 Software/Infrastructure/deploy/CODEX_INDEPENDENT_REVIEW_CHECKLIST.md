@@ -15,8 +15,10 @@ Use this checklist for every commit or branch handed over for review. Report eac
 1. The change implements an **approved** specification; identify it (document, section, date).
 2. Nothing beyond the specification was added: no extra workflow, schema, table, column, API,
    algorithm, UI flow or architectural decision (RF1_OPERATIONAL_DATABASE_001 §6.4, §7).
-3. Every choice the specification left undefined was **stopped and submitted to design**, not
-   decided in code. List any undecided choice found in the change.
+3. Claude decided only technical details that respect the specification. Every change of
+   flow, schema, API or behaviour that the specification does not define was **stopped and
+   submitted to design**, not decided in code (decision OQ-9, spec §11). List any such choice
+   found in the change.
 4. No column or table name was invented without verification in existing code (§5).
 
 ## B. Operational database principle
@@ -33,8 +35,10 @@ Use this checklist for every commit or branch handed over for review. Report eac
 10. Locations/merchants and companies remain separated; credentials stay per location (§3).
 11. Frequency is set by the common service, not by a Domain (§3). Any claimed API capability is
     verified, not assumed.
-12. Bank: enrichers write only the enrichment field of the RF-One movement; WHO/WHY read only
-    canonical transaction fields (§4).
+12. Bank: enrichers write only the dedicated enrichment field of the RF-One movement
+    (`enrichment_note` in RFBank); the imported bank description and the original Memo are never
+    overwritten, cleaned, normalized or appended to by any process, including later imports and
+    reloads; WHO/WHY read only canonical transaction fields (§4; decision OQ-6, spec §11).
 13. Replacing the source (e.g. Clover → RF POS) would not require changes to the consuming Domain
     touched by this change (§1, §4).
 

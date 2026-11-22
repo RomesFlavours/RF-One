@@ -25,6 +25,8 @@ and thereafter immutable.
 
 Calculating is not closing. Looking at a screen writes nothing.
 
+**Late source corrections — current decision OQ-2 ([RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions), Product Owner).** A correction of source data that reaches RF-One after a period is FINAL does **not** reopen it. RF-One keeps the latest acquired Clover value and the raw evidence for audit; native history is deferred to RF POS design. How such a correction is then shown is not yet defined (governing decision §12, G-2). *(The original 2026-11-21 wording about recording corrections as events is superseded.)*
+
 ---
 
 ## 2. Rule Version lifecycle

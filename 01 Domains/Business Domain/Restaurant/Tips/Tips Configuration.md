@@ -77,7 +77,7 @@ Schedule / Manual Trigger
 
 **STEP 12B integration note:** an earlier, independently-developed draft of this gate (`feature/tips-complete`) checked only the Live Cursor via a Tips-local `_clover_live_sync_readiness` helper, predating STEP 12A's Correction/Reconciliation Sync work. That draft was **not** carried over — main's canonical, stricter gate (Live Cursor + all three Correction resource cursors) is authoritative.
 
-**Residual contradiction (RF1_OPERATIONAL_DATABASE_001):** this gate calls a Clover connector function directly. The governing decision requires a source-neutral RF-One readiness/consolidation interface; it is not yet designed (OQ-3). Recorded, not resolved; no code changed.
+**Approved vs. implemented ([RF1_OPERATIONAL_DATABASE_001, current decision OQ-3](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)).** **Approved:** the start date defaults to the next business day after the last consolidated period of the selected location; a dedicated configurable day offset sets the end date, also in manual mode. **Calcola** and **Consolida** require verified full coverage of the period for that location. If coverage is incomplete they are blocked, and a modal shows the reason and **Scarica dati** (close X and contextual help per the standing UI rules). A user authorized to calculate Tips for the location may request its acquisition through the midnight process without general `CLOVER_ACQUISITION` permission. Payment readiness remains separate. **Still to implement.** *(The original 2026-11-21 OQ-3, limited to starting a calculation, is in [§11 OQ-3](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#oq-3) for traceability.)* **Implemented today:** the gate above, which calls a Clover connector function directly. Still for design: the coverage criterion, and whether it also gates scheduled automatic runs (§9) (governing decision §12, G-3, G-4). No code changed.
 
 ---
 
@@ -133,7 +133,7 @@ A failed, blocked, cancelled, or reopened (reversed) `TipPaymentInstruction` rai
 
 ## 10. Payment Readiness — the Clover reconciliation gate before Approve & Pay
 
-> Same residual contradiction as §3 (RF1_OPERATIONAL_DATABASE_001, OQ-3): the gate depends on a Clover connector function rather than a source-neutral RF-One interface.
+> **Unchanged by decision OQ-3** (payment readiness remains separate; any change to payment conditions needs a separate decision). Residual contradiction with RF1_OPERATIONAL_DATABASE_001 §2/§6.2: this gate depends on a Clover connector function rather than an RF-One interface (governing decision §12, G-5).
 
 `tips/payment_readiness.describe_payment_readiness(session, restaurant_id)` is the PAYMENT-time gate (never confused with §3's CALCULATION-time gate) `payment_cycle_service.approve_and_pay_cycle` checks immediately after Authority, before any connector call:
 

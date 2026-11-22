@@ -1,6 +1,6 @@
 # Clover acquisition job runner (AWS)
 
-> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This runner is part of the one shared Clover acquisition service, not an importer of any Domain (it uses the `rfone-tips` image for packaging only). Open points: one service for all locations (OQ-4) and the 30 s target (OQ-1).
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This runner is part of the one shared Clover acquisition service, not an importer of any Domain (it uses the `rfone-tips` image for packaging only). Approved target ([current decisions OQ-1, OQ-4](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)): the shared service acquires new data and corrections at midnight, with one engine opening separate connections per location (per-location credentials, checkpoints and outcomes); 30 s live checks run only during an active request for a location; resume from the last valid checkpoint. This runner is today's implementation, not yet that service (still to implement). *(The original 2026-11-21 target of one 30 s check for everything is superseded.)*
 
 CLOVER_ACQUISITION_JOBS_001. **Status: created 2026-09-26** (Product Owner
 approval: ECS Fargate runner, then the ECS API VPC endpoint).

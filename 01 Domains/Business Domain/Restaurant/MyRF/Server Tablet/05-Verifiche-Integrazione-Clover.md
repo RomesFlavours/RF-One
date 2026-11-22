@@ -11,6 +11,8 @@
 > **Questo documento contiene verifiche da svolgere, non capacità già accertate.**
 > Nessuna delle verifiche elencate è stata ancora svolta o superata.
 
+> **Decisione vigente OQ-5 ([RF1_OPERATIONAL_DATABASE_001, decisioni correnti](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)).** Le prove riguardano solo l'inserimento in Clover degli ordini del Server Tablet per la sede selezionata; l'inserimento resta da implementare. Per l'inserimento restano da verificare in particolare V3/V4, V6 e V7 (riconoscere un ordine già ricevuto da Clover, per non duplicarlo). V8 (conferma dell'inoltro alla cucina/bar) e V9/V10 (modifiche, annullamenti, chiusura del conto) riguardano aspetti rinviati dalla decisione vigente.
+
 ---
 
 ## 1. Verifiche da svolgere

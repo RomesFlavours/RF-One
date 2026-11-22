@@ -107,7 +107,7 @@ Visual/video context gains operational value when combined with RF-One's canonic
 
 Illustrative, non-normative, cross-industry examples:
 
-- **Restaurant:** a camera observes a table occupied, combined with Clover reporting no open order for it → a possible new seating not yet acknowledged.
+- **Restaurant:** a camera observes a table occupied, combined with RF-One operational data (today fed by the Clover connector) showing no open order for it → a possible new seating not yet acknowledged.
 - **Retail:** a camera observes several customers in a fitting-room area, combined with inventory/staffing state → Cognito may suggest support.
 
 > **Ambient visual context without business state is incomplete. Business state without visual context is passive. Cognito combines both — this document does not turn either example into a fixed, mandatory rule.**

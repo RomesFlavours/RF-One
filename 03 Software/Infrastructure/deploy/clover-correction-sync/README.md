@@ -1,6 +1,6 @@
 # Clover Correction Sync (AWS)
 
-> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This service is part of the one shared Clover acquisition service, not a Domain importer. It currently runs per Location (`--location-id 1`) at ~60 s: how one service covers all locations (OQ-4) and the 30 s target (OQ-1) are open questions of the governing decision.
+> **Governing decision:** [RF1_OPERATIONAL_DATABASE_001](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). This service is part of the one shared Clover acquisition service, not a Domain importer. **Approved target ([current decisions OQ-1, OQ-4](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)):** the shared service acquires new data **and** corrections at midnight, with one engine opening separate connections per location (per-location credentials, checkpoints and outcomes); 30 s live checks run only during an active request for a location; resume from the last valid checkpoint. Still to implement. *(The original 2026-11-21 target of one 30 s check for everything is superseded.)* **Implemented today:** this separate service, per Location (`--location-id 1`), at ~60 s. Correction coverage still to verify: governing decision §11 OQ-1.
 
 CORRECTION_POLLER_ACTIVATION_001. **Status: created 2026-09-28** (Product
 Owner decision: option A — a permanent service at the approved ~60 s).

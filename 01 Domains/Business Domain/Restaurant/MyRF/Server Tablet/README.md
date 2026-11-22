@@ -36,7 +36,7 @@ Dove queste definizioni dipendono da ciò che Clover consente effettivamente (le
 
 Nei documenti 01–04 i punti che dipendono da una verifica sono indicati con il rimando *(verifica: 05)*.
 
-**Decisione prevalente:** [RF1_OPERATIONAL_DATABASE_001](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). MyRF legge menu, catalogo e conti dal database operativo canonico RF-One, alimentato dal connettore Clover tramite il servizio comune di ingestione; dove i documenti 01–04 dicono «dai dati Clover» si intendono i dati Clover acquisiti in RF-One. L'invio delle ordinazioni verso Clover (scrittura verso un POS esterno) non è definito dalla decisione: questione aperta OQ-5, da progettare.
+**Decisione prevalente:** [RF1_OPERATIONAL_DATABASE_001](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md). MyRF legge menu, catalogo e conti dal database operativo canonico RF-One, alimentato dal connettore Clover tramite il servizio comune di ingestione; dove i documenti 01–04 dicono «dai dati Clover» si intendono i dati Clover acquisiti in RF-One. **Invio ordini — decisione vigente OQ-5 ([decisioni correnti](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)):** le prove sono limitate all'inserimento in Clover degli ordini del Server Tablet per la sede selezionata; altri dati, modifiche e annullamenti dopo l'accettazione sono rinviati. **L'invio degli ordini di prova resta da implementare**; le capacità Clover da verificare restano nel documento 05. La decisione originale del 2026-11-21 è in [§11 OQ-5](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#oq-5), solo per tracciabilità.
 
 ---
 

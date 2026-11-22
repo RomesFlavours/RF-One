@@ -47,6 +47,8 @@
 
 L'elenco rappresenta il minimo richiesto ("almeno"); non esclude ulteriori stati.
 
+**Decisione vigente OQ-5 ([RF1_OPERATIONAL_DATABASE_001, decisioni correnti](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)).** Le prove sono limitate all'**inserimento in Clover degli ordini del Server Tablet** per la sede selezionata. Altri tipi di dati, e modifiche o annullamenti dopo l'accettazione, sono rinviati. **L'invio degli ordini di prova resta da implementare.** Il modello di stato per l'inserimento resta da definire in progettazione, dopo le verifiche Clover (decisione di riferimento §12, G-6). *(La decisione originale del 2026-11-21 — registrazione come «in attesa», verifica prima del reinvio, tre eventi distinti invio/ricezione/inoltro in cucina — è riportata in [§11 OQ-5](../../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#oq-5) solo per tracciabilità, dove la decisione vigente la supera.)*
+
 ### Dopo l'invio
 
 - Dopo l'invio, correzioni e annullamenti sono operazioni esplicite soggette alle autorizzazioni definite.

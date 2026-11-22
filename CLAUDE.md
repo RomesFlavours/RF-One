@@ -17,11 +17,16 @@ original: `SOURCE_DECISION_IT.md` in the same folder); this is a pointer to it.
    Clover (or other provider) engine for one Domain or one period; never duplicate
    the same business fact per module.
 2. **Design is done by the Product Owner + ChatGPT; Claude implements.** Implement
-   complete, approved specifications faithfully. Do not add workflows, schemas,
-   tables, columns, APIs, information models or architectural decisions of your own.
-   When a choice the specification does not define emerges, **stop and submit it to
-   design** — do not decide it. Do not invent column or table names not verified in
-   the existing code.
+   complete, approved specifications faithfully. **Claude decides the technical
+   details that respect the approved specification. If the work would change a flow,
+   schema, API or behaviour, Claude stops and asks design** (decision OQ-9,
+   2026-11-21). Do not add workflows, schemas, tables, columns, APIs, information
+   models or architectural decisions of your own. Do not invent column or table names
+   not verified in the existing code. Approved decisions on the former open questions
+   OQ-1…OQ-11 and the points still open: §11–§12 of the normative text.
+   The same boundary limits the MIEAF problem-solving rule wherever it applies:
+   the technical alternatives Claude chooses are only technical details within the
+   approved specification, never a change of flow, schema, API or behaviour.
 3. **Codex performs the independent review** using
    `03 Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md`; hand
    over the commit and its report. Codex does not change requirements.
@@ -278,8 +283,8 @@ If a specification conflicts with canonical documentation or leaves a material b
 
 Required sequence for implementation work: **Product Owner + ChatGPT specification → Claude implementation and tests → Codex independent review → Product Owner authorization for merge/deploy**. Do not merge or deploy merely because code or tests are ready.
 
-The "Repository Architect" role means keeping the repository's structure,
-references and documentation consistent with approved decisions. It does not
+Keeping the repository's structure, references and documentation consistent
+with approved decisions is part of Claude's role. It does not
 authorize designing new architecture, data models, workflows or APIs: under
 RF1_OPERATIONAL_DATABASE_001 §7 design belongs to the Product Owner + ChatGPT,
 implementation to Claude, independent review to Codex (see the section

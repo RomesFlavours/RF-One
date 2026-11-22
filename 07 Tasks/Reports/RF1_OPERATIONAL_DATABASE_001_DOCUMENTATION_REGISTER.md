@@ -3,6 +3,8 @@
 **Date:** 2026-11-21 · **Author:** Claude (implementation) · **For:** Codex independent review, then Product Owner.
 **Decision:** [`10 System/Operational Database and Data Governance/README.md`](../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md) (verbatim original: `SOURCE_DECISION_IT.md`).
 **Branch:** `docs/rf1-operational-database-principle`, created from `handoff/2026-10-17` @ `0e85cef`, worktree `C:\Users\servi\rfone-wt\docs-operational-db-principle`. One local documentation commit. **No code, database, configuration, credential or AWS change; no push, merge or deployment.**
+**Second alignment (same day):** Product Owner decisions on OQ-1…OQ-11, applied on top of commit `3b6e903` in the same separate worktree. See §8.
+**Third alignment (2026-11-22):** later Product Owner decisions superseding OQ-1…OQ-8 where they differ, committed together with the second alignment on the same branch. See §9.
 
 ---
 
@@ -19,6 +21,7 @@
 |---|---|
 | `10 System/Operational Database and Data Governance/README.md` | **Single reference specification** (English, faithful to the approved text) + non-normative relationship table (§10) + open questions (§11). |
 | `10 System/Operational Database and Data Governance/SOURCE_DECISION_IT.md` | Verbatim approved Italian decision, immutable; prevails over the English rendering. |
+| `10 System/Operational Database and Data Governance/OQ_DECISIONS_IT.md` | Second alignment: verbatim approved Italian decisions on OQ-1…OQ-11 (2026-11-21); prevails over the spec §11 rendering. |
 | `03 Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md` | Codex independent architectural review checklist. **No Codex checklist existed before**; created as required by decision §7/§10.4. |
 | `07 Tasks/Reports/RF1_OPERATIONAL_DATABASE_001_DOCUMENTATION_REGISTER.md` | This register. |
 
@@ -54,7 +57,7 @@
 
 ## 4. Residual contradictions and open questions (not decided)
 
-Recorded also in the spec §11. Each returns to design (Product Owner + ChatGPT).
+**Status: decided.** The Product Owner decided every item below on 2026-11-21. The decisions are in spec §11 and §8 of this register. The table is kept as the record of the first alignment. Points still open after the decisions: spec §12 (G-1…G-10).
 
 | ID | Contradiction / gap | Affected files | Why it matters | Smallest correction (proposal, not applied) |
 |---|---|---|---|---|
@@ -96,3 +99,43 @@ Recorded also in the spec §11. Each returns to design (Product Owner + ChatGPT)
 - Every anchored edit matched exactly once before writing (scripted, all-or-nothing).
 - `git diff` contains only `.md` files; no code, migration, configuration or data file touched.
 - Acceptance criteria of decision §9: one model and one end-to-end path stated in the spec and linked from Core, Data Store, Domains and agent instructions — **met at documentation level**; "no contradictory instructions" — **met except the items of §4**, which are listed rather than resolved, as instructed.
+
+## 8. Second alignment — Product Owner decisions on OQ-1…OQ-11 (2026-11-21)
+
+> **Superseded in part (§9):** for OQ-1…OQ-8 the summaries in the table below are the **original** 2026-11-21 decisions. Where the later decisions differ, those apply.
+
+**Source:** verbatim Italian text `10 System/Operational Database and Data Governance/OQ_DECISIONS_IT.md`, rendered in English with the current implementation status in spec §11 (one anchor per decision, `#oq-1` … `#oq-11`). Points that still need a design choice: spec §12 (`#design-gaps`).
+**Base:** commit `3b6e903`, same separate worktree. Changes left uncommitted in the local diff. Documentation only.
+
+| OQ | Decision (summary) | Reference | Documents aligned | Approved vs implemented today |
+|---|---|---|---|---|
+| OQ-1 | One acquisition service checks new data **and** corrections every 30 s, within verified limits; after an interruption it recovers from the last valid checkpoint. | spec §11 `#oq-1` | `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` (header, §2, §3); `deploy/clover-acquisition-job/README.md`; `deploy/clover-correction-sync/README.md`; `03 Software/Infrastructure/README.md` | Today: two processes, Live Sync 15 s and Correction Sync 60 s. Correction coverage still to verify for Refunds older than 48 h, child records, discounts and tax, and **Shifts** (no correction resource). |
+| OQ-2 | Current state plus relevant corrections recorded as events. No automatic reopening of a closed Tips period. The history belongs to RF-One. | `#oq-2` | Clover sync §1, §8; `Tips/Finalized Tips Period.md` | Today: corrections applied in place, no correction event. FINAL periods already immutable. |
+| OQ-3 | Calculation starts only if RF-One data cover the whole requested range; otherwise a modal explains. Replaces the consolidation check for calculation only. | `#oq-3` | `Tips Configuration.md` §3, §10; Clover sync header and §7 | Today: gate = Clover `describe_reconciliation_status()` for calculation and payment. Payment gate unchanged. |
+| OQ-4 | One service, locations in parallel, each with its own credentials, identifiers and resume point; one blocked location does not stop the others. | `#oq-4` | same as OQ-1 | Today: per-Location processes (`--location-id 1` on AWS). The per-Location cursor exists. |
+| OQ-5 | Order recorded at once as pending, sent through the connector, verified before any resend. Sending, POS receipt and kitchen forwarding stay distinct. RF POS uses the same contracts. | `#oq-5` | `MyRF/Server Tablet/README.md`, `03-Tavolo-e-Percorso-Ordine.md`, `05-Verifiche-Integrazione-Clover.md` | Not implemented (draft). Clover V3/V4, V6, V7, V8, V9/V10 to verify. |
+| OQ-6 | Enrichers write only `enrichment_note`. Imported description never rewritten, cleaned, normalized or appended to. Original Memo separate. WHO/WHY read canonical movement fields. | `#oq-6` | `Bank Reconciliation/README.md`; Codex checklist item 12 | RFBank (verified, commit `8b90a4e`): `enrichment_note` and `source_memo`. Main Data Store: no `enrichment_note`; adoption needs its own approved task. |
+| OQ-7 | The RF-One registry role valid for person, location and date is authoritative. Imported roles are historical evidence only and never used in calculation. | `#oq-7` | `Tips/README.md`; `Organization/Employee Assignment.md` | Branch base: the engine reads `EmployeeAssignment`. Main working copy: **uncommitted** `tips/clover_role_history.py` uses Clover roles in calculation, which conflicts. |
+| OQ-8 | Define the primary flow of Tips and Compensation and their data/connector contracts first; cleanup after. | `#oq-8` | `Tips/README.md`; `Compensation/README.md`; spec §11 contract list | No complete contract document exists. |
+| OQ-9 | Claude decides technical details within the spec; it stops and asks before any change of flow, schema, API or behaviour. | `#oq-9` | `CLAUDE.md` (rule 2 and MIEAF limit); Codex checklist item 3 | Instruction-level only. |
+| OQ-10 | Core 16/17: only the affected sentences changed. Cognito reads RF-One operational data, today fed by the Clover connector. | `#oq-10` | `00 Core/ConceptualArchitecture/16_…md` §9 (one bullet); `17_…md` (one example sentence) | Wording only; meaning of examples unchanged. |
+| OQ-11 | Separate working copy; main-copy changes preserved; latest help and local-DB rules respected; unrelated local work kept out of the diff. | `#oq-11` | this register; spec §11 | Main copy: uncommitted newer `CLAUDE.md`, `How Works Standard.md`, `UI Rules.md`, `LOCAL_ENVIRONMENT.md`. Not copied; to be preserved at merge. |
+
+**Second-alignment checks:** see the final report handed to the Product Owner. In short: the links resolve; every anchored edit matched exactly once; the diff contains only `.md` files; `SOURCE_DECISION_IT.md` is byte-identical to `3b6e903`.
+
+## 9. Third alignment — later Product Owner decisions on OQ-1…OQ-8 (2026-11-22)
+
+**Source:** Product Owner patch `07 Tasks/Reports/RF1_OQ_documentation_alignment.patch` (main working copy). `git apply --check` passed and the patch applied without conflicts. It adds *Decisioni successive del Product Owner* to `OQ_DECISIONS_IT.md`, keeping the original Italian text under *Testo originale delle decisioni*, and *Current Product Owner decisions* (`#current-decisions`) to the spec. OQ-9…OQ-11 are unchanged.
+
+| OQ | Current decision (summary) | Documents aligned | Status |
+|---|---|---|---|
+| OQ-1 | Midnight acquisition of new records and corrections; 30 s live checks only during an active request for a location; resume from checkpoint. | spec header, §3, §9, status table, §11, §12 G-1; Clover sync header and Correction Poller frequency; both deploy READMEs; `03 Software/Infrastructure/README.md` | To implement. |
+| OQ-2 | Latest Clover value; raw audit evidence; FINAL Tips not reopened; native history deferred to RF POS. | Clover sync header, §1, §8; `Finalized Tips Period.md`; spec §12 G-2 (narrowed) | Verified behaviour consistent (in-place correction, `SourceRecord`, immutable FINAL). |
+| OQ-3 | Start-date default and end-date offset per location; Calcola and Consolida require verified per-location coverage; blocking modal with reason and *Scarica dati*; acquisition request without general `CLOVER_ACQUISITION`; payment readiness separate. | `Tips Configuration.md`; Clover sync §7 | To implement. G-3…G-5 open. |
+| OQ-4 | One midnight engine, separate connections for Winter Park and Mount Dora; per-location credentials, checkpoints, outcomes; independent future live cycles. | as OQ-1 | To implement. |
+| OQ-5 | Trial scope = inserting Server Tablet orders in Clover for the selected location; other data, changes and cancellations deferred. | `MyRF/Server Tablet/README.md`, `03-…`, `05-…` (Italian) | **Sending trial orders: to implement.** G-6 narrowed. |
+| OQ-6 | Step = bank/card imports, enricher report imports, linking records to bank movements; original text preserved; normalization only as separate derived value; Memo separate from `enrichment_note`; WHO/WHY/rules/allocations out of scope. | `Bank Reconciliation/README.md`; spec §12 G-7 (narrowed) | Bank step = **import and matching**. Main Data Store field: not adopted. |
+| OQ-7 | Selection → Training (arrival confirmed) → Student role in Registry → Registry creates the person in Clover and stores the POS ID; Tips reads Registry assignments without Clover fallback. | `Tips/README.md`; `Organization/Employee Assignment.md`; spec §12 G-11 (new) | **Clover Student creation with POS ID: to implement.** Location source and canonical POS ID record: for design. |
+| OQ-8 | Compensation pulls FINAL Tips from RF-One; Tips neither sends nor starts Compensation; CALCULATED stays in Tips. | `Tips/README.md`; `Compensation/README.md`; spec §12 G-9 (narrowed) | To implement. |
+
+**OQ-9…OQ-11:** the Core 16/17 sentences (OQ-10) are kept as already aligned. `AGENTS.md`, `CLAUDE.md` rule 2 and the MIEAF limit state the same OQ-9 boundary. The newer main-copy instructions on contextual-help placement (2026-11-14) and local database storage (2026-11-13) are not copied into this branch and are preserved for the merge; this documentation complies with them (no new UI beyond the OQ-3 modal, which refers to the current placement rules; no database location prescribed).

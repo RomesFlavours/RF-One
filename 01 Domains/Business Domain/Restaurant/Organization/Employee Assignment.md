@@ -97,6 +97,8 @@ OTHER
 
 A source-derived assignment is never treated as equivalent to a manually confirmed one without this provenance being visible.
 
+**Decision OQ-7 ([RF1_OPERATIONAL_DATABASE_001 §11](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#oq-7), 2026-11-21):** for Tips, the role valid in the RF-One registry for the person, the location and the work date is authoritative; imported roles remain only as historical evidence and never enter the calculation. Whether the `SOURCE_ROLE_MAPPING` seeding action above remains a permitted way to create registry assignments is not decided (governing decision §12, G-8). The current decision OQ-7 ([governing decision](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)) confirms the Registry as owner of roles, without Clover fallback, and adds that the Registry creates the Training Student in Clover and stores the returned employee ID as POS ID — still to implement.
+
 ---
 
 ## Multi-role / multi-area capability

@@ -7,6 +7,8 @@
 
 This page records the approved decision. It does **not** by itself change code, databases, configuration or AWS, and it does not certify that current software conforms (see §10).
 
+**Decisions on the open questions OQ-1…OQ-11:** the **current** decisions are in [*Current Product Owner decisions*](#current-decisions); for OQ-1…OQ-8 they supersede the original 2026-11-21 decisions wherever the two differ. §11 keeps the original decisions for traceability, together with the verified behaviour, open defects and steps still to implement. Verbatim Italian text of both: [OQ_DECISIONS_IT.md](OQ_DECISIONS_IT.md). Points that still need a design choice: §12.
+
 ---
 
 ## 1. Non-negotiable principle
@@ -38,7 +40,7 @@ Connectors may keep technical staging, but **no staging table and no provider sc
 ## 3. Incremental acquisition and integrity
 
 - **External POS systems:** **one shared acquisition service** for all locations — never one importer per Domain. Locations keep distinct credentials and identifiers.
-- **Operational target: one check every 30 seconds**, within verified API limits and technical constraints. The frequency is set by the common service, never by the Domains.
+- **Cadence (current decision OQ-1):** the shared service acquires new records and corrections **at midnight**; **live checks every 30 seconds** run only while there is an **active request for a location**, within verified API limits and technical constraints. The frequency is set by the common service, never by the Domains. *(The original 2026-11-21 text set "one check every 30 seconds" as the permanent operational target; that wording is superseded by OQ-1.)*
 - Synchronize only data **new or modified since the last consolidated checkpoint**; after an interruption, recover the missing interval automatically.
 - Advance the checkpoint **only after a valid write**; use idempotent upserts, RF-One keys and mapping of external IDs.
 - Handle late updates, cancellations, corrections, pagination, retries and gap detection **without duplicating events**.
@@ -92,7 +94,7 @@ First alignment register: [`07 Tasks/Reports/RF1_OPERATIONAL_DATABASE_001_DOCUME
 - The end-to-end path source → connector → ingestion → operational DB → Domains is defined unambiguously (§2).
 - Every relevant document adopts the same principles, without contradictory instructions.
 - The canonical data contract is independent of Clover; replacing it with RF POS requires no redesign of consumers.
-- Incremental synchronization, the 30 s target and the integrity safeguards are specified, without claiming unverified API support.
+- Incremental synchronization, the cadence of decision OQ-1 (midnight acquisition; 30-second live checks only on an active request for a location) and the integrity safeguards are specified, without claiming unverified API support.
 - Claude and Codex have distinct, binding instructions for their roles.
 - No code, database or AWS service is modified by a documentation-only alignment.
 
@@ -112,18 +114,265 @@ This decision is the system-level, binding expression of principles already pres
 
 **Already consistent at documentation level (observed, not re-verified in code by this page):** RF-One surrogate IDs with optional source provenance on operational tables; the Clover connector under `technical/connectors/` as the one shared fetch/upsert path; the PayPal connector writing into the common `PaymentInstrumentTransaction` ledger; Domain documents separating source semantics (e.g. Clover `SourceRole`) from RF-One concepts.
 
-## 11. Open questions — not decided by this page
+<a id="current-decisions"></a>
+## Current Product Owner decisions
 
-These points are **not defined** by the approved decision or conflict with earlier approved documents. They are recorded for design (Product Owner + ChatGPT); Claude does not resolve them. Detail and affected files: the alignment register, §4.
+The decisions below supersede the earlier wording in sections 3, 9, 11 and 12 wherever it differs. Earlier implementation notes and unresolved design items are historical context where superseded. OQ-9 through OQ-11 continue to apply.
 
-| ID | Question |
+**OQ-1.** The shared service acquires new Clover records and corrections at midnight. Live checks every 30 seconds are enabled only during active requests for a location. Resume from the last valid checkpoint.
+
+**OQ-2.** Keep the latest acquired Clover value. Preserve raw evidence for audit as applicable. Corrections do not reopen FINAL Tips. Native history is deferred to RF POS design.
+
+**OQ-3.** Tips defaults to the next business day after the last consolidated period for the selected location and adds a dedicated configurable day offset for the end date, also in manual mode. Calcola and Consolida require verified full coverage for that location. If coverage is incomplete, block and show the reason and Download data in the modal. A user authorized to calculate Tips for the location may request its acquisition through the midnight process without general CLOVER_ACQUISITION permission. Payment readiness remains separate.
+
+**OQ-4.** At midnight one engine opens separate connections for Winter Park and Mount Dora. Credentials, checkpoints and outcomes are per location. Future live cycles run independently per location.
+
+**OQ-5.** Trial scope is inserting Server Tablet orders in Clover for the selected location. Other data types and changes or cancellations after acceptance are deferred. Insertion is not yet implemented.
+
+**OQ-6.** Current scope is bank and card imports, enricher report imports and linking individual records to the correct bank movements. Preserve original bank text, including across reimports. Normalize only in a separate derived value. Keep the original Memo separate from enrichment_note. WHO, WHY, rules, allocations and use of enrichment are outside this step. The main Data Store adopts the field when the enrichers are connected there.
+
+**OQ-7.** Selection releases the eligible candidate to Training. Only after the Training operator confirms arrival does Training enroll the person and register the Student role in Registry. Registry then creates the person in Clover for the competent location and saves the returned employee ID as POS ID for record linkage. RF-One Registry owns roles; Tips reads the assignment valid for the person, location and date without Clover fallback. Clover creation and POS ID storage are still to be implemented. The authoritative location and canonical POS ID record remain open.
+
+**OQ-8.** Compensation pulls FINAL Tips from RF-One when required. Tips neither sends data nor starts Compensation. CALCULATED results remain inside Tips until finalization.
+
+The verbatim Italian text of these decisions is the section *Decisioni successive del Product Owner* of [OQ_DECISIONS_IT.md](OQ_DECISIONS_IT.md); it prevails over this rendering.
+
+### Status of the current decisions
+
+Four categories are kept separate: **approved decision** (above), **verified behaviour** (what the software on this branch's base does, observed 2026-11-21, details in §11), **open defect** (verified behaviour that contradicts the decision) and **to implement** (a step the decision requires that does not exist yet). An approved decision does not certify implementation. No implementation of the current decisions is verified on this branch.
+
+| OQ | Verified behaviour | Open defect | To implement | Still for design (§12) |
+|---|---|---|---|---|
+| OQ-1 | Two per-Location processes: Live Sync 15 s, Correction Sync 60 s. | No midnight run; continuous polling instead of live checks on request. | Midnight acquisition of new records and corrections; 30 s live checks only during an active request for a location; resume from checkpoint. | G-1 |
+| OQ-2 | Corrections applied in place; raw payloads kept in `SourceRecord` for audit; FINAL Tips immutable. | — | — | G-2 (residual) |
+| OQ-3 | Calculation and payment gated by the Clover connector function `describe_reconciliation_status()`. | Gate reads a connector function, not RF-One coverage; no start-date default, end-date offset or per-location coverage check for Calcola/Consolida. | Defaults, coverage check for Calcola and Consolida, blocking modal with reason and *Scarica dati*, per-location acquisition request for users authorized to calculate Tips. | G-3, G-4, G-5 |
+| OQ-4 | Each process runs per Location with its own cursor. | — | One midnight engine with separate per-location connections, credentials, checkpoints and outcomes. | G-1 |
+| OQ-5 | No outbound order path. | — | **Sending Server Tablet trial orders to Clover** for the selected location. | G-6 |
+| OQ-6 | RFBank: `enrichment_note`, `source_memo` separate. Main Data Store: no `enrichment_note`. | — | Step limited to **import and matching**: bank/card imports, enricher report imports, linking records to bank movements; field adoption in the main Data Store when the enrichers are connected there. | G-7 |
+| OQ-7 | Tips engine reads `EmployeeAssignment`. | Uncommitted main-copy Tips work reads Clover roles during calculation (see §11 OQ-7). | Selection → Training handoff with arrival confirmation; Student role in Registry; **creation of the Student in Clover and storage of the returned POS ID**. | G-8, G-11 |
+| OQ-8 | No complete contract document. | — | Compensation pull of FINAL Tips from RF-One. | G-9 |
+
+## 11. Original decisions on the open questions (Product Owner, 2026-11-21) and verified state
+
+The first alignment recorded eleven open questions. On 2026-11-21 the Product Owner approved a decision for each one. The verbatim Italian text is the section *Testo originale delle decisioni* of [OQ_DECISIONS_IT.md](OQ_DECISIONS_IT.md); it prevails over this rendering.
+
+**For OQ-1…OQ-8, the *Original decision* paragraphs below are historical:** wherever they differ from the [current decisions](#current-decisions), the current decisions apply and the original wording must not be read as an instruction in force. OQ-9…OQ-11 remain in force as written.
+
+For each decision, **Verified behaviour** describes the software on this branch's base as observed in the repository on 2026-11-21. A decision does not certify implementation. Points that still need a functional or architectural choice are in §12 and stay with design.
+
+<a id="oq-1"></a>
+### OQ-1 — Acquisition frequency (Clover)
+
+**Original decision (2026-11-21; historical where the current decision differs).** **One** acquisition service checks **new data and corrections every 30 seconds**, within verified technical limits. After an interruption it recovers what is missing, restarting from the last valid checkpoint. This approved 30-second cadence replaces the two earlier approved intervals as the target: Fast Live Extractor ~15 s (new records) and Correction/Reconciliation Poller ~60 s (modifications).
+
+**Verified behaviour.** Two separate processes with their own defaults:
+
+- `technical/connectors/clover/live_sync.py`: 15 s, new records by `createdTime`;
+- `technical/connectors/clover/correction_sync.py`: 60 s, modifications. On AWS it runs as `rfone-clover-correction-sync`.
+
+Neither runs at 30 s as a single service. Clover API limits for a 30-second cycle across all locations have not been verified.
+
+**Correction coverage still to verify.** Observed in code and documents, not tested against Clover:
+
+| Resource | Coverage today |
 |---|---|
-| OQ-1 | **Frequency.** The 30 s target (§3) versus the earlier approved Clover cadence — Fast Live Extractor ~15 s for new records, Correction/Reconciliation Poller ~60 s for modifications. Does 30 s replace both, apply to new and modified data alike, or act as an upper bound? |
-| OQ-2 | **POS history and correction model.** The Clover sync architecture states that Clover remains the system of record for POS transactional history and that RF-One keeps only the corrected state. With a replaceable source and a future RF POS, where does transactional history live, and how does correction-in-place relate to Core *Historical Integrity* (corrections generate new events)? |
-| OQ-3 | **Source-neutral readiness interface.** Tips' calculation and payment readiness gates call a Clover connector function (`correction_sync.describe_reconciliation_status()`) directly. A source-neutral RF-One readiness/consolidation contract is not yet designed. |
-| OQ-4 | **One shared service for all locations.** The current Clover Live Sync / Correction Poller run per Location (`--location-id`). How one shared service covers every location (single multi-location process or several instances of the same service) is not defined. |
-| OQ-5 | **Outbound writes.** The decision defines the inbound flow. Writing to an external POS (MyRF Server Tablet sending orders to Clover) and the RF POS write path into canonical contracts are not yet specified. |
-| OQ-6 | **Bank enrichment field.** The decision requires an enrichment field distinct from the original description and memo; its canonical name and location are not documented, and the separate RFBank repository describes enricher output written to "the Memo". Verification and design are needed. |
-| OQ-7 | **Source-evidence tables as Domain inputs.** `SourceRole`, `EmployeeSourceRole` and `SourceRoleMapping` keep a required source identity by design and are read by Tips / Organization flows. Whether these count as permitted canonical inputs or as provider-shaped contracts to be retired is not decided. |
-| OQ-8 | **Per-entity and per-connector contracts (§5).** No complete contract document yet covers every operational entity and connector with all §5 attributes; these are to be produced by design before further implementation. |
-| OQ-9 | **Boundary with MIEAF.** `CLAUDE.md` MIEAF tells Claude to choose between technical alternatives itself; §7 forbids autonomous architectural, data-model, workflow and API decisions. The exact boundary between "technical implementation choice" and "design choice" needs Product Owner confirmation. |
+| Orders, Payments | Re-checked by Clover `modifiedTime` (Correction Poller). |
+| Refunds | No confirmed `modifiedTime`. Fallback: a rolling 48-hour `createdTime` window. Corrections older than that window are not covered. |
+| Order items, modifiers, order fees, payment tips | Re-imported with their parent Order/Payment. Whether removed or voided child records are detected is still to verify. |
+| Order-level discounts, order item tax | Historical Backfill only; no continuous correction. |
+| Shifts (clock-in/out, manager overrides) | Fetched only by Live Sync. Clover's `/shifts` endpoint has no time filter, so shifts are filtered client-side by clock-in inside the current window. There is no Correction resource for shifts, so a later change to a shift whose clock-in has left the window is not covered. Tips presence and Compensation hours depend on shifts. |
+| Employees | Catalog refresh in every Live Sync cycle. |
+
+**Current decision:** [OQ-1 in *Current Product Owner decisions*](#current-decisions); status in the table there.
+
+**Aligned in:** [`CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md`](../../03%20Software/RF-One%20Data%20Store/CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md), [`deploy/clover-acquisition-job/README.md`](../../03%20Software/Infrastructure/deploy/clover-acquisition-job/README.md), [`deploy/clover-correction-sync/README.md`](../../03%20Software/Infrastructure/deploy/clover-correction-sync/README.md), [`03 Software/Infrastructure/README.md`](../../03%20Software/Infrastructure/README.md).
+
+<a id="oq-2"></a>
+### OQ-2 — History and corrections
+
+**Original decision (2026-11-21; historical where the current decision differs).** RF-One keeps the **current state** and **records relevant corrections as events**. A correction does **not** automatically reopen a closed Tips period. The history needed to explain corrections belongs to RF-One and must stay usable if the provider changes.
+
+**Verified behaviour.**
+
+- The Correction Poller applies corrections in place on the canonical rows.
+- `SourceRecord` keeps raw fetched payloads for audit only; business logic never reads it.
+- No RF-One correction event exists.
+- Closed (FINAL) Tips periods are already immutable ([`Finalized Tips Period.md`](../../01%20Domains/Business%20Domain/Restaurant/Tips/Finalized%20Tips%20Period.md)).
+
+**Current decision:** [OQ-2 in *Current Product Owner decisions*](#current-decisions); status in the table there.
+
+**Aligned in:** `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` §1, §8; `Finalized Tips Period.md`.
+
+<a id="oq-3"></a>
+### OQ-3 — Starting a Tips calculation
+
+**Original decision (2026-11-21; historical where the current decision differs).** When the user asks for a calculation from one date to another, Tips checks **in RF-One** that the data cover the **whole** requested period. If even one part is missing, the calculation does not start. A modal explains that the available data do not cover the whole range. For starting a calculation, this coverage check **replaces** the separate consolidation check.
+
+The decision covers **calculation only**. Any change to payment conditions needs a separate decision. The modal follows the standing UI rules (`CLAUDE.md`, *RF-One UI Rules* and *Contextual help on every page*): close X at the top right, and the contextual help link where the current UI Rules place it.
+
+**Verified behaviour.** `tips/readiness.describe_readiness()` gates `ready_to_calculate` by calling the Clover connector function `correction_sync.describe_reconciliation_status()` directly. That function requires the Live Cursor and the three Correction cursors to have passed the end of the Business Date. The payment gate `tips/payment_readiness.describe_payment_readiness()` calls the same function; this decision does not change it.
+
+**Current decision:** [OQ-3 in *Current Product Owner decisions*](#current-decisions); status in the table there.
+
+**Aligned in:** [`Tips Configuration.md`](../../01%20Domains/Business%20Domain/Restaurant/Tips/Tips%20Configuration.md) §3, §9, §10; `CLOVER_CONTINUOUS_SYNCHRONIZATION_ARCHITECTURE.md` §7.
+
+<a id="oq-4"></a>
+### OQ-4 — Multi-location acquisition
+
+**Original decision (2026-11-21; historical where the current decision differs).** **One** service checks the locations **in parallel**. Each location keeps its own credentials, identifiers and resume point. If one location is blocked, the others continue. The blocked location restarts from its own last valid checkpoint.
+
+**Verified behaviour.** Live Sync and Correction Sync each run per Location (`--location-id`); on AWS, `rfone-clover-correction-sync` runs with `--location-id 1`. The per-Location cursor, and so the per-location resume point, already exists.
+
+**Current decision:** [OQ-4 in *Current Product Owner decisions*](#current-decisions); status in the table there.
+
+**Aligned in:** same documents as OQ-1.
+
+<a id="oq-5"></a>
+### OQ-5 — Sending orders from MyRF
+
+**Original decision (2026-11-21; historical where the current decision differs).** RF-One records the order **immediately as pending**, then sends it to the POS through the connector. If the outcome is uncertain, RF-One verifies it before any resend, so that orders are not duplicated. Three events stay distinct: **sending**, **receipt by the POS** and **forwarding to the kitchen**. The future RF POS uses the same RF-One contracts.
+
+**Verified behaviour.** No outbound order path is documented as implemented. The MyRF Server Tablet documents are an unapproved draft.
+
+**Clover capabilities still to verify** (MyRF document 05):
+
+- V3/V4: creating a check and adding items to an existing one;
+- V6: quantities, modifiers and notes;
+- V7: recognizing an order Clover already received, to verify an uncertain outcome;
+- V8: whether and how Clover confirms forwarding to kitchen/bar;
+- V9/V10: corrections and cancellations after sending, external changes and check closure.
+
+**Current decision:** [OQ-5 in *Current Product Owner decisions*](#current-decisions); status in the table there. Under the current decision the trial scope is limited to **inserting Server Tablet orders in Clover** for the selected location; sending trial orders is **still to implement**. Other data types, and changes or cancellations after acceptance, are deferred.
+
+**Aligned in:** [`MyRF/Server Tablet/README.md`](../../01%20Domains/Business%20Domain/Restaurant/MyRF/Server%20Tablet/README.md), `03-Tavolo-e-Percorso-Ordine.md`, `05-Verifiche-Integrazione-Clover.md`.
+
+<a id="oq-6"></a>
+### OQ-6 — Bank enrichers
+
+**Original decision (2026-11-21; historical where the current decision differs).**
+
+- Enrichers write **only** to the dedicated field. In the verified RFBank implementation that field is `enrichment_note`.
+- The imported description is kept **exactly as it arrived from the bank**. No process, including later imports and reloads, may overwrite, clean, normalize or append text to it.
+- The original bank Memo stays separate from the enrichment.
+- WHO and WHY read the canonical fields of the movement.
+- Source tables and enricher tables serve import and matching.
+
+**Verified behaviour.**
+
+- **RFBank** (separate repository `RF One/RFBank`, verified at commit `8b90a4e`, not modified):
+  - `financial_transactions.enrichment_note`, written by `bank_reconciliation/enrichers.py`;
+  - `source_memo` holds the original bank Memo and is never changed;
+  - WHO/WHY read `source_memo` and `enrichment_note` from the movement (`bank_reconciliation/movement_text.py`).
+- **Main Data Store** (this repository):
+  - `FinancialTransaction` has `description_original`, `description_normalized` and `source_memo`, and **no `enrichment_note`**;
+  - adopting the field here is **not done**, and it needs its own approved schema task.
+
+**Current decision:** [OQ-6 in *Current Product Owner decisions*](#current-decisions); status in the table there. Under the current decision this step covers **import and matching** only (bank and card imports, enricher report imports, linking each record to the correct bank movement). WHO, WHY, rules, allocations and the use of enrichment are outside the step.
+
+**Aligned in:** [`Bank Reconciliation/README.md`](../../01%20Domains/Shared%20Domains/Administration/Bank%20Reconciliation/README.md); Codex checklist item 12.
+
+<a id="oq-7"></a>
+### OQ-7 — Tips roles
+
+**Original decision (2026-11-21; historical where the current decision differs).**
+
+- The RF-One employee registry (*Anagrafica*) is authoritative: the role that applies is the one valid for the person, the location and the date of the work.
+- Imported roles remain **only as historical evidence**.
+- The external ID may link the source employee to the RF-One person.
+- The imported role **never enters the calculation**, even when the registry has no assignment.
+
+**Verified behaviour.**
+
+- **On this branch's base**, the Tips engine (`tips/distribution_engine.py`) resolves roles from `EmployeeAssignment` filtered by restaurant, role, validity dates and location. `Tips/README.md` invariant 7 already states this.
+- **Open defect (outside this branch):** in the main working copy there is **uncommitted** local Tips work, outside this alignment and not in this branch: `tips/clover_role_history.py` plus changes to `distribution_engine.py`. It reads Clover role observations during calculation and blocks on "Clover role uncertain". It conflicts with this decision and must be reconciled before that work is committed.
+
+**Current decision:** [OQ-7 in *Current Product Owner decisions*](#current-decisions); status in the table there. Under the current decision, creating the Student in Clover and storing the returned employee ID as POS ID are **still to implement**; the authoritative location and the canonical POS ID record are still for design (G-11).
+
+**Aligned in:** [`Tips/README.md`](../../01%20Domains/Business%20Domain/Restaurant/Tips/README.md); [`Organization/Employee Assignment.md`](../../01%20Domains/Business%20Domain/Restaurant/Organization/Employee%20Assignment.md).
+
+<a id="oq-8"></a>
+### OQ-8 — Primary flow of Tips and Compensation first
+
+**Original decision (2026-11-21; historical where the current decision differs).** The order of work is:
+
+1. define the primary flow of the two modules;
+2. define the data and connector contracts that flow needs (§5);
+3. only then clean up old paths.
+
+Designing the flow, and every functional choice still missing, belongs to design (Product Owner + ChatGPT).
+
+**Contracts to prepare before implementation.** These are candidates drawn from existing documents; the final list and their content belong to design. Each one needs the §5 attributes.
+
+- **Entity contracts:**
+  - Location and Business Day (time zone, operating-day cutoff);
+  - Employee and its external-ID link;
+  - Employee Assignment (role per person, location and date — OQ-7);
+  - Shift (clock-in/out, manager overrides);
+  - Order, Payment, Payment Tip, Order Fee (gratuity/service charge), Refund;
+  - data-coverage status (OQ-3);
+  - correction event (OQ-2);
+  - Tip Entitlement and FINAL Tips period, consumed by Compensation.
+- **Connector contracts:**
+  - Clover acquisition (orders, payments, refunds, shifts, employees — OQ-1, OQ-4);
+  - the payroll-provider exchange that Compensation needs.
+
+**Verified behaviour.** No complete contract document exists. `DATABASE_SCHEMA.md` and the connector documents cover parts of it.
+
+**Current decision:** [OQ-8 in *Current Product Owner decisions*](#current-decisions); status in the table there.
+
+**Aligned in:** `Tips/README.md`; [`Compensation/README.md`](../../01%20Domains/Shared%20Domains/Administration/Compensation/README.md).
+
+<a id="oq-9"></a>
+### OQ-9 — Claude's choices
+
+**Decision.** Claude decides the **technical details** that respect the approved specification. If a task would change **flow, schema, API or behaviour**, Claude stops and asks design.
+
+**Aligned in:** `CLAUDE.md` (section *Operational database principle and development roles*, rule 2, and the MIEAF limit); [Codex checklist](../../03%20Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md) item 3.
+
+<a id="oq-10"></a>
+### OQ-10 — Examples in the Core
+
+**Decision.** Only the affected sentences of Core documents 16 and 17 are updated. They now say that Cognito reads RF-One operational data, today fed by the Clover connector. The meaning of the examples and the rest of the approved texts are unchanged.
+
+**Aligned in:** [`16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md`](../../00%20Core/ConceptualArchitecture/16_Ambient_Operational_Context_and_In-Flow_Cognito_Assistance.md) §9; [`17_Visual_Video_Context_as_Ambient_Evidence.md`](../../00%20Core/ConceptualArchitecture/17_Visual_Video_Context_as_Ambient_Evidence.md), restaurant example.
+
+<a id="oq-11"></a>
+### OQ-11 — Local work
+
+**Decision.**
+
+- Use a separate working copy, and preserve the changes already in the main working copy.
+- Check the local versions of the relevant instructions.
+- Respect the latest contextual-help and local-database rules.
+- Keep unrelated local work out of the diff.
+
+**Observed.** The main working copy holds **uncommitted** newer versions of these instructions, which are not on this branch:
+
+- `CLAUDE.md`: contextual-help placement (2026-11-14) and local database storage (2026-11-13);
+- `03 Software/Shared UI/How Works Standard.md` and `UI Rules.md`: help placement (2026-11-14);
+- `LOCAL_ENVIRONMENT.md`: continuation procedure (2026-11-14).
+
+They were **not copied** into this diff. Merging this branch must preserve them. The documentation prepared here complies with them: the only new UI element described (the OQ-3 modal) refers to the current help-placement and close-X rules, and no database location is prescribed.
+
+**Aligned in:** [alignment register](../../07%20Tasks/Reports/RF1_OPERATIONAL_DATABASE_001_DOCUMENTATION_REGISTER.md) §8.
+
+---
+
+<a id="design-gaps"></a>
+## 12. Points still for design (not decided)
+
+These points go beyond the approved decisions. Claude does not resolve them; they return to design (Product Owner + ChatGPT).
+
+| ID | Point | From | Status after the current decisions |
+|---|---|---|---|
+| G-1 | **Correction coverage per resource** (see the OQ-1 table): Refunds older than 48 h; detection of removed child records; discounts and tax; shifts. Also Clover API limits for 30-second live checks. Verify first, then design wherever a gap is confirmed. | OQ-1, OQ-4 | Open. Applies to the midnight acquisition and to live checks on request. |
+| G-2 | How a correction that arrives after a FINAL Tips period is shown or handled. | OQ-2 | **Narrowed.** Current OQ-2: keep the latest Clover value, raw evidence for audit, no reopening of FINAL periods, native history deferred to RF POS design. The original question of which corrections to record as events no longer applies. Only the display/follow-up of a late correction remains undefined. |
+| G-3 | **Coverage criterion:** which acquisition checkpoints must have passed the end of the period's last Business Day for the data to count as covering it. This decides when Calcola and Consolida are allowed, so it is a behaviour choice. | OQ-3 | Open. Now applies to both Calcola and Consolida, per location. |
+| G-4 | **Automatic calculations.** Manual and scheduled calculations share one gated entry point today (`Tips Configuration.md` §9). Is the coverage check also the gate for scheduled automatic runs? | OQ-3 | Open. |
+| G-5 | **Payment gate** still calls the Clover connector function directly (residual contradiction with §2/§6.2). | OQ-3 | Open. Current OQ-3 keeps payment readiness separate; changing it needs its own decision. |
+| G-6 | **MyRF order state model** for the trial insertion of Server Tablet orders, after the Clover verifications (V3/V4, V6, V7). | OQ-5 | **Narrowed** to insertion. Changes and cancellations after acceptance, and other data types, are deferred. |
+| G-7 | **Main Data Store enrichment field.** Adopting `enrichment_note` is a schema change and needs its own approved task. Still unverified: confirming in code that no re-import rewrites `description_original`. | OQ-6 | **Narrowed.** Current OQ-6 allows normalization only in a separate derived value, so a derived `description_normalized` next to the untouched original is compatible; adoption happens when the enrichers are connected to the main Data Store. |
+| G-8 | **`SOURCE_ROLE_MAPPING` provenance.** An Employee Assignment can be seeded from a confirmed Clover SourceRole by an explicit action. Is this still a permitted way to create registry assignments? Also: reconcile the uncommitted main-copy Tips role-history work with OQ-7. | OQ-7 | Open. |
+| G-9 | **Tips and Compensation contracts** (OQ-8 list): to be designed before implementation and before any cleanup of old paths. | OQ-8 | **Narrowed.** Current OQ-8 fixes the direction: Compensation pulls FINAL Tips from RF-One; Tips neither sends data nor starts Compensation. The contracts themselves remain to be designed. |
+| G-10 | **Merge with the main working copy:** the uncommitted instruction updates (OQ-11) must be preserved when this branch is merged. | OQ-11 | Open. |
+| G-11 | **Clover creation of the Student:** which record is authoritative for the competent location, and which record holds the canonical POS ID. | OQ-7 | Open (named as undecided in the current OQ-7). |
