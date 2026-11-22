@@ -18,3 +18,9 @@ Il file `legacy-1.0-rev2.md` è presente come materiale di corso in più cartell
 
 ## 4. Punti aperti
 Identificazione master firmato/approvato, confronto delle copie, struttura completa dei 19 punti, rapporti con Training e con il Brand di Rome's Flavours. Nessuna pubblicazione automatica del materiale integrale senza verifica.
+
+## 5. Anomalia verificata nel testo Legacy di corso (blocco di attestazione)
+Le due copie su `feature/clover-multisite-registry`:
+- `03 Software/Server Course/content/courses/legacy-1.0-rev2.md`
+- `03 Software/Management Course/content/courses/legacy-1.0-rev2.md`
+sono **identiche per SHA Git** (`7dbe7da1b1e30fe96026e6dc6a63b756837892ab`). I titoli numerati passano da **15. Connection** a **17. People**, senza una sezione **16**. Sono quindi **18 punti numerati visibili**, più premessa e Brand; la richiesta approvata parla invece di **19 punti**. Inoltre il commento del file indica come fonte un invio del **24 settembre**, mentre la decisione di riferimento citata nel progetto è **Legacy 1.0 Rev.2 del 6 novembre**. Non assumere equivalenza fra queste due versioni. Occorre confrontare con il master approvato prima di promuovere il testo del corso a fonte canonica o colmare la sezione 16. Nessun testo mancante è stato inventato.
