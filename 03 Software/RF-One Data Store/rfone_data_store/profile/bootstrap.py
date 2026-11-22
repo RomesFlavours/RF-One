@@ -1,40 +1,21 @@
 """Restaurant Profile bootstrap/sync from source (Clover) configuration
-(TASK_RESTAURANT_003).
+(TASK_RESTAURANT_003), as limited by OQ-7.
 
-Central principle, preserved throughout:
+OQ-7 (RF1_OPERATIONAL_DATABASE_001, Product Owner 2026-11-21): the Registry
+(Anagrafica) is the only authority for RF-One roles, departments and
+assignments. Clover roles never create, suggest, prefill or change any of
+them. What this bootstrap still does:
 
-    Source configuration != canonical Restaurant semantics
+    T0 (`RestaurantProfileSourceControl.managed_from`)
+    root OperationalArea "Restaurant Operations" (minimal granularity, task §7)
+    counts of current Clover roles / employees / historical stubs (evidence)
+    optional drift check of ingested Clover employee-role facts against a
+    fresh read-only snapshot (an ingestion check, never applied to RF-One)
 
-A source system (Clover) is evidence used to instantiate ONE Restaurant's
-Profile through explicit, Restaurant-scoped mappings — never an automatic
-ontology equivalence, even when the initial configured names coincide
-(`SourceRole.name == RestaurantRole.name` is a bootstrap DEFAULT, not an
-identity: the two remain distinct rows connected only by a `SourceRoleMapping`
-row).
-
-Canonical path (task §8):
-
-    current Employee (display_name IS NOT NULL)
-    -> current EmployeeSourceRole
-    -> explicit SourceRole -> RestaurantRole mapping (this Restaurant only)
-    -> root OperationalArea (minimal profile granularity, task §7)
-    -> EmployeeAssignment valid_from = T0 (first bootstrap) or "now" (a
-       later-detected role change, task §13 — never backdated before T0)
-
-Historical Employee stubs (display_name IS NULL) are never touched: no
-mapping is looked up for them, no EmployeeAssignment is created (task §8.6).
-
-CORRECTED (EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001): an earlier version of
-this engine treated an Employee currently mapping to more than one distinct
-RestaurantRole as "legitimate concurrent Assignments" and opened all of
-them at once. Clover's real operating model is one Employee account =
-exactly one Role at a time, within one Restaurant/merchant (enforced at the
-database level by `ux_employee_assignments_one_active_role_per_restaurant`
-on `EmployeeAssignment`) — that case is now a genuine ambiguity
-(`ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS`, BLOCKING), never
-resolved by guessing which Role applies or by opening more than one. The
-same real-world Person may still hold an independent Role at a DIFFERENT
-Restaurant — this rule is scoped per Restaurant, never globally.
+Removed by OQ-7: RestaurantRole + ACTIVE SourceRoleMapping creation from
+every current Clover role, the per-Employee EmployeeAssignment open/close
+step (`assignment_source = SOURCE_ROLE_MAPPING`) and their issues. Rows they
+wrote earlier stay unchanged as history.
 
 This module never talks to Clover directly — it reads already-ingested
 canonical facts (`Employee`, `SourceRole`, `EmployeeSourceRole`, all
@@ -70,9 +51,9 @@ STATUS_FAILED = "FAILED"
 
 CONTROL_STATUS_ACTIVE = "ACTIVE"
 
-MAPPING_STATUS_ACTIVE = "ACTIVE"
-MAPPING_SOURCE_BOOTSTRAP = "CLOVER_SOURCE_ROLE_BOOTSTRAP"
 
+# Provenance of assignments written by the former bootstrap step. Kept only to recognise that
+# history; nothing writes it any more (OQ-7).
 ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING = "SOURCE_ROLE_MAPPING"
 
 # Minimal-granularity root Operational Area (task §7). NOT an inference of
@@ -93,14 +74,7 @@ ROOT_AREA_DESCRIPTION = (
 SEVERITY_BLOCKING = "BLOCKING"
 SEVERITY_WARNING = "WARNING"
 
-ISSUE_CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE = "CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE"
-ISSUE_SOURCE_ROLE_WITHOUT_PROFILE_MAPPING = "SOURCE_ROLE_WITHOUT_PROFILE_MAPPING"
-ISSUE_PROFILE_MAPPING_WITHOUT_CURRENT_SOURCE_ROLE = "PROFILE_MAPPING_WITHOUT_CURRENT_SOURCE_ROLE"
-ISSUE_CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE = "CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE"
-ISSUE_EMPLOYEE_ASSIGNMENT_MISSING_AFTER_BOOTSTRAP = "EMPLOYEE_ASSIGNMENT_MISSING_AFTER_BOOTSTRAP"
 ISSUE_SOURCE_ROLE_RELATIONSHIP_INCONSISTENT = "SOURCE_ROLE_RELATIONSHIP_INCONSISTENT"
-ISSUE_DUPLICATE_OR_OVERLAPPING_MAPPING = "DUPLICATE_OR_OVERLAPPING_MAPPING"
-ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS = "EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS"
 
 
 @dataclass
@@ -112,18 +86,8 @@ class BootstrapSummary:
     historical_stubs_skipped: int = 0
     current_source_roles: int = 0
 
-    mappings_created: int = 0
-    mappings_reused: int = 0
-
-    restaurant_roles_created: int = 0
-    restaurant_roles_reused: int = 0
-
     operational_areas_created: int = 0
     operational_areas_reused: int = 0
-
-    assignments_created: int = 0
-    assignments_reused: int = 0
-    assignments_closed: int = 0
 
     issues_created: int = 0
     issues_reused: int = 0
@@ -208,40 +172,6 @@ def _get_or_create_root_area(session: Session, restaurant_id: int) -> tuple["m.O
     session.add(area)
     session.flush()
     return area, True
-
-
-def _get_or_create_restaurant_role(
-    session: Session, restaurant_id: int, name: str, source_role: "m.SourceRole", sync_time: datetime
-) -> tuple["m.RestaurantRole", bool]:
-    role = session.scalars(
-        select(m.RestaurantRole).where(
-            m.RestaurantRole.restaurant_id == restaurant_id,
-            m.RestaurantRole.name == name,
-        )
-    ).first()
-    if role is not None:
-        return role, False
-
-    role = m.RestaurantRole(
-        restaurant_id=restaurant_id,
-        name=name,
-        description=(
-            f"Bootstrapped {sync_time.date().isoformat()} from Clover named Role "
-            f"'{name}' (internal source_role_id={source_role.id}) via TASK_RESTAURANT_003 — "
-            "a Restaurant Profile configuration decision using the same initial name, "
-            "never an automatic equivalence with the Clover SourceRole."
-        ),
-        active=True,
-    )
-    session.add(role)
-    session.flush()
-    return role, True
-
-
-def _ensure_area_role(session: Session, area_id: int, role_id: int) -> None:
-    existing = session.get(m.OperationalAreaRole, {"operational_area_id": area_id, "restaurant_role_id": role_id})
-    if existing is None:
-        session.add(m.OperationalAreaRole(operational_area_id=area_id, restaurant_role_id=role_id))
 
 
 def _add_issue(
@@ -362,72 +292,10 @@ def bootstrap_restaurant_profile(
     ).all()
     summary.current_source_roles = len(current_source_roles)
 
-    mapping_by_source_role_id: dict[int, "m.SourceRoleMapping"] = {}
-    for source_role in current_source_roles:
-        mapping = session.scalars(
-            select(m.SourceRoleMapping).where(
-                m.SourceRoleMapping.restaurant_id == restaurant_id,
-                m.SourceRoleMapping.source_role_id == source_role.id,
-                m.SourceRoleMapping.mapping_status == MAPPING_STATUS_ACTIVE,
-            )
-        ).all()
-        if len(mapping) > 1:
-            _add_issue(
-                session, run, summary,
-                issue_type=ISSUE_DUPLICATE_OR_OVERLAPPING_MAPPING,
-                severity=SEVERITY_BLOCKING,
-                details=(
-                    f"SourceRole id={source_role.id} has {len(mapping)} ACTIVE "
-                    f"SourceRoleMapping rows for restaurant_id={restaurant_id} — expected at "
-                    "most one. Using the first found; the extras must be reviewed/retired "
-                    "explicitly, not silently resolved."
-                ),
-                source_role_id=source_role.id,
-            )
-        if mapping:
-            mapping_by_source_role_id[source_role.id] = mapping[0]
-            summary.mappings_reused += 1
-            continue
-
-        restaurant_role, role_created = _get_or_create_restaurant_role(
-            session, restaurant_id, source_role.name, source_role, sync_time
-        )
-        if role_created:
-            summary.restaurant_roles_created += 1
-        else:
-            summary.restaurant_roles_reused += 1
-
-        _ensure_area_role(session, root_area.id, restaurant_role.id)
-
-        new_mapping = m.SourceRoleMapping(
-            restaurant_id=restaurant_id,
-            source_system_id=source_system_id,
-            source_role_id=source_role.id,
-            restaurant_role_id=restaurant_role.id,
-            valid_from=t0,
-            valid_to=None,
-            mapping_status=MAPPING_STATUS_ACTIVE,
-            mapping_source=MAPPING_SOURCE_BOOTSTRAP,
-        )
-        session.add(new_mapping)
-        session.flush()
-        mapping_by_source_role_id[source_role.id] = new_mapping
-        summary.mappings_created += 1
-
-    # Defensive: every current-scope SourceRole must now have a mapping.
-    for source_role in current_source_roles:
-        if source_role.id not in mapping_by_source_role_id:
-            _add_issue(
-                session, run, summary,
-                issue_type=ISSUE_SOURCE_ROLE_WITHOUT_PROFILE_MAPPING,
-                severity=SEVERITY_BLOCKING,
-                details=(
-                    f"SourceRole id={source_role.id} (restaurant_id={restaurant_id}) has no "
-                    "ACTIVE SourceRoleMapping after bootstrap — mapping creation did not "
-                    "complete for this Role; no RestaurantRole equivalence was guessed."
-                ),
-                source_role_id=source_role.id,
-            )
+    # OQ-7 (Product Owner 2026-11-21): a Clover role never creates or determines an RF-One role. The
+    # former step that created a RestaurantRole and an ACTIVE SourceRoleMapping for every current Clover
+    # role (and the issue that asked for a missing mapping) was removed. Existing RestaurantRoles and
+    # SourceRoleMapping rows are kept unchanged as history; RF-One roles are managed only in Registry.
 
     # --- Current Employees ---------------------------------------------------
     current_employees = session.scalars(
@@ -449,183 +317,11 @@ def bootstrap_restaurant_profile(
     )
     summary.historical_stubs_skipped = len(historical_stub_ids)
 
-    desired_role_ids_by_employee: dict[int, set[int]] = {}
-
-    for employee in current_employees:
-        manual_assignment = session.scalar(select(m.EmployeeAssignment.id).where(
-            m.EmployeeAssignment.employee_id == employee.id,
-            m.EmployeeAssignment.restaurant_id == restaurant_id,
-            m.EmployeeAssignment.valid_to.is_(None),
-            m.EmployeeAssignment.assignment_source != ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING).limit(1))
-        if manual_assignment is not None:
-            _add_issue(session, run, summary, issue_type="MANUAL_ASSIGNMENT_PRESERVED",
-                       severity=SEVERITY_WARNING, employee_id=employee.id,
-                       details="An open RF-One management assignment was retained. Source role bootstrap did not change it.")
-            continue
-        source_roles_for_emp = session.scalars(
-            select(m.EmployeeSourceRole).where(m.EmployeeSourceRole.employee_id == employee.id)
-        ).all()
-
-        desired_role_ids: set[int] = set()
-        role_locations: dict[int, set[int]] = {}
-        if not source_roles_for_emp:
-            _add_issue(
-                session, run, summary,
-                issue_type=ISSUE_CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE,
-                severity=SEVERITY_WARNING,
-                details=(
-                    f"Employee id={employee.id} is a current Employee (has a display name) but "
-                    "has zero EmployeeSourceRole rows — no EmployeeAssignment was guessed for "
-                    "this Employee; any Assignment they previously held is being closed "
-                    "(the absence of any current SourceRole is treated as explicit negative "
-                    "evidence, not silence)."
-                ),
-                employee_id=employee.id,
-            )
-        else:
-            for esr in source_roles_for_emp:
-                source_role = session.get(m.SourceRole, esr.source_role_id)
-                # Evidence for another linked workplace belongs to its profile.
-                # An unlinked foreign role remains an anomaly, as before.
-                if source_role.location_id not in location_ids and session.scalar(
-                    select(m.EmployeeCloverLink.id).where(
-                        m.EmployeeCloverLink.employee_id == employee.id,
-                        m.EmployeeCloverLink.location_id == source_role.location_id).limit(1)
-                ) is not None:
-                    continue
-                mapping = mapping_by_source_role_id.get(esr.source_role_id)
-                if mapping is None:
-                    _add_issue(
-                        session, run, summary,
-                        issue_type=ISSUE_CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE,
-                        severity=SEVERITY_BLOCKING,
-                        details=(
-                            f"Employee id={employee.id} has EmployeeSourceRole -> SourceRole "
-                            f"id={esr.source_role_id}, which has no ACTIVE SourceRoleMapping for "
-                            f"restaurant_id={restaurant_id} — this Role contributes no "
-                            "EmployeeAssignment for this Employee; no equivalence was guessed."
-                        ),
-                        employee_id=employee.id,
-                        source_role_id=esr.source_role_id,
-                    )
-                    continue
-                desired_role_ids.add(mapping.restaurant_role_id)
-                role_locations.setdefault(mapping.restaurant_role_id, set()).add(source_role.location_id)
-
-        if len(desired_role_ids) > 1:
-            # EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 — corrects this
-            # engine's original TASK_ORGANIZATION_002 behavior, which
-            # treated more than one current SourceRole as "legitimate
-            # concurrent Assignments." Clover's real operating model is one
-            # Employee account = exactly one Role at a time; an Employee
-            # who currently maps to more than one distinct RestaurantRole
-            # is now a genuine ambiguity, never resolved by opening every
-            # candidate Role at once. No Assignment is guessed for this
-            # Employee this cycle (any assignment they already held is
-            # closed below, since `desired_role_ids` is emptied) — a human
-            # must resolve which single Role actually applies.
-            _add_issue(
-                session, run, summary,
-                issue_type=ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS,
-                severity=SEVERITY_BLOCKING,
-                details=(
-                    f"Employee id={employee.id} currently maps to {len(desired_role_ids)} distinct "
-                    f"RestaurantRoles ({sorted(desired_role_ids)}) via concurrently-active "
-                    "EmployeeSourceRole/SourceRoleMapping evidence — RF-One enforces at most one "
-                    "active RestaurantRole per Employee per Restaurant. No Role was guessed or "
-                    "opened for this Employee this cycle; the ambiguous source Role membership must "
-                    "be resolved explicitly (in Clover or via the SourceRoleMapping configuration)."
-                ),
-                employee_id=employee.id,
-            )
-            desired_role_ids = set()
-
-        desired_role_ids_by_employee[employee.id] = desired_role_ids
-
-        existing_assignments = session.scalars(
-            select(m.EmployeeAssignment).where(
-                m.EmployeeAssignment.employee_id == employee.id,
-                m.EmployeeAssignment.restaurant_id == restaurant_id,
-                m.EmployeeAssignment.operational_area_id == root_area.id,
-            )
-        ).all()
-        has_any_prior_assignment = len(existing_assignments) > 0
-        open_assignments = [a for a in existing_assignments if a.valid_to is None]
-        open_role_ids = {a.restaurant_role_id for a in open_assignments}
-
-        to_open = desired_role_ids - open_role_ids
-        to_close = open_role_ids - desired_role_ids
-        assignment_valid_from = t0 if not has_any_prior_assignment else sync_time
-
-        # EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001 — CLOSE before OPEN. Since
-        # `ux_employee_assignments_one_active_role_per_restaurant` now
-        # forbids two simultaneously-open rows for the same (Employee,
-        # Restaurant), a Role change must close the prior open row before
-        # the new one is ever inserted (both changes still land in the same
-        # `session.flush()` at the end of this loop, but Python-level
-        # ordering here determines the order SQLAlchemy's unit-of-work
-        # issues them in, which otherwise defaults to insert-before-update
-        # and would trip the constraint on a genuine Role change).
-        for a in open_assignments:
-            if a.restaurant_role_id in to_close:
-                a.valid_to = sync_time
-                summary.assignments_closed += 1
-
-        for role_id in sorted(to_open):
-            session.add(
-                m.EmployeeAssignment(
-                    employee_id=employee.id,
-                    restaurant_id=restaurant_id,
-                    operational_area_id=root_area.id,
-                    restaurant_role_id=role_id,
-                    # Scope comes from the mapped role evidence, never the
-                    # person's legacy origin. Multiple sites remain unspecified.
-                    location_id=(next(iter(role_locations[role_id]))
-                                 if len(role_locations.get(role_id, set())) == 1 else None),
-                    valid_from=assignment_valid_from,
-                    valid_to=None,
-                    assignment_source=ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING,
-                    source_note=(
-                        f"Bootstrapped/synced from active SourceRoleMapping at "
-                        f"{assignment_valid_from.isoformat()} (TASK_RESTAURANT_003)."
-                    ),
-                )
-            )
-            summary.assignments_created += 1
-
-        summary.assignments_reused += len(open_role_ids & desired_role_ids)
-
-    session.flush()
-
-    # Defensive post-condition: every desired role must now have an open
-    # EmployeeAssignment (task §9's EMPLOYEE_ASSIGNMENT_MISSING_AFTER_BOOTSTRAP).
-    for employee_id, desired_role_ids in desired_role_ids_by_employee.items():
-        if not desired_role_ids:
-            continue
-        open_role_ids_now = set(
-            session.scalars(
-                select(m.EmployeeAssignment.restaurant_role_id).where(
-                    m.EmployeeAssignment.employee_id == employee_id,
-                    m.EmployeeAssignment.restaurant_id == restaurant_id,
-                    m.EmployeeAssignment.operational_area_id == root_area.id,
-                    m.EmployeeAssignment.valid_to.is_(None),
-                )
-            ).all()
-        )
-        missing = desired_role_ids - open_role_ids_now
-        for role_id in sorted(missing):
-            _add_issue(
-                session, run, summary,
-                issue_type=ISSUE_EMPLOYEE_ASSIGNMENT_MISSING_AFTER_BOOTSTRAP,
-                severity=SEVERITY_BLOCKING,
-                details=(
-                    f"Employee id={employee_id} has an ACTIVE SourceRoleMapping to "
-                    f"RestaurantRole id={role_id} but no open EmployeeAssignment for it after "
-                    "bootstrap — the expected write did not take effect."
-                ),
-                employee_id=employee_id,
-                restaurant_role_id=role_id,
-            )
+    # OQ-7 (RF1_OPERATIONAL_DATABASE_001, Product Owner 2026-11-21): the Registry (Anagrafica) is the
+    # only authority for role assignments. A Clover role never creates, closes, prefills or suggests an
+    # EmployeeAssignment: the former SourceRole -> EmployeeAssignment step was removed from this
+    # bootstrap. Assignments it wrote earlier (`assignment_source = SOURCE_ROLE_MAPPING`) stay as
+    # Registry history and are never changed here.
 
     # --- Live congruence cross-check (task §3, §9) --------------------------
     if fresh_snapshot is not None:
@@ -634,7 +330,6 @@ def bootstrap_restaurant_profile(
             restaurant_id=restaurant_id,
             source_system_id=source_system_id,
             current_source_roles=current_source_roles,
-            mapping_by_source_role_id=mapping_by_source_role_id,
             current_employees=current_employees,
             fresh_snapshot=fresh_snapshot,
         )
@@ -645,10 +340,6 @@ def bootstrap_restaurant_profile(
         f"T0={t0.isoformat()} employees={summary.current_source_employees} "
         f"stubs_skipped={summary.historical_stubs_skipped} "
         f"source_roles={summary.current_source_roles} "
-        f"mappings_created={summary.mappings_created} mappings_reused={summary.mappings_reused} "
-        f"assignments_created={summary.assignments_created} "
-        f"assignments_reused={summary.assignments_reused} "
-        f"assignments_closed={summary.assignments_closed} "
         f"issues_created={summary.issues_created} issues_reused={summary.issues_reused}"
     )
     return run, summary
@@ -662,7 +353,6 @@ def _check_fresh_snapshot_congruence(
     restaurant_id: int,
     source_system_id: int,
     current_source_roles: list["m.SourceRole"],
-    mapping_by_source_role_id: dict[int, "m.SourceRoleMapping"],
     current_employees: list["m.Employee"],
     fresh_snapshot: "FreshCloverSnapshot",
 ) -> None:
@@ -705,26 +395,3 @@ def _check_fresh_snapshot_congruence(
                 "re-running `ingest_clover.py` is the correct remediation if this persists."
             ),
         )
-
-    # SourceRole ids mapped in RF-One that are no longer present in the live
-    # roles list at all.
-    live_role_ids = fresh_snapshot.role_source_ids
-    for source_role in current_source_roles:
-        mapping = mapping_by_source_role_id.get(source_role.id)
-        if mapping is None:
-            continue
-        if source_role.source_role_id not in live_role_ids:
-            _add_issue(
-                session, run, summary,
-                issue_type=ISSUE_PROFILE_MAPPING_WITHOUT_CURRENT_SOURCE_ROLE,
-                severity=SEVERITY_WARNING,
-                details=(
-                    f"SourceRoleMapping id={mapping.id} (source_role_id={source_role.id}) is "
-                    "ACTIVE, but that Clover Role id no longer appears in the live "
-                    f"roles snapshot fetched {fresh_snapshot.fetched_at.isoformat()} — the "
-                    "mapping was left in place (not auto-retired); review whether the Role was "
-                    "renamed/removed in Clover."
-                ),
-                mapping_id=mapping.id,
-                source_role_id=source_role.id,
-            )

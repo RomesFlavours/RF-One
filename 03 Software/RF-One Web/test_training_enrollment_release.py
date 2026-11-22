@@ -136,6 +136,10 @@ def run(browser=False):
                 decision=ps.WorkspaceDecision(position_candidate_id=pc.id,decision='HIRED',actor_account_id=actor_id,actor_name='Test operator');db.add(decision);db.flush()
                 selected_id,selected_person,selected_email=pc.id,person.id,person.primary_email
                 assert any(r['id']==selected_id and r['phone']==candidate.phone for r in en.confirmed_candidates(db,db.get(m.RFOneAccount,actor_id)))
+                # Codex review 2026-11-22: without the release the arrival is refused; Selection releases to the operator first.
+                try:en.confirm_arrival(db,actor=db.get(m.RFOneAccount,actor_id),selection_id=selected_id);raise AssertionError('arrival confirmed without release')
+                except ValueError as exc:assert 'not released' in str(exc)
+                en.release(db,selection_id=selected_id,released_by=db.get(m.RFOneAccount,actor_id),operator=db.get(m.RFOneAccount,actor_id))
                 db.commit()
             selected=create(dict(mode='selection',selection_id=str(selected_id),email=selected_email))
             selectedclient=newlearner(selected)
@@ -146,24 +150,27 @@ def run(browser=False):
                 assert db.get(m.Application,application.id).person_id==selected_person
                 db.scalar(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.email==selected_email)).created_at-=timedelta(seconds=61)
                 db.commit()
-            withdrawn=create(dict(mode='selection',selection_id=str(selected_id),email=selected_email))
+            # OQ-7 sequence: a repeated arrival confirmation of an enrolled candidate creates nothing new.
+            operator(client)
+            r=client.post('/training/manage/enrollment',data=dict(csrf_token='enroll-test',mode='selection',selection_id=str(selected_id),email=selected_email))
+            assert r.status_code==400 and 'already in progress' in r.get_data(as_text=True)
             with factory() as db:
-                # A later decision supersedes HIRED even for an already-issued link.
+                from rfone_data_store import access_profiles as profiles
+                assert db.scalar(select(func.count()).select_from(en.EnrollmentInvitation).where(en.EnrollmentInvitation.selection_id==selected_id))==1
+                assert len([e for e in db.scalars(select(profiles.ProfileEvent).where(profiles.ProfileEvent.action==en.ARRIVED)) if e.details.get('selection_id')==selected_id])==1
+                # A later decision supersedes HIRED.
                 db.add(ps.WorkspaceDecision(position_candidate_id=selected_id,decision='NOT_SELECTED',actor_account_id=actor_id,actor_name='Test operator'))
                 db.flush();assert not any(r['id']==selected_id for r in en.confirmed_candidates(db,db.get(m.RFOneAccount,actor_id)))
                 db.commit()
             operator(client)
             assert client.post('/training/manage/enrollment',data=dict(csrf_token='enroll-test',mode='selection',selection_id=str(selected_id),email=selected_email)).status_code==400
-            withdrawnclient=newlearner(withdrawn)
-            r=withdrawnclient.post('/training/activate',data=dict(csrf_token=token(withdrawnclient),first_name=marker,last_name='Selected',current_password='Selected-Pass9'))
-            assert r.status_code==400 and 'no longer available' in r.get_data(as_text=True), (r.status_code,r.get_data(as_text=True))
             with factory() as db:
                 db.add(ps.WorkspaceDecision(position_candidate_id=selected_id,decision='HIRED',actor_account_id=actor_id,actor_name='Test operator'));db.flush()
                 grant=db.scalar(select(m.RFOneAccountDomainAccess).where(m.RFOneAccountDomainAccess.account_id==actor_id,m.RFOneAccountDomainAccess.domain_code=='SELECTION'))
                 grant.enabled=False;db.flush()
                 assert not en.confirmed_candidates(db,db.get(m.RFOneAccount,actor_id))
                 grant.enabled=True;db.commit()
-            checks.append('Confirmed Selection CV details reuse the exact source person; latest decision supersedes HIRED')
+            checks.append('Arrival confirmation reuses the exact source person, is not repeated; latest decision supersedes HIRED')
             with factory() as db:
                 for inv in db.scalars(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.email==email)):
                     inv.created_at-=timedelta(seconds=61)
@@ -201,7 +208,7 @@ def run(browser=False):
                         page=context.new_page();page.goto(base+'/training/manage/students');page.get_by_role('link',name='Invite student',exact=True).click()
                         page.on('pageerror',lambda error:print('BROWSER ERROR:',str(error)))
                         page.on('console',lambda message:print('BROWSER CONSOLE:',message.text) if message.type=='error' else None)
-                        page.get_by_role('radio',name='Confirmed in Selection',exact=True).check()
+                        page.get_by_role('radio',name='Released by Selection: confirm arrival',exact=True).check()
                         page.locator('[name=selection_id]').select_option(str(selected_id))
                         expect(page.get_by_label('Invitee email')).to_have_value(selected_email)
                         expect(page.locator('[name=phone]')).to_have_value('+1 407 555 0192')

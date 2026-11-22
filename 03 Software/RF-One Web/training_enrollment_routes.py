@@ -56,6 +56,9 @@ def complete(db, invitation, form):
         confirmed = {r['id']: r for r in enroll.confirmed_candidates(db, actor)}
         if invitation.selection_id not in confirmed or confirmed[invitation.selection_id]['person_id'] != invitation.person_id:
             raise ValueError('The Selection confirmation is no longer available. Ask your trainer to review the invitation.')
+        if not confirmed[invitation.selection_id]['arrived']:
+            # Only the Training operator's arrival confirmation authorizes the enrollment.
+            raise ValueError('Your arrival has not been confirmed by Training yet. Ask your trainer for a new invitation.')
     account = enroll.account_for(db, invitation)
     # Resolve again under the same identity locks: invitations never freeze permission
     # or allow a later-created identity to be duplicated.

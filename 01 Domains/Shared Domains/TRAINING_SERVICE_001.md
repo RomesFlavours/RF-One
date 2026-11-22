@@ -109,6 +109,21 @@ This document decides responsibility boundaries only. It does not decide, and do
 
 ---
 
+## 9. Approved hand-off: Selection → Training → RF-One Registry → Clover (Product Owner, 2026-11-21)
+
+Product Owner decision (OQ-7 completion, RF1_OPERATIONAL_DATABASE_001). One flow, in this order:
+
+1. **Release.** Selection releases the eligible (Hired) candidate to Training. The release puts the candidate in charge of a Training operator. At this stage the candidate is **not** enrolled as a Student and is **not** created in Clover.
+2. **Arrival confirmation.** The Training operator confirms that the candidate has arrived. Only this confirmation authorizes the enrollment: Training enrolls the candidate in the school as a Student and registers them in the RF-One Registry with the Student role, reusing the RF-One identity that already exists.
+3. **Clover.** After the Registry save, the Registry automatically creates the person in Clover for the competent site and stores the employee ID returned by Clover in the POS ID field. No manual entry of the ID is part of this flow.
+4. **No duplicates, no false completion.** A repeated confirmation or a retried attempt never duplicates the enrollment, the person or the Clover employee. If Clover returns no ID, POS ID stays empty and the link is not marked complete. If the outcome of the creation is uncertain, the creation request is not blindly repeated.
+
+Roles: the Registry assignment valid for person, site and date is the only role source; Tips uses only that assignment. Clover provides the POS ID to link records and never creates, suggests, prefills or changes RF-One roles, departments or assignments.
+
+**Implementation status (branch `feature/clover-multisite-registry`, uncommitted, 2026-11-21).** Steps 1-2 are implemented (`rfone_data_store/training/enrollment.py`: `release`, `confirm_arrival`; release endpoint `RF-One Web/training_auto_invite.py`; confirmation on Training → Students → Invite student). Step 3 and the Clover part of step 4 are **not** implemented: they wait for Product Owner decisions on how the competent site is determined and on which identity record carries the POS ID of a Student (see the OQ-7 report).
+
+---
+
 ## Related documents
 
 - [Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md](Selection/SELECTION_PILL_ASSESSMENT_AND_TRAINING_READINESS_001.md)

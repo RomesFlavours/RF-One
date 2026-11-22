@@ -369,8 +369,9 @@ def import_snapshot(db, *, location_id, merchant_id, records, observed_at=None, 
                    details={"run_id": run_id})
             link.state = "MISSING_REVIEW"
     db.flush()
-    # REGISTRY_CLOVER_DEPARTMENTS_001: every import also realigns the Registry assignments of this
-    # site with the current Clover roles, in the same transaction (part of the import, not a later step).
+    # REGISTRY_CLOVER_DEPARTMENTS_001: every import also refreshes this site's Clover role catalogue and its
+    # report, in the same transaction. It never opens, closes or proposes a Registry assignment from a
+    # Clover role (TIPS_REGISTRY_ONLY_001, OQ-7).
     from . import registry_departments
     if registry_departments.available(db):
         registry_departments.sync_site(db, location_id=location_id, merchant_id=merchant_id)

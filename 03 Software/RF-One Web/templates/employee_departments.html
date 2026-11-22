@@ -13,7 +13,7 @@
 <h1>Reparti e ruoli</h1>
 <hr>
 <div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
-<p>Tabella unica di RF-One: ogni ruolo originale (Clover o documento storico) corrisponde a un ruolo RF-One, e ogni ruolo RF-One appartiene a un reparto. Su Clover non cambia nulla.</p>
+<p>Tabella unica di RF-One: ogni ruolo RF-One appartiene a un reparto, e il reparto di una persona è quello del ruolo della sua assegnazione in Registry. I ruoli Clover non determinano ruoli né reparti. Su Clover non cambia nulla.</p>
 {% if not installed %}
 <p class="error" role="alert">La tabella Ruolo/Reparto non è ancora installata in questo database.</p>
 {% else %}
@@ -39,7 +39,7 @@
 {% endif %}
 
 {% for site in data.sites %}
-<h2 id="site-{{ site.restaurant_id }}">Ruoli originali · {{ site.restaurant }}</h2>
+<h2 id="site-{{ site.restaurant_id }}">Ruoli dei documenti storici · {{ site.restaurant }}</h2>
 <div class="table-scroll"><table>
 <thead><tr><th>Ruolo originale</th><th>Provenienza</th><th>Persone</th><th>Ruolo RF-One</th><th>Reparto</th>{% if can_manage %}<th></th>{% endif %}<th>Storico</th></tr></thead>
 <tbody>{% for row in site.rows %}{% set key = site.restaurant_id ~ '-' ~ row.source ~ '-' ~ loop.index %}
@@ -54,7 +54,7 @@
   <td>{{ history_list(row.history, row.timezone) }}{% if row.source == 'CLOVER' %}<div class="muted">id ruolo Clover {{ row.original_key }}</div>{% endif %}</td>
 </tr>{% endfor %}</tbody>
 </table></div>
-{% else %}<p>Nessun ruolo originale disponibile.</p>{% endfor %}
+{% else %}<p>Nessun ruolo di documenti storici.</p>{% endfor %}
 
 <h2 id="departments">Reparti RF-One</h2>
 <div class="table-scroll"><table>

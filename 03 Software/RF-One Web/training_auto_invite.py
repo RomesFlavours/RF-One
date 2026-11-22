@@ -1,24 +1,18 @@
-"""Automatic Training invitation when Selection records a candidate as Hired.
+"""Selection releases a Hired candidate to Training (step 1 of the approved sequence).
 
-Selection calls this server to server right after it saves a HIRED decision.
-The request is signed with a key derived from the RFONE_FLASK_SECRET_KEY that
-every RF-One app already shares, so no new secret or configuration is needed.
+Selection calls this server to server right after it saves a HIRED decision (unchanged caller,
+`Selection/workspace/training_invite.py`). The request is signed with a key derived from the
+RFONE_FLASK_SECRET_KEY that every RF-One app already shares.
 
-The invitation is the same one a trainer creates by hand on Training -> Students
--> Invite student, from the "Selection" source: same enroll.issue(), same
-48-hour single-use link, same email text. Nothing else is created; the person,
-login and Training access still come into existence only when the recipient
-completes activation.
+Approved sequence (Product Owner, 2026-11-21): the release only puts the candidate in charge of a
+Training operator (`enrollment.release`, event `training.released`). It does NOT register a Student,
+send an invitation or create anything in Clover. The operator then confirms the arrival on
+Training -> Students -> Invite student ("Released by Selection: confirm arrival"); only that confirmation registers the
+Student and starts the enrollment.
 
-Rules:
-- The person who recorded Hired must have Selection rights on that position
-  (checked by enroll.issue through confirmed_candidates, unchanged).
-- The invitation must be issued by a Training trainer, because activation
-  checks the issuer: the person who recorded Hired if they are one, otherwise
-  the position's manager, the RF-One owner, an administrator, or any active
-  trainer, in that order. No configuration is needed.
-- One invitation per hire: if an unexpired pending or a completed invitation
-  already exists for that Selection candidate, nothing new is sent.
+The operator is chosen as before: the person who recorded Hired if they are a Training trainer,
+otherwise the position's manager, the RF-One owner, an administrator, or any active trainer.
+One release per candidate: a second call answers 'already'.
 """
 import hashlib
 import hmac
@@ -26,15 +20,13 @@ import json
 import os
 import time
 
-from flask import jsonify, request, url_for
+from flask import jsonify, request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import models as m
 from rfone_data_store.training import enrollment as enroll
-from rfone_data_store.technical import account_email
 import training_integration as integration
-from training_account_routes import public_base
 
 CONTEXT = b'rfone-training-auto-invite-v1'
 MAX_SKEW_SECONDS = 300
@@ -85,16 +77,6 @@ def default_trainer(db, first=()):
     return None
 
 
-def _already_invited(db, selection_id):
-    rows = db.scalars(select(enroll.EnrollmentInvitation)
-                      .where(enroll.EnrollmentInvitation.selection_id == selection_id)).all()
-    stamp = enroll.now()
-
-    def aware(value):
-        return value if value.tzinfo else value.replace(tzinfo=stamp.tzinfo)
-    return any(r.consumed_at or (not r.revoked_at and aware(r.expires_at) > stamp) for r in rows)
-
-
 def install(app, *, SessionFactory, secret=None):
     @app.post('/training/manage/enrollment/auto')
     def tw_enrollment_auto():
@@ -117,38 +99,22 @@ def install(app, *, SessionFactory, secret=None):
             hirer = db.get(m.RFOneAccount, hirer_id)
             if not hirer or hirer.status != 'ACTIVE':
                 return jsonify(status='refused', message='The account that recorded Hired is not active.'), 403
-            if _already_invited(db, selection_id):
-                return jsonify(status='already', message='A Training invitation already exists for this person.')
             source = {r['id']: r for r in enroll.confirmed_candidates(db, hirer)}.get(selection_id)
             if not source:
                 return jsonify(status='skipped', message='Not currently Hired, or not a position you manage.'), 409
-            # Sent to Training: a trainee in the Registry now, whether or not an invitation can go out.
-            enroll.mark_trainee(db, source['person_id'])
-            db.commit()
-            if not source['email']:
-                return jsonify(status='skipped', message='No email on the application, so no invitation was sent. '
-                               'Invite them from Training, Students, Invite student.'), 422
-            if enroll.is_forwarding_email(source['email']):
-                return jsonify(status='skipped', message=enroll.FORWARDING_EMAIL_MESSAGE), 422
-            issuer = _issuer(db, hirer, selection_id)
-            if not issuer:
-                return jsonify(status='skipped', message='No Training trainer is set to send automatic invitations. '
-                               'Invite them from Training, Students, Invite student.'), 422
+            operator = _issuer(db, hirer, selection_id)
+            if not operator:
+                return jsonify(status='skipped', message='No Training trainer can take charge of this candidate. '
+                               'Ask an administrator to set up a Training trainer.'), 422
             try:
-                invitation, token = enroll.issue(db, actor=hirer, email=source['email'], selection_id=selection_id)
-                invitation.created_by_id = issuer.id
-                email, name = invitation.email, invitation.name
-                link = public_base() + url_for('tw_enrollment_link', token=token)
+                status = enroll.release(db, selection_id=selection_id, released_by=hirer, operator=operator)
                 db.commit()
             except (ValueError, IntegrityError) as exc:
                 db.rollback()
-                message = str(exc) if isinstance(exc, ValueError) else 'Another session updated this invitation.'
-                return jsonify(status='skipped', message=message + ' Invite them from Training, Students, Invite student.'), 409
-        try:
-            from training_enrollment_routes import invitation_email
-            subject, body = invitation_email(name, link)
-            account_email.send_email(to_address=email, subject=subject, text_body=body)
-        except account_email.EmailSendError:
-            return jsonify(status='created', message='Invitation created but the email could not be sent. '
-                           'Create a new one from Training, Students, Invite student after one minute.'), 502
-        return jsonify(status='sent', message=f'Training invitation emailed to {email}.')
+                message = str(exc) if isinstance(exc, ValueError) else 'Another session updated this candidate.'
+                return jsonify(status='skipped', message=message), 409
+            name = operator.display_name or operator.username
+        if status == 'already':
+            return jsonify(status='already', message='Already released to Training.')
+        return jsonify(status='released', message=f'Released to Training: {name} will confirm the arrival. '
+                       'No enrollment or Clover record is created before that.')

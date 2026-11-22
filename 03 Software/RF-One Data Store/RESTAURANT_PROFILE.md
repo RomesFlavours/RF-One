@@ -123,6 +123,8 @@ Tips calculation, Payroll calculation, gratuity allocation, wage calculation, Sc
 
 The Restaurant Profile is no longer empty. It was populated by an explicit, auditable, idempotent bootstrap — never automatic inference from Clover data — using the source-control/mapping/reconciliation layer documented at `DATABASE_SCHEMA.md` § 4c and implemented in `rfone_data_store/profile/bootstrap.py`. Preserves the same boundary as § 1 above: Clover configuration is *evidence used to instantiate* this Restaurant's Profile through explicit mapping rows, never an automatic equivalence.
 
+**Update — OQ-7 (RF1_OPERATIONAL_DATABASE_001, Product Owner 2026-11-21).** The Registry (Anagrafica) is the only authority for role assignments; a Clover role never creates, closes, prefills or suggests an `EmployeeAssignment`. A Clover role never creates or determines an RF-One role either. The bootstrap therefore keeps only `T0` and the root Operational Area (plus counts and the optional ingestion drift check). Both steps of the algorithm below — RestaurantRole + `SourceRoleMapping` creation from Clover roles, and open/close of `EmployeeAssignment` from `EmployeeSourceRole` (`assignment_source = SOURCE_ROLE_MAPPING`) — and their issues were removed from the code. Assignments written earlier by that step stay unchanged as Registry history. The rest of this section describes the original task and is kept for history.
+
 ### The `T0` contract
 
 `RestaurantProfileSourceControl.managed_from` is the persisted moment RF-One began managing this Restaurant's Profile from Clover evidence:

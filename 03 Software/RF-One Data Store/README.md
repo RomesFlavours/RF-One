@@ -106,7 +106,7 @@ The migration scripts live in `migrations/versions/`. `migrations/env.py` resolv
 | `calculate_tips.py` | Entry point: post-hoc Tip calculation for a Restaurant/period, dry-run by default. |
 | `validate_tips_readiness.py` | Entry point: read-only Tips readiness report against the configured database. |
 | `test_tips_engine.py` | Entry point: run the Tips engine synthetic-fixture tests. |
-| `rfone_data_store/profile/` | Restaurant Profile bootstrap/sync engine — `bootstrap.py` (T0, SourceRole→RestaurantRole mapping, root Operational Area, prospective EmployeeAssignments, reconciliation issues), `source_snapshot.py` (loads the optional fresh, read-only Clover snapshot from disk). TASK_RESTAURANT_003 — see `RESTAURANT_PROFILE.md` §6. |
+| `rfone_data_store/profile/` | Restaurant Profile bootstrap/sync engine — `bootstrap.py` (T0, root Operational Area, ingestion drift issues; it never creates RF-One roles, role mappings or EmployeeAssignments from Clover roles — OQ-7), `source_snapshot.py` (loads the optional fresh, read-only Clover snapshot from disk). TASK_RESTAURANT_003 — see `RESTAURANT_PROFILE.md` §6. |
 | `rfone_data_store/profile_validation.py` | Synthetic-fixture bootstrap engine tests, same pattern as `schema_validation.py`. Always rolled back. |
 | `bootstrap_restaurant_profile.py` | Entry point: Restaurant Profile bootstrap/sync from Clover source configuration, dry-run by default. |
 | `test_restaurant_profile_bootstrap.py` | Entry point: run the bootstrap engine synthetic-fixture tests. |

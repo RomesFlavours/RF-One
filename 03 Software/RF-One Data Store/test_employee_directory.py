@@ -291,7 +291,8 @@ class EmployeeDirectoryTest(unittest.TestCase):
             restaurant_id=restaurant.id, rows=[ParsedEmployeeRow(1, "Smith, Jane", None, None, None)])
         self.assertEqual([r.employee_id for r in result.values()], [self.legacy.id])
 
-    def test_role_bootstrap_uses_second_site_evidence_and_is_repeatable(self):
+    def test_role_bootstrap_never_creates_an_assignment_from_clover_roles(self):
+        # OQ-7: the Registry is the only authority for assignments, also with second-site Clover evidence.
         from rfone_data_store.profile.bootstrap import bootstrap_restaurant_profile, MODE_PERSIST
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
@@ -315,10 +316,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
             bootstrap_restaurant_profile(self.db, restaurant_id=restaurant.id,
                 source_system_id=self.source.id, mode=MODE_PERSIST, sync_time=now)
             self.db.flush()
-        assignments = list(self.db.scalars(select(m.EmployeeAssignment)))
-        self.assertEqual(len(assignments), 1)
-        self.assertEqual(assignments[0].employee_id, self.legacy.id)
-        self.assertEqual(assignments[0].location_id, self.md.id)
+        self.assertEqual(list(self.db.scalars(select(m.EmployeeAssignment))), [])
         self.assertEqual(self.legacy.location_id, self.wp.id)
 
     def test_selector_state_matches_directory_and_preserves_internal_override(self):

@@ -45,3 +45,23 @@ Tips engine no longer reads any Clover role, nor any Clover role -> RF-One role 
   (`registry_departments.sync_site` only reports differences); assignments written by the former
   automatic sync stay as Registry history.
 - The two sections above describe the replaced behaviour and are kept for history.
+
+## OQ-7 — Clover roles out of the active flow (RF1_OPERATIONAL_DATABASE_001, Product Owner, 2026-11-21)
+
+Approved flow: Selection -> Training -> RF-One Registry (Anagrafica) -> Clover. The Registry holds the
+person's identity and role assignments; Tips reads only the Registry role valid for the person, site and
+date. The Clover employee ID only links the Clover employee to the RF-One person (per merchant/site).
+
+- `registry_departments.sync_site` no longer compares the Clover role with the Registry assignment: the
+  "Clover role differs from the Registry assignment" report (`differs`, `unchanged`, `multiple_roles`,
+  `without_rf_role`) was removed. It keeps the site's Clover role catalogue and reports only confirmed
+  people without an open Registry assignment.
+- `profile/bootstrap.py` no longer opens or closes `EmployeeAssignment` rows from `EmployeeSourceRole`
+  (`assignment_source = SOURCE_ROLE_MAPPING`), and no longer creates a `RestaurantRole` or an ACTIVE
+  `SourceRoleMapping` for each Clover role; their issues went with them. It keeps T0 and the root area.
+- `registry_departments.classification` / `department_of` / the Reparti e ruoli page derive a person's
+  department only from the open Registry assignment (role -> department). Clover correspondences in
+  `registry_role_mappings` (`source = CLOVER`) are kept as history, no longer read, and new ones are refused.
+- `sync_winter_park_employee_roles.py` (one-off script writing assignments from Clover roles) was removed.
+- Kept unchanged: assignments already written by those paths (Registry history), Clover role observations
+  and `CLOVER_ROLE_CHANGE` events (historical evidence), finalized runs, entitlements and payments.

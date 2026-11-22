@@ -2,10 +2,10 @@
 """Restaurant Profile bootstrap/sync from Clover source configuration
 (TASK_RESTAURANT_003).
 
-Populates the Restaurant Profile (root Operational Area, RestaurantRoles,
-explicit SourceRole->RestaurantRole mappings, prospective EmployeeAssignments
-from an explicit T0) from the already-ingested canonical `Employee`/
-`SourceRole`/`EmployeeSourceRole` facts for a Restaurant. Never talks to
+Establishes the Restaurant Profile T0 and its root Operational Area, and
+reports the already-ingested Clover role/employee counts for a Restaurant.
+It never creates RF-One roles, role mappings or EmployeeAssignments from
+Clover roles: the Registry is the only authority for them (OQ-7). Never talks to
 Clover directly (see `03 Software/Clover Data Explorer/
 fetch_profile_bootstrap_snapshot.py` for the optional fresh, read-only
 live-congruence snapshot this command can additionally use).
@@ -90,10 +90,7 @@ def main() -> int:
         print(f"  current source Employees:       {summary.current_source_employees}")
         print(f"  historical stubs skipped:       {summary.historical_stubs_skipped}")
         print(f"  current SourceRoles:            {summary.current_source_roles}")
-        print(f"  SourceRole->RestaurantRole mappings: created={summary.mappings_created} reused={summary.mappings_reused}")
-        print(f"  RestaurantRoles:                 created={summary.restaurant_roles_created} reused={summary.restaurant_roles_reused}")
         print(f"  OperationalAreas:                 created={summary.operational_areas_created} reused={summary.operational_areas_reused}")
-        print(f"  EmployeeAssignments:              created={summary.assignments_created} reused={summary.assignments_reused} closed={summary.assignments_closed}")
         print(f"  reconciliation issues:            created={summary.issues_created} reused={summary.issues_reused} (blocking={summary.blocking_issue_count} warning={summary.warning_issue_count})")
         print(f"  fresh snapshot used:              {summary.snapshot_used} (fetched_at={summary.snapshot_fetched_at.isoformat() if summary.snapshot_fetched_at else None})")
 

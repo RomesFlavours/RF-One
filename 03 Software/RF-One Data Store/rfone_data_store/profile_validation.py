@@ -17,10 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import models as m
 from .profile.bootstrap import (
-    ISSUE_CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE,
-    ISSUE_CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE,
-    ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS,
-    ISSUE_SOURCE_ROLE_WITHOUT_PROFILE_MAPPING,
+    ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING,
     MODE_DRY_RUN,
     MODE_PERSIST,
     ROOT_AREA_CODE,
@@ -155,89 +152,30 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         )
     ).one()
 
-    # Case 3/4: SourceRole and RestaurantRole remain separate entities;
-    # exact-name mapping is explicit (via a SourceRoleMapping row), not implicit.
-    mapping_server = session.scalars(
-        select(m.SourceRoleMapping).where(
-            m.SourceRoleMapping.restaurant_id == restaurant.id, m.SourceRoleMapping.source_role_id == role_server.id
-        )
-    ).one()
-    restaurant_role_server = session.get(m.RestaurantRole, mapping_server.restaurant_role_id)
+    # Case 3/4 (OQ-7): Clover roles never create or determine RF-One roles.
+    # No RestaurantRole and no SourceRoleMapping is created from the three
+    # current Clover roles; RF-One roles are managed only in Registry.
     result.check(
-        "Case 3/4: RestaurantRole is a distinct row in a distinct table from SourceRole (their "
-        "integer ids are independent sequences, never compared or unified), connected only by an "
-        "explicit SourceRoleMapping row, even though the bootstrap default name is identical",
-        restaurant_role_server is not None
-        and type(restaurant_role_server) is not type(role_server)
-        and m.RestaurantRole.__tablename__ != m.SourceRole.__tablename__
-        and restaurant_role_server.name == role_server.name
-        and mapping_server.source_role_id == role_server.id
-        and mapping_server.restaurant_role_id == restaurant_role_server.id
-        and mapping_server.valid_from == t0_sync,
+        "Case 3/4 (OQ-7): the bootstrap creates ZERO RestaurantRole and ZERO SourceRoleMapping rows "
+        "from the current Clover roles",
+        session.scalar(select(func.count()).select_from(m.RestaurantRole)) == 0
+        and session.scalar(select(func.count()).select_from(m.SourceRoleMapping)) == 0,
     )
+    # Registry roles a person would create by hand in Anagrafica.
+    restaurant_role_server = m.RestaurantRole(restaurant_id=restaurant.id, name="Server")
+    restaurant_role_manager = m.RestaurantRole(restaurant_id=restaurant.id, name="Manager")
+    session.add_all([restaurant_role_server, restaurant_role_manager])
+    session.flush()
 
-    # Case 5: current Employee receives Assignment from T0, not before.
-    assignment_single = session.scalars(
-        select(m.EmployeeAssignment).where(
-            m.EmployeeAssignment.employee_id == emp_single_role.id, m.EmployeeAssignment.restaurant_id == restaurant.id
-        )
-    ).one()
+    # Case 5-8 (OQ-7, RF1_OPERATIONAL_DATABASE_001): the Registry is the only
+    # authority for assignments. However many Clover roles a person has (one,
+    # two, none) and whether the person is a historical stub, the bootstrap
+    # creates no EmployeeAssignment and raises no per-Employee role issue.
     result.check(
-        "Case 5: current Employee's EmployeeAssignment.valid_from == T0, not before",
-        assignment_single.valid_from == t0_sync
-        and assignment_single.valid_to is None
-        and assignment_single.restaurant_role_id == restaurant_role_server.id
-        and assignment_single.operational_area_id == root_area.id
-        and assignment_single.assignment_source == "SOURCE_ROLE_MAPPING",
-    )
-
-    # Case 6: historical stub receives no invented current Assignment.
-    stub_assignments = session.scalars(
-        select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == emp_stub.id)
-    ).all()
-    result.check(
-        "Case 6: historical stub (display_name IS NULL) receives zero EmployeeAssignment rows",
-        len(stub_assignments) == 0,
-    )
-
-    # Case 7 (CORRECTED, EMPLOYEE_ASSIGNMENT_CLOVER_ALIGNMENT_001): an
-    # Employee currently mapping to more than one distinct RestaurantRole is
-    # now a genuine ambiguity, never "legitimate concurrent Assignments" —
-    # Clover's real operating model is one Employee account = exactly one
-    # Role. No Assignment is guessed; an explicit BLOCKING issue is raised
-    # instead.
-    concurrent_assignments = session.scalars(
-        select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == emp_concurrent.id)
-    ).all()
-    concurrent_issues = session.scalars(
-        select(m.RestaurantProfileReconciliationIssue).where(
-            m.RestaurantProfileReconciliationIssue.employee_id == emp_concurrent.id,
-            m.RestaurantProfileReconciliationIssue.issue_type == ISSUE_EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS,
-        )
-    ).all()
-    result.check(
-        "Case 7: an Employee with two current SourceRoles (Server + Manager) receives ZERO "
-        "EmployeeAssignment rows (no Role is guessed) and an explicit "
-        "EMPLOYEE_WITH_MULTIPLE_CONCURRENT_ROLE_MAPPINGS BLOCKING issue instead",
-        len(concurrent_assignments) == 0
-        and len(concurrent_issues) == 1
-        and concurrent_issues[0].severity == "BLOCKING",
-    )
-
-    # Case 8: current Employee without SourceRole creates an issue, not a guessed Assignment.
-    no_role_assignments = session.scalars(
-        select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == emp_no_role.id)
-    ).all()
-    no_role_issues = session.scalars(
-        select(m.RestaurantProfileReconciliationIssue).where(
-            m.RestaurantProfileReconciliationIssue.employee_id == emp_no_role.id,
-            m.RestaurantProfileReconciliationIssue.issue_type == ISSUE_CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE,
-        )
-    ).all()
-    result.check(
-        "Case 8: current Employee with zero SourceRoles gets zero guessed Assignments and an "
-        "explicit CURRENT_EMPLOYEE_WITHOUT_SOURCE_ROLE issue",
-        len(no_role_assignments) == 0 and len(no_role_issues) >= 1,
+        "Case 5-8 (OQ-7): the bootstrap creates ZERO EmployeeAssignment rows from Clover roles "
+        "(single role, concurrent roles, no role, historical stub)",
+        session.scalar(select(func.count()).select_from(m.EmployeeAssignment)) == 0
+        and summary1.issues_created == 0,
     )
 
     # Case 12/13: exactly one root OperationalArea for this Restaurant —
@@ -264,115 +202,65 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     counts_after = _table_counts(session, restaurant.id)
     result.check(
         "Case 2: a second identical bootstrap run creates/closes nothing (T0 reused, all "
-        "mappings/roles/areas/assignments reused, zero new issues) and leaves row counts unchanged",
+        "areas reused, zero new issues) and leaves row counts unchanged",
         summary2.t0_created is False
         and summary2.managed_from == t0_sync
-        and summary2.mappings_created == 0
-        and summary2.restaurant_roles_created == 0
         and summary2.operational_areas_created == 0
-        and summary2.assignments_created == 0
-        and summary2.assignments_closed == 0
         and summary2.issues_created == 0
         and counts_before == counts_after,
     )
 
     # =====================================================================
-    # Case 9: SourceRole without mapping -> CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE
-    # (realistic path: an EmployeeSourceRole pointing at a SourceRole that is
-    # OUT OF this Restaurant's Location scope, so bootstrap never mapped it)
+    # Case 9-11 (OQ-7): a Clover role change never touches the Registry. A
+    # Registry (MANUAL) assignment and an assignment written earlier by the
+    # removed SOURCE_ROLE_MAPPING step both stay exactly as they were.
     # =====================================================================
-    other_location = m.Location(
-        merchant_id=merchant.id, source_system_id=source_system.id,
-        source_location_id="LOC2", name="Other Location", currency="USD",
+    manual = m.EmployeeAssignment(
+        employee_id=emp_change.id, restaurant_id=restaurant.id, operational_area_id=root_area.id,
+        restaurant_role_id=restaurant_role_server.id, valid_from=_dt(9), valid_to=None, assignment_source="MANUAL",
     )
-    session.add(other_location)
-    session.flush()
-    out_of_scope_role = m.SourceRole(
-        location_id=other_location.id, source_system_id=source_system.id,
-        source_role_id="R99", name="OutOfScope", source_system_role="EMPLOYEE",
+    legacy = m.EmployeeAssignment(
+        employee_id=emp_single_role.id, restaurant_id=restaurant.id, operational_area_id=root_area.id,
+        restaurant_role_id=restaurant_role_server.id, valid_from=t0_sync, valid_to=None,
+        assignment_source=ASSIGNMENT_SOURCE_SOURCE_ROLE_MAPPING,
     )
-    session.add(out_of_scope_role)
+    session.add_all([manual, legacy])
     session.flush()
-    link(emp_single_role, out_of_scope_role)
-    session.flush()
+    before = {a.id: (a.restaurant_role_id, a.valid_from, a.valid_to, a.assignment_source)
+              for a in session.scalars(select(m.EmployeeAssignment))}
 
-    run3, summary3 = bootstrap_restaurant_profile(
-        session, restaurant_id=restaurant.id, source_system_id=source_system.id,
-        mode=MODE_PERSIST, sync_time=_dt(8),
-    )
-    session.flush()
-    unmapped_issues = session.scalars(
-        select(m.RestaurantProfileReconciliationIssue).where(
-            m.RestaurantProfileReconciliationIssue.employee_id == emp_single_role.id,
-            m.RestaurantProfileReconciliationIssue.issue_type == ISSUE_CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE,
-        )
-    ).all()
-    result.check(
-        "Case 9: an EmployeeSourceRole pointing at a SourceRole with no ACTIVE mapping for this "
-        "Restaurant produces an explicit CURRENT_EMPLOYEE_WITH_UNMAPPED_SOURCE_ROLE issue, and "
-        "does not create an Assignment for that Role",
-        len(unmapped_issues) >= 1
-        and session.scalars(
-            select(m.EmployeeAssignment).where(
-                m.EmployeeAssignment.employee_id == emp_single_role.id,
-                m.EmployeeAssignment.restaurant_role_id.in_(
-                    select(m.SourceRoleMapping.restaurant_role_id).where(
-                        m.SourceRoleMapping.source_role_id == out_of_scope_role.id
-                    )
-                ),
-            )
-        ).first() is None,
-    )
-    result.check(
-        "SOURCE_ROLE_WITHOUT_PROFILE_MAPPING defensive issue type is defined and importable "
-        "(reserved for the case ordinary mapping self-healing cannot reach)",
-        ISSUE_SOURCE_ROLE_WITHOUT_PROFILE_MAPPING == "SOURCE_ROLE_WITHOUT_PROFILE_MAPPING",
-    )
-
-    # =====================================================================
-    # Case 10/11: source Role change closes the old Assignment and opens a
-    # new one prospectively; no historical Assignment is overwritten.
-    # =====================================================================
-    change_assignment_before = session.scalars(
-        select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == emp_change.id)
-    ).one()
-    original_id = change_assignment_before.id
-    original_valid_from = change_assignment_before.valid_from
-
-    # Simulate Clover: emp_change is no longer Server, now Manager.
-    old_link = session.scalars(
-        select(m.EmployeeSourceRole).where(
-            m.EmployeeSourceRole.employee_id == emp_change.id, m.EmployeeSourceRole.source_role_id == role_server.id
-        )
-    ).one()
-    session.delete(old_link)
+    # Simulate Clover: emp_change is no longer Server, now Manager; emp_single_role loses every role.
+    for row in session.scalars(select(m.EmployeeSourceRole).where(
+            m.EmployeeSourceRole.employee_id.in_([emp_change.id, emp_single_role.id]))).all():
+        session.delete(row)
     session.flush()
     link(emp_change, role_manager)
     session.flush()
 
     t1_sync = _dt(1)
+    run3, summary3 = bootstrap_restaurant_profile(
+        session, restaurant_id=restaurant.id, source_system_id=source_system.id,
+        mode=MODE_PERSIST, sync_time=_dt(8),
+    )
     run4, summary4 = bootstrap_restaurant_profile(
         session, restaurant_id=restaurant.id, source_system_id=source_system.id,
         mode=MODE_PERSIST, sync_time=t1_sync,
     )
     session.flush()
-
-    all_change_assignments = session.scalars(
-        select(m.EmployeeAssignment).where(m.EmployeeAssignment.employee_id == emp_change.id)
-    ).all()
-    closed = [a for a in all_change_assignments if a.id == original_id]
-    opened = [a for a in all_change_assignments if a.id != original_id]
+    after = {a.id: (a.restaurant_role_id, a.valid_from, a.valid_to, a.assignment_source)
+             for a in session.scalars(select(m.EmployeeAssignment))}
     result.check(
-        "Case 10/11: a detected source Role change closes the OLD EmployeeAssignment "
-        "(valid_to = sync time, valid_from UNCHANGED — not overwritten) and opens a NEW one "
-        "(valid_from = sync time, not backdated to T0)",
-        len(closed) == 1
-        and closed[0].valid_from == original_valid_from  # never overwritten
-        and closed[0].valid_to == t1_sync
-        and len(opened) == 1
-        and opened[0].valid_from == t1_sync
-        and opened[0].valid_to is None
-        and opened[0].restaurant_role_id != closed[0].restaurant_role_id,
+        "Case 9-11 (OQ-7): after a Clover role change (Server -> Manager) and a Clover role removal, "
+        "the bootstrap opens, closes and changes no EmployeeAssignment — the Registry assignment and "
+        "the historical SOURCE_ROLE_MAPPING assignment are unchanged",
+        before == after
+        and len(after) == 2
+        and restaurant_role_manager.id not in {v[0] for v in after.values()},
+    )
+    result.check(
+        "Case 9-11 (OQ-7): the Clover role change creates no RestaurantRole or SourceRoleMapping either",
+        session.scalar(select(func.count()).select_from(m.RestaurantRole)) == 2
+        and session.scalar(select(func.count()).select_from(m.SourceRoleMapping)) == 0,
     )
 
     # =====================================================================
@@ -400,7 +288,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
 
     # =====================================================================
     # Case 15: the canonical Tip Distribution Engine still does not invent a
-    # Rule, even though EmployeeAssignments now exist for this Restaurant
+    # Rule, even though Registry EmployeeAssignments exist for this Restaurant
     # (TIPS_LEGACY_ENGINE_RETIREMENT_001 replaced the legacy `tips/engine.py`
     # call this check used to make with an equivalent call to the canonical
     # `tips/distribution_engine.py`).
@@ -439,7 +327,7 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     session.flush()
     tip_order_allocations = [line for line in tips_result.lines if line.order_id == tip_order.id]
     result.check(
-        "Case 15: after bootstrapping real EmployeeAssignments, the canonical Tip Distribution Engine "
+        "Case 15: with Registry EmployeeAssignments present, the canonical Tip Distribution Engine "
         "still allocates nothing for this Order — an active Tip Distribution Rule is restaurant-"
         "configured data, never invented merely because EmployeeAssignments now exist",
         tips_result.blocked_reason is None

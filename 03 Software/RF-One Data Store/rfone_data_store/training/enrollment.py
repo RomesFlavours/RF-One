@@ -1,10 +1,24 @@
-"""Pending invitations over the existing RF-One person directory, never another registry."""
+"""Pending invitations over the existing RF-One person directory, never another registry.
+
+Approved sequence (Product Owner, 2026-11-21 — OQ-7 completion):
+
+1. Selection releases an eligible (Hired) candidate to Training: `release` records who released it and
+   the Training operator now in charge (event `training.released`). Nothing else: no Student, no
+   invitation, no Clover record.
+2. The Training operator confirms the candidate has arrived: `confirm_arrival` records it once (event
+   `training.arrival_confirmed`) and only then registers the existing person in the Registry as a
+   Student (the STUDENT qualification). Training then enrolls the candidate in the school with the
+   existing invitation (`issue`), whose activation creates or reuses the RF-One login and Training
+   student account. A repeated confirmation changes nothing and never issues a second live invitation.
+3. Creating the person in Clover and saving the returned employee ID is NOT done here: it waits for the
+   Product Owner decisions on the site and on the identity record (see the OQ-7 report).
+"""
 import hashlib
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, select, func
-from .. import models as m, people_registry as people, student_registry as registry
+from .. import models as m, people_registry as people, student_registry as registry, access_profiles as profiles
 from .. import rfone_account_service as accounts, rfone_web_session as shared
 from ..selection import workspace_models as selection
 
@@ -56,31 +70,119 @@ def selection_position_allowed(db, actor, position):
     return (access.role_code or '').upper() != 'SUPERVISOR' and (shared.account_is_domain_admin(db, actor, 'SELECTION') or (access.role_code or '').upper() == 'OWNER' or position.manager_account_id == actor.id)
 
 
-def confirmed_candidates(db, actor):
-    if not shared.account_may_enter_domain(db, actor, 'SELECTION'):
-        return []
+RELEASED = 'training.released'
+ARRIVED = 'training.arrival_confirmed'
+
+
+def _selection_events(db, action, selection_ids=None):
+    """{selection_id: latest event} for one Training hand-off action (rfone_access_profile_events)."""
+    out = {}
+    for row in db.scalars(select(profiles.ProfileEvent).where(profiles.ProfileEvent.action == action)
+                          .order_by(profiles.ProfileEvent.id)):
+        sid = (row.details or {}).get('selection_id')
+        if sid is not None and (selection_ids is None or sid in selection_ids):
+            out[sid] = row
+    return out
+
+
+def _hired(db):
     latest = select(selection.WorkspaceDecision.position_candidate_id, func.max(selection.WorkspaceDecision.id).label('id')).group_by(selection.WorkspaceDecision.position_candidate_id).subquery()
-    rows = db.execute(select(selection.WorkspacePositionCandidate, selection.WorkspacePosition)
+    return db.execute(select(selection.WorkspacePositionCandidate, selection.WorkspacePosition)
         .join(selection.WorkspacePosition, selection.WorkspacePosition.id == selection.WorkspacePositionCandidate.position_id)
         .join(latest, latest.c.position_candidate_id == selection.WorkspacePositionCandidate.id)
         .join(selection.WorkspaceDecision, selection.WorkspaceDecision.id == latest.c.id)
         .where(selection.WorkspaceDecision.decision == selection.D_HIRED)).all()
+
+
+def confirmed_candidates(db, actor):
+    """Hired candidates the actor may handle: Selection rights on the position (as before), or the Training
+    operator the candidate was released to. Each row says whether it was released and whether the arrival
+    was confirmed."""
+    rows = _hired(db)
+    ids = [pc.id for pc, _ in rows]
+    released = _selection_events(db, RELEASED, set(ids))
+    arrived = _selection_events(db, ARRIVED, set(ids))
+    may_select = shared.account_may_enter_domain(db, actor, 'SELECTION')
     result = []
     for pc, position in rows:
-        if not selection_position_allowed(db, actor, position):
+        release = released.get(pc.id)
+        operator_id = (release.details or {}).get('operator_account_id') if release else None
+        if not ((may_select and selection_position_allowed(db, actor, position)) or (operator_id and operator_id == actor.id)):
             continue
         application = db.get(m.Application, pc.application_id)
         person = db.get(m.CandidatePerson, application.person_id)
         candidate = db.get(m.Candidate, pc.candidate_id)
         result.append(dict(id=pc.id, person_id=person.id, name=candidate.full_name or pc.declared_name or person.full_name or '',
             email=candidate.email or pc.declared_email or person.primary_email or '',
-            phone=candidate.phone or pc.declared_phone or person.primary_phone or '', position=position.title))
+            phone=candidate.phone or pc.declared_phone or person.primary_phone or '', position=position.title,
+            released=release is not None, operator_account_id=operator_id, arrived=pc.id in arrived))
     return sorted(result, key=lambda r: r['name'].casefold())
 
 
+def _lock_candidate(db, selection_id):
+    return db.scalar(select(selection.WorkspacePositionCandidate)
+                     .where(selection.WorkspacePositionCandidate.id == selection_id).with_for_update())
+
+
+def release(db, *, selection_id, released_by, operator):
+    """Step 1: Selection hands the Hired candidate to Training; `operator` (a Training trainer) is now in
+    charge. Records only the hand-off. Returns 'released' or 'already'."""
+    if _lock_candidate(db, selection_id) is None:
+        raise ValueError('Candidate not found.')
+    if selection_id not in {pc.id for pc, _ in _hired(db)}:
+        raise ValueError('Not currently Hired in Selection.')
+    if _selection_events(db, RELEASED, {selection_id}):
+        return 'already'
+    pc = db.get(selection.WorkspacePositionCandidate, selection_id)
+    person_id = db.get(m.Application, pc.application_id).person_id
+    profiles.event(db, RELEASED, actor=released_by.id, selection_id=selection_id, person_id=person_id,
+                   operator_account_id=operator.id, at=now().isoformat())
+    db.flush()
+    return 'released'
+
+
+def confirm_arrival(db, *, actor, selection_id):
+    """Step 2: the Training operator confirms the candidate arrived. Only this authorizes the enrollment:
+    the existing person becomes a Student in the Registry. Idempotent: (person_id, True) the first time,
+    (person_id, False) when it was already confirmed."""
+    if _lock_candidate(db, selection_id) is None:
+        raise ValueError('Candidate not found.')
+    source = {r['id']: r for r in confirmed_candidates(db, actor)}.get(selection_id)
+    if not source:
+        raise ValueError('Candidate not confirmed or position not authorized. Reload the list.')
+    # Codex review 2026-11-22 §3 — step 1 is mandatory for every caller: Selection must have released the
+    # candidate (event `training.released`) and the actor must be the Training operator put in charge by
+    # that release. Selection rights on the position alone never confirm an arrival. Checked before any
+    # Registry mark, event or invitation.
+    if not source['released'] or not source['operator_account_id']:
+        raise ValueError('Selection has not released this candidate to Training yet: the arrival cannot be '
+                         'confirmed. Nothing was changed.')
+    if source['operator_account_id'] != actor.id:
+        raise ValueError('This candidate was released to another Training operator, who confirms the arrival. '
+                         'Nothing was changed.')
+    if source['arrived']:
+        return source['person_id'], False
+    mark_trainee(db, source['person_id'])
+    profiles.event(db, ARRIVED, actor=actor.id, selection_id=selection_id, person_id=source['person_id'],
+                   at=now().isoformat())
+    db.flush()
+    return source['person_id'], True
+
+
+def live_invitation(db, selection_id):
+    """True when this Selection candidate already has a pending (unexpired) or completed invitation."""
+    stamp = now()
+
+    def aware(value):
+        return value if value.tzinfo else value.replace(tzinfo=stamp.tzinfo)
+    return any(r.consumed_at or (not r.revoked_at and aware(r.expires_at) > stamp) for r in db.scalars(
+        select(EnrollmentInvitation).where(EnrollmentInvitation.selection_id == selection_id)))
+
+
 def mark_trainee(db, person_id):
-    """Selection sent this person to Training: they are a trainee in the one Registry from now,
-    before activation. The mark is the existing STUDENT qualification, never added to an employee."""
+    """The Training operator confirmed the arrival: the person is a Student in the one Registry from now,
+    before activation. The mark is the existing STUDENT qualification, never added to an employee.
+    Called only by `confirm_arrival`."""
     if person_id and 'EMPLOYEE' not in people.company_statuses(db, person_id)             and not db.get(registry.PersonQualification, (person_id, 'STUDENT')):
         db.add(registry.PersonQualification(person_id=person_id, code='STUDENT'))
         db.flush()
@@ -114,12 +216,12 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
     people.lock_identity_evidence(db, email, name, phone_key(phone))
     person_id = account_id = None
     if selection_id:
-        candidates = {r['id']: r for r in confirmed_candidates(db, actor)}
-        source = candidates.get(selection_id)
-        if not source:
-            raise ValueError('Candidate not confirmed or position not authorized. Reload the list.')
-        person_id = source['person_id']
-        mark_trainee(db, person_id)
+        # The invitation from Selection is the enrollment: it follows the arrival confirmation, and a
+        # candidate already enrolled (pending or completed invitation) is never enrolled twice.
+        person_id, _ = confirm_arrival(db, actor=actor, selection_id=selection_id)
+        if live_invitation(db, selection_id):
+            raise ValueError('Arrival already confirmed and the enrollment is already in progress for this candidate.')
+        source = {r['id']: r for r in confirmed_candidates(db, actor)}[selection_id]
         name = name or source['name']
         phone = phone or source['phone']
     else:
