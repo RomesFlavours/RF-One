@@ -5,6 +5,9 @@
 **Module:** Restaurant Domain / Organization
 **Origin:** TASK_RESTAURANT_001
 
+
+> **Role and department mapping decision (2026-11-22):** See [REGISTRY_ROLE_DEPARTMENT_MAPPING_20261122.md](REGISTRY_ROLE_DEPARTMENT_MAPPING_20261122.md) for the approved Registry-owned role/reparto mapping, FOH/BOH, historical Excel and optional Clover-source responsibilities. This adds the November decisions without changing the older conceptual restaurant profile model. Runtime AWS state requires independent verification.
+
 ---
 
 ## Purpose
