@@ -40,7 +40,7 @@ Connectors may keep technical staging, but **no staging table and no provider sc
 ## 3. Incremental acquisition and integrity
 
 - **External POS systems:** **one shared acquisition service** for all locations — never one importer per Domain. Locations keep distinct credentials and identifiers.
-- **Cadence (current decision OQ-1):** the shared service acquires new records and corrections **at midnight**; **live checks every 30 seconds** run only while there is an **active request for a location**, within verified API limits and technical constraints. The frequency is set by the common service, never by the Domains. *(The original 2026-11-21 text set "one check every 30 seconds" as the permanent operational target; that wording is superseded by OQ-1.)*
+- **Cadence (current decision OQ-1, clarified 2026-11-22):** the shared service acquires **new records every 30 seconds** as ordinary operational acquisition, and checks **modifications (corrections) at midnight**, within verified API limits and technical constraints. Neither an exclusively nightly acquisition nor live checks only on request is the decision. The frequency is set by the common service, never by the Domains. *(The original 2026-11-21 text set "one check every 30 seconds" for new data and corrections alike; OQ-1 keeps 30 seconds for new records and moves the check of modifications to midnight.)*
 - Synchronize only data **new or modified since the last consolidated checkpoint**; after an interruption, recover the missing interval automatically.
 - Advance the checkpoint **only after a valid write**; use idempotent upserts, RF-One keys and mapping of external IDs.
 - Handle late updates, cancellations, corrections, pagination, retries and gap detection **without duplicating events**.
@@ -94,7 +94,7 @@ First alignment register: [`07 Tasks/Reports/RF1_OPERATIONAL_DATABASE_001_DOCUME
 - The end-to-end path source → connector → ingestion → operational DB → Domains is defined unambiguously (§2).
 - Every relevant document adopts the same principles, without contradictory instructions.
 - The canonical data contract is independent of Clover; replacing it with RF POS requires no redesign of consumers.
-- Incremental synchronization, the cadence of decision OQ-1 (midnight acquisition; 30-second live checks only on an active request for a location) and the integrity safeguards are specified, without claiming unverified API support.
+- Incremental synchronization, the cadence of decision OQ-1 (new records every 30 seconds; modifications checked at midnight) and the integrity safeguards are specified, without claiming unverified API support.
 - Claude and Codex have distinct, binding instructions for their roles.
 - No code, database or AWS service is modified by a documentation-only alignment.
 
@@ -117,9 +117,9 @@ This decision is the system-level, binding expression of principles already pres
 <a id="current-decisions"></a>
 ## Current Product Owner decisions
 
-The decisions below supersede the earlier wording in sections 3, 9, 11 and 12 wherever it differs. Earlier implementation notes and unresolved design items are historical context where superseded. OQ-9 through OQ-11 continue to apply.
+The decisions below supersede the earlier wording in sections 3, 9, 11 and 12 wherever it differs. For OQ-1, the Product Owner clarification of 2026-11-22 sets the cadence and prevails over the patch wording of the same day ("live at 30 seconds only on active request"). Earlier implementation notes and unresolved design items are historical context where superseded. OQ-9 through OQ-11 continue to apply.
 
-**OQ-1.** The shared service acquires new Clover records and corrections at midnight. Live checks every 30 seconds are enabled only during active requests for a location. Resume from the last valid checkpoint.
+**OQ-1 (clarified 2026-11-22).** The shared service acquires **new Clover records every 30 seconds** (ordinary operational acquisition, not only on request) and checks **modifications (corrections) at midnight**. Resume from the last valid checkpoint. *(Superseded wording of the same day: "new records and corrections at midnight; live checks every 30 seconds only during active requests for a location".)*
 
 **OQ-2.** Keep the latest acquired Clover value. Preserve raw evidence for audit as applicable. Corrections do not reopen FINAL Tips. Native history is deferred to RF POS design.
 
@@ -139,11 +139,11 @@ The verbatim Italian text of these decisions is the section *Decisioni successiv
 
 ### Status of the current decisions
 
-Four categories are kept separate: **approved decision** (above), **verified behaviour** (what the software on this branch's base does, observed 2026-11-21, details in §11), **open defect** (verified behaviour that contradicts the decision) and **to implement** (a step the decision requires that does not exist yet). An approved decision does not certify implementation. No implementation of the current decisions is verified on this branch.
+Four categories are kept separate: **approved decision** (above), **verified behaviour** (what the software did at the source branch base `0e85cef`, observed 2026-11-21, details in §11; the same modules exist on `main` and were not re-verified there), **open defect** (verified behaviour that contradicts the decision) and **to implement** (a step the decision requires that does not exist yet). An approved decision does not certify implementation. No implementation of the current decisions has been verified.
 
 | OQ | Verified behaviour | Open defect | To implement | Still for design (§12) |
 |---|---|---|---|---|
-| OQ-1 | Two per-Location processes: Live Sync 15 s, Correction Sync 60 s. | No midnight run; continuous polling instead of live checks on request. | Midnight acquisition of new records and corrections; 30 s live checks only during an active request for a location; resume from checkpoint. | G-1 |
+| OQ-1 | Two per-Location processes: Live Sync every 15 s for new records, Correction Sync every 60 s for modifications. | Cadences differ from the decision (15 s instead of 30 s for new records; continuous 60 s instead of a midnight check for modifications); two processes instead of one shared service. | One shared service: new records every 30 s; modification check at midnight; resume from checkpoint. | G-1 |
 | OQ-2 | Corrections applied in place; raw payloads kept in `SourceRecord` for audit; FINAL Tips immutable. | — | — | G-2 (residual) |
 | OQ-3 | Calculation and payment gated by the Clover connector function `describe_reconciliation_status()`. | Gate reads a connector function, not RF-One coverage; no start-date default, end-date offset or per-location coverage check for Calcola/Consolida. | Defaults, coverage check for Calcola and Consolida, blocking modal with reason and *Scarica dati*, per-location acquisition request for users authorized to calculate Tips. | G-3, G-4, G-5 |
 | OQ-4 | Each process runs per Location with its own cursor. | — | One midnight engine with separate per-location connections, credentials, checkpoints and outcomes. | G-1 |
@@ -158,7 +158,7 @@ The first alignment recorded eleven open questions. On 2026-11-21 the Product Ow
 
 **For OQ-1…OQ-8, the *Original decision* paragraphs below are historical:** wherever they differ from the [current decisions](#current-decisions), the current decisions apply and the original wording must not be read as an instruction in force. OQ-9…OQ-11 remain in force as written.
 
-For each decision, **Verified behaviour** describes the software on this branch's base as observed in the repository on 2026-11-21. A decision does not certify implementation. Points that still need a functional or architectural choice are in §12 and stay with design.
+For each decision, **Verified behaviour** describes the software at the source branch base `0e85cef` as observed on 2026-11-21 (not re-verified on `main`). A decision does not certify implementation. Points that still need a functional or architectural choice are in §12 and stay with design.
 
 <a id="oq-1"></a>
 ### OQ-1 — Acquisition frequency (Clover)
@@ -283,7 +283,7 @@ The decision covers **calculation only**. Any change to payment conditions needs
 
 **Verified behaviour.**
 
-- **On this branch's base**, the Tips engine (`tips/distribution_engine.py`) resolves roles from `EmployeeAssignment` filtered by restaurant, role, validity dates and location. `Tips/README.md` invariant 7 already states this.
+- **At the source branch base `0e85cef`**, the Tips engine (`tips/distribution_engine.py`) resolves roles from `EmployeeAssignment` filtered by restaurant, role, validity dates and location. `Tips/README.md` invariant 7 already states this.
 - **Open defect (outside this branch):** in the main working copy there is **uncommitted** local Tips work, outside this alignment and not in this branch: `tips/clover_role_history.py` plus changes to `distribution_engine.py`. It reads Clover role observations during calculation and blocks on "Clover role uncertain". It conflicts with this decision and must be reconciled before that work is committed.
 
 **Current decision:** [OQ-7 in *Current Product Owner decisions*](#current-decisions); status in the table there. Under the current decision, creating the Student in Clover and storing the returned employee ID as POS ID are **still to implement**; the authoritative location and the canonical POS ID record are still for design (G-11).
@@ -320,7 +320,7 @@ Designing the flow, and every functional choice still missing, belongs to design
 
 **Current decision:** [OQ-8 in *Current Product Owner decisions*](#current-decisions); status in the table there.
 
-**Aligned in:** `Tips/README.md`; [`Compensation/README.md`](../../01%20Domains/Shared%20Domains/Administration/Compensation/README.md).
+**Aligned in:** `Tips/README.md`; [`Compensation/README.md`](../../01%20Domains/Shared%20Domains/Personnel%20Management/Compensation/README.md).
 
 <a id="oq-9"></a>
 ### OQ-9 — Claude's choices
@@ -349,7 +349,7 @@ Designing the flow, and every functional choice still missing, belongs to design
 **Observed.** The main working copy holds **uncommitted** newer versions of these instructions, which are not on this branch:
 
 - `CLAUDE.md`: contextual-help placement (2026-11-14) and local database storage (2026-11-13);
-- `03 Software/Shared UI/How Works Standard.md` and `UI Rules.md`: help placement (2026-11-14);
+- `03 Software/Shared UI/How Works Standard.md` (not present on `main`) and `UI Rules.md`: help placement (2026-11-14);
 - `LOCAL_ENVIRONMENT.md`: continuation procedure (2026-11-14).
 
 They were **not copied** into this diff. Merging this branch must preserve them. The documentation prepared here complies with them: the only new UI element described (the OQ-3 modal) refers to the current help-placement and close-X rules, and no database location is prescribed.
@@ -365,7 +365,7 @@ These points go beyond the approved decisions. Claude does not resolve them; the
 
 | ID | Point | From | Status after the current decisions |
 |---|---|---|---|
-| G-1 | **Correction coverage per resource** (see the OQ-1 table): Refunds older than 48 h; detection of removed child records; discounts and tax; shifts. Also Clover API limits for 30-second live checks. Verify first, then design wherever a gap is confirmed. | OQ-1, OQ-4 | Open. Applies to the midnight acquisition and to live checks on request. |
+| G-1 | **Correction coverage per resource** (see the OQ-1 table): Refunds older than 48 h; detection of removed child records; discounts and tax; shifts. Also Clover API limits for 30-second live checks. Verify first, then design wherever a gap is confirmed. | OQ-1, OQ-4 | Open. Applies to the midnight modification check and to the 30 s acquisition of new records. |
 | G-2 | How a correction that arrives after a FINAL Tips period is shown or handled. | OQ-2 | **Narrowed.** Current OQ-2: keep the latest Clover value, raw evidence for audit, no reopening of FINAL periods, native history deferred to RF POS design. The original question of which corrections to record as events no longer applies. Only the display/follow-up of a late correction remains undefined. |
 | G-3 | **Coverage criterion:** which acquisition checkpoints must have passed the end of the period's last Business Day for the data to count as covering it. This decides when Calcola and Consolida are allowed, so it is a behaviour choice. | OQ-3 | Open. Now applies to both Calcola and Consolida, per location. |
 | G-4 | **Automatic calculations.** Manual and scheduled calculations share one gated entry point today (`Tips Configuration.md` §9). Is the coverage check also the gate for scheduled automatic runs? | OQ-3 | Open. |

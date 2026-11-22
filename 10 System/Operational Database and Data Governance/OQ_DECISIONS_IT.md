@@ -6,6 +6,14 @@
 
 ---
 
+## Precisazione OQ-1 del Product Owner (2026-11-22)
+
+Testo originale, riportato senza modifiche (autorizzazione alla pubblicazione della documentazione RF-One, 2026-11-22):
+
+> «prima della pubblicazione verifica che la documentazione distingua correttamente l'acquisizione operativa dei nuovi dati ogni 30 secondi dal controllo notturno delle modifiche a mezzanotte. Non sostituire questa decisione con un'acquisizione esclusivamente notturna o con controlli live soltanto su richiesta.»
+
+Per la cadenza di acquisizione questa precisazione prevale sul punto OQ-1 delle *Decisioni successive* qui sotto («acquisizione condivisa a mezzanotte di dati nuovi e correzioni; live a 30 secondi solo su richiesta attiva per sede»), che resta riportato per tracciabilità: i **nuovi dati** si acquisiscono **ogni 30 secondi**; le **modifiche** si controllano **a mezzanotte**. Il resto di OQ-1 (ripresa dall'ultimo checkpoint valido) e gli altri punti restano invariati.
+
 ## Decisioni successive del Product Owner
 
 Le decisioni qui riportate prevalgono sui punti OQ-1–OQ-8 precedenti per gli aspetti aggiornati. Il testo originale resta in fondo per tracciabilità. OQ-9–OQ-11 restano valide.

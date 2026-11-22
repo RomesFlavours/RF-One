@@ -50,7 +50,7 @@
 | 19 | `03 Software/Infrastructure/deploy/RELEASE_CHECKLIST.md` | intro + new step 8 | Codex review with no open deviation + explicit PO approval before push/merge/deploy. The sentence "introduces no new approval requirement" was replaced because the decision introduces one. |
 | 20 | `01 Domains/Business Domain/Restaurant/Tips/Tips Configuration.md` | header, Purpose diagram, §3, §10 | Tips reads RF-One data only; diagram source renamed to RF-One canonical data; residual contradiction OQ-3. |
 | 21 | `01 Domains/.../Functional Specifications/TIP_DISTRIBUTION_ENGINE_FUNCTIONAL_SPEC_001.md` | clock-in/out source sentence | Clover = originating source; engine reads canonical DB only. |
-| 22 | `01 Domains/Shared Domains/Administration/Compensation/README.md` | hours bullet | "acquired Clover Shifts" → canonical Shifts (currently acquired from Clover). |
+| 22 | `01 Domains/Shared Domains/Personnel Management/Compensation/README.md` | hours bullet | "acquired Clover Shifts" → canonical Shifts (currently acquired from Clover). |
 | 23 | `01 Domains/Business Domain/Restaurant/MyRF/Server Tablet/README.md` | Definizioni concordate (Italian) | MyRF reads RF-One canonical data; outbound order sending to Clover = OQ-5. |
 | 24 | `01 Domains/Shared Domains/Administration/Bank Reconciliation/README.md` | new section *Enrichers and canonical fields* | Decision §4 for Bank: enrichment field distinct from description/memo; WHO/WHY canonical fields only; field name open (OQ-6). |
 | 25 | `01 Domains/Business Domain/Restaurant/Dining Intelligence/README.md` | Reservation / Guest platforms | OpenTable/Resy adapters follow the mandatory flow. |
@@ -129,7 +129,7 @@
 
 | OQ | Current decision (summary) | Documents aligned | Status |
 |---|---|---|---|
-| OQ-1 | Midnight acquisition of new records and corrections; 30 s live checks only during an active request for a location; resume from checkpoint. | spec header, §3, §9, status table, §11, §12 G-1; Clover sync header and Correction Poller frequency; both deploy READMEs; `03 Software/Infrastructure/README.md` | To implement. |
+| OQ-1 | New records every 30 s; modifications checked at midnight; resume from checkpoint (Product Owner clarification of 2026-11-22, which supersedes the patch wording "midnight acquisition, live 30 s only on request"). | spec header, §3, §9, status table, §11, §12 G-1; Clover sync header and Correction Poller frequency; both deploy READMEs; `03 Software/Infrastructure/README.md` | To implement. |
 | OQ-2 | Latest Clover value; raw audit evidence; FINAL Tips not reopened; native history deferred to RF POS. | Clover sync header, §1, §8; `Finalized Tips Period.md`; spec §12 G-2 (narrowed) | Verified behaviour consistent (in-place correction, `SourceRecord`, immutable FINAL). |
 | OQ-3 | Start-date default and end-date offset per location; Calcola and Consolida require verified per-location coverage; blocking modal with reason and *Scarica dati*; acquisition request without general `CLOVER_ACQUISITION`; payment readiness separate. | `Tips Configuration.md`; Clover sync §7 | To implement. G-3…G-5 open. |
 | OQ-4 | One midnight engine, separate connections for Winter Park and Mount Dora; per-location credentials, checkpoints, outcomes; independent future live cycles. | as OQ-1 | To implement. |
@@ -139,3 +139,18 @@
 | OQ-8 | Compensation pulls FINAL Tips from RF-One; Tips neither sends nor starts Compensation; CALCULATED stays in Tips. | `Tips/README.md`; `Compensation/README.md`; spec §12 G-9 (narrowed) | To implement. |
 
 **OQ-9…OQ-11:** the Core 16/17 sentences (OQ-10) are kept as already aligned. `AGENTS.md`, `CLAUDE.md` rule 2 and the MIEAF limit state the same OQ-9 boundary. The newer main-copy instructions on contextual-help placement (2026-11-14) and local database storage (2026-11-13) are not copied into this branch and are preserved for the merge; this documentation complies with them (no new UI beyond the OQ-3 modal, which refers to the current placement rules; no database location prescribed).
+
+## 10. Publication onto `main` (2026-11-22)
+
+**Authorization:** Product Owner, 2026-11-22: new branch from the updated `origin/main` carrying only the documentation changes of `3b6e903` and `4de60dd`; push authorized; no merge, no deployment; Codex independent review precedes any merge authorization.
+**Branch:** `docs/rf1-operational-database-publish`, from `origin/main` @ `96f29f6` (PR #2). The 24 earlier commits of `docs/rf1-operational-database-principle` (WIP snapshots with application code and migrations) are **not** included.
+
+| Point | Resolution |
+|---|---|
+| `CLAUDE.md`, `AGENTS.md` | PR #2 text kept in full. Added only the RF1 section (CLAUDE.md, top; Repository Architect sentence reworded because `main` does not name that role) and one RF1 section in AGENTS.md. `main` has no MIEAF section, so the OQ-9 limit is stated in rule 2 of the RF1 section. |
+| `clover-correction-sync/README.md`, `CLOVER_INGESTION.md` | Only the RF1 governing-decision note transferred; the unrelated release notes that surrounded it on the source branch were not. |
+| MyRF Server Tablet specifications (six files), `RELEASE_CHECKLIST.md` | Absent on `main`; transferred as documentation (MyRF folder whole, so its internal links resolve). |
+| Compensation README | `main` keeps it at `01 Domains/Shared Domains/Personnel Management/Compensation/README.md`; the change lands there and the links point there. |
+| OQ-1 cadence | Product Owner clarification of 2026-11-22 recorded verbatim in `OQ_DECISIONS_IT.md`: new records every 30 seconds, modifications checked at midnight. It supersedes the patch wording ("midnight acquisition; live 30 s only on request"), kept for traceability. |
+
+**References that remain outside `main`:** `03 Software/Shared UI/How Works Standard.md` and `check_how_works.py` (named in `RELEASE_CHECKLIST.md` and §11 OQ-11), `03 Software/Infrastructure/deploy/CLOVER_MULTISITE_RELEASE_PLAN.md`, the patch file and `RF One/RFBank` (main working copy / separate repository). They are cited as text, not as links.
