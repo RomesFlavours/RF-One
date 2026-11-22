@@ -10,6 +10,9 @@
 
 > **Current state (2026-10-13).** Since `BANK_RULES_RESET_001.md` Bank classifies only through **AI Rules** (`BANK_AI_RULES_001.md`) and by a person; `BANK_OLD_RULES_REMOVAL_001.md` removes the residues of the old rule system (Phase 1 done, Phase 2 — file deletions, model and migration — pending). Superseded, kept as history: `BANK_SIMPLE_WHO_RULE_001.md`, `BANK_GENERAL_RULES_001.md`, `BANK_CLASSIFICATION_LEARNING_001.md`, `BANK_WHO_MANUAL_ONLY_001.md`, `BANK_RECONCILIATION_STANDARDS_001.md` (the inline exception editor remains), and in part `BANK_RECONCILIATION_001.md` and `BANK_FINAL_CLEANUP_001.md`. Where the sections below describe recognition rules, the automatic WHY engine, learned rules, General Rules or Standards, they describe the retired system.
 
+
+> **WHO design update — 2026-11-22:** [BANK_WHO_FUNCTIONAL_MODEL_20261122.md](BANK_WHO_FUNCTIONAL_MODEL_20261122.md) is the **approved current functional specification for WHO recognition and WHO groups**. Its text/regole/AI cascade and three exclusive WHO categories supersede conflicting WHO design assumptions in the October documents linked below, many of which explicitly describe retired systems. **Do not** infer that this new WHO design has been implemented or deployed. WHY, WHAT, export and other Bank areas will be reconciled in separate design/test phases. See the [cross-domain documentation audit](../../../../07%20Tasks/Reports/RF_ONE_DOCUMENTATION_AUDIT_20261122.md).
+
 ---
 
 ## Purpose
