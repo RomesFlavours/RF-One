@@ -161,7 +161,7 @@ Ambient Operational Context must not rest on conversational or perceptual signal
 Illustrative, non-normative, cross-industry examples of the business state a Domain already owns or may own:
 
 - retail: real stock/availability;
-- restaurant: live operational data from a connected source system (e.g. the existing Clover connector referenced elsewhere in this repository);
+- restaurant: live RF-One operational data, which Cognito reads from RF-One (today fed by the existing Clover connector referenced elsewhere in this repository);
 - legal: matter, deadline, document status (illustrative only; no Legal Domain currently exists in RF-One);
 - accounting: client, period, reconciliation, missing-document state (illustrative only; no Accounting Domain currently exists in RF-One).
 

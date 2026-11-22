@@ -5,6 +5,7 @@
 **Module:** Domain / Administration (Shared Domain) / Compensation
 **Relocated:** 2026-10-25, from `Shared Domains/Personnel Management/Compensation/` to `Shared Domains/Administration/Compensation/`, by Product Owner decision: Compensation belongs to Administration, and Personnel Management is no longer a Domain. Content, economic rules, approved decisions and software behavior are unchanged; only ownership labels and links were updated.
 **Formerly named:** Payroll — renamed by explicit Product Owner decision (see "Why this module is not called Payroll" below). All content below is otherwise unchanged in substance.
+**Primary flow first — decision OQ-8 ([RF1_OPERATIONAL_DATABASE_001 §11](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#oq-8), Product Owner, 2026-11-21):** the primary flow of Compensation (and of Tips) and the data and connector contracts it needs are defined first, by design (Product Owner + ChatGPT); cleanup of old paths comes after. Contracts to prepare: governing decision §11, OQ-8. **Current decision OQ-8 ([governing decision](../../../../10%20System/Operational%20Database%20and%20Data%20Governance/README.md#current-decisions)):** Compensation pulls FINAL Tips from RF-One when required; Tips neither sends data nor starts Compensation; CALCULATED results remain inside Tips until finalization. The pull is still to implement.
 
 ---
 

@@ -51,11 +51,13 @@ original: `SOURCE_DECISION_IT.md` in the same folder); this is a pointer to it.
    Clover (or other provider) engine for one Domain or one period; never duplicate
    the same business fact per module.
 2. **Design is done by the Product Owner + ChatGPT; Claude implements.** Implement
-   complete, approved specifications faithfully. Do not add workflows, schemas,
-   tables, columns, APIs, information models or architectural decisions of your own.
-   When a choice the specification does not define emerges, **stop and submit it to
-   design** — do not decide it. Do not invent column or table names not verified in
-   the existing code.
+   complete, approved specifications faithfully. **Claude decides the technical
+   details that respect the approved specification. If the work would change a flow,
+   schema, API or behaviour, Claude stops and asks design** (decision OQ-9,
+   2026-11-21). Do not add workflows, schemas, tables, columns, APIs, information
+   models or architectural decisions of your own. Do not invent column or table names
+   not verified in the existing code. Approved decisions on the former open questions
+   OQ-1…OQ-11 and the points still open: §11–§12 of the normative text.
 3. **Codex performs the independent review** using
    `03 Software/Infrastructure/deploy/CODEX_INDEPENDENT_REVIEW_CHECKLIST.md`; hand
    over the commit and its report. Codex does not change requirements.
@@ -690,12 +692,12 @@ solutions. Never ask the Product Owner to choose between technical
 alternatives Claude can evaluate itself — choose, and state why. Never run
 operations blocked by security controls and never try to bypass them.
 
-**Limit (RF1_OPERATIONAL_DATABASE_001 §6–§7):** a choice of architecture,
-information/data model, workflow, schema or API that the approved specification
-does not define is not a technical alternative for Claude to choose: stop and
-submit it to design. The precise boundary between the two is an open question
-recorded in `10 System/Operational Database and Data Governance/README.md` §11
-(OQ-9); until it is confirmed, treat any doubtful case as a design choice.
+**Limit (RF1_OPERATIONAL_DATABASE_001 §6–§7, decision OQ-9 of 2026-11-21):** the
+technical alternatives Claude chooses under MIEAF are the technical details that
+respect the approved specification. A choice that would change a flow, schema, API
+or behaviour is not a technical alternative: Claude stops and asks design
+(Product Owner + ChatGPT). Normative text:
+`10 System/Operational Database and Data Governance/README.md` §11 (OQ-9).
 
 Reports state, for each obstacle: **problem found → solution identified →
 action taken, or the strictly necessary authorization.** This complements
