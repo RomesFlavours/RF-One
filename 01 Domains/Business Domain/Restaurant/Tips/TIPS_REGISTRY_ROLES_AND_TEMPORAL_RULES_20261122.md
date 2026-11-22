@@ -23,7 +23,7 @@
 
 ## 4. Stato implementativo e limiti riferiti
 - Branch `feature/tips-registry-roles` (`d71808d` al momento della verifica) contiene la modifica che legge Registry, non il mapping Tips; i test riportati: 13 su 15 giorni recenti sbloccati, 8 e 11 novembre ancora privi di ruoli storici documentati.
-- Dal report del 21/11: Hailey Kuruc, Alyssa Long, Katelyn Gentry e Matthew Arrowood richiedono evidenze storiche nei periodi interessati; non assegnare ruoli fittizi.
+- Dal report del 21/11: alcuni casi relativi a ruoli storici richiedono evidenze documentate nei periodi interessati; non assegnare ruoli fittizi. I dettagli nominativi restano nei report operativi riservati, non nella specifica pubblica.
 - Il piano `feature/clover-multisite-registry:.../CLOVER_MULTISITE_RELEASE_PLAN.md` del 21/11 include una versione di Tips per WP/MD, ma `PLAN ONLY` non prova il deploy.
 - La verifica della correttezza reale degli importi di ogni singolo pagamento resta distinta dal superamento di test simulati.
 
