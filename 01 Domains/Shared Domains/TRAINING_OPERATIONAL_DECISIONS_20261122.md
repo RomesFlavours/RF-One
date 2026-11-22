@@ -28,3 +28,6 @@ Il corso ibrido è progettato per usare AI in modo mirato, non invasivo. Prima u
 
 ## 6. Verifiche aperte
 Versioni finali dei contenuti, disponibilità del corso su AWS, permessi, gestione concorrenza AI, questionario e validazione sicurezza. Le copie di contenuto `Server Course` e `Management Course` nei branch software sono materiale di riferimento, non automaticamente un master approvato.
+
+## 7. Distinzione tra persona, iscrizione e account (controllo incrociato)
+Il documento tecnico `feature/clover-multisite-registry:03 Software/Training/ENROLLMENT.md`, approvato il 13 novembre, afferma che l'invito è una **richiesta di enrollment in attesa**, e non crea automaticamente un nuovo account di login né un nuovo profilo Training finché l'attivazione non è completata. Il flusso Selection→Registry precedentemente discusso, invece, prevede il riuso o la creazione dell'identità canonica e lo stato `Trainee` al `Send to Training`. I due comportamenti possono coesistere **solo se** la persona canonica Registry, la richiesta di enrollment e le credenziali/account Training sono oggetti distinti. Non attribuire a `Send to Training` la creazione automatica di un account abilitato. L'esatta semantica degli stati e la consistenza fra i servizi vanno verificati prima della dichiarazione di allineamento completo.
