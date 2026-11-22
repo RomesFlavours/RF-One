@@ -55,3 +55,27 @@ I documenti hanno livelli di autorità diversi secondo `README.md`: `00 Core/`, 
 La ricognizione dell'**albero** Git è completa, mentre la verifica **del contenuto** di 433 documenti non è ancora completa: è stata eseguita la lettura mirata di entrypoint, fonti canoniche e file tecnici selezionati. Anche la ricerca di decisioni nelle conversazioni non è ancora un registro esaustivo. Non dichiarare "tutta la documentazione aggiornata" né inviare tale attestazione a collaboratori.
 
 La fase successiva è produrre un inventario decisione→specifica per ogni dominio, controllare i branch di feature e far verificare i gap a Codex; solo poi aggiornare documenti canonici uno per uno.
+
+## F. Verifica incrociata dei branch — riscontro aggiuntivo del 22/11
+Sono stati ispezionati gli alberi Git completi dei seguenti branch, senza merge o modifiche al codice:
+
+| Branch | Commit | Elementi nell'albero | File .md |
+|---|---|---:|---:|
+| `main` (dopo creazione audit) | `ca0e4b7` | 1.570 | 426 |
+| `rfbank/main` | `c5b43b7` | 279 | 2 |
+| `feature/registry-clover-departments` | `10e290f` | 2.573 | 453 |
+| `feature/tips-registry-roles` | `d71808d` | 1.624 | 426 |
+| `feature/clover-multisite-registry` | `9862153` | 2.594 | 456 |
+
+Il maggior numero di file nei branch feature **non** prova che siano più aggiornati o approvati: comprendono copie di distribuzione, ambienti di test e materiale operativo. Non vanno uniti integralmente a `main`.
+
+### Documenti mirati presenti in branch e non in main
+- `rfbank/main:docs/RFBANK_WHO_SPEC_DECISIONS_20261122.md` — decisioni WHO del 22 novembre.
+- `feature/registry-clover-departments:03 Software/Infrastructure/deploy/REGISTRY_CLOVER_DEPARTMENTS_RELEASE_PLAN.md` — piano operativo Registry/Clover.
+- `feature/tips-registry-roles:03 Software/RF-One Data Store/rfone_data_store/tips/SOURCE_ROLE_MAPPING_RETIREMENT.md` — eliminazione della doppia fonte di mapping dei ruoli.
+- `feature/clover-multisite-registry:03 Software/Infrastructure/deploy/CLOVER_MULTISITE_RELEASE_PLAN.md` — piano multisede.
+- `feature/clover-multisite-registry:03 Software/RF-One Data Store/rfone_data_store/tips/RULE_DEACTIVATION_RETROACTIVE_DEFECT.md` — difetto retroattivo delle regole Tips.
+- Branch Registry/multisite: materiali per Management Course, Server Course e Training (catalogo, enrollment, manuali). La mera presenza non ne certifica l'approvazione funzionale.
+
+### Conclusione di fase
+L'esistenza di specifiche e piani più recenti in branch differenti rende **non giustificata** una dichiarazione generale di allineamento documentale su `main`. Il consolidamento richiede revisione selettiva per dominio e tracciabilità decisione → testo canonico → implementazione → versione in AWS.
