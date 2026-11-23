@@ -102,6 +102,12 @@ def install(app, *, SessionFactory, secret=None):
             source = {r['id']: r for r in enroll.confirmed_candidates(db, hirer)}.get(selection_id)
             if not source:
                 return jsonify(status='skipped', message='Not currently Hired, or not a position you manage.'), 409
+            # One active invitation per person (Registry ID): the Trainer resends it, Selection never adds one.
+            person_id = source.get('person_id')
+            card = enroll._card_id(db, person_id) if person_id else None
+            if person_id and enroll.active_invitations(db, person_id=person_id, employee_id=card):
+                return jsonify(status='already', message='This person already has an active Training invitation. '
+                               + enroll.RESEND_HINT)
             operator = _issuer(db, hirer, selection_id)
             if not operator:
                 return jsonify(status='skipped', message='No Training trainer can take charge of this candidate. '

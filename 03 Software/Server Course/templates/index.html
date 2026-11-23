@@ -68,7 +68,7 @@
       <div id="rf-training" class="sc-account">
         <h2>Get your RF-One Training account</h2>
         {% if rt_msg %}<p class="small" role="status"><b>{{ rt_msg.text }}</b></p>{% endif %}
-        {% if hire.rf.state == 'invited' %}<p class="small">We emailed your invitation to <b>{{ hire.rf.email }}</b>. Open it, create your password, and you'll find this course and the Visual Menu in RF-One Training, with all your progress. Wrong email, or it never arrived? Enter it again below.</p>
+        {% if hire.rf.state == 'invited' %}<p class="small">We emailed your invitation to <b>{{ hire.rf.email }}</b>. Open it, create your password, and you'll find this course and the Visual Menu in RF-One Training, with all your progress. Wrong email, or it never arrived? Ask your Trainer to resend it from RF-One Training.</p>
         {% else %}<p class="small">That's where you'll also find the Visual Menu, our guide to every dish. Enter your email and we'll send you the invitation. Everything you've done here comes with you.</p>{% endif %}
         <form method="post" action="{{ url_for('training_account') }}" class="row"><input type="email" name="email" required maxlength="254" placeholder="Your email" aria-label="Your email" autocomplete="email" value="{{ hire.rf.email }}"><button type="submit">{{ 'Send it again' if hire.rf.state == 'invited' else 'Send my invitation' }}</button></form>
       </div>
@@ -98,7 +98,7 @@
           <p class="small">Your RF-One Training account is connected. You can open this course from RF-One Training too, with the same progress, and see the Visual Menu there.</p>
           <p><a class="btn" href="{{ training_url }}/training">Open RF-One Training</a></p>
           {% else %}
-          {% if hire.rf.state == 'invited' %}<p class="small">We emailed your invitation to <b>{{ hire.rf.email }}</b>. Open the email, choose your password, then open the Server Course from RF-One Training. Your progress comes with you. Wrong email, or it never arrived? Enter it again below.</p>
+          {% if hire.rf.state == 'invited' %}<p class="small">We emailed your invitation to <b>{{ hire.rf.email }}</b>. Open the email, choose your password, then open the Server Course from RF-One Training. Your progress comes with you. Wrong email, or it never arrived? Ask your Trainer to resend it from RF-One Training.</p>
           {% else %}<p class="small">Get your RF-One Training account, where you'll also find the Visual Menu. Enter the email you want to use and we'll send you the invitation. Your progress here stays as it is.</p>{% endif %}
           <form method="post" action="{{ url_for('training_account') }}" class="row"><input type="email" name="email" required maxlength="254" placeholder="Your email" aria-label="Your email" autocomplete="email" value="{{ hire.rf.email }}"><button type="submit">{{ 'Send it again' if hire.rf.state == 'invited' else 'Send my invitation' }}</button></form>
           {% endif %}

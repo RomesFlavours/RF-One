@@ -204,12 +204,17 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.assertEqual((noted.details["role_id"], noted.details["role"]), (self.cook.id, "Cook"))
         self.assertIsNotNone(self.db.get(registry.PersonQualification, (invitation.person_id, "STUDENT")))
         self.assertNotIn("EMPLOYEE", people.company_statuses(self.db, invitation.person_id))   # Trainee
-        # Repeating it (after the rate limit, confirming the same person) reuses identity and card.
+        # Product Owner 2026-11-23: while it is active, no second invitation for the same Registry ID — neither
+        # with the same address nor with another one; the Trainer resends the existing one.
         invitation.created_at -= timedelta(seconds=61); self.db.commit()
-        again, _ = en.issue(self.db, actor=trainer, email="new.cook@example.invalid", name="New Cook",
-                            confirmation=f"person:{invitation.person_id}", **site)
-        self.db.commit()
-        self.assertEqual(again.person_id, invitation.person_id)
+        for address in ("new.cook@example.invalid", "other.address@example.invalid"):
+            with self.assertRaises(en.ActiveInvitationExists) as refused:
+                en.issue(self.db, actor=trainer, email=address, name="New Cook",
+                         confirmation=f"person:{invitation.person_id}", **site)
+            self.db.rollback()
+            self.assertEqual(refused.exception.employee_id, card.id)
+            self.assertIn("resend it from Training", str(refused.exception))
+        self.assertEqual(self.count(en.EnrollmentInvitation), 1)
         self.assertEqual(self.count(m.Employee), 1)
         self.assertEqual(self.count(m.EmployeeAssignment), 0)
         self.assertEqual(self.count(m.CandidatePerson), 1)
@@ -292,15 +297,16 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.assertEqual(self.count(m.Employee), 1)
         self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id})   # no site added
         self.assertNotIn(wp_card.id, directory.site_employee_ids(self.db, self.md.id))
-        # Repeating the invitation: same identity, same card, the previous link replaced (never two live ones).
+        # Repeating the invitation while it is active: refused (one active invitation per Registry ID).
         invitation.created_at -= timedelta(seconds=61); self.db.commit()
-        again, _ = en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
-                            phone="(407) 555 0101", confirmation=f"person:{invitation.person_id}", **md)
-        self.db.commit()
-        self.assertEqual((again.person_id, self.count(m.Employee), self.count(m.CandidatePerson)),
-                         (invitation.person_id, 1, 1))
+        with self.assertRaises(en.ActiveInvitationExists) as refused:
+            en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
+                     phone="(407) 555 0101", confirmation=f"person:{invitation.person_id}", **md)
+        self.db.rollback()
+        self.assertEqual(refused.exception.employee_id, wp_card.id)
+        self.assertEqual((self.count(m.Employee), self.count(m.CandidatePerson)), (1, 1))
         live = [r for r in self.db.scalars(select(en.EnrollmentInvitation)) if not r.revoked_at and not r.consumed_at]
-        self.assertEqual([r.id for r in live], [again.id])
+        self.assertEqual([r.id for r in live], [invitation.id])
 
     def test_a_different_person_with_the_same_phone_gets_a_new_card_only_when_chosen(self):
         trainer = self._trainer()

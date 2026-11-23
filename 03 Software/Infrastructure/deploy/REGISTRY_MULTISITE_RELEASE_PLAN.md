@@ -76,8 +76,8 @@ The report is reproducible: `python registry_multisite_migration_check.py --url 
 | ECS task `rfone-clover-acquisition-job` (now `:12`) | same jobs image | staff-list read + Registry import and historical identity reader (`_resolve_historical_employee`) in Sync Now / Historical Backfill; the Historical Backfill read of `/employees?expand=role` that wrote the cards' Clover roles (`EmployeeSourceRole`); the staff list as a pre-flight source (`source_guard.CORE_SOURCES`) |
 | ECS task `rfone-clover-live-sync` (`:1`) | same jobs image if it is still run | same as the acquisition job |
 | App Runner `rfone-tips` | Data Store of this branch (unattributed-work rule, message text) | — (reads only) |
-| App Runner `rfone-trainer-test` (the Server Course) | `Server Course/` of this branch: no site needed for an invitation; the course indicates the role Server; same email → same code (automatic resend) | the hand-off fallback to Winter Park |
-| App Runner `rfone-training` (the Training service, image `rfone-web:training-*`, serves `training_cloud`) | invitation without a site (optional catalog role trained for); Confirm hire writes on the card; Server Course invitation with the catalog Server role, automatic resend | — |
+| App Runner `rfone-trainer-test` (the Server Course) | `Server Course/` of this branch: no site needed for an invitation; the course indicates the role Server; it starts only the first invitation | the hand-off fallback to Winter Park |
+| App Runner `rfone-training` (the Training service, image `rfone-web:training-*`, serves `training_cloud`) | invitation without a site (optional catalog role trained for); Confirm hire writes on the card; Server Course first invitation with the catalog Server role; one active invitation per Registry ID; the Trainer resends it from the person's page (new page `/training/manage/people/<Registry ID>`) | — |
 
 Kept: Clover acquisition of shifts, orders, payments and refunds for Tips; existing Clover links (POS IDs)
 and the work they attribute.

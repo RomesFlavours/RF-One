@@ -1,0 +1,23 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}{{ card.display_name or 'Person' }} · Training{% endblock %}
+{% block main %}
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<div class="tw-heading"><div><h1>{{ card.display_name or 'Name to complete' }}</h1><p>Registry ID {{ card.id }} · {% if sites %}Work sites: {{ sites|join(', ') }}{% else %}No work site yet{% endif %}</p></div></div>
+<p><a href="{{ url_for('tw_students') }}">← Back to students</a></p>
+<section class="tw-card">
+<h2>Training invitation</h2>
+{% if active %}
+<p>Waiting for activation. Sent to <strong>{{ active.email }}</strong>; the link expires on {{ active.expires_at|string|truncate(16, True, '') }} (UTC).</p>
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Recipient<input type="email" name="email" required maxlength="254" value="{{ draft.get('email') or active.email }}"></label>
+<p class="muted">Keep the address to send the same invitation again, or correct it: the same invitation goes to the new address. Until the email is accepted, the link already sent and the registered address stay as they are.</p>
+<div class="tw-modal-actions"><button type="submit" data-busy-label="Sending…">Resend invitation</button></div>
+</form>
+{% elif used %}
+<p>Activated: the person signs in to Training with their username and password. There is nothing to resend.</p>
+{% else %}
+<p>No active invitation. To invite this person, use <a href="{{ url_for('tw_enrollment') }}">Invite student</a>.</p>
+{% endif %}
+</section>
+{% endblock %}

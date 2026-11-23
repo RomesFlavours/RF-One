@@ -9,8 +9,9 @@ proves a request by calling the other back on its fixed address:
    code (GET /api/training-link/<code>) to read the email and the role this
    course trains for (Server), then emails its own activation link. The
    invitation belongs to the person: no site is needed or assigned (Product
-   Owner 2026-11-22); the same email again keeps the same code, so Training
-   sends the same invitation again.
+   Owner 2026-11-22). This starts the first invitation only: when one is
+   already active, Training answers that the Trainer can resend it from
+   Training (Product Owner 2026-11-23).
 
 2. In RF-One Training, the "Server Course" card sends a signed-in person here
    with a short-lived code. The course asks Training whether that code is real

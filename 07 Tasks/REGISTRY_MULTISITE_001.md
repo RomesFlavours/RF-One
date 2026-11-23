@@ -149,3 +149,35 @@ restaurant (`Tips/app.py` 1625, 1816; `tips/rule_ai_authoring.py` 559) and the r
 first would empty WP's Tips role lists and refuse WP rules; it needs Tips to read the catalog first (separate
 decision). If applied later, `registry_multisite_migration_check.py snapshot/compare` proves assignments and
 effective permissions unchanged (`test_registry_multisite_permissions.py` test 4).
+
+## Correction — Product Owner, 2026-11-23 (verbatim)
+
+> Parti da 33313fc e semplifica il reinvio degli inviti a Training.
+>
+> Selection e Server Course avviano il primo invito. Se la persona ha già un invito attivo, indica che il
+> Trainer può reinviarlo da Training.
+>
+> In Training, il Trainer apre la scheda della persona e reinvia l’invito esistente. Se il destinatario va
+> corretto, usa il nuovo indirizzo per lo stesso invito. Identifica la persona tramite il suo ID Registry.
+> Conserva la stessa scheda e lo stesso percorso.
+>
+> Impedisci due inviti attivi per lo stesso ID Registry, anche con indirizzi diversi. Se l’invio fallisce,
+> conserva il link precedente e il destinatario già registrato. Dopo l’attivazione si usa il login.
+>
+> Prova il reinvio del Trainer allo stesso indirizzo e a un indirizzo corretto, oltre al caso di invio fallito.
+> Verifica che resti un solo invito attivo. Consegna il nuovo SHA. Nessun deploy.
+
+### As implemented (English)
+
+- Selection (arrival confirmation), the Server Course and Invite student create only the FIRST invitation. While
+  the person — identified by the Registry ID of the card — has an active invitation, `enrollment.issue` refuses a
+  new one (`ActiveInvitationExists`), also with another address; Invite student links to the person's page, the
+  Server Course and Selection's release answer that the Trainer can resend it from Training. The Server Course
+  no longer resends by itself.
+- Training → Students → «Invitations waiting for activation» → **person's page**
+  (`/training/manage/people/<Registry ID>`): Resend invitation sends the same invitation (same card, same training
+  path) to the registered or to a corrected address. The email is sent first; only when the email service accepts
+  it does the invitation take the new link and, if corrected, the new recipient. A failed send changes nothing
+  (previous link and recipient stay). An address of another identity is refused; one resend per minute, five per
+  hour (card history `TRAINING_INVITE_RESEND`). After activation the page says the person signs in; an invitation
+  activated meanwhile is never reopened.

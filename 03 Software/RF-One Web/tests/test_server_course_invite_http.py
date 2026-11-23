@@ -8,11 +8,10 @@ For a person WITHOUT a site, a person ASSIGNED TO WP and a person ASSIGNED TO MD
   1. one invitation, one email; no site is required, none is assigned or changed (the card keeps exactly its
      sites); the course's Server role is the one of Registry's catalog (stored as a WP role, like on AWS) and is
      noted on the card as the role trained for; no account or permission before activation, only Training after.
-  2. asking again (same code, same email): a refused send changes nothing and the link already received keeps
-     working; a successful resend uses the same invitation with the new link; no second invitation or account;
-     once activated: never reopened (also when activated while the new email is being sent), sign in.
-  3. another code or email: no resend. A code without a role indication, or a catalog without a unique Server
-     role: the invitation is still sent, without a role.
+  2. asking again from the course: nothing is created or sent, the course says the Trainer can resend it; the
+     Trainer resends it from the person's page (same invitation, same card); once activated: sign in.
+  3. an invitation already active from Invite student is never duplicated by the course. A code without a role
+     indication, or a catalog without a unique Server role: the invitation is still sent, without a role.
   4. codes issued before (with or without a site in the course record) are usable; an active RF-One invitation
      stays usable.
 Never sends mail, never contacts AWS, Clover or the real course.
@@ -171,36 +170,28 @@ class ServerCourseInviteTest(base.RegistryTrainingHttpTest):
             card_id = card.id
         after_invite = self._counts()
         self.assertEqual(after_invite[2:], before[2:])        # no account, no permission before activation
-        old_token = LINK_RE.search(self.sent[0][1]).group(1)
 
-        # asked again while the email service refuses it: nothing changes, the received link still works
-        self.fail_send = True
+        # asked again from the course: the course starts only the first invitation -> the Trainer resends it
         ok, message = self.course.request_invite(hid, email)
-        self.fail_send = False
         self.assertFalse(ok)
-        self.assertIn("still works", message)
+        self.assertIn("Trainer can resend it from Training", message)
         with self.factory() as db:
             row = db.get(en.EnrollmentInvitation, first_id)
             self.assertEqual((row.token_digest, row.revoked_at, row.consumed_at), (first_digest, None, None))
-            self.assertIsNotNone(en.lookup(db, old_token))
         self.assertEqual((len(self.sent), self._counts()), (1, after_invite))
 
-        # asked again: same code, same invitation, new link to the same address
-        code = self.store.get_hire(hid)["training_invite"]["code"]
-        ok, message = self.course.request_invite(hid, email)
-        self.assertTrue(ok, message)
-        self.assertEqual(self.store.get_hire(hid)["training_invite"]["code"], code)
+        # the Trainer resends it from the person's page (Registry ID): same invitation, same card
+        page = f"/training/manage/people/{card_id}"
+        self.assertEqual(self.client.post(page, data={"csrf_token": self.csrf("/training/manage/enrollment"),
+                                                      "email": email}).status_code, 302)
         self.assertEqual([to for to, _ in self.sent], [email, email])
-        self.assertEqual(self._counts(), after_invite)          # no second invitation, card, account or permission
         new_token = LINK_RE.search(self.sent[1][1]).group(1)
         with self.factory() as db:
-            rows = list(db.scalars(select(en.EnrollmentInvitation)))
-            self.assertEqual([(r.id, r.revoked_at, r.consumed_at) for r in rows], [(first_id, None, None)])
-            self.assertIsNone(en.lookup(db, old_token))
-            self.assertIsNotNone(en.lookup(db, new_token))
+            self.assertEqual([r.id for r in db.scalars(select(en.EnrollmentInvitation)) if en.is_active(r)], [first_id])
             self.assertEqual(directory.employee_site_ids(db, card_id), sites_before)
+        self.assertEqual(self._counts(), after_invite)
 
-        # activation: Training only, sites unchanged; asking again afterwards: sign in, nothing sent
+        # activation: Training only, sites unchanged; the course then sends the person to sign in
         self.assertEqual(self._activate(new_token).status_code, 302)
         with self.factory() as db:
             account = db.scalar(select(m.RFOneAccount).where(m.RFOneAccount.email == email))
@@ -230,53 +221,19 @@ class ServerCourseInviteTest(base.RegistryTrainingHttpTest):
     def test_person_assigned_to_mount_dora(self):
         self._flow("md")
 
-    def _activated_during_the_resend(self, kind):
-        email = f"{kind}.race@example.invalid"
-        _card, sites = self._person(kind, email)
-        hid = self._hire("")
-        self.assertTrue(self.course.request_invite(hid, email)[0])
-        old_token = LINK_RE.search(self.sent[0][1]).group(1)
+    def test_an_active_invitation_from_elsewhere_is_never_duplicated_by_the_course(self):
+        # Invite student already invited this person: the course creates nothing and points to the Trainer
         with self.factory() as db:
-            first = db.scalar(select(en.EnrollmentInvitation)); first_id, first_digest = first.id, first.token_digest
-        self.on_send = lambda: self.assertEqual(self._activate(old_token).status_code, 302)
-        ok, message = self.course.request_invite(hid, email)
-        self.on_send = None
-        self.assertTrue(ok, message)
-        self.assertIn("already activated", message)
+            trainer = db.get(m.RFOneAccount, self.trainer_id)
+            en.issue(db, actor=trainer, email="direct@example.invalid", name="Direct")
+            db.commit()
+        self.sent.clear()
+        ok, message = self.course.request_invite(self._hire(""), "direct@example.invalid")
+        self.assertFalse(ok)
+        self.assertIn("Trainer can resend it from Training", message)
         with self.factory() as db:
-            row = db.get(en.EnrollmentInvitation, first_id)
-            self.assertIsNotNone(row.consumed_at)                       # never reopened
-            self.assertEqual(row.token_digest, first_digest)
-            self.assertIsNone(en.lookup(db, LINK_RE.search(self.sent[1][1]).group(1)))
             self.assertEqual(len(list(db.scalars(select(en.EnrollmentInvitation)))), 1)
-            self.assertEqual(directory.employee_site_ids(db, directory.card_for_person(db, row.person_id).id), sites)
-
-    def test_activated_during_resend_without_a_site(self):
-        self._activated_during_the_resend("none")
-
-    def test_activated_during_resend_wp(self):
-        self._activated_during_the_resend("wp")
-
-    def test_activated_during_resend_md(self):
-        self._activated_during_the_resend("md")
-
-    def test_no_resend_when_the_code_or_the_email_does_not_match(self):
-        hid = self._hire("Winter Park")
-        self.assertTrue(self.course.request_invite(hid, "first@example.invalid")[0])
-        code = self.store.get_hire(hid)["training_invite"]["code"]
-        with self.factory() as db:
-            digest = db.scalar(select(en.EnrollmentInvitation)).token_digest
-        self.store.update_hire(hid, lambda h: h["training_invite"].update(email="other@example.invalid"))
-        response = self.client.post("/training/courses/server/invite", json={"code": code})
-        self.assertEqual((response.status_code, response.get_json()["status"]), (409, "refused"))
-        self.store.update_hire(hid, lambda h: h["training_invite"].update(email="first@example.invalid"))
-        self.course.request_invite(hid, "second@example.invalid")
-        self.assertNotEqual(self.store.get_hire(hid)["training_invite"]["code"], code)
-        with self.factory() as db:
-            first = db.scalar(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.email == "first@example.invalid"))
-            self.assertEqual((first.token_digest, first.revoked_at), (digest, None))
-        self.assertEqual([to for to, _ in self.sent].count("first@example.invalid"), 1)
-        self.assertNotIn("other@example.invalid", [to for to, _ in self.sent])
+        self.assertEqual(self.sent, [])
 
     def test_without_a_role_indication_or_a_unique_server_role_the_invitation_is_still_sent(self):
         with patch.object(self.course, "ROLE", ""):                     # a course that indicates no role

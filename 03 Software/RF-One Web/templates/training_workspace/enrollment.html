@@ -1,7 +1,7 @@
 {% extends 'training_workspace/_base.html' %}
 {% block title %}Invite student · Training{% endblock %}
 {% block main %}
-{% if error and draft %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+{% if error and draft %}<div class="error" role="alert">{{ error }}{% if resend_card %} <a href="{{ url_for('tw_person_invitation', employee_id=resend_card) }}">Open the person's page to resend it</a>{% endif %}</div>{% endif %}
 <div class="tw-heading"><div><h1>Invite student</h1><p>Confirm the arrival of a candidate released by Selection, or send a direct invitation. The person will complete their details and activate Training.</p></div></div>
 <p><a href="{{ url_for('tw_students') }}">← Back to students</a></p>
 {% if invitation_url %}<section class="tw-card"><h2>Invitation ready</h2><p>The personal link works once and expires after 48 hours. A new invitation to the same email replaces the previous one.</p><label>Activation link<input id="created-invitation-link" readonly value="{{ invitation_url }}" onclick="this.select()"></label><p>The person's Registry card is at the chosen site (created or reused), with Trainee status unless already an Employee. Activation completes the login and Training links.</p></section>{% else %}

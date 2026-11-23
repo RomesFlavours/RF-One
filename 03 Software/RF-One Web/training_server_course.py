@@ -17,12 +17,11 @@ is copied or moved, so nothing can be lost. Training gives it the person:
   (Product Owner 2026-11-22): no site is needed, none is assigned and no
   operational permission is given; the Server role, when indicated, is the one
   of Registry's catalog and is recorded on the card as the role trained for.
-  Asking again with the same code and the same email: while that invitation is
-  valid and not activated, the link is sent again to the address already on
-  the invitation (same invitation and card; no second invitation or account);
-  the link already received keeps working until the email service accepts the
-  new one. Once activated, the person is sent to sign in. The code is bound to
-  its invitation on the card history (SERVER_COURSE_INVITE).
+  This starts the FIRST invitation only (Product Owner 2026-11-23). When the
+  person already has an active invitation, nothing is created or resent and the
+  course is told that the Trainer can resend it from Training (the person's
+  page); once activated, the person is sent to sign in. The code is bound to its
+  invitation on the card history (SERVER_COURSE_INVITE).
 
 No shared secret, no new setting: RFONE_SERVER_COURSE_URL only overrides the
 course's address.
@@ -33,12 +32,10 @@ import hmac
 import json
 import os
 import re
-import secrets
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import timedelta, timezone
 
 from flask import jsonify, redirect, request, url_for
 from sqlalchemy import select
@@ -178,7 +175,6 @@ def course_role(db, name):
 
 
 INVITE_ACTION = 'SERVER_COURSE_INVITE'
-RESEND_ACTION = 'SERVER_COURSE_RESEND'
 
 
 def code_digest(code):
@@ -195,20 +191,6 @@ def bound_invitation(db, code):
             invitation = db.get(enroll.EnrollmentInvitation, details.get('invitation_id'))
             return (invitation, event.employee_id) if invitation else None
     return None
-
-
-def _utc(value):
-    """Naive UTC, whatever the database gives back (PostgreSQL keeps the zone, SQLite does not)."""
-    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
-
-
-def _resend_too_soon(db, invitation_id):
-    """The same limits as a new invitation: one per minute, five per hour."""
-    stamp = _utc(enroll.now())
-    times = [_utc(e.created_at) for e in db.scalars(select(m.EmployeeDirectoryEvent)
-             .where(m.EmployeeDirectoryEvent.action == RESEND_ACTION))
-             if (e.details or {}).get('invitation_id') == invitation_id]
-    return any(x > stamp - timedelta(seconds=60) for x in times) or sum(x > stamp - timedelta(hours=1) for x in times) >= 5
 
 
 def install(app, *, SessionFactory, auth):
@@ -310,35 +292,14 @@ def install(app, *, SessionFactory, auth):
             if trainer is None:
                 return jsonify(status='skipped', message='There is no active trainer to send the invitation yet. Ask your manager.'), 422
             role = course_role(db, role_name)
+            already = ('You already have an active RF-One Training invitation. Your Trainer can resend it from '
+                       'Training. Your course keeps working as it is.')
             bound = bound_invitation(db, code)
-            if bound is not None:
-                # The same code again: only its own invitation, for the same email, is ever reused.
-                invitation, card_id = bound
-                if invitation.email != email:
-                    return jsonify(status='refused', message='This request does not match your invitation. '
-                                   'Ask your manager.'), 409
-                if invitation.consumed_at:
-                    return jsonify(status='activated', login_url=public_base() + url_for('tw_login'),
-                                   message='You have already activated your RF-One Training access. Sign in.'), 200
-                if invitation.revoked_at or _utc(invitation.expires_at) <= _utc(enroll.now()) \
-                        or invitation.failed_attempts >= 5:
-                    return jsonify(status='skipped', message='Your invitation is no longer valid, so your manager needs '
-                                   'to send a new one from Training. Your course keeps working as it is.'), 409
-                if _resend_too_soon(db, invitation.id):
-                    return jsonify(status='skipped', message='Wait at least one minute before asking again '
-                                   '(up to five per hour).'), 409
-                # Same invitation row. Only the digest of a link is stored, so a fresh secret is prepared and
-                # emailed FIRST; the previous link stays valid until the email service accepts the new one, and
-                # only then the new secret replaces it (REGISTRY_MULTISITE_001, Codex review).
-                token = secrets.token_urlsafe(32)
-                link = public_base() + url_for('tw_enrollment_link', token=token)
-                resend = dict(invitation_id=invitation.id, card_id=card_id, email=invitation.email,
-                              old_digest=invitation.token_digest, actor_id=trainer.id)
-                db.rollback()   # nothing changed yet: the email is sent with no transaction or lock held
-                if not _deliver(resend['email'], link):
-                    return jsonify(status='created', message='The email could not be sent. The link you already '
-                                   'received still works; try again in a minute.'), 502
-                return _swap_after_delivery(resend, token)
+            if bound is not None and bound[0].consumed_at:
+                return jsonify(status='activated', login_url=public_base() + url_for('tw_login'),
+                               message='You have already activated your RF-One Training access. Sign in.'), 200
+            if (bound is not None and enroll.is_active(bound[0])) or enroll.active_invitations(db, email=email):
+                return jsonify(status='skipped', message=already), 409
             try:
                 invitation, token = enroll.issue(db, actor=trainer, email=email,
                                                  role_id=role[0] if role else None, area_id=role[1] if role else None)
@@ -347,6 +308,9 @@ def install(app, *, SessionFactory, auth):
                                  details={'code_digest': code_digest(code), 'invitation_id': invitation.id})
                 link = public_base() + url_for('tw_enrollment_link', token=token)
                 db.commit()
+            except enroll.ActiveInvitationExists:
+                db.rollback()
+                return jsonify(status='skipped', message=already), 409
             except (registry.ConfirmationRequired, directory.CardConfirmationRequired):
                 db.rollback()
                 return jsonify(status='skipped', message='This email is already in RF-One, so your manager needs to send '
@@ -355,32 +319,6 @@ def install(app, *, SessionFactory, auth):
                 db.rollback()
                 return jsonify(status='skipped', message=str(exc) if isinstance(exc, ValueError) else 'Try again in a minute.'), 409
         return _send_invitation(email, link)
-
-    def _deliver(email, link):
-        try:
-            from training_enrollment_routes import invitation_email
-            subject, body = invitation_email('', link)
-            account_email.send_email(to_address=email, subject=subject, text_body=body)
-        except account_email.EmailSendError:
-            return False
-        return True
-
-    def _swap_after_delivery(resend, token):
-        """The new email was accepted: from now on its link is the one that works, on the same invitation.
-        An invitation activated, revoked or resent meanwhile is never changed (never reopened)."""
-        with SessionFactory() as db:
-            invitation = db.scalar(select(enroll.EnrollmentInvitation)
-                                   .where(enroll.EnrollmentInvitation.id == resend['invitation_id']).with_for_update())
-            if invitation is None or invitation.consumed_at:
-                return jsonify(status='activated', login_url=public_base() + url_for('tw_login'),
-                               message='You have already activated your RF-One Training access. Sign in.'), 200
-            if invitation.revoked_at or invitation.token_digest != resend['old_digest']:
-                return jsonify(status='skipped', message='Your invitation changed meanwhile. Ask your manager.'), 409
-            invitation.token_digest = enroll.digest(token)
-            directory._event(db, RESEND_ACTION, employee_id=resend['card_id'], account_id=resend['actor_id'],
-                             details={'invitation_id': invitation.id})
-            db.commit()
-        return jsonify(status='sent')
 
     def _send_invitation(email, link):
         try:

@@ -188,6 +188,125 @@ def live_invitation(db, selection_id):
         select(EnrollmentInvitation).where(EnrollmentInvitation.selection_id == selection_id)))
 
 
+# ------------------------------------------------------------ one active invitation per Registry ID
+# Product Owner 2026-11-23: Selection, the Server Course and Invite student start the FIRST invitation; while a
+# person (identified by the Registry ID of their card) has an active invitation no second one is created, even
+# for another address: the Trainer resends the existing one from the person's page in Training.
+
+RESEND_ACTION = 'TRAINING_INVITE_RESEND'
+RESEND_HINT = 'The Trainer can resend it from Training (the person\'s page).'
+
+
+class ActiveInvitationExists(ValueError):
+    """The person already has an active invitation: nothing new is created; the Trainer can resend it."""
+
+    def __init__(self, employee_id, invitation_id):
+        self.employee_id, self.invitation_id = employee_id, invitation_id
+        where = f' (Registry ID {employee_id})' if employee_id else ''
+        super().__init__(f'This person{where} already has an active Training invitation. {RESEND_HINT}')
+
+
+def _utc(value):
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+
+
+def is_active(row):
+    """Waiting for activation: not used, not revoked, not expired, not locked by failed attempts."""
+    return (not row.consumed_at and not row.revoked_at and row.failed_attempts < 5
+            and _utc(row.expires_at) > _utc(now()))
+
+
+def _card_id(db, person_id):
+    from .. import employee_directory as directory
+    card = directory.card_for_person(db, person_id) if person_id else None
+    return card.id if card else None
+
+
+def active_invitations(db, *, employee_id=None, person_id=None, email=None):
+    """Active invitations of the person with this Registry ID, this person or this address."""
+    rows = []
+    for row in db.scalars(select(EnrollmentInvitation).where(EnrollmentInvitation.consumed_at.is_(None),
+                                                           EnrollmentInvitation.revoked_at.is_(None))
+                          .order_by(EnrollmentInvitation.id)):
+        if not is_active(row):
+            continue
+        if (email and row.email == email) or (person_id and row.person_id == person_id) or \
+                (employee_id and row.person_id and _card_id(db, row.person_id) == employee_id):
+            rows.append(row)
+    return rows
+
+
+def active_invitations_all(db):
+    """Every active invitation, oldest first."""
+    return [row for row in db.scalars(select(EnrollmentInvitation).where(EnrollmentInvitation.consumed_at.is_(None),
+            EnrollmentInvitation.revoked_at.is_(None)).order_by(EnrollmentInvitation.id)) if is_active(row)]
+
+
+def invitations_for_card(db, employee_id):
+    """Every invitation of the person with this Registry ID, newest first (any state)."""
+    return [row for row in db.scalars(select(EnrollmentInvitation).where(EnrollmentInvitation.person_id.is_not(None))
+                                      .order_by(EnrollmentInvitation.id.desc()))
+            if _card_id(db, row.person_id) == employee_id]
+
+
+def prepare_resend(db, *, actor, employee_id, email=None):
+    """Checks for the Trainer's resend of the existing invitation of this Registry ID; writes nothing.
+    `email`: the corrected recipient, or None/same to keep the registered one. Returns what `complete_resend`
+    needs, including the fresh secret to email first."""
+    from .. import employee_directory as directory
+    rows = active_invitations(db, employee_id=employee_id)
+    if not rows:
+        if any(r.consumed_at for r in invitations_for_card(db, employee_id)):
+            raise ValueError('This person has already activated the invitation: they sign in with their username '
+                             'and password.')
+        raise ValueError('This person has no active invitation to resend. Use Invite student to create one.')
+    if len(rows) > 1:
+        raise ValueError('This person has more than one active invitation. Ask for a Registry review.')
+    invitation = rows[0]
+    target = invitation.email
+    if email and email.strip().lower() != invitation.email:
+        target = accounts._validate_email_format(email)
+        if is_forwarding_email(target):
+            raise ValueError(FORWARDING_EMAIL_MESSAGE)
+        people.lock_identity_evidence(db, target, invitation.name, phone_key(invitation.phone))
+        persons = list(db.scalars(select(m.CandidatePerson).where(func.lower(m.CandidatePerson.primary_email) == target)))
+        owners = list(db.scalars(select(m.RFOneAccount).where(func.lower(m.RFOneAccount.email) == target)))
+        cards = [c for c in db.scalars(select(m.Employee).where(func.lower(m.Employee.email) == target))
+                 if directory.resolve_employee_id(db, c.id) != employee_id]
+        if any(p.id != invitation.person_id for p in persons) or owners or cards:
+            raise ValueError('This address belongs to another RF-One identity. Ask for a Registry review.')
+        if any(r.id != invitation.id for r in active_invitations(db, email=target)):
+            raise ValueError('This address already has another active invitation.')
+    stamp = _utc(now())
+    sent = [_utc(e.created_at) for e in db.scalars(select(m.EmployeeDirectoryEvent).where(
+            m.EmployeeDirectoryEvent.action == RESEND_ACTION)) if (e.details or {}).get('invitation_id') == invitation.id]
+    if any(x > stamp - timedelta(seconds=60) for x in sent) or sum(x > stamp - timedelta(hours=1) for x in sent) >= 5:
+        raise ValueError('Wait at least one minute before resending (up to five per hour).')
+    return dict(invitation_id=invitation.id, employee_id=employee_id, old_digest=invitation.token_digest,
+                old_email=invitation.email, email=target, token=secrets.token_urlsafe(32), name=invitation.name)
+
+
+def complete_resend(db, *, actor, prepared):
+    """After the email service accepted the new email: the same invitation takes the new secret and, when
+    corrected, the new recipient. Returns 'resent', or 'activated' / 'changed' when the invitation was used,
+    revoked or changed meanwhile (then nothing is touched: an activated invitation is never reopened)."""
+    from .. import employee_directory as directory
+    invitation = db.scalar(select(EnrollmentInvitation).where(EnrollmentInvitation.id == prepared['invitation_id'])
+                           .with_for_update())
+    if invitation is None or invitation.consumed_at:
+        return 'activated'
+    if invitation.revoked_at or invitation.token_digest != prepared['old_digest'] \
+            or invitation.email != prepared['old_email']:
+        return 'changed'
+    invitation.token_digest = digest(prepared['token'])
+    invitation.email = prepared['email']
+    directory._event(db, RESEND_ACTION, employee_id=prepared['employee_id'], account_id=actor.id,
+                     details={'invitation_id': invitation.id, 'email': prepared['email'],
+                              'corrected': prepared['email'] != prepared['old_email']})
+    db.flush()
+    return 'resent'
+
+
 def mark_trainee(db, person_id):
     """The person is a Student (Trainee) in the one Registry from now, before activation: after the arrival
     confirmation (Selection path) or with the direct invitation. The mark is the existing STUDENT
@@ -296,7 +415,8 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         source = _arrival_source(db, actor=actor, selection_id=selection_id)
         person_id = source['person_id']
         if live_invitation(db, selection_id):
-            raise ValueError('Arrival already confirmed and the enrollment is already in progress for this candidate.')
+            raise ValueError('Arrival already confirmed and the enrollment is already in progress for this candidate. '
+                             + RESEND_HINT)
         name = name or source['name']
         phone = phone or source['phone']
     else:
@@ -327,6 +447,13 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
                                  if account_id and people.person_for_account(db, account_id) else None)
     card_id = directory.resolve_training_card(db, person_id=known_person, email=email, phone=phone,
                                               confirmation=card_confirmation)
+    # One active invitation per Registry ID (also with another address), per person and per address.
+    registry_id = directory.resolve_employee_id(db, card_id) if card_id else _card_id(db, known_person)
+    if registry_id:
+        db.scalar(select(m.Employee.id).where(m.Employee.id == registry_id).with_for_update())   # serialize
+    active = active_invitations(db, employee_id=registry_id, person_id=known_person, email=email)
+    if active:
+        raise ActiveInvitationExists(registry_id or _card_id(db, active[0].person_id), active[0].id)
     if selection_id:
         confirm_arrival(db, actor=actor, selection_id=selection_id)
     stamp = now()
