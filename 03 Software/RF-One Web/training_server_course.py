@@ -10,9 +10,13 @@ is copied or moved, so nothing can be lost. Training gives it the person:
 - POST /training/courses/server/verify   The course checks that code with
   Training and gets back the account and its verified email.
 - POST /training/courses/server/invite   A hire on their course link asked for
-  their Training account. Training reads the email back from the course's
-  fixed address (never from the request) and sends its normal invitation,
-  the same one as Students -> Invite student, issued by a current trainer.
+  their Training account. Training reads the email and the training site back
+  from the course's fixed address (never from the request) and sends its normal
+  invitation, the same one as Students -> Invite student, issued by a current
+  trainer. The site is the one the manager chose for that hire in the course
+  (Winter Park or Mount Dora), bound to the invitation code; the role is Server.
+  No site is ever assumed: a code without a known site is refused
+  (REGISTRY_MULTISITE_001, Product Owner 2026-11-22).
 
 No shared secret, no new setting: RFONE_SERVER_COURSE_URL only overrides the
 course's address.
@@ -33,6 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import models as m, student_registry as registry
+from rfone_data_store import employee_directory as directory
 from rfone_data_store import rfone_web_session as shared
 from rfone_data_store.training import enrollment as enroll, service, courses
 from rfone_data_store.technical import account_email
@@ -45,6 +50,9 @@ CONTEXT = b'rfone-server-course-handoff-v1'
 CODE_SECONDS = 120
 NEED_TEXT = 'Server training'
 INVITE_CODE = re.compile(r'^[a-f0-9]{20}\.[A-Za-z0-9_-]{32}$')
+# The two training sites the course manager chooses from, and the Registry site each one is.
+COURSE_SITES = {'Winter Park': 'WP', 'Mount Dora': 'MD'}
+SERVER_ROLE = 'Server'
 
 
 def _key(secret):
@@ -139,16 +147,46 @@ def own_progress(secret, account):
     return (status or {}).get(account.id) if status is not None else None
 
 
-def _course_invite_email(code):
-    """The email the course has on file for this invitation code, read from its fixed address."""
+def _course_invite_details(code):
+    """(email, site) the course has on file for this invitation code, read from its fixed address.
+    `site` is the training site the manager chose for the hire ('' when the course gives none)."""
     url = COURSE_URL + '/api/training-link/' + urllib.parse.quote(code, safe='')
     try:
         with urllib.request.urlopen(urllib.request.Request(url, method='GET'), timeout=15) as resp:
             data = json.loads(resp.read() or b'{}')
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-        return None
+        return None, ''
+    if not isinstance(data, dict):
+        return None, ''
     email = str(data.get('email') or '').strip().lower()
-    return email or None
+    return email or None, str(data.get('site') or '').strip()
+
+
+def _name_tokens(name):
+    return re.findall(r'[a-z0-9]+', str(name or '').casefold())
+
+
+def course_site(db, label):
+    """The Registry site of a course training site: the only site whose name ends with its code (WP / MD)
+    or contains its name. None when the label is unknown or the site is missing or not unique."""
+    from rfone_data_store import employee_directory as directory
+    code = COURSE_SITES.get(label)
+    if not code:
+        return None
+    words = _name_tokens(label)
+    found = [site for site in directory.sites(db)
+             if (_name_tokens(site.name)[-1:] == [code.casefold()])
+             or ' '.join(words) in ' '.join(_name_tokens(site.name))]
+    return found[0] if len(found) == 1 else None
+
+
+def server_role(db, restaurant_id):
+    """(role_id, area_id) of the Server role at this site, or None when it is missing or not unique."""
+    from rfone_data_store import employee_directory as directory
+    from rfone_data_store.technical.connectors.clover.employee_writer import same_name_key
+    pairs = [(role.id, area.id) for role, area in directory.site_role_choices(db, restaurant_id)
+             if same_name_key(role.name) == same_name_key(SERVER_ROLE)]
+    return pairs[0] if len(pairs) == 1 else None
 
 
 def install(app, *, SessionFactory, auth):
@@ -242,18 +280,28 @@ def install(app, *, SessionFactory, auth):
         code = str((request.get_json(silent=True) or {}).get('code') or '')
         if not INVITE_CODE.fullmatch(code):
             return jsonify(status='refused', message='Invalid request.'), 400
-        email = _course_invite_email(code)
+        email, site_label = _course_invite_details(code)
         if not email:
             return jsonify(status='refused', message='The course did not confirm this request.'), 403
         with SessionFactory() as db:
             trainer = default_trainer(db)
             if trainer is None:
                 return jsonify(status='skipped', message='There is no active trainer to send the invitation yet. Ask your manager.'), 422
+            # The site comes only from the code the course confirmed; it is never assumed.
+            site = course_site(db, site_label)
+            if site is None:
+                return jsonify(status='skipped', message='Your training site is not set for your course link. '
+                               'Ask your manager. Your course keeps working as it is.'), 409
+            role = server_role(db, site.id)
+            if role is None:
+                return jsonify(status='skipped', message=f'The Server role is not set up at {site.name} yet. '
+                               'Ask your manager. Your course keeps working as it is.'), 409
             try:
-                invitation, token = enroll.issue(db, actor=trainer, email=email)
+                invitation, token = enroll.issue(db, actor=trainer, email=email, restaurant_id=site.id,
+                                                 role_id=role[0], area_id=role[1])
                 link = public_base() + url_for('tw_enrollment_link', token=token)
                 db.commit()
-            except registry.ConfirmationRequired:
+            except (registry.ConfirmationRequired, directory.CardConfirmationRequired):
                 db.rollback()
                 return jsonify(status='skipped', message='This email is already in RF-One, so your manager needs to send '
                                'your invitation from Training. Your course keeps working as it is.'), 409

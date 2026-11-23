@@ -4,10 +4,13 @@ Two things, with no shared secret and no change to AWS permissions. Each side
 proves a request by calling the other back on its fixed address:
 
 1. A named hire, on their own course link, types the email they want for
-   RF-One Training. The course keeps a one-time code on their record and asks
-   Training to send the invitation. Training calls the course back with that
-   code (GET /api/training-link/<code>) to read the email, then emails its own
-   activation link. Nothing is created in RF-One until the person activates.
+   RF-One Training. The course keeps a one-time code on their record, bound to
+   the training site the manager chose for that hire (Winter Park or Mount
+   Dora), and asks Training to send the invitation. Training calls the course
+   back with that code (GET /api/training-link/<code>) to read the email and
+   the site, then emails its own activation link and puts the person's Registry
+   card at that site as a Server trainee. No site is ever assumed: a hire
+   without a site gets no code (REGISTRY_MULTISITE_001, 2026-11-22).
 
 2. In RF-One Training, the "Server Course" card sends a signed-in person here
    with a short-lived code. The course asks Training whether that code is real
@@ -33,6 +36,7 @@ TRAINING_URL = (os.environ.get("RFONE_TRAINING_URL") or "https://rfone.romesflav
 TIMEOUT = 15
 EMAIL = re.compile(r"^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$")
 CODE_HOURS = 2
+SITES = ("Winter Park", "Mount Dora")   # the training sites a manager chooses for a hire
 
 
 def _now() -> datetime:
@@ -85,11 +89,17 @@ def request_invite(hid: str, email: str) -> tuple[bool, str]:
     email = (email or "").strip().lower()[:254]
     if not EMAIL.fullmatch(email):
         return False, "That email doesn't look right. Check it and try again."
+    hire = store.get_hire(hid)
+    if hire is None:
+        return False, "Your course record wasn't found."
+    site = hire.get("location") if hire.get("location") in SITES else ""
+    if not site:
+        return False, "Your training site isn't set on your course link yet. Ask your manager; your course keeps working as it is."
     code = f"{hid}.{secrets.token_urlsafe(24)}"
 
     def keep(h):
-        h["training_invite"] = {"email": email, "code": code, "at": _now().isoformat(timespec="seconds"),
-                                "sent": False}
+        h["training_invite"] = {"email": email, "code": code, "site": site,
+                                "at": _now().isoformat(timespec="seconds"), "sent": False}
     if store.update_hire(hid, keep) is None:
         return False, "Your course record wasn't found."
     code_status, data = _post("/training/courses/server/invite", {"code": code})
@@ -102,7 +112,9 @@ def request_invite(hid: str, email: str) -> tuple[bool, str]:
 
 
 def invite_details(code: str) -> dict | None:
-    """Training's call back: the email behind a code this course issued, once, within two hours."""
+    """Training's call back: the email and the training site behind a code this course issued, within two
+    hours. A code issued before codes carried their site gets the site the manager confirmed for the hire,
+    saved on the code once; a hire without a site gives no site (Training then refuses: never assumed)."""
     hid = (code or "").split(".", 1)[0]
     hire = store.get_hire(hid) if hid.isalnum() else None
     inv = (hire or {}).get("training_invite") or {}
@@ -113,7 +125,19 @@ def invite_details(code: str) -> dict | None:
             return None
     except (KeyError, ValueError):
         return None
-    return {"email": inv["email"]}
+    site = inv.get("site") if inv.get("site") in SITES else ""
+    if not site and hire.get("location") in SITES:
+        site = hire["location"]
+
+        def bind(h):
+            current = h.get("training_invite") or {}
+            if current.get("code") == code and not current.get("site"):
+                current["site"] = site
+        store.update_hire(hid, bind)
+    details = {"email": inv["email"]}
+    if site:
+        details["site"] = site
+    return details
 
 
 def verify(code: str) -> dict | None:

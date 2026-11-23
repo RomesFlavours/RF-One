@@ -768,7 +768,7 @@
     if (missing) { $("rv-msg").textContent = "Add a reason to every module you scored first."; return; }
     if (!$("rv-confirm").checked) { $("rv-msg").textContent = "Tick the trainer confirmation first."; return; }
     api("api/hires", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: current.name, location: current.location || "Winter Park" }) })
+      body: JSON.stringify({ name: current.name, location: current.location || "" }) })
       .then(d => {
         api("api/candidates/" + current.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "Hired" }) }).catch(() => {});
         renderHire(d.id);
