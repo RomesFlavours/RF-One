@@ -4,13 +4,13 @@ Two things, with no shared secret and no change to AWS permissions. Each side
 proves a request by calling the other back on its fixed address:
 
 1. A named hire, on their own course link, types the email they want for
-   RF-One Training. The course keeps a one-time code on their record, bound to
-   the training site the manager chose for that hire (Winter Park or Mount
-   Dora), and asks Training to send the invitation. Training calls the course
-   back with that code (GET /api/training-link/<code>) to read the email and
-   the site, then emails its own activation link and puts the person's Registry
-   card at that site as a Server trainee. No site is ever assumed: a hire
-   without a site gets no code (REGISTRY_MULTISITE_001, 2026-11-22).
+   RF-One Training. The course keeps a one-time code on their record and asks
+   Training to send the invitation. Training calls the course back with that
+   code (GET /api/training-link/<code>) to read the email and the role this
+   course trains for (Server), then emails its own activation link. The
+   invitation belongs to the person: no site is needed or assigned (Product
+   Owner 2026-11-22); the same email again keeps the same code, so Training
+   sends the same invitation again.
 
 2. In RF-One Training, the "Server Course" card sends a signed-in person here
    with a short-lived code. The course asks Training whether that code is real
@@ -36,7 +36,7 @@ TRAINING_URL = (os.environ.get("RFONE_TRAINING_URL") or "https://rfone.romesflav
 TIMEOUT = 15
 EMAIL = re.compile(r"^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$")
 CODE_HOURS = 2
-SITES = ("Winter Park", "Mount Dora")   # the training sites a manager chooses for a hire
+ROLE = "Server"   # the role this course trains for, sent to Training with every code
 
 
 def _now() -> datetime:
@@ -92,18 +92,14 @@ def request_invite(hid: str, email: str) -> tuple[bool, str]:
     hire = store.get_hire(hid)
     if hire is None:
         return False, "Your course record wasn't found."
-    site = hire.get("location") if hire.get("location") in SITES else ""
-    if not site:
-        return False, "Your training site isn't set on your course link yet. Ask your manager; your course keeps working as it is."
     previous = hire.get("training_invite") or {}
     # The same email again keeps the same code, so Training can send the same invitation again;
-    # a different email gets a new code (and never someone else's invitation).
-    same = previous.get("email") == email and previous.get("code") and previous.get("site", site) == site
+    # a different email gets a new code (and never someone else's invitation). No site is needed.
+    same = previous.get("email") == email and bool(previous.get("code"))
     code = previous["code"] if same else f"{hid}.{secrets.token_urlsafe(24)}"
 
     def keep(h):
-        h["training_invite"] = {"email": email, "code": code, "site": site,
-                                "at": _now().isoformat(timespec="seconds"),
+        h["training_invite"] = {"email": email, "code": code, "at": _now().isoformat(timespec="seconds"),
                                 "sent": bool(same and previous.get("sent"))}
     if store.update_hire(hid, keep) is None:
         return False, "Your course record wasn't found."
@@ -120,9 +116,9 @@ def request_invite(hid: str, email: str) -> tuple[bool, str]:
 
 
 def invite_details(code: str) -> dict | None:
-    """Training's call back: the email and the training site behind a code this course issued, within two
-    hours. A code issued before codes carried their site gets the site the manager confirmed for the hire,
-    saved on the code once; a hire without a site gives no site (Training then refuses: never assumed)."""
+    """Training's call back: the email behind a code this course issued (within two hours of the last request)
+    and the role this course trains for. Codes issued earlier, with or without a site, are read the same way:
+    a site is never needed."""
     hid = (code or "").split(".", 1)[0]
     hire = store.get_hire(hid) if hid.isalnum() else None
     inv = (hire or {}).get("training_invite") or {}
@@ -133,19 +129,7 @@ def invite_details(code: str) -> dict | None:
             return None
     except (KeyError, ValueError):
         return None
-    site = inv.get("site") if inv.get("site") in SITES else ""
-    if not site and hire.get("location") in SITES:
-        site = hire["location"]
-
-        def bind(h):
-            current = h.get("training_invite") or {}
-            if current.get("code") == code and not current.get("site"):
-                current["site"] = site
-        store.update_hire(hid, bind)
-    details = {"email": inv["email"]}
-    if site:
-        details["site"] = site
-    return details
+    return {"email": inv["email"], "role": ROLE}
 
 
 def verify(code: str) -> dict | None:

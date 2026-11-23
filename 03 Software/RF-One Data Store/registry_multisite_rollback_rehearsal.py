@@ -322,10 +322,13 @@ def phase_write(url):
     role = db.query(m.RestaurantRole).one(); area = db.query(m.OperationalArea).one()
     trainer = accounts.get_account_by_username(db, "trainer") if hasattr(accounts, "get_account_by_username") else \
         db.query(m.RFOneAccount).filter_by(username="trainer").one()
+    # The invitation belongs to the person (no site); the work site is then assigned on the Registry card.
     invitation, _ = en.issue(db, actor=trainer, email="new.trainee@example.invalid", name="New Trainee",
-                             restaurant_id=restaurant.id, role_id=role.id, area_id=area.id)
+                             role_id=role.id, area_id=area.id)
     db.commit()
     card = directory.card_for_person(db, invitation.person_id)
+    directory.assign_site(db, employee_id=card.id, restaurant_id=restaurant.id, role_id=role.id, area_id=area.id,
+                          account_id=trainer.id)
     order = m.Order(source_system_id=location.source_system_id, source_order_id="O-T1", location_id=location.id,
                     source_employee_id="T1", employee_id=None, created_at=datetime(2026, 11, 22, 18, tzinfo=timezone.utc))
     db.add(order); db.flush()

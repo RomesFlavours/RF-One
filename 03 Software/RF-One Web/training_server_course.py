@@ -10,17 +10,18 @@ is copied or moved, so nothing can be lost. Training gives it the person:
 - POST /training/courses/server/verify   The course checks that code with
   Training and gets back the account and its verified email.
 - POST /training/courses/server/invite   A hire on their course link asked for
-  their Training account. Training reads the email and the training site back
-  from the course's fixed address (never from the request) and sends its normal
-  invitation, the same one as Students -> Invite student, issued by a current
-  trainer. The site is the one the manager chose for that hire in the course
-  (Winter Park or Mount Dora), bound to the invitation code; the role is Server.
-  No site is ever assumed: a code without a known site is refused
-  (REGISTRY_MULTISITE_001, Product Owner 2026-11-22).
+  their Training account. Training reads the email (and the role the course
+  indicates, Server) back from the course's fixed address (never from the
+  request) and sends its normal invitation, the same one as Students -> Invite
+  student, issued by a current trainer. The invitation belongs to the person
+  (Product Owner 2026-11-22): no site is needed, none is assigned and no
+  operational permission is given; the Server role, when indicated, is the one
+  of Registry's catalog and is recorded on the card as the role trained for.
   Asking again with the same code and the same email: while that invitation is
   valid and not activated, the link is sent again to the address already on
-  the invitation (same invitation, card and site; no second invitation or
-  account); once activated, the person is sent to sign in. The code is bound to
+  the invitation (same invitation and card; no second invitation or account);
+  the link already received keeps working until the email service accepts the
+  new one. Once activated, the person is sent to sign in. The code is bound to
   its invitation on the card history (SERVER_COURSE_INVITE).
 
 No shared secret, no new setting: RFONE_SERVER_COURSE_URL only overrides the
@@ -57,8 +58,6 @@ CONTEXT = b'rfone-server-course-handoff-v1'
 CODE_SECONDS = 120
 NEED_TEXT = 'Server training'
 INVITE_CODE = re.compile(r'^[a-f0-9]{20}\.[A-Za-z0-9_-]{32}$')
-# The two training sites the course manager chooses from, and the Registry site each one is.
-COURSE_SITES = {'Winter Park': 'WP', 'Mount Dora': 'MD'}
 SERVER_ROLE = 'Server'
 
 
@@ -155,8 +154,8 @@ def own_progress(secret, account):
 
 
 def _course_invite_details(code):
-    """(email, site) the course has on file for this invitation code, read from its fixed address.
-    `site` is the training site the manager chose for the hire ('' when the course gives none)."""
+    """(email, role name) the course has on file for this invitation code, read from its fixed address.
+    The role is '' when the course indicates none (codes of a course version that did not send it)."""
     url = COURSE_URL + '/api/training-link/' + urllib.parse.quote(code, safe='')
     try:
         with urllib.request.urlopen(urllib.request.Request(url, method='GET'), timeout=15) as resp:
@@ -166,34 +165,16 @@ def _course_invite_details(code):
     if not isinstance(data, dict):
         return None, ''
     email = str(data.get('email') or '').strip().lower()
-    return email or None, str(data.get('site') or '').strip()
+    return email or None, str(data.get('role') or '').strip()
 
 
-def _name_tokens(name):
-    return re.findall(r'[a-z0-9]+', str(name or '').casefold())
-
-
-def course_site(db, label):
-    """The Registry site of a course training site: the only site whose name ends with its code (WP / MD)
-    or contains its name. None when the label is unknown or the site is missing or not unique."""
+def course_role(db, name):
+    """(role_id, area_id) of the catalog role the course indicates (only Server is accepted), or None: then
+    the invitation is sent without a role, never with another one."""
     from rfone_data_store import employee_directory as directory
-    code = COURSE_SITES.get(label)
-    if not code:
+    if ' '.join((name or '').split()).casefold() != SERVER_ROLE.casefold():
         return None
-    words = _name_tokens(label)
-    found = [site for site in directory.sites(db)
-             if (_name_tokens(site.name)[-1:] == [code.casefold()])
-             or ' '.join(words) in ' '.join(_name_tokens(site.name))]
-    return found[0] if len(found) == 1 else None
-
-
-def server_role(db, restaurant_id):
-    """(role_id, area_id) of the Server role at this site, or None when it is missing or not unique."""
-    from rfone_data_store import employee_directory as directory
-    from rfone_data_store.technical.connectors.clover.employee_writer import same_name_key
-    pairs = [(role.id, area.id) for role, area in directory.site_role_choices(db, restaurant_id)
-             if same_name_key(role.name) == same_name_key(SERVER_ROLE)]
-    return pairs[0] if len(pairs) == 1 else None
+    return directory.catalog_role_by_name(db, SERVER_ROLE)
 
 
 INVITE_ACTION = 'SERVER_COURSE_INVITE'
@@ -205,14 +186,14 @@ def code_digest(code):
 
 
 def bound_invitation(db, code):
-    """(invitation, card_id, site_id) the course code was first used for, or None."""
+    """(invitation, card_id) the course code was first used for, or None."""
     wanted = code_digest(code)
     for event in db.scalars(select(m.EmployeeDirectoryEvent).where(m.EmployeeDirectoryEvent.action == INVITE_ACTION)
                             .order_by(m.EmployeeDirectoryEvent.id)):
         details = event.details or {}
         if details.get('code_digest') == wanted:
             invitation = db.get(enroll.EnrollmentInvitation, details.get('invitation_id'))
-            return (invitation, event.employee_id, details.get('restaurant_id')) if invitation else None
+            return (invitation, event.employee_id) if invitation else None
     return None
 
 
@@ -321,27 +302,19 @@ def install(app, *, SessionFactory, auth):
         code = str((request.get_json(silent=True) or {}).get('code') or '')
         if not INVITE_CODE.fullmatch(code):
             return jsonify(status='refused', message='Invalid request.'), 400
-        email, site_label = _course_invite_details(code)
+        email, role_name = _course_invite_details(code)
         if not email:
             return jsonify(status='refused', message='The course did not confirm this request.'), 403
         with SessionFactory() as db:
             trainer = default_trainer(db)
             if trainer is None:
                 return jsonify(status='skipped', message='There is no active trainer to send the invitation yet. Ask your manager.'), 422
-            # The site comes only from the code the course confirmed; it is never assumed.
-            site = course_site(db, site_label)
-            if site is None:
-                return jsonify(status='skipped', message='Your training site is not set for your course link. '
-                               'Ask your manager. Your course keeps working as it is.'), 409
-            role = server_role(db, site.id)
-            if role is None:
-                return jsonify(status='skipped', message=f'The Server role is not set up at {site.name} yet. '
-                               'Ask your manager. Your course keeps working as it is.'), 409
+            role = course_role(db, role_name)
             bound = bound_invitation(db, code)
             if bound is not None:
-                # The same code again: only its own invitation, for the same email and site, is ever reused.
-                invitation, card_id, bound_site = bound
-                if invitation.email != email or bound_site != site.id:
+                # The same code again: only its own invitation, for the same email, is ever reused.
+                invitation, card_id = bound
+                if invitation.email != email:
                     return jsonify(status='refused', message='This request does not match your invitation. '
                                    'Ask your manager.'), 409
                 if invitation.consumed_at:
@@ -359,7 +332,7 @@ def install(app, *, SessionFactory, auth):
                 # only then the new secret replaces it (REGISTRY_MULTISITE_001, Codex review).
                 token = secrets.token_urlsafe(32)
                 link = public_base() + url_for('tw_enrollment_link', token=token)
-                resend = dict(invitation_id=invitation.id, card_id=card_id, site_id=site.id, email=invitation.email,
+                resend = dict(invitation_id=invitation.id, card_id=card_id, email=invitation.email,
                               old_digest=invitation.token_digest, actor_id=trainer.id)
                 db.rollback()   # nothing changed yet: the email is sent with no transaction or lock held
                 if not _deliver(resend['email'], link):
@@ -367,12 +340,11 @@ def install(app, *, SessionFactory, auth):
                                    'received still works; try again in a minute.'), 502
                 return _swap_after_delivery(resend, token)
             try:
-                invitation, token = enroll.issue(db, actor=trainer, email=email, restaurant_id=site.id,
-                                                 role_id=role[0], area_id=role[1])
+                invitation, token = enroll.issue(db, actor=trainer, email=email,
+                                                 role_id=role[0] if role else None, area_id=role[1] if role else None)
                 card = directory.card_for_person(db, invitation.person_id)
                 directory._event(db, INVITE_ACTION, employee_id=card.id if card else None, account_id=trainer.id,
-                                 details={'code_digest': code_digest(code), 'invitation_id': invitation.id,
-                                          'restaurant_id': site.id})
+                                 details={'code_digest': code_digest(code), 'invitation_id': invitation.id})
                 link = public_base() + url_for('tw_enrollment_link', token=token)
                 db.commit()
             except (registry.ConfirmationRequired, directory.CardConfirmationRequired):
@@ -406,7 +378,7 @@ def install(app, *, SessionFactory, auth):
                 return jsonify(status='skipped', message='Your invitation changed meanwhile. Ask your manager.'), 409
             invitation.token_digest = enroll.digest(token)
             directory._event(db, RESEND_ACTION, employee_id=resend['card_id'], account_id=resend['actor_id'],
-                             details={'invitation_id': invitation.id, 'restaurant_id': resend['site_id']})
+                             details={'invitation_id': invitation.id})
             db.commit()
         return jsonify(status='sent')
 

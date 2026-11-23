@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """REGISTRY_MULTISITE_001 — the Training entry into Registry over HTTP (Training app, throwaway SQLite).
 
-  1. Training -> Invite student offers the training site and role; a direct invitation creates the Trainee's
-     Registry card at that site (and only there); a missing site is refused with nothing created.
+  1. Training -> Invite student asks no site (the invitation belongs to the person, Product Owner 2026-11-22)
+     and offers the optional role trained for from Registry's catalog; a direct invitation creates the Trainee's
+     Registry card with no site, with or without a role.
   2. Confirm hire turns the same card into Employee and records who and when on the card's history; the
      owner exception without a signed course still needs a reason.
   3. Codex review: without a card Confirm hire saves nothing and shows no success; «Resolve card and site»
@@ -80,22 +81,24 @@ class RegistryTrainingHttpTest(unittest.TestCase):
 
     def test_direct_invitation_creates_the_trainee_card_at_the_chosen_site(self):
         page = self.client.get("/training/manage/enrollment").get_data(as_text=True)
-        self.assertIn('name="site_role"', page)
-        self.assertIn(f'value="{self.md_id}:{self.cook_id}:{self.area_id}"', page)
-        token = self.csrf("/training/manage/enrollment")
-        refused = self.client.post("/training/manage/enrollment", data={"csrf_token": token, "mode": "direct",
-                                   "email": "nosite@example.invalid", "name": "No Site"})
-        self.assertEqual(refused.status_code, 400)
+        self.assertNotIn('name="site_role"', page)
+        self.assertIn('name="training_role"', page)
+        self.assertIn(f'value="{self.cook_id}:{self.area_id}"', page)
+        # no site and no role: accepted, card without a site
+        bare = self.client.post("/training/manage/enrollment", data={"csrf_token": self.csrf("/training/manage/enrollment"),
+                                "mode": "direct", "email": "nosite@example.invalid", "name": "No Site"})
+        self.assertEqual(bare.status_code, 200, bare.get_data(as_text=True)[:400])
         with self.factory() as db:
-            self.assertEqual(db.scalar(select(m.Employee.id)), None)
+            invitation = db.scalar(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.email == "nosite@example.invalid"))
+            self.assertEqual(directory.employee_site_ids(db, directory.card_for_person(db, invitation.person_id).id), set())
         done = self.client.post("/training/manage/enrollment", data={"csrf_token": self.csrf("/training/manage/enrollment"),
                                 "mode": "direct", "email": "new.cook@example.invalid", "name": "New Cook",
-                                "site_role": f"{self.md_id}:{self.cook_id}:{self.area_id}"})
+                                "training_role": f"{self.cook_id}:{self.area_id}"})
         self.assertEqual(done.status_code, 200, done.get_data(as_text=True)[:400])
         with self.factory() as db:
-            invitation = db.scalar(select(en.EnrollmentInvitation))
+            invitation = db.scalar(select(en.EnrollmentInvitation).where(en.EnrollmentInvitation.email == "new.cook@example.invalid"))
             card = directory.card_for_person(db, invitation.person_id)
-            self.assertEqual(directory.employee_site_ids(db, card.id), {self.md_id})
+            self.assertEqual(directory.employee_site_ids(db, card.id), set())
             self.assertIsNotNone(db.get(registry.PersonQualification, (invitation.person_id, "STUDENT")))
             self.person_id, self.card_id = invitation.person_id, card.id
 
@@ -199,7 +202,7 @@ class RegistryTrainingHttpTest(unittest.TestCase):
                                               restaurant_id=self.wp_id, role_id=self.cook_id, area_id=self.area_id)
             db.commit(); wp_card_id = wp_card.id
         data = {"mode": "direct", "email": "luca@example.invalid", "name": "Luca Bianchi", "phone": "(407) 555 0101",
-                "site_role": f"{self.md_id}:{self.cook_id}:{self.area_id}"}
+                "training_role": f"{self.cook_id}:{self.area_id}"}
         asked = self.client.post("/training/manage/enrollment",
                                  data={**data, "csrf_token": self.csrf("/training/manage/enrollment")})
         self.assertEqual(asked.status_code, 400)
@@ -234,7 +237,7 @@ class RegistryTrainingHttpTest(unittest.TestCase):
         with self.factory() as db:
             invitation = db.scalar(select(en.EnrollmentInvitation))
             self.assertEqual(directory.card_for_person(db, invitation.person_id).id, wp_card_id)
-            self.assertEqual(directory.employee_site_ids(db, wp_card_id), {self.wp_id, self.md_id})
+            self.assertEqual(directory.employee_site_ids(db, wp_card_id), {self.wp_id})   # no site added
 
 
 if __name__ == "__main__":

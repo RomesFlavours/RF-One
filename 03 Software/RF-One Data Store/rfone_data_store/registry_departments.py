@@ -248,8 +248,8 @@ def set_role_mapping(db, *, restaurant_id, source, original_key, original_label=
     if source not in SOURCE_LABELS or not (original_key or "").strip():
         raise ValueError("Ruolo originale non valido.")
     role = db.get(m.RestaurantRole, restaurant_role_id) if restaurant_role_id else None
-    if restaurant_role_id and (role is None or role.active is False
-                               or role.restaurant_id not in (None, restaurant_id)):
+    # Roles are common to all sites (one Registry catalog, Product Owner 2026-11-22).
+    if restaurant_role_id and (role is None or role.active is False):
         raise ValueError("Scegli un ruolo RF-One attivo valido per questo ristorante.")
     _department(db, department_id)
     current = current_mappings(db, restaurant_id).get((source, original_key))

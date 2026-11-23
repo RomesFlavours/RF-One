@@ -97,3 +97,55 @@ nell’elenco del personale o nei turni, non crea, aggiorna o propone alcuna sch
 
 Fermati dopo la consegna per la revisione indipendente di Codex. Il passaggio su AWS richiede
 l’autorizzazione di Pino.
+
+## Correction — Product Owner, 2026-11-22 (verbatim)
+
+> Parti da 816000a e correggi la specifica e il codice.
+>
+> 1. I ruoli risiedono nel catalogo unico di Registry e sono comuni a tutte le sedi. WP e MD sono assegnazioni
+>    di lavoro della persona. Verifica come allineare il catalogo esistente a questa regola preservando
+>    assegnazioni e permessi effettivi.
+>
+> 2. L’invito a Training è associato alla persona. Elimina la sede dai requisiti di creazione, reinvio e
+>    attivazione dell’invito. Applica la stessa regola a Selection, all’invito diretto e al Server Course.
+>    Anche una persona senza sede deve poter ricevere l’invito e iniziare Training. Se il corso indica il ruolo
+>    Server, usa quello del catalogo unico. L’invito non assegna una sede né concede permessi operativi.
+>
+> 3. Rendi utilizzabili anche i codici già emessi senza sede e conserva gli inviti attivi. Mantieni un solo
+>    invito per persona e la protezione del link precedente se il reinvio fallisce.
+>
+> 4. Rimuovi dal piano il passo 2a come prerequisito per Training. Prova il flusso per una persona senza sede,
+>    una assegnata a WP e una assegnata a MD. Consegna il nuovo SHA e l’esito delle prove. Nessuna modifica su
+>    AWS e nessun deploy.
+
+### Specification as corrected (English, supersedes the Training bullet of §2 above)
+
+- **Role catalog.** Roles live in Registry's one catalog and are common to every site. WP and MD are the
+  person's work assignments (Registry card → site + role), never a property of the role. Every Registry role
+  choice (manual entry, new site on a card, Training) offers the whole active catalog.
+- **Training invitation.** The invitation belongs to the person. Creating, resending and activating it needs
+  no site — direct invitation, Selection (arrival confirmation) and Server Course alike. A person without any
+  site can be invited and start Training. The invitation creates or reuses the person's Registry card as
+  Trainee (an Employee keeps the status) **without assigning a site**, and grants no operational permission
+  (activation gives Training only). The role the person trains for is optional; when given (Invite student)
+  or indicated by the course (Server Course → «Server»), it is the catalog role, noted on the card history
+  (`TRAINING_ROLE`), not a work assignment.
+- **Codes and invitations already issued.** Server Course codes issued without a site (or with the former
+  site field) are accepted; active invitations stay valid. One live invitation per person; on a resend the
+  link already received stays valid until the email service accepts the new email.
+- Unchanged: Confirm Hire needs the Registry card; «Resolve card and site» still records a site explicitly for
+  a legacy Trainee without a card (it is not an invitation).
+
+### Catalog alignment (verified, not applied to data)
+
+Registry now reads the catalog as common to all sites (`employee_directory.catalog_role_choices`; the stored
+`restaurant_roles.restaurant_id` is ignored by Registry), so on AWS the five roles stored with restaurant 1
+(Manager, Team Leader, Server, Busser-Runner, Host) are offered at MD too **with no data change**: no
+assignment, mapping, role permission or account row is written, so assignments and effective permissions are
+unchanged by construction. Aligning the stored column too (`restaurant_id = NULL` on those five roles; names
+are unique, so the catalog constraint holds) is **not** done here: Tips still reads it — role lists per
+restaurant (`Tips/app.py` 1625, 1816; `tips/rule_ai_authoring.py` 559) and the rule check
+`tips/distribution_rule_service.py` 311 (`role.restaurant_id != restaurant_id` → refused). Changing the data
+first would empty WP's Tips role lists and refuse WP rules; it needs Tips to read the catalog first (separate
+decision). If applied later, `registry_multisite_migration_check.py snapshot/compare` proves assignments and
+effective permissions unchanged (`test_registry_multisite_permissions.py` test 4).

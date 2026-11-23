@@ -303,15 +303,30 @@ def employee_site_ids(db, employee_id, *, at=None):
     return {own if own is not None else via for own, via in rows if (own if own is not None else via) is not None}
 
 
-def site_role_choices(db, restaurant_id):
-    """(role, area) pairs usable at a site: active roles of this restaurant or of every restaurant."""
+def catalog_role_choices(db):
+    """(role, area) pairs of Registry's one role catalog: every active role in every active area. Roles are
+    common to all sites (Product Owner 2026-11-22): WP and MD are the person's work assignments, not a property
+    of the role. A role's stored `restaurant_id` (older per-restaurant roles, still read by Tips) is ignored here."""
     rows = db.execute(select(m.RestaurantRole, m.OperationalArea)
         .join(m.OperationalAreaRole, m.OperationalAreaRole.restaurant_role_id == m.RestaurantRole.id)
         .join(m.OperationalArea, m.OperationalArea.id == m.OperationalAreaRole.operational_area_id)
-        .where(m.RestaurantRole.active.is_not(False), m.OperationalArea.active.is_not(False),
-               m.RestaurantRole.restaurant_id.is_(None) | (m.RestaurantRole.restaurant_id == restaurant_id))
+        .where(m.RestaurantRole.active.is_not(False), m.OperationalArea.active.is_not(False))
         .order_by(m.RestaurantRole.name, m.OperationalArea.name))
     return [(role, area) for role, area in rows]
+
+
+def site_role_choices(db, restaurant_id):
+    """(role, area) pairs usable at a site: the whole catalog (roles are common to all sites)."""
+    return catalog_role_choices(db)
+
+
+def catalog_role_by_name(db, name):
+    """(role_id, area_id) of the catalog role with this name (same text, spaces and case ignored), or None when
+    it is missing or not unique."""
+    key = " ".join(str(name or "").split()).casefold()
+    pairs = [(role.id, area.id) for role, area in catalog_role_choices(db)
+             if " ".join((role.name or "").split()).casefold() == key]
+    return pairs[0] if len(pairs) == 1 else None
 
 
 def site_role_groups(db, site_rows):
@@ -500,16 +515,21 @@ def sites_of(db, employee_id):
     return [site for site in sites(db) if site.id in ids]
 
 
-def training_card(db, *, person_id, restaurant_id, role_id, area_id, actor, card_id=None):
-    """Training entry (direct invitation or Send to Training): link the card resolved beforehand by
-    `resolve_training_card` (`card_id`; None = create a new one) to the person and assign the training site.
+def training_card(db, *, person_id, actor, card_id=None, role_id=None, area_id=None, restaurant_id=None):
+    """Training entry (direct invitation, Selection, Server Course): link the card resolved beforehand by
+    `resolve_training_card` (`card_id`; None = create a new one) to the person. The invitation belongs to the
+    person: it assigns NO site (Product Owner 2026-11-22) — WP / MD stay work assignments made in Registry. A
+    catalog role the person trains for, when given, is recorded on the card history (TRAINING_ROLE), never as an
+    assignment. `restaurant_id` is only for «Resolve card and site», which still records a site explicitly.
     Repeating it changes nothing. Returns (card, created)."""
     from . import people_registry as people
     person = db.get(m.CandidatePerson, person_id)
     if person is None:
         raise ValueError("Person not found.")
-    if db.get(m.Restaurant, restaurant_id) is None:
+    if restaurant_id is not None and db.get(m.Restaurant, restaurant_id) is None:
         raise ValueError("Choose the training site.")
+    if role_id is not None and (role_id, area_id) not in {(r.id, a.id) for r, a in catalog_role_choices(db)}:
+        raise ValueError("Choose a role of the Registry catalog.")
     card, created = card_for_person(db, person_id), False
     if card is not None and card_id is not None and card.id != resolve_employee_id(db, card_id):
         raise ValueError("The person is already linked to another Registry card. Nothing was saved.")
@@ -529,8 +549,16 @@ def training_card(db, *, person_id, restaurant_id, role_id, area_id, actor, card
                                          linked_at=_now()))
         db.flush()
         _event(db, "TRAINING_LINK", employee_id=card.id, account_id=actor.id, details={"person_id": person_id})
-    assign_site(db, employee_id=card.id, restaurant_id=restaurant_id, role_id=role_id, area_id=area_id,
-                account_id=actor.id, source=ASSIGNMENT_SOURCE_TRAINING)
+    if restaurant_id is not None:
+        assign_site(db, employee_id=card.id, restaurant_id=restaurant_id, role_id=role_id, area_id=area_id,
+                    account_id=actor.id, source=ASSIGNMENT_SOURCE_TRAINING)
+    elif role_id is not None:
+        last = db.scalar(select(m.EmployeeDirectoryEvent).where(m.EmployeeDirectoryEvent.employee_id == card.id,
+                         m.EmployeeDirectoryEvent.action == "TRAINING_ROLE").order_by(m.EmployeeDirectoryEvent.id.desc()))
+        if last is None or (last.details or {}).get("role_id") != role_id or (last.details or {}).get("area_id") != area_id:
+            role = db.get(m.RestaurantRole, role_id)
+            _event(db, "TRAINING_ROLE", employee_id=card.id, account_id=actor.id,
+                   details={"person_id": person_id, "role_id": role_id, "area_id": area_id, "role": role.name})
     return card, created
 
 

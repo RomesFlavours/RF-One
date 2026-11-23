@@ -112,6 +112,17 @@ def complete(db, invitation, form):
     return rf, None
 
 
+def parse_catalog_role(value):
+    """'role:area' -> (role_id, area_id); empty -> (None, None): the role trained for is optional."""
+    if not (value or '').strip():
+        return None, None
+    try:
+        role_id, area_id = (int(part) for part in value.split(':'))
+    except ValueError:
+        raise ValueError('Choose a role of the Registry catalog, or none.') from None
+    return role_id, area_id
+
+
 def install(app, *, SessionFactory, auth, trainer):
     @app.route('/training/manage/enrollment', methods=['GET', 'POST'])
     @trainer
@@ -129,10 +140,11 @@ def install(app, *, SessionFactory, auth, trainer):
                     if mode == 'selection' and (not raw_id.isdecimal() or len(raw_id) > 10):
                         raise ValueError('Choose a confirmed candidate from the Selection list.')
                     selection_id = int(raw_id) if mode == 'selection' else None
-                    restaurant_id, role_id, area_id = directory.parse_site_role(request.form.get('site_role'))
+                    # The invitation belongs to the person: no site; the role trained for is optional (catalog).
+                    role_id, area_id = parse_catalog_role(request.form.get('training_role'))
                     invitation, token = enroll.issue(db, actor=actor, email=request.form.get('email', ''),
                         name=request.form.get('name', ''), phone=request.form.get('phone', ''), selection_id=selection_id,
-                        confirmation=request.form.get('confirmation'), restaurant_id=restaurant_id,
+                        confirmation=request.form.get('confirmation'),
                         role_id=role_id, area_id=area_id, card_confirmation=request.form.get('card_confirmation'))
                     base = request.url_root.rstrip('/') if current_app.config.get('TRAINING_ENROLLMENT_LOCAL') else public_base()
                     link = base + url_for('tw_enrollment_link', token=token)
@@ -152,10 +164,11 @@ def install(app, *, SessionFactory, auth, trainer):
                             flash('Invitation sent.', 'info')
                         except account_email.EmailSendError:
                             flash('Invitation created but email delivery failed. Copy the link or create a new invitation after one minute.', 'error')
-            site_roles = directory.site_role_groups(db, enroll.training_sites(db, actor))
+            catalog_roles = [(f"{role.id}:{area.id}", f"{role.name} · {area.name}")
+                             for role, area in directory.catalog_role_choices(db)]
             return protected(app.make_response((render_template('training_workspace/enrollment.html',
                 active_tab='students', help_section='training_enrollment', error=error, draft=draft,
-                confirmed=confirmed, matches=matches, card_matches=card_matches, card_new=card_new, invitation_url=link, site_roles=site_roles), 400 if error else 200)))
+                confirmed=confirmed, matches=matches, card_matches=card_matches, card_new=card_new, invitation_url=link, catalog_roles=catalog_roles), 400 if error else 200)))
 
     @app.get('/training/activate/<token>')
     def tw_enrollment_link(token):

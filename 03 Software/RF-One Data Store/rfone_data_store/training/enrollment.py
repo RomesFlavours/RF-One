@@ -222,6 +222,15 @@ def training_sites(db, actor):
     return [site for site in directory.sites(db) if site.id in allowed]
 
 
+def _check_role(role_id, area_id, db):
+    """The role the person trains for is optional; when given it is a role of Registry's one catalog."""
+    from .. import employee_directory as directory
+    if role_id is None and area_id is None:
+        return
+    if (role_id, area_id) not in {(r.id, a.id) for r, a in directory.catalog_role_choices(db)}:
+        raise ValueError('Choose a role of the Registry catalog, or none.')
+
+
 def _check_site(db, actor, restaurant_id, role_id, area_id):
     from .. import employee_directory as directory
     if restaurant_id is None or restaurant_id not in {site.id for site in training_sites(db, actor)}:
@@ -268,7 +277,10 @@ def resolve_trainee_card(db, *, actor, person_id, restaurant_id, role_id, area_i
 
 
 def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmation=None,
-          restaurant_id=None, role_id=None, area_id=None, card_confirmation=None):
+          role_id=None, area_id=None, card_confirmation=None):
+    """The Training invitation belongs to the person (Product Owner 2026-11-22): no site is required to create,
+    resend or activate it, and it assigns no site and no operational permission. `role_id`/`area_id`: the
+    optional catalog role the person trains for (recorded on the card history)."""
     email = accounts._validate_email_format(email)
     if is_forwarding_email(email):
         raise ValueError(FORWARDING_EMAIL_MESSAGE)
@@ -306,11 +318,11 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         raise ValueError('This contact belongs to another RF-One identity. Ask for a Registry review.')
     if account and (account.status != 'ACTIVE' or account.email != email):
         raise ValueError('Use the email of the existing active account. No credentials will be changed.')
-    # REGISTRY_MULTISITE_001 (Codex review 2): site and Registry identity are settled before anything is
-    # written — arrival, Trainee mark, person, card or invitation. An uncertain identity raises
-    # CardConfirmationRequired and nothing is saved.
+    # REGISTRY_MULTISITE_001 (Codex review 2): the Registry identity (and the optional catalog role) is settled
+    # before anything is written — arrival, Trainee mark, person, card or invitation. An uncertain identity
+    # raises CardConfirmationRequired and nothing is saved.
     from .. import employee_directory as directory
-    _check_site(db, actor, restaurant_id, role_id, area_id)
+    _check_role(role_id, area_id, db)
     known_person = person_id or (people.person_for_account(db, account_id).id
                                  if account_id and people.person_for_account(db, account_id) else None)
     card_id = directory.resolve_training_card(db, person_id=known_person, email=email, phone=phone,
@@ -323,13 +335,13 @@ def issue(db, *, actor, email, name='', phone='', selection_id=None, confirmatio
         raise ValueError('Wait at least one minute before creating another invitation (up to five per hour).')
     for row in prior:
         if not row.consumed_at and not row.revoked_at: row.revoked_at = stamp
-    # REGISTRY_MULTISITE_001: create or reuse the Registry card for the training site; a new entry is a
+    # REGISTRY_MULTISITE_001: create or reuse the person's Registry card, with no site; a new entry is a
     # Trainee, an Employee keeps the status. Repeating it reuses the same identity and card.
     person_id = _ensure_person(db, actor, person_id=person_id, account_id=account_id, name=name, email=email,
                                phone=phone)
     mark_trainee(db, person_id)
-    directory.training_card(db, person_id=person_id, restaurant_id=restaurant_id, role_id=role_id,
-                            area_id=area_id, actor=actor, card_id=card_id)
+    directory.training_card(db, person_id=person_id, role_id=role_id, area_id=area_id, actor=actor,
+                            card_id=card_id)
     token = secrets.token_urlsafe(32)
     invitation = EnrollmentInvitation(token_digest=digest(token), email=email, name=name, phone=phone,
         person_id=person_id, account_id=account_id, selection_id=selection_id, created_by_id=actor.id,

@@ -39,7 +39,7 @@ class ReleaseAndArrival(unittest.TestCase):
         self.area = m.OperationalArea(name="Restaurant Operations", restaurant_id=self.site.id); db.add(self.area)
         self.role = m.RestaurantRole(name="Server", code="SERVER", restaurant_id=self.site.id); db.add(self.role); db.flush()
         db.add(m.OperationalAreaRole(operational_area_id=self.area.id, restaurant_role_id=self.role.id)); db.flush()
-        self.at_site = dict(restaurant_id=self.site.id, role_id=self.role.id, area_id=self.area.id)
+        self.at_site = dict(role_id=self.role.id, area_id=self.area.id)   # the role trained for; the invitation has no site
         requirements = m.RequirementSet(name="Server")
         db.add(requirements); db.flush()
         self.position = ps.WorkspacePosition(title="Server", role_code="SERVER", location_label="Winter Park",

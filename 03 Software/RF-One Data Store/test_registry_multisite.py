@@ -121,12 +121,16 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.assertEqual(directory.site_employee_ids(self.db, self.md.id), {person.id})
         self.assertEqual(directory.site_employee_ids(self.db, self.wp.id), set())
 
-    def test_site_roles_offer_only_roles_of_that_site(self):
+    def test_roles_are_one_catalog_common_to_every_site(self):
+        # Product Owner 2026-11-22: roles live in Registry's one catalog; WP and MD are work assignments.
+        # A role still stored with a restaurant (Server, restaurant WP) is offered at every site.
         wp_roles = {role.name for role, _area in directory.site_role_choices(self.db, self.wp.id)}
         md_roles = {role.name for role, _area in directory.site_role_choices(self.db, self.md.id)}
-        self.assertEqual((wp_roles, md_roles), ({"Server", "Cook"}, {"Cook"}))
-        with self.assertRaisesRegex(ValueError, "role available at this site"):
-            self.card("Wrong role", self.md, self.server)
+        self.assertEqual((wp_roles, md_roles), ({"Server", "Cook"}, {"Server", "Cook"}))
+        server_at_md = self.card("Server at MD", self.md, self.server)
+        self.assertEqual(directory.employee_site_ids(self.db, server_at_md.id), {self.md.id})
+        self.assertEqual(self.server.restaurant_id, self.wp.id)          # stored data unchanged (Tips reads it)
+        self.assertEqual(directory.catalog_role_by_name(self.db, " server "), (self.server.id, self.area.id))
 
     # -- 2. manual entry ----------------------------------------------------------------------------
     def test_manual_entry_needs_the_site_and_never_duplicates_a_registered_person(self):
@@ -185,15 +189,19 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.db.commit()
         return person, pc
 
-    def test_direct_invitation_creates_a_trainee_card_at_the_training_site_and_reuses_it(self):
+    def test_direct_invitation_creates_a_trainee_card_without_a_site_and_reuses_it(self):
         trainer = self._trainer()
-        site = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        site = dict(role_id=self.cook.id, area_id=self.area.id)          # the role trained for, no site
         invitation, _ = en.issue(self.db, actor=trainer, email="new.cook@example.invalid", name="New Cook", **site)
         self.db.commit()
         card = directory.card_for_person(self.db, invitation.person_id)
         self.assertIsNotNone(card)
-        self.assertEqual(directory.site_employee_ids(self.db, self.md.id), {card.id})
+        self.assertEqual(directory.employee_site_ids(self.db, card.id), set())          # no site assigned
+        self.assertEqual(directory.site_employee_ids(self.db, self.md.id), set())
         self.assertEqual(directory.site_employee_ids(self.db, self.wp.id), set())
+        noted = self.db.scalar(select(m.EmployeeDirectoryEvent).where(
+            m.EmployeeDirectoryEvent.employee_id == card.id, m.EmployeeDirectoryEvent.action == "TRAINING_ROLE"))
+        self.assertEqual((noted.details["role_id"], noted.details["role"]), (self.cook.id, "Cook"))
         self.assertIsNotNone(self.db.get(registry.PersonQualification, (invitation.person_id, "STUDENT")))
         self.assertNotIn("EMPLOYEE", people.company_statuses(self.db, invitation.person_id))   # Trainee
         # Repeating it (after the rate limit, confirming the same person) reuses identity and card.
@@ -203,19 +211,23 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.db.commit()
         self.assertEqual(again.person_id, invitation.person_id)
         self.assertEqual(self.count(m.Employee), 1)
-        self.assertEqual(self.count(m.EmployeeAssignment), 1)
+        self.assertEqual(self.count(m.EmployeeAssignment), 0)
         self.assertEqual(self.count(m.CandidatePerson), 1)
 
-    def test_training_site_must_be_chosen_and_reachable(self):
+    def test_the_invitation_needs_no_site_and_takes_only_catalog_roles(self):
         trainer = self._trainer()
-        with self.assertRaisesRegex(ValueError, "training site"):
-            en.issue(self.db, actor=trainer, email="x@example.invalid", name="X", restaurant_id=None)
-        self.db.rollback()
-        with self.assertRaisesRegex(ValueError, "role the person trains for"):
-            en.issue(self.db, actor=trainer, email="x@example.invalid", name="X", restaurant_id=self.md.id,
-                     role_id=self.server.id, area_id=self.area.id)                       # Server is WP-only
+        with self.assertRaisesRegex(ValueError, "Registry catalog"):
+            en.issue(self.db, actor=trainer, email="x@example.invalid", name="X", role_id=99999, area_id=self.area.id)
         self.db.rollback()
         self.assertEqual(self.count(m.Employee), 0)
+        bare, _ = en.issue(self.db, actor=trainer, email="nosite@example.invalid", name="No Site")   # no site, no role
+        server, _ = en.issue(self.db, actor=trainer, email="srv@example.invalid", name="Srv",
+                             role_id=self.server.id, area_id=self.area.id)    # stored as WP's: still the catalog's
+        self.db.commit()
+        for invitation in (bare, server):
+            card = directory.card_for_person(self.db, invitation.person_id)
+            self.assertEqual(directory.employee_site_ids(self.db, card.id), set())
+        self.assertEqual(self.count(m.EmployeeAssignment), 0)
 
     def test_send_to_training_reuses_the_candidate_and_creates_the_card_at_arrival(self):
         hirer = accounts.create_account(self.db, username="hirer", display_name="Hirer", password="Hirer-Pass-99",
@@ -226,18 +238,16 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.db.commit()
         self.assertEqual(self.count(m.Employee), 0)                     # the release alone creates nothing
         self.assertEqual(en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer), "already")
-        invitation, _ = en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
-                                 restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        invitation, _ = en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id)
         self.db.commit()
         self.assertEqual(invitation.person_id, person.id)                # the Selection person, reused
         card = directory.card_for_person(self.db, person.id)
-        self.assertEqual(directory.site_employee_ids(self.db, self.md.id), {card.id})
+        self.assertEqual(directory.employee_site_ids(self.db, card.id), set())          # no site assigned
         self.assertIsNotNone(self.db.get(registry.PersonQualification, (person.id, "STUDENT")))
         # A second enrollment of the same candidate is refused: no second invitation, no second card.
         invitation.created_at -= timedelta(seconds=61); self.db.commit()
         with self.assertRaises(ValueError):
-            en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id,
-                     restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+            en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id)
         self.db.rollback()
         self.assertEqual((self.count(en.EnrollmentInvitation), self.count(m.Employee)), (1, 1))
 
@@ -251,13 +261,12 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.db.add(people.PersonCompanyStatus(person_id=person.id, code="EMPLOYEE"))
         self.db.commit()
         en.issue(self.db, actor=trainer, email="gina@example.invalid", name="Gina Verdi",
-                 confirmation=f"person:{person.id}", restaurant_id=self.md.id, role_id=self.cook.id,
-                 area_id=self.area.id)
+                 confirmation=f"person:{person.id}", role_id=self.cook.id, area_id=self.area.id)
         self.db.commit()
         self.assertEqual(self.count(m.Employee), 1)                                       # same card
         self.assertIsNone(self.db.get(registry.PersonQualification, (person.id, "STUDENT")))
         self.assertIn("EMPLOYEE", people.company_statuses(self.db, person.id))
-        self.assertEqual(directory.employee_site_ids(self.db, existing.id), {self.wp.id, self.md.id})
+        self.assertEqual(directory.employee_site_ids(self.db, existing.id), {self.wp.id})   # sites unchanged
 
     # Codex review 2 — identity resolved before any card is created or linked
     def _nothing_saved(self, cards=1):
@@ -269,7 +278,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         trainer = self._trainer()
         wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="407-555-0101")      # no email
         self.db.commit(); self._persons = 0
-        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        md = dict(role_id=self.cook.id, area_id=self.area.id)          # role trained for; no site
         with self.assertRaises(directory.CardConfirmationRequired) as asked:
             en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
                      phone="(407) 555 0101", **md)
@@ -281,8 +290,8 @@ class RegistryMultisiteTest(unittest.TestCase):
         self.db.commit()
         self.assertEqual(directory.card_for_person(self.db, invitation.person_id).id, wp_card.id)
         self.assertEqual(self.count(m.Employee), 1)
-        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id, self.md.id})
-        self.assertIn(wp_card.id, directory.site_employee_ids(self.db, self.md.id))
+        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id})   # no site added
+        self.assertNotIn(wp_card.id, directory.site_employee_ids(self.db, self.md.id))
         # Repeating the invitation: same identity, same card, the previous link replaced (never two live ones).
         invitation.created_at -= timedelta(seconds=61); self.db.commit()
         again, _ = en.issue(self.db, actor=trainer, email="luca@example.invalid", name="Luca Bianchi",
@@ -297,7 +306,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         trainer = self._trainer()
         wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="4075550101")
         self.db.commit()
-        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        md = dict(role_id=self.cook.id, area_id=self.area.id)          # role trained for; no site
         with self.assertRaisesRegex(ValueError, "match changed") as changed:
             en.issue(self.db, actor=trainer, email="other@example.invalid", name="Other", phone="407 555 0101",
                      card_confirmation="card:99999", **md)
@@ -320,7 +329,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         wp_card = self.card("Maria Rossi", self.wp, self.server, phone="4075550199")        # no email
         self.db.commit()
         en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer); self.db.commit()
-        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        md = dict(role_id=self.cook.id, area_id=self.area.id)          # role trained for; no site
         with self.assertRaises(directory.CardConfirmationRequired) as asked:
             en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id, **md)
         self.db.rollback()
@@ -332,7 +341,7 @@ class RegistryMultisiteTest(unittest.TestCase):
                                  card_confirmation=chosen, **md)
         self.db.commit()
         self.assertEqual(directory.card_for_person(self.db, person.id).id, wp_card.id)
-        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id, self.md.id})
+        self.assertEqual(directory.employee_site_ids(self.db, wp_card.id), {self.wp.id})
         # Repetition: Selection's release and the enrollment never produce a second invitation.
         self.assertEqual(en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer), "already")
         invitation.created_at -= timedelta(seconds=61); self.db.commit()
@@ -350,8 +359,7 @@ class RegistryMultisiteTest(unittest.TestCase):
                                               linked_at=NOW))
         self.db.commit()
         with self.assertRaisesRegex(ValueError, "another person"):
-            en.issue(self.db, actor=trainer, email="someone@example.invalid", name="Someone", phone="407 555 0111",
-                     restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+            en.issue(self.db, actor=trainer, email="someone@example.invalid", name="Someone", phone="407 555 0111")
         self.db.rollback()
         self.assertEqual(self.count(m.Employee), 1)
 
@@ -360,7 +368,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         trainer = self._trainer()
         wp_card = self.card("Luca Bianchi", self.wp, self.server, phone="407-555-0101")
         self.db.commit(); self._persons = 0
-        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        md = dict(role_id=self.cook.id, area_id=self.area.id)          # role trained for; no site
         luca = dict(email="luca@example.invalid", name="Luca Bianchi", phone="407 555 0101")
         with self.assertRaises(directory.CardConfirmationRequired) as asked:
             en.issue(self.db, actor=trainer, **luca, **md)
@@ -407,7 +415,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         wp_card = self.card("Maria Rossi", self.wp, self.server, phone="+1 407 555 0199")    # +1, no email
         self.db.commit()
         en.release(self.db, selection_id=pc.id, released_by=hirer, operator=trainer); self.db.commit()
-        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        md = dict(role_id=self.cook.id, area_id=self.area.id)          # role trained for; no site
         with self.assertRaises(directory.CardConfirmationRequired) as asked:   # +1 on the card: same evidence
             en.issue(self.db, actor=trainer, email="maria@example.invalid", selection_id=pc.id, **md)
         self.db.rollback()
@@ -437,7 +445,7 @@ class RegistryMultisiteTest(unittest.TestCase):
         trainer = self._trainer()
         card = self.card("Luca Bianchi", self.wp, self.server, phone="407-555-0101")
         self.db.commit(); self._persons = 0
-        md = dict(restaurant_id=self.md.id, role_id=self.cook.id, area_id=self.area.id)
+        md = dict(role_id=self.cook.id, area_id=self.area.id)          # role trained for; no site
         keys = []
         for phone in ("+1 407 555 0101", "407 555 0101", "1-407-555-0101"):
             with self.assertRaises(directory.CardConfirmationRequired) as asked:          # operator must confirm
