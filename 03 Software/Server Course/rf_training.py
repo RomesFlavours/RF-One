@@ -95,17 +95,25 @@ def request_invite(hid: str, email: str) -> tuple[bool, str]:
     site = hire.get("location") if hire.get("location") in SITES else ""
     if not site:
         return False, "Your training site isn't set on your course link yet. Ask your manager; your course keeps working as it is."
-    code = f"{hid}.{secrets.token_urlsafe(24)}"
+    previous = hire.get("training_invite") or {}
+    # The same email again keeps the same code, so Training can send the same invitation again;
+    # a different email gets a new code (and never someone else's invitation).
+    same = previous.get("email") == email and previous.get("code") and previous.get("site", site) == site
+    code = previous["code"] if same else f"{hid}.{secrets.token_urlsafe(24)}"
 
     def keep(h):
         h["training_invite"] = {"email": email, "code": code, "site": site,
-                                "at": _now().isoformat(timespec="seconds"), "sent": False}
+                                "at": _now().isoformat(timespec="seconds"),
+                                "sent": bool(same and previous.get("sent"))}
     if store.update_hire(hid, keep) is None:
         return False, "Your course record wasn't found."
     code_status, data = _post("/training/courses/server/invite", {"code": code})
     if data.get("status") == "sent":
         store.update_hire(hid, lambda h: h["training_invite"].update(sent=True))
         return True, f"We emailed your RF-One Training invitation to {email}. Open it within 48 hours to choose your password."
+    if data.get("status") == "activated":
+        login = str(data.get("login_url") or TRAINING_URL + "/training/access")
+        return True, f"You have already activated your RF-One Training access. Sign in at {login}"
     if code_status == 0 or code_status == 404:
         return False, "RF-One Training couldn't be reached. Try again later; your course keeps working as it is."
     return False, data.get("message") or "The invitation couldn't be sent. Try again in a minute."

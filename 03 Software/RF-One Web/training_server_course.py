@@ -17,6 +17,11 @@ is copied or moved, so nothing can be lost. Training gives it the person:
   (Winter Park or Mount Dora), bound to the invitation code; the role is Server.
   No site is ever assumed: a code without a known site is refused
   (REGISTRY_MULTISITE_001, Product Owner 2026-11-22).
+  Asking again with the same code and the same email: while that invitation is
+  valid and not activated, the link is sent again to the address already on
+  the invitation (same invitation, card and site; no second invitation or
+  account); once activated, the person is sent to sign in. The code is bound to
+  its invitation on the card history (SERVER_COURSE_INVITE).
 
 No shared secret, no new setting: RFONE_SERVER_COURSE_URL only overrides the
 course's address.
@@ -27,10 +32,12 @@ import hmac
 import json
 import os
 import re
+import secrets
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import timedelta, timezone
 
 from flask import jsonify, redirect, request, url_for
 from sqlalchemy import select
@@ -189,6 +196,40 @@ def server_role(db, restaurant_id):
     return pairs[0] if len(pairs) == 1 else None
 
 
+INVITE_ACTION = 'SERVER_COURSE_INVITE'
+RESEND_ACTION = 'SERVER_COURSE_RESEND'
+
+
+def code_digest(code):
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def bound_invitation(db, code):
+    """(invitation, card_id, site_id) the course code was first used for, or None."""
+    wanted = code_digest(code)
+    for event in db.scalars(select(m.EmployeeDirectoryEvent).where(m.EmployeeDirectoryEvent.action == INVITE_ACTION)
+                            .order_by(m.EmployeeDirectoryEvent.id)):
+        details = event.details or {}
+        if details.get('code_digest') == wanted:
+            invitation = db.get(enroll.EnrollmentInvitation, details.get('invitation_id'))
+            return (invitation, event.employee_id, details.get('restaurant_id')) if invitation else None
+    return None
+
+
+def _utc(value):
+    """Naive UTC, whatever the database gives back (PostgreSQL keeps the zone, SQLite does not)."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+
+
+def _resend_too_soon(db, invitation_id):
+    """The same limits as a new invitation: one per minute, five per hour."""
+    stamp = _utc(enroll.now())
+    times = [_utc(e.created_at) for e in db.scalars(select(m.EmployeeDirectoryEvent)
+             .where(m.EmployeeDirectoryEvent.action == RESEND_ACTION))
+             if (e.details or {}).get('invitation_id') == invitation_id]
+    return any(x > stamp - timedelta(seconds=60) for x in times) or sum(x > stamp - timedelta(hours=1) for x in times) >= 5
+
+
 def install(app, *, SessionFactory, auth):
     def secret():
         return app.secret_key
@@ -296,9 +337,40 @@ def install(app, *, SessionFactory, auth):
             if role is None:
                 return jsonify(status='skipped', message=f'The Server role is not set up at {site.name} yet. '
                                'Ask your manager. Your course keeps working as it is.'), 409
+            bound = bound_invitation(db, code)
+            if bound is not None:
+                # The same code again: only its own invitation, for the same email and site, is ever reused.
+                invitation, card_id, bound_site = bound
+                if invitation.email != email or bound_site != site.id:
+                    return jsonify(status='refused', message='This request does not match your invitation. '
+                                   'Ask your manager.'), 409
+                if invitation.consumed_at:
+                    return jsonify(status='activated', login_url=public_base() + url_for('tw_login'),
+                                   message='You have already activated your RF-One Training access. Sign in.'), 200
+                if invitation.revoked_at or _utc(invitation.expires_at) <= _utc(enroll.now()) \
+                        or invitation.failed_attempts >= 5:
+                    return jsonify(status='skipped', message='Your invitation is no longer valid, so your manager needs '
+                                   'to send a new one from Training. Your course keeps working as it is.'), 409
+                if _resend_too_soon(db, invitation.id):
+                    return jsonify(status='skipped', message='Wait at least one minute before asking again '
+                                   '(up to five per hour).'), 409
+                # Same invitation row: a fresh secret replaces the old one (only its digest is ever stored, so the
+                # previous link cannot be read back); the newest email is the one that works.
+                token = secrets.token_urlsafe(32)
+                invitation.token_digest = enroll.digest(token)
+                directory._event(db, RESEND_ACTION, employee_id=card_id, account_id=trainer.id,
+                                 details={'invitation_id': invitation.id, 'restaurant_id': site.id})
+                link = public_base() + url_for('tw_enrollment_link', token=token)
+                email = invitation.email
+                db.commit()
+                return _send_invitation(email, link)
             try:
                 invitation, token = enroll.issue(db, actor=trainer, email=email, restaurant_id=site.id,
                                                  role_id=role[0], area_id=role[1])
+                card = directory.card_for_person(db, invitation.person_id)
+                directory._event(db, INVITE_ACTION, employee_id=card.id if card else None, account_id=trainer.id,
+                                 details={'code_digest': code_digest(code), 'invitation_id': invitation.id,
+                                          'restaurant_id': site.id})
                 link = public_base() + url_for('tw_enrollment_link', token=token)
                 db.commit()
             except (registry.ConfirmationRequired, directory.CardConfirmationRequired):
@@ -308,6 +380,9 @@ def install(app, *, SessionFactory, auth):
             except (ValueError, IntegrityError) as exc:
                 db.rollback()
                 return jsonify(status='skipped', message=str(exc) if isinstance(exc, ValueError) else 'Try again in a minute.'), 409
+        return _send_invitation(email, link)
+
+    def _send_invitation(email, link):
         try:
             from training_enrollment_routes import invitation_email
             subject, body = invitation_email('', link)
