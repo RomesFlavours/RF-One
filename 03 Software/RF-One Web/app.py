@@ -53,6 +53,7 @@ from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
 from rfone_data_store.technical import account_email as ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
 from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
+from clover_download_settings_routes import register_clover_download_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
@@ -489,6 +490,13 @@ register_compensation_routes(
 # Settings > Workweek (COMPENSATION_PERIOD_SUMMARY_001) — the shared
 # Restaurant Workweek start, read by every per-week function.
 register_workweek_settings_routes(
+    app, require_admin=require_admin, SessionFactory=SessionFactory,
+    require_csrf=require_csrf, load_current_account=load_current_account,
+)
+
+# Settings > Clover download (CLOVER_ACQUISITION_ENGINE_001) — the one daily
+# time of the shared Clover acquisition engine, and each site's outcome.
+register_clover_download_settings_routes(
     app, require_admin=require_admin, SessionFactory=SessionFactory,
     require_csrf=require_csrf, load_current_account=load_current_account,
 )

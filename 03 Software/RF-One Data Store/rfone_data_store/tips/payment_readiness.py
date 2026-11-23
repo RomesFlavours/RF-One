@@ -6,8 +6,10 @@ Distinct from `tips/readiness.py`'s CALCULATION readiness ("is there a
 Business Date ready to be calculated") — see that module's own docstring.
 This module answers the PAYMENT question: given a Restaurant (and,
 implicitly, the Payment Cycle about to be Approved & Paid for it), is it
-safe to actually send money — Clover Live Sync and every Correction/
-Reconciliation resource cursor have caught up to the current moment, AND
+safe to actually send money — the nightly Clover download is done for
+every active Clover site
+(CLOVER_ACQUISITION_ENGINE_001, Product Owner 2026-11-23; this replaces the
+former "Live Sync and Correction cursors past the current moment" rule), AND
 no blocking (CRITICAL) Attention is pertinent to this Restaurant's Tips
 payout.
 
@@ -52,7 +54,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models as m
-from ..technical.connectors.clover.correction_sync import describe_reconciliation_status
 
 UTC = timezone.utc
 
@@ -109,18 +110,24 @@ def describe_payment_readiness(
     AUTO WITH APPROVAL, AUTO WITHOUT APPROVAL), the Web Payment Control, and
     a future Cognito capability all call to answer "READY FOR PAYMENT?".
     Never mutates anything — pure read, exactly like `readiness.
-    describe_readiness`'s own convention."""
-    now = now or datetime.now(UTC)
-    location_ids = _restaurant_location_ids(session, restaurant_id)
+    describe_readiness`'s own convention.
 
-    current = describe_reconciliation_status(session, location_ids=location_ids, period_end=now)
+    CLOVER_ACQUISITION_ENGINE_001 (Product Owner 2026-11-23): Tips are paid
+    the day after operations; once the nightly Clover download is done for
+    every active site, Tips are ready. NOT READY becomes persistently
+    failing once that nightly download is more than
+    `persistent_failure_threshold` past its due time."""
+    now = now or datetime.now(UTC)
+    from ..operational_acquisition import DataCoverage, describe_nightly_download, get_schedule, latest_due_date
+    if not _restaurant_location_ids(session, restaurant_id):
+        current = DataCoverage(False, "no Location resolved for this Restaurant")
+    else:
+        current = describe_nightly_download(session, now=now)
 
     is_persistently_failing = False
     if not current.ready:
-        earlier = describe_reconciliation_status(
-            session, location_ids=location_ids, period_end=now - persistent_failure_threshold,
-        )
-        is_persistently_failing = not earlier.ready
+        schedule = get_schedule(session)
+        is_persistently_failing = now > schedule.due_at(latest_due_date(schedule, now)) + persistent_failure_threshold
 
     blocking_attention = _has_blocking_attention(session, restaurant_id=restaurant_id)
     ready = current.ready and not blocking_attention
@@ -130,7 +137,7 @@ def describe_payment_readiness(
     elif blocking_attention:
         overall_reason = "a CRITICAL Attention item for this Restaurant's Tips must be resolved first"
     else:
-        overall_reason = "Clover Live Sync and Correction/Reconciliation have passed the current moment; no blocking Attention"
+        overall_reason = "the nightly Clover download is done; no blocking Attention"
 
     return PaymentReadiness(
         restaurant_id=restaurant_id, reconciliation_ready=current.ready, reconciliation_reason=current.reason,
