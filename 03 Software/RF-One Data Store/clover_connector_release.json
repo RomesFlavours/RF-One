@@ -1,23 +1,26 @@
 {
-  "release": "registry-hotfix-20261123-jobs",
+  "release": "clover-engine-20261123-jobs",
   "scope": "Clover acquisition preserves RF-One Registry assignments and confirmed POS links",
   "files": {
-    "RF-One Data Store/rfone_data_store/models.py": "2fd59e60111bd366e7259ea163393bcc289e29798c333bf2a1adcd3b7641833f",
+    "RF-One Data Store/rfone_data_store/models.py": "b66c9ba412ad4b95c25c06373c03ba254477cb50ff64f0311a115c2fe21fdabd",
     "RF-One Data Store/rfone_data_store/employee_directory.py": "56c101360902c940fd0fbbef08cae035f767bf2ad20ecca650311e2ffb2b191c",
-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "b23b5ea2ec77974a7d39bf36da0956737108176ac4cfb479a4de823cfb131bb5",
-    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "607a750c265d40bb56dd800189ddb43055d64100bba5ea2eb05f2bb31fcb8f08",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py": "4d43d67dae52d8ce1ab09c9b8259c3ce88f514247f5cbff674edab818dbb917a",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py": "b8d98a0b7b20d578fa37b5805da8dae4aee87f0b25c0eb59abf18a98341739e2",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py": "cad7dd0aaddc59f0b1898058ad6553756cbf1eee65fe3249c64d600c31d291d7",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py": "2b4dc5f409bd55d9aad85fcec4be5be7ba1d2bdd801fd25705573b143f44f12f",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py": "3c6acb3ed1de6c6fc05e02abe5fbdad3b6ac507cc09638e1d6fa86549cfa00e8",
     "RF-One Data Store/test_clover_employee_history.py": "e88e19aac8a85e371f40f49e52478b6a44481549853f36187aa56a6e3ee6cf40",
     "RF-One Data Store/test_clover_monthly_recovery.py": "9f40416226bb0636f6288fb2f8b85d2bac8239156d6965e4921b1d0d5a5f7eab",
     "RF-One Data Store/test_clover_line_presence.py": "d00655d5915f31cf88243071bb4e1e63811d5c79c22b7393265e2c00bc4f05c4",
-    "RF-One Data Store/clover_connector_release_check.py": "a1a8bcf727343b270cf1361f899ee083f4ae2b2e7d618ea7869f3ff79f2ade12",
+    "RF-One Data Store/clover_connector_release_check.py": "35d47a40c2732a39fa61f96f7fc074caf324797004aef1bd86fe131b0be5df4b",
     "RF-One Data Store/migrations/versions/d9e220261029_rfone_person_foundation.py": "0ea9032797e5740383b6c54815e45f4077c0b889906f8b63e6913a3d53435785",
     "RF-One Data Store/rfone_data_store/schema_compatibility.py": "5eb9b2b93675e2e5f60cc4c992b8ee6f104a9fd8e4d96088621064b2565acef7",
     "RF-One Data Store/rfone_data_store/technical/connectors/clover/identity_holds.py": "01bd8660b7863ca652e6556a2ec48e3b9da235bb42883d5ca09a5ab124a94d5b",
     "RF-One Data Store/test_clover_identity_record_holds.py": "f4f03e06b8e64c7e8fc2d61cfbe2070bd36af77cc7d8eb6fbc5a0ef321433fe4",
     "RF-One Data Store/rfone_data_store/registry_departments.py": "7a52dea6641e9fd3cf67168a49d2243f3f07ac758eb755edf04c69dea7326d2d",
-    "RF-One Data Store/test_registry_departments.py": "ee13c6fdbfc183b577e6f41aac372017ea432b3f9c82a85236ffab73152f08f6"
+    "RF-One Data Store/test_registry_departments.py": "ee13c6fdbfc183b577e6f41aac372017ea432b3f9c82a85236ffab73152f08f6",
+    "RF-One Data Store/rfone_data_store/operational_acquisition.py": "88377ab3c10464df397ac370e4fe926a908d9253e50a39048d666dc811456c88",
+    "RF-One Data Store/rfone_data_store/technical/connectors/clover/shared_cycle.py": "1daabe731cca4bafdb0d639442e4b6edb9e482e52923439bd19f37bb4bacff99",
+    "RF-One Data Store/test_operational_acquisition.py": "a7f75b9e620fb90cf34914f6c4d2ba69823913430c8aebba3842ad5f50fbcf41"
   }
 }
