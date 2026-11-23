@@ -4,11 +4,11 @@ For Codex (or any reviewer) before this branch is merged into `main`. Nothing he
 
 ## What this branch is
 
-One tree that reproduces every live AWS service as of 21 Nov 2026, 18:00 UTC. Base: `main` at 9c154f9 (21 Oct).
+One tree that reproduces every live AWS service as of 23 Nov 2026, 15:00 UTC. Base: `main` at 9c154f9 (21 Oct).
 
 | Live service | Image or task | Built from |
 |---|---|---|
-| rfone-web (App Runner) | rfone-web:registry-departments-20261121t030713z-web2 | release/registry-web-20261121 (7580fa2) |
+| rfone-web (App Runner) | rfone-web:wines-20261123-31ec638a6744 | release/registry-web-20261121 (7580fa2) + codex/wines-20261123 (31ec638) |
 | rfone-training | rfone-web:training-welcome-def9cb4 | snapshot branch |
 | rfone-kitchen | rfone-web:kitchen-local-20261116t151940z | snapshot branch |
 | rfone-tips | rfone-tips:tip-role-history-20261118c-tips | snapshot branch |
@@ -36,6 +36,7 @@ In this folder:
 - `equivalence.json`: for every live service, every file it runs compared with this tree.
 - `verify-later.txt`: open points and fixes.
 - `FOLD-2026-11-21.md`: the 20 Nov night release and the eight Web/Clover worker differences.
+- `FOLD-2026-11-23.md`: the 23 Nov Wines release.
 
 ## What was already verified (please challenge it)
 
