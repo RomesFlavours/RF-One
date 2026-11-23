@@ -926,6 +926,89 @@ class IngestionRun(Base):
     source_records: Mapped[list["SourceRecord"]] = relationship(back_populates="ingestion_run")
 
 
+# CLOVER_ACQUISITION_ENGINE_001 (Product Owner 2026-11-22) — the shared Clover
+# acquisition engine: one common daily download time for every site, and Live
+# downloads only on request (`rfone_data_store.operational_acquisition`).
+ACQUISITION_REQUEST_SCHEDULED = "SCHEDULED"
+ACQUISITION_REQUEST_LIVE = "LIVE"
+ACQUISITION_REQUEST_KINDS = (ACQUISITION_REQUEST_SCHEDULED, ACQUISITION_REQUEST_LIVE)
+ACQUISITION_REQUEST_PENDING = "PENDING"
+ACQUISITION_REQUEST_RUNNING = "RUNNING"
+ACQUISITION_REQUEST_COMPLETE = "COMPLETE"
+ACQUISITION_REQUEST_FAILED = "FAILED"
+# A LIVE request is ACTIVE until its `live_until` passes or it is ENDED.
+ACQUISITION_REQUEST_ACTIVE = "ACTIVE"
+ACQUISITION_REQUEST_ENDED = "ENDED"
+ACQUISITION_REQUEST_STATUSES = (
+    ACQUISITION_REQUEST_PENDING, ACQUISITION_REQUEST_RUNNING, ACQUISITION_REQUEST_COMPLETE,
+    ACQUISITION_REQUEST_FAILED, ACQUISITION_REQUEST_ACTIVE, ACQUISITION_REQUEST_ENDED,
+)
+
+
+class OperationalAcquisitionSchedule(Base):
+    """The ONE daily time at which the ordinary download runs for every active
+    Clover site (Settings > Clover download). A single row; `timezone` is the
+    IANA zone `run_time` is read in. Seeded at 00:00 America/New_York."""
+
+    __tablename__ = "operational_acquisition_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_time: Mapped[time] = mapped_column(Time, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OperationalAcquisitionRequest(Base):
+    """One download for ONE site (Location), with its own outcome.
+
+    SCHEDULED  the ordinary download of `scheduled_local_date` (the date of the
+               common schedule, in its timezone); unique per site and date, so
+               a restart or a second instance never runs the same day twice.
+    LIVE       an authorized RF-One function asked for live data of this site:
+               while ACTIVE and before `live_until` the site's short cycle runs,
+               limited to `resources` (comma-separated: orders,payments,refunds).
+
+    `coverage_start`/`coverage_end` are set ONLY when the download ended
+    COMPLETE: a failed attempt never records coverage. The acquisition's own
+    checkpoints remain the site's `IngestionRun` rows."""
+
+    __tablename__ = "operational_acquisition_requests"
+    __table_args__ = (
+        UniqueConstraint("location_id", "kind", "scheduled_local_date",
+                         name="uq_operational_acquisition_request_schedule"),
+        CheckConstraint("kind IN ('SCHEDULED','LIVE')", name="ck_operational_acquisition_request_kind"),
+        CheckConstraint(
+            "status IN ('PENDING','RUNNING','COMPLETE','FAILED','ACTIVE','ENDED')",
+            name="ck_operational_acquisition_request_status",
+        ),
+        Index("ix_operational_acquisition_request_location_status", "location_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # The RF-One function that asked (e.g. "TIPS") and the account it acted
+    # for. NULL for the ordinary scheduled download.
+    requested_by_application: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    requested_by_account_id: Mapped[int | None] = mapped_column(ForeignKey("rfone_accounts.id"), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scheduled_local_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    resources: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    live_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The engine instance running this download and until when its claim holds (renewed while it works).
+    claimed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    coverage_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    coverage_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ingestion_run_id: Mapped[int | None] = mapped_column(ForeignKey("ingestion_runs.id"), nullable=True)
+
+
 class SourceRecord(Base):
     """Lightweight raw-provenance record: what was retrieved, when, and
     where the full payload can be found. Not a duplicate data warehouse —

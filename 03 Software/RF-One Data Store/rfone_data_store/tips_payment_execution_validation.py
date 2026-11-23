@@ -660,6 +660,9 @@ def _test_reconciliation_gate_on_business_date_readiness(session: Session, resul
                 notes="synthetic seed: Correction/Reconciliation cursor past this Business Date",
             )
         )
+    # CLOVER_ACQUISITION_ENGINE_001: what the gate reads — the nightly download done for every active site.
+    from .acquisition_fixtures import cover_every_active_site
+    cover_every_active_site(session)  # the nightly download already due now, done for every site
     session.commit()
 
     state_after = readiness_svc.describe_readiness(session, restaurant.id)
