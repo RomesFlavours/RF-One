@@ -55,6 +55,7 @@ from rfone_data_store.selection.industry.restaurant_templates import (
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 
 from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks, training_invite, pdl_rule_application
+from . import practical_test
 from .channels import CHANNEL_LABELS, CHANNELS
 from .role_descriptions import ROLE_DESCRIPTIONS, default_description, is_default_or_empty
 from . import job_ad
@@ -1178,6 +1179,8 @@ def candidate_detail(db, actor, position_id, pc_id):
         mail_recipient=mail_delivery.email_for(db, pc), deliveries=mail_delivery.rows_for(db, pc.id),
         mail_status_labels=mail_delivery.STATUS_LABELS,
         slot_url=lambda o: external_url("careers.slot_page", token=o.token), now=ps.utcnow(),
+        practical=practical_test.history(db, pc.id), practical_ok=practical_test.approved(db, pc.id),
+        practical_labels=practical_test.RESULT_LABELS, today=datetime.now(ZoneInfo(position.timezone)).date().isoformat(),
         section="evaluation", sp_dossier=sp_routes().dossier(db, position, pc.id),
         history=sp_routes().history(db, position, pc), job_candidates=_job_candidates(db, position))
 
@@ -1221,6 +1224,26 @@ def compare(db, actor, position_id):
     return render_template("workspace/compare.html", actor=actor, position=position, data=engine.comparison(db, position, pcs[:6]))
 
 
+@bp.route("/posizioni/<int:position_id>/candidati/<int:pc_id>/prova-pratica", methods=["POST"])
+@access_required
+def record_practical_test(db, actor, position_id, pc_id):
+    position = _position(db, actor, position_id, edit=True)
+    pc = _pc(db, position, pc_id)
+    back = url_for(".candidate_detail", position_id=position.id, pc_id=pc.id) + "#prova-pratica"
+    values, error = practical_test.validate(
+        test_date=request.form.get("test_date"), evaluator=request.form.get("evaluator"),
+        result=request.form.get("result"), menu_faq_ok=request.form.get("menu_faq_ok") == "1",
+        note=request.form.get("note"), today=datetime.now(ZoneInfo(position.timezone)).date())
+    if error:
+        flash(error, "error")
+        return redirect(back)
+    name = _first_name(db, pc) or "Candidate"
+    practical_test.record(db, position=position, pc=pc, actor=actor, values=values, candidate_name=name)
+    db.commit()
+    flash(f"Practical selection test recorded for {name}: {practical_test.RESULT_LABELS[values['result']]}.")
+    return redirect(back)
+
+
 @bp.route("/posizioni/<int:position_id>/decisioni", methods=["POST"])
 @access_required
 def record_decision(db, actor, position_id):
@@ -1239,6 +1262,14 @@ def record_decision(db, actor, position_id):
     if decision == ps.D_NOT_SELECTED and (reason not in ps.NOT_SELECTED_REASONS or (reason == "OTHER" and not note)):
         flash("For “Not selected”, choose a reason (and add a note for “Other”).")
         return redirect(back)
+    if decision == ps.D_HIRED:
+        # Practical selection test first (Pino, 20 and 23 Nov 2026). Nothing is recorded if anyone lacks it.
+        missing = [_first_name(db, _pc(db, position, i)) or "Candidate" for i in pc_ids
+                   if not practical_test.approved(db, i)]
+        if missing:
+            flash("Send to Training needs an approved practical selection test first (with Menu and FAQs "
+                  f"demonstrated). Not yet approved: {', '.join(missing)}.", "error")
+            return redirect(back)
     for pc_id in pc_ids:
         _record_decision(db, actor, position, _pc(db, position, pc_id), decision, reason, note)
     db.commit()

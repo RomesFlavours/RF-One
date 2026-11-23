@@ -16,6 +16,7 @@ from .mail_delivery import EmailOutbox  # noqa: F401
 from .pdl_rule_store import PDLRule  # noqa: F401
 from .action_models import AutomationItem,ActionRun  # noqa: F401
 from .observation_models import ObservationTemplate  # noqa: F401
+from .practical_test import PracticalTest  # noqa: F401
 
 # Shared-model tables (rfone_data_store/models.py) used by Selection's code.
 # test_schema_startup.py fails if Selection starts using one not listed here.

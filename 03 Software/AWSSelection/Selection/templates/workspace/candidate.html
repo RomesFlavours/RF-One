@@ -108,6 +108,34 @@
     </form>{% endif %}
   </div>
 
+  {# ---------------- Practical selection test ---------------- #}
+  <div class="card" id="prova-pratica">
+    <h2 style="margin-top:0">Practical selection test</h2>
+    <p class="small muted">The last check of Selection. Tatiana's approval is based on this test, and the candidate must also demonstrate knowledge of the Menu and FAQs. Send to Training stays locked until the newest result is Approved.</p>
+    {% if practical %}{% set p = practical[0] %}
+    <p>{% if practical_ok %}<span class="badge ok">Approved</span>{% else %}<span class="badge bad">{{ practical_labels[p.result] }}</span>{% endif %}
+      {{ p.test_date.strftime('%d %b %Y') }}, by <b>{{ p.evaluator_name }}</b> · Menu and FAQs: {{ 'demonstrated' if p.menu_faq_ok else 'not demonstrated' }}</p>
+    {% else %}<p><span class="badge">Not done yet</span></p>{% endif %}
+    {% if can_edit %}
+    <form method="post" action="{{ url_for('positions.record_practical_test', position_id=position.id, pc_id=pc.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid g2">
+        <div><label>Date of the test</label><input type="date" name="test_date" max="{{ today }}" value="{{ today }}" required></div>
+        <div><label>Run by</label><input type="text" name="evaluator" value="Tatiana" maxlength="255" required></div>
+      </div>
+      <div class="row">
+        <label class="row" style="margin:0;color:var(--ink)"><input type="radio" name="result" value="APPROVED" required> Approved</label>
+        <label class="row" style="margin:0;color:var(--ink)"><input type="radio" name="result" value="NOT_APPROVED"> Not approved</label>
+        <label class="row" style="margin:0;color:var(--ink)"><input type="checkbox" name="menu_faq_ok" value="1"> Demonstrated knowledge of the Menu and FAQs</label>
+      </div>
+      <label>Attitude and behaviour during the test</label>
+      <textarea name="note" rows="3" maxlength="2000" required></textarea>
+      <p><button class="btn">Record result</button></p>
+    </form>{% endif %}
+    {% for p in practical %}<div class="small" style="margin:.3rem 0">{{ p.created_at|local(position.timezone) }} · <b>{{ p.recorded_by_name }}</b> recorded:
+      {{ practical_labels[p.result] }} ({{ p.test_date.strftime('%d %b') }}, {{ p.evaluator_name }}; Menu and FAQs {{ 'yes' if p.menu_faq_ok else 'no' }}) · «{{ p.note }}»</div>{% endfor %}
+  </div>
+
   {# ---------------- 5 Decision ---------------- #}
   <div class="card" id="decisione">
     <h2 style="margin-top:0">Decision</h2>
@@ -118,8 +146,9 @@
       <input type="hidden" name="back" value="{{ url_for('positions.candidate_detail', position_id=position.id, pc_id=pc.id) }}#decisione">
       <div class="row">
         {% for code in ['INTERVIEW','DEEPEN','HIRED','ON_HOLD','NOT_SELECTED'] %}
-        <label class="row" style="margin:0;color:var(--ink)"><input type="radio" name="decision" value="{{ code }}" {{ 'checked' if decision and decision.decision == code }}> {{ DECISION_LABELS[code]|ui }}</label>{% endfor %}
+        <label class="row" style="margin:0;color:var(--ink)"><input type="radio" name="decision" value="{{ code }}" {{ 'checked' if decision and decision.decision == code }}{{ ' disabled' if code == 'HIRED' and not practical_ok and not (decision and decision.decision == code) }}> {{ DECISION_LABELS[code]|ui }}</label>{% endfor %}
       </div>
+      {% if not practical_ok and not (decision and decision.decision == 'HIRED') %}<p class="small muted">Send to Training unlocks when the practical selection test above is Approved.</p>{% endif %}
       <div class="grid g2">
         <div><label>Reason (for “Not selected”)</label><select name="reason"><option value="">—</option>
           {% for code, label in NOT_SELECTED_REASONS.items() %}<option value="{{ code }}">{{ label|ui }}</option>{% endfor %}</select></div>
