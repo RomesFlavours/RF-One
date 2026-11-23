@@ -74,6 +74,11 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 flash(str(exc), "error")
                 return redirect(url_for("employee_directory_home"))
 
+    def _clover_writer_available():
+        """REGISTRY_CLOVER_CREATE_001: whether «Crea in Clover» may write for a merchant (no network call)."""
+        from rfone_data_store.technical.connectors.clover import employee_writer
+        return app.config.get("CLOVER_EMPLOYEE_WRITER_AVAILABLE") or employee_writer.availability
+
     def _site_ids(db, account):
         """Sites the account may see in this Domain (central per-site authorization)."""
         from rfone_data_store import site_selection
@@ -150,6 +155,24 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     abort(403)
                 require_csrf()
                 anchor = ""
+                if request.form.get("action") in ("clover_create", "clover_clear"):
+                    # REGISTRY_CLOVER_CREATE_001: the service commits its own steps (claim before Clover is called),
+                    # so this request's row lock is released first; nothing was written by it.
+                    restaurant_id = int(request.form.get("restaurant_id", "0") or 0)
+                    if restaurant_id not in _site_ids(db, account):
+                        abort(403)
+                    db.commit()
+                    from rfone_data_store import clover_employee_create as clover_create
+                    factory = app.config.get("CLOVER_EMPLOYEE_WRITER_FACTORY") or clover_create.employee_writer.get_writer
+                    if request.form["action"] == "clover_create":
+                        outcome = clover_create.create_in_clover(
+                            SessionFactory, employee_id=employee_id, restaurant_id=restaurant_id, account_id=account.id,
+                            writer_factory=factory, writer_available=_clover_writer_available())
+                    else:
+                        outcome = clover_create.clear_attempt(SessionFactory, employee_id=employee_id,
+                            restaurant_id=restaurant_id, account_id=account.id, writer_factory=factory)
+                    flash(outcome.message, outcome.level)
+                    return redirect(url_for("employee_directory_detail", employee_id=employee_id) + f"#site-{restaurant_id}")
                 try:
                     if request.form.get("action") == "assign_site":
                         restaurant_id, role_id, area_id = directory.parse_site_role(request.form.get("site_role"))
@@ -232,8 +255,14 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             visible_sites = [site for site in directory.sites(db) if site.id in allowed]
             person_sites = directory.employee_site_ids(db, employee_id)
             pos = directory.pos_links(db, employee_id)
+            from rfone_data_store import clover_employee_create as clover_create
+            available = _clover_writer_available()
             site_cards = [{"site": site, "pos": pos.get(site.id),
-                           "has_pos": directory.site_clover_location(db, site.id) is not None}
+                           "has_pos": directory.site_clover_location(db, site.id) is not None,
+                           "clover": {
+                               "plan": None if pos.get(site.id) else clover_create.preflight(
+                                   db, employee_id, site.id, writer_available=available),
+                               **clover_create.status(db, employee_id, site.id)}}
                           for site in visible_sites if site.id in person_sites]
             return render_template(
                 "employee_directory_detail.html", contexts=contexts, context_options=context_options, employee=employee, links=links, locations=locations,

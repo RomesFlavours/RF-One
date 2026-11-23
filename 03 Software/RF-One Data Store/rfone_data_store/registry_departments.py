@@ -11,6 +11,8 @@ OQ-7 (RF1_OPERATIONAL_DATABASE_001, Product Owner 2026-11-21): a Clover role nev
 role, a department or an assignment. Clover correspondences written earlier (`source = CLOVER`) stay in
 `RegistryRoleMapping` as history; new ones are refused and they are no longer read. Every change closes the
 current row and opens a new one (history kept).
+REGISTRY_CLOVER_CREATE_001 (Product Owner, 2026-11-22): the current CLOVER rows are read again in one direction only,
+RF-One role -> Clover role of the site, by «Crea in Clover» (`clover_employee_create`); still never Clover -> RF-One.
 
 REGISTRY_MULTISITE_001 (Product Owner, 2026-11-22): the Clover staff-list import is removed, and with it
 the former `sync_site` step that refreshed the Clover role catalogue and its report at the end of the import.
