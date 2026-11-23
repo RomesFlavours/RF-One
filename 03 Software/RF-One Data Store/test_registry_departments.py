@@ -1,6 +1,6 @@
 """Registry Role/Department table + Clover role sync + historical roles (REGISTRY_CLOVER_DEPARTMENTS_001).
 Disposable SQLite, fake Clover."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import unittest
 
 from sqlalchemy import func, select
@@ -69,14 +69,23 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.db.commit()
         return out
 
-    def map(self, clover_id, role_code=None, department=None, restaurant=None):
-        return reg.set_role_mapping(self.db, restaurant_id=(restaurant or self.r_wp).id, source=reg.CLOVER,
-                                    original_key=clover_id, restaurant_role_id=self.roles[role_code].id if role_code else None,
-                                    department_id=department.id if department else None)
+    def legacy_clover_mapping(self):
+        self.db.add(m.RegistryRoleMapping(
+            restaurant_id=self.r_wp.id, source=reg.CLOVER, original_key="R1",
+            original_label="POS Server", restaurant_role_id=self.roles["SERVER"].id,
+            valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc), origin="SEED"))
+        self.db.flush()
 
-    def open_assignments(self, employee):
-        return list(self.db.scalars(select(m.EmployeeAssignment).where(
-            m.EmployeeAssignment.employee_id == employee.id, m.EmployeeAssignment.valid_to.is_(None))))
+    def assignment(self, employee, role, *, restaurant=None, site=None,
+                   start=None, end=None, source="MANUAL"):
+        row = m.EmployeeAssignment(
+            employee_id=employee.id, restaurant_id=(restaurant or self.r_wp).id,
+            operational_area_id=self.area.id, restaurant_role_id=self.roles[role].id,
+            location_id=(site or self.wp).id, valid_from=start or reg.utc_now() - timedelta(days=1),
+            valid_to=end, assignment_source=source)
+        self.db.add(row)
+        self.db.flush()
+        return row
 
     def count(self, model):
         return self.db.scalar(select(func.count()).select_from(model))
@@ -84,98 +93,75 @@ class RegistryDepartmentsTest(unittest.TestCase):
     def roster(self, alice_role=("R1", "Server"), bob_role=("R2", "BOH")):
         return [emp(e, n, *r) for e, n, r in (("A", "Alice Hand", alice_role), ("B", "Bob Cook", bob_role)) if r is not None]
 
-    def first_import_with_table(self):
-        self.sync(self.roster())                       # roles become known
-        self.map("R1", "SERVER"); self.map("R2", None, self.boh)
-        self.db.commit()
-
-    def test_mapping_assigns_and_classifies(self):
-        self.first_import_with_table()
-        [a] = self.open_assignments(self.alice)
-        self.assertEqual((a.restaurant_role_id, a.operational_area_id, a.assignment_source),
-                         (self.roles["SERVER"].id, self.area.id, "CLOVER_ROLE_SYNC"))
-        self.assertEqual(self.open_assignments(self.bob), [])          # BOH: department certain, RF-One role not
-        self.assertEqual(reg.department_of(self.db, self.alice.id), {"FOH"})
-        self.assertEqual(reg.department_of(self.db, self.bob.id), {"BOH"})
+    def test_clover_roles_never_assign_or_classify(self):
+        self.legacy_clover_mapping()
+        self.sync(self.roster())
+        self.assertEqual(self.count(m.EmployeeAssignment), 0)
+        self.assertEqual(reg.classification(self.db), [])
+        self.assertEqual(reg.overview(self.db)["sites"], [])
+        with self.assertRaises(ValueError):
+            reg.set_role_mapping(self.db, restaurant_id=self.r_wp.id, source=reg.CLOVER,
+                                 original_key="R1", restaurant_role_id=self.roles["HOST"].id)
+        self.assertEqual(self.count(m.RegistryRoleMapping), 1)
 
     def test_department_follows_rf_role(self):
-        self.first_import_with_table()
+        self.assignment(self.alice, "SERVER")
+        self.assertEqual(reg.department_of(self.db, self.alice.id), {"FOH"})
         reg.set_role_department(self.db, restaurant_role_id=self.roles["SERVER"].id, department_id=self.boh.id)
         self.assertEqual(reg.department_of(self.db, self.alice.id), {"BOH"})
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.RegistryRoleDepartment).where(
-            m.RegistryRoleDepartment.restaurant_role_id == self.roles["SERVER"].id)), 2)   # history kept
+            m.RegistryRoleDepartment.restaurant_role_id == self.roles["SERVER"].id)), 2)
 
     def test_second_import_without_changes_creates_nothing(self):
-        self.first_import_with_table()
-        models = (m.EmployeeAssignment, m.SourceRole, m.RegistryRoleMapping, m.RegistryRoleDepartment,
+        self.sync(self.roster())
+        models = (m.EmployeeAssignment, m.RegistryRoleMapping, m.RegistryRoleDepartment,
                   m.EmployeeDirectoryEvent, m.Employee, m.EmployeeCloverLink)
         before = {model: self.count(model) for model in models}
-        self.sync(self.roster()); self.sync(self.roster())
+        self.sync(self.roster())
+        self.sync(self.roster())
         self.assertEqual(before, {model: self.count(model) for model in models})
 
-    def test_role_change_closes_previous_and_opens_new(self):
-        self.first_import_with_table()
-        self.sync(self.roster(alice_role=("R3", "Host")))
-        self.map("R3", "HOST"); self.db.commit()
-        history = list(self.db.scalars(select(m.EmployeeAssignment).where(
-            m.EmployeeAssignment.employee_id == self.alice.id).order_by(m.EmployeeAssignment.id)))
-        self.assertEqual(len(history), 2)
-        self.assertIsNotNone(history[0].valid_to)
-        self.assertEqual(history[1].restaurant_role_id, self.roles["HOST"].id)
-        self.assertEqual(len(self.open_assignments(self.alice)), 1)
-
-    def test_left_clover_closes_assignment_keeps_person(self):
-        self.first_import_with_table()
-        self.sync(self.roster(alice_role=None))
-        self.assertEqual(self.open_assignments(self.alice), [])
-        self.assertEqual(self.count(m.EmployeeAssignment), 1)          # history kept
-        self.assertIsNotNone(self.db.get(m.Employee, self.alice.id))
-        self.assertEqual(reg.department_of(self.db, self.alice.id), set())
-
-    def test_manual_assignment_is_never_replaced(self):
-        self.db.add(m.EmployeeAssignment(employee_id=self.alice.id, restaurant_id=self.r_wp.id,
-            operational_area_id=self.area.id, restaurant_role_id=self.roles["MANAGER"].id, location_id=self.wp.id,
-            valid_from=datetime(2026, 2, 1, tzinfo=timezone.utc), assignment_source="MANUAL"))
-        self.db.commit()
-        self.first_import_with_table()
-        [a] = self.open_assignments(self.alice)
-        self.assertEqual((a.assignment_source, a.restaurant_role_id), ("MANUAL", self.roles["MANAGER"].id))
-
-    def test_dry_run_counts_without_writing(self):
+    def test_clover_changes_preserve_preexisting_assignments(self):
+        self.legacy_clover_mapping()
+        legacy = self.assignment(self.alice, "COOK", source="CLOVER_ROLE_SYNC")
+        manual = self.assignment(self.bob, "HOST")
         self.sync(self.roster())
-        self.db.add(m.RegistryRoleMapping(restaurant_id=self.r_wp.id, source=reg.CLOVER, original_key="R1",
-            original_label="Server", restaurant_role_id=self.roles["SERVER"].id,
-            valid_from=datetime.now(timezone.utc), origin="SEED"))
-        self.db.commit()
-        summary = reg.sync_site(self.db, location_id=self.wp.id, merchant_id="WP", dry_run=True)
-        self.assertEqual(summary.opened, 1)
-        self.assertEqual(self.count(m.EmployeeAssignment), 0)
+        self.sync(self.roster(alice_role=("R3", "Host")))
+        self.sync([])
+        self.assertEqual(self.count(m.EmployeeAssignment), 2)
+        self.assertIsNone(legacy.valid_to)
+        self.assertIsNone(manual.valid_to)
+        self.assertEqual(reg.department_of(self.db, self.alice.id), {"BOH"})
+        self.assertEqual(reg.department_of(self.db, self.bob.id), {"FOH"})
 
-    def test_md_same_role_name_separate_mapping_and_no_duplicate_person(self):
-        self.first_import_with_table()
-        _, pending = self.sync([emp("Z", "Alice Hand", "M1", "Server")], self.md)
-        self.assertEqual(len(pending), 1)                               # reported for verification
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.alice.id); self.db.commit()
-        self.sync([emp("Z", "Alice Hand", "M1", "Server")], self.md)
-        self.assertEqual(self.count(m.Employee), 2)                     # no duplicate person
-        rows = {r["restaurant_id"]: r for r in reg.classification(self.db, employee_ids=[self.alice.id])}
-        self.assertEqual(rows[self.r_wp.id]["department_code"], "FOH")
-        self.assertIsNone(rows[self.r_md.id]["department_code"])        # MD "Server" not mapped yet
-        self.map("M1", None, self.boh, restaurant=self.r_md)
+    def test_only_assignments_effective_at_the_requested_time_count(self):
+        now = reg.utc_now()
+        change = now + timedelta(days=30)
+        self.assignment(self.alice, "SERVER", end=change)
+        self.assignment(self.alice, "COOK", start=change)
+        self.assignment(self.bob, "COOK", start=change)
+        today = list(reg.classification(self.db, at=now))
+        self.assertEqual([(r["employee_id"], r["department_code"]) for r in today], [(self.alice.id, "FOH")])
+        self.assertEqual([r["department_code"] for r in reg.classification(self.db, at=change)], ["BOH", "BOH"])
+        role_counts = {r["name"]: r["people_today"] for r in reg.overview(self.db, at=now)["roles"]}
+        self.assertEqual((role_counts["Server"], role_counts["Cook"]), (1, 0))
+
+    def test_registry_assignments_classify_each_restaurant_independently(self):
+        self.assignment(self.alice, "SERVER")
+        self.assignment(self.alice, "COOK", restaurant=self.r_md, site=self.md)
         rows = {r["restaurant_id"]: r for r in reg.classification(self.db, employee_ids=[self.alice.id])}
         self.assertEqual((rows[self.r_wp.id]["department_code"], rows[self.r_md.id]["department_code"]), ("FOH", "BOH"))
 
-    def test_overview_history_and_missing_flags(self):
-        self.first_import_with_table()
-        self.map("R1", "HOST"); self.db.commit()
+    def test_overview_keeps_document_history_and_missing_flags(self):
+        self.legacy_clover_mapping()
+        reg.set_role_mapping(self.db, restaurant_id=self.r_wp.id, source=reg.EXCEL_WP_NOTE,
+                             original_key="4-Cook", restaurant_role_id=self.roles["COOK"].id)
+        reg.set_role_mapping(self.db, restaurant_id=self.r_wp.id, source=reg.EXCEL_WP_NOTE,
+                             original_key="4-Cook", restaurant_role_id=self.roles["SERVER"].id)
         data = reg.overview(self.db)
-        server = [r for s in data["sites"] for r in s["rows"] if r["original_label"] == "Server"][0]
-        self.assertEqual(len(server["history"]), 2)
-        self.assertEqual(server["people"], 1)
-        self.sync(self.roster() + [emp("C", "Carl New", "R9", "Dishwasher")])
-        data = reg.overview(self.db)
-        dish = [r for s in data["sites"] for r in s["rows"] if r["original_label"] == "Dishwasher"][0]
-        self.assertTrue(dish["missing_department"])
+        [row] = [r for site in data["sites"] for r in site["rows"]]
+        self.assertEqual(row["original_key"], "4-Cook")
+        self.assertEqual(len(row["history"]), 2)
         manager = [r for r in data["roles"] if r["name"] == "Manager"][0]
         self.assertTrue(manager["missing_department"])
 
@@ -197,7 +183,9 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.assertFalse(self.db.get(m.RegistryDepartment, d.id).active)
 
     def test_historical_roles_reconcile_without_touching_current(self):
-        self.first_import_with_table()
+        self.legacy_clover_mapping()
+        self.sync(self.roster())
+        assignment = self.assignment(self.alice, "SERVER")
         reg.set_role_mapping(self.db, restaurant_id=self.r_wp.id, source=reg.EXCEL_WP_NOTE, original_key="4-Cook",
                              restaurant_role_id=self.roles["COOK"].id)
         records = [{"row": 2, "register_id": "A", "name": "Alice Hand", "house": "BOH", "role": "4-Cook"},
@@ -216,7 +204,8 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.assertEqual((again.loaded, again.already_loaded), (0, 2))
         self.assertEqual(before, (self.count(m.Employee), self.count(m.EmployeeAssignment)))
         self.assertEqual(reg.department_of(self.db, self.alice.id, include_history=True), {"FOH"})   # current wins
-        self.sync(self.roster(alice_role=None))
+        assignment.valid_to = reg.utc_now()
+        self.db.flush()
         self.assertEqual(reg.department_of(self.db, self.alice.id, include_history=True), {"BOH"})   # history only
 
     def test_legacy_source_roles_do_not_accumulate(self):

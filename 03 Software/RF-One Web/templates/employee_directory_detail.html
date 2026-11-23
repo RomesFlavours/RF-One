@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% from "_nav_macros.html" import breadcrumb %}
+{% set help_section = 'employee_directory_detail' %}
 {% block page_title %}{{ employee.display_name }} · Anagrafica dipendenti · RF-One{% endblock %}
 {% block wrap_class %}wrap-wide{% endblock %}
 {% block content %}
 {{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), (employee.display_name or 'Dipendente', none)]) }}
 <h1>{{ employee.display_name or 'Nome da completare' }}</h1>
+<hr>
+<div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
 {% set profile_summary=person_profile_summary('employee',employee.id) %}
 <p><strong>Companies:</strong> {{ profile_summary.companies|sort|join(', ') or 'Not assigned' }}</p>
 <p><strong>Roles:</strong> {{ profile_summary.roles|sort|join('; ') or 'Not assigned' }}</p>
@@ -50,7 +53,6 @@
   <h3>{{ locations[link.location_id].name }}</h3>
   <p class="muted">Orari della sede: {{ zone_label(locations[link.location_id].timezone) }}.</p>
   <p>Merchant ID: {{ link.merchant_id }} · Employee ID: {{ link.external_employee_id }}</p>
-  <p>Ultimo aggiornamento: {{ link.last_seen_at|local_dt(locations[link.location_id].timezone) if link.last_seen_at else 'Mai aggiornato' }}</p>
   {% if link.id in absence_link_ids %}<p><strong>Assente dall’ultimo elenco completo di Clover: {{ 'assenza esaminata' if reviewed else 'posizione della sede da verificare' }}.</strong> Persona, assegnazioni e storico conservati.</p>{% elif link.state == "MISSING_REVIEW" %}<p class="muted">Account storico non più presente; la sede rimane collegata tramite un altro account.</p>{% endif %}
   {% if link.snapshot %}<dl>
     <dt>Nome Clover</dt><dd>{{ link.snapshot.name or 'Non fornito' }}</dd>
