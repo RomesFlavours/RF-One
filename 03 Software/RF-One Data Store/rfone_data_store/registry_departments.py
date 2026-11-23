@@ -36,6 +36,7 @@ from . import models as m
 
 ASSIGNMENT_SOURCE = "CLOVER_ROLE_SYNC"      # the same source the former one-off Winter Park sync used
 CLOVER = "CLOVER"
+REGISTRY = "REGISTRY"                       # basis/source of a department read from a Registry assignment
 EXCEL_WP_NOTE = "EXCEL_WP_NOTE"             # "2026 - WP Control Bank.xlsb", sheet Note
 SOURCE_LABELS = {CLOVER: "Clover", EXCEL_WP_NOTE: "Excel WP Control Bank · Note"}
 ORIGIN_SEED, ORIGIN_PERSON = "SEED", "PERSON"
@@ -204,12 +205,13 @@ def _sync(db, summary, location_id, merchant_id, now):
 # ---------------------------------------------------------------- data interface for every Domain
 
 def classification(db, *, employee_ids=None, include_history=False) -> list[dict]:
-    """Department of each confirmed person, one row per person and Restaurant.
+    """Department of each person, one row per person, Restaurant and Registry role.
 
-    basis CLOVER: the person's current Clover role at that site (people present in Clover today).
-    basis HISTORICAL (only with include_history): a role recorded by a source document, for people
-    without a current Clover role there. Keys: employee_id, restaurant_id, basis, source, original_role,
-    rf_role, department_code, department_name. Read-only."""
+    basis REGISTRY: the person's open Registry assignment (`EmployeeAssignment`, valid_to NULL) and the
+    department of that RF-One role. OQ-7 (Product Owner 2026-11-21): a Clover role never determines a
+    role or a department. basis HISTORICAL (only with include_history): a role recorded by a source
+    document, for people without an open Registry assignment at that Restaurant. Keys: employee_id,
+    restaurant_id, basis, source, original_role, rf_role, department_code, department_name. Read-only."""
     if not available(db):
         return []
     role_deps = role_departments(db)
@@ -230,20 +232,18 @@ def classification(db, *, employee_ids=None, include_history=False) -> list[dict
                 "department_code": department.code if department else None,
                 "department_name": department.name if department else None}
 
-    query = select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.employee_id.is_not(None),
-                                               m.EmployeeCloverLink.state == "PRESENT")
+    query = select(m.EmployeeAssignment).where(m.EmployeeAssignment.valid_to.is_(None))
     if employee_ids is not None:
-        query = query.where(m.EmployeeCloverLink.employee_id.in_(list(employee_ids)))
-    for link in db.scalars(query.order_by(m.EmployeeCloverLink.employee_id, m.EmployeeCloverLink.id)):
-        restaurant_id = site_restaurant_id(db, link.location_id)
-        named = _named_roles(link.snapshot)
-        if len(named) == 1:
-            clover_id, label = next(iter(named.items()))
-            role_id, department_id = mapped(restaurant_id, CLOVER, clover_id) if restaurant_id else (None, None)
-        else:
-            label, role_id, department_id = ", ".join(sorted(named.values())) or None, None, None
-        rows.append(row(link.employee_id, restaurant_id, "CLOVER", CLOVER, label, role_id, department_id))
-        current.add((link.employee_id, restaurant_id))
+        query = query.where(m.EmployeeAssignment.employee_id.in_(list(employee_ids)))
+    seen = set()
+    for assignment in db.scalars(query.order_by(m.EmployeeAssignment.employee_id, m.EmployeeAssignment.id)):
+        key = (assignment.employee_id, assignment.restaurant_id, assignment.restaurant_role_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(row(assignment.employee_id, assignment.restaurant_id, "REGISTRY", REGISTRY, None,
+                        assignment.restaurant_role_id, role_deps.get(assignment.restaurant_role_id)))
+        current.add((assignment.employee_id, assignment.restaurant_id))
     if include_history:
         query = select(m.RegistryPersonSourceRole)
         if employee_ids is not None:
@@ -394,18 +394,13 @@ def overview(db) -> dict:
     departments = {d.id: d for d in db.scalars(select(m.RegistryDepartment))}
     roles = {r.id: r for r in db.scalars(select(m.RestaurantRole))}
     restaurants = {r.id: r for r in db.scalars(select(m.Restaurant))}
-    holders, pending = Counter(), Counter()
-    for link in db.scalars(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.state == "PRESENT")):
-        for clover_id in _named_roles(link.snapshot):
-            holders[(link.location_id, clover_id)] += 1
-            pending[(link.location_id, clover_id)] += link.employee_id is None
     historical = Counter((r.restaurant_id, r.source, r.original_key) for r in db.scalars(select(m.RegistryPersonSourceRole)))
     open_by_role = Counter(a.restaurant_role_id for a in db.scalars(select(m.EmployeeAssignment).where(
         m.EmployeeAssignment.valid_to.is_(None))))
     by_role_today, by_role_history = Counter(), Counter()
     for item in classification(db, include_history=True):
         role_id = next((rid for rid, r in roles.items() if r.name == item["rf_role"]), None)
-        (by_role_today if item["basis"] == "CLOVER" else by_role_history)[role_id] += 1
+        (by_role_today if item["basis"] == "REGISTRY" else by_role_history)[role_id] += 1
 
     def describe(row, model_dep):
         return {"valid_from": row.valid_from, "valid_to": row.valid_to, "origin": row.origin,
@@ -425,30 +420,25 @@ def overview(db) -> dict:
             "history": [describe(h, h.department_id) for h in _history(db, m.RegistryRoleDepartment, restaurant_role_id=role.id)]})
 
     sites = defaultdict(list)
-    site_locations = defaultdict(list)
-    for rl, location in db.execute(select(m.RestaurantLocation, m.Location).join(
-            m.Location, m.Location.id == m.RestaurantLocation.location_id).where(m.RestaurantLocation.valid_to.is_(None))):
-        site_locations[rl.restaurant_id].append(location)
-    restaurant_ids = set(site_locations) | {r.restaurant_id for r in db.scalars(select(m.RegistryRoleMapping))}
+    # OQ-7: only historical document roles are listed; Clover roles never determine RF-One roles or departments
+    # (their earlier correspondences stay in the table as history).
+    restaurant_ids = {r.restaurant_id for r in db.scalars(select(m.RegistryRoleMapping).where(
+        m.RegistryRoleMapping.source != CLOVER))} | {r[0] for r in historical}
     for restaurant_id in restaurant_ids:
-        mappings = current_mappings(db, restaurant_id)
-        keys = {}
-        for location in site_locations.get(restaurant_id, []):
-            for source_role in db.scalars(select(m.SourceRole).where(m.SourceRole.location_id == location.id)):
-                if holders[(location.id, source_role.source_role_id)] or (CLOVER, source_role.source_role_id) in mappings:
-                    keys[(CLOVER, source_role.source_role_id)] = (source_role.name, location)
+        mappings = {k: v for k, v in current_mappings(db, restaurant_id).items() if k[0] != CLOVER}
+        keys = {(source, key): (key, None) for (rid, source, key) in historical if rid == restaurant_id}
         for (source, key), mapping in mappings.items():
-            keys.setdefault((source, key), (mapping.original_label, None))
+            keys[(source, key)] = (mapping.original_label, None)
         for (source, key), (label, location) in keys.items():
             mapping = mappings.get((source, key))
             role_id, department_id = effective(mapping, role_deps)
             department = departments.get(department_id)
-            people = holders[(location.id, key)] if location is not None else historical[(restaurant_id, source, key)]
+            people = historical[(restaurant_id, source, key)]
             sites[restaurant_id].append({
                 "restaurant_id": restaurant_id, "source": source, "source_label": SOURCE_LABELS.get(source, source),
                 "original_key": key, "original_label": label, "location": location.name if location else None,
                 "timezone": location.timezone if location else None,
-                "people": people, "pending": pending[(location.id, key)] if location is not None else 0,
+                "people": people, "pending": 0,
                 "restaurant_role_id": role_id, "own_department_id": mapping.department_id if mapping else None,
                 "department": department, "role_has_department": bool(role_id and role_deps.get(role_id)),
                 "missing_department": department is None,

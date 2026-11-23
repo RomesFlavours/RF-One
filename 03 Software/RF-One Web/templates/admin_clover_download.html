@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% set help_section = 'clover_download' %}
+{% block page_title %}{{ 'Scarico Clover' if ui_it else 'Clover download' }} · RF-One{% endblock %}
+{% block content %}
+{% set outcome_labels = {'COMPLETE': ('Completato' if ui_it else 'Complete'), 'FAILED': ('Fallito' if ui_it else 'Failed'), 'RUNNING': ('In corso' if ui_it else 'Running')} %}
+{{ breadcrumb([('RF-One', url_for('home')), (('Scarico Clover' if ui_it else 'Clover download'), None)]) }}
+<h1>{{ 'Scarico Clover' if ui_it else 'Clover download' }}</h1>
+<hr>
+<div style="display:flex;justify-content:flex-end">{% with ui=page_ui %}{% include '_how_works.html' %}{% endwith %}</div>
+<p class="muted">{% if ui_it %}Ogni giorno, all'orario indicato, RF-One scarica i dati nuovi e gli aggiornamenti da tutte le sedi Clover attive, ciascuna con il proprio negozio Clover. Se una sede non riesce, le altre vengono completate comunque.{% else %}Every day, at the time below, RF-One downloads new records and updates from every active Clover site, each with its own Clover merchant. If one site fails, the others are still completed.{% endif %}</p>
+
+<div class="card">
+  <h2>{{ 'Orario dello scarico ordinario' if ui_it else 'Ordinary download time' }}</h2>
+  <p>
+    {{ 'Orario attuale:' if ui_it else 'Current time:' }} <strong>{{ schedule.run_time.strftime('%H:%M') }}</strong> ({{ zone_label(tz) }}).
+    {{ 'Prossimo scarico:' if ui_it else 'Next download:' }} <strong>{{ next_run|local_dt(tz) }}</strong>.
+  </p>
+  <form method="post" action="{{ url_for('admin_clover_download_set') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row">
+      <label for="run_time">{{ 'Nuovo orario' if ui_it else 'New time' }} ({{ zone_label(tz) }})</label>
+      <input type="time" id="run_time" name="run_time" value="{{ schedule.run_time.strftime('%H:%M') }}" required>
+    </div>
+    <button type="submit">{{ 'Salva orario' if ui_it else 'Save time' }}</button>
+  </form>
+  <p class="muted">{% if ui_it %}Lo scarico di oggi già eseguito non viene ripetuto: il nuovo orario vale dal prossimo scarico non ancora eseguito.{% else %}A download already done today is not repeated: the new time applies from the next download not yet run.{% endif %}</p>
+</div>
+
+<div class="card">
+  <h2>{{ 'Stato per sede' if ui_it else 'Status by site' }}</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr>
+        <th>{{ 'Sede' if ui_it else 'Site' }}</th>
+        <th>{{ 'Ultimo scarico' if ui_it else 'Last download' }}</th>
+        <th>{{ 'Ultimo scarico riuscito' if ui_it else 'Last successful download' }}</th>
+        <th>{{ 'Dati coperti' if ui_it else 'Data covered' }}</th>
+        <th>Live</th>
+      </tr></thead>
+      <tbody>
+      {% for site in sites %}
+        <tr>
+          <td>{{ site.name }}{% if not site.active %} <span class="badge warn">{{ 'inattiva: non viene scaricata' if ui_it else 'inactive: not downloaded' }}</span>{% endif %}</td>
+          <td>
+            {% if site.last_attempt %}
+              <span class="badge {{ 'ok' if site.last_attempt.status == 'COMPLETE' else 'warn' }}">{{ outcome_labels.get(site.last_attempt.status, site.last_attempt.status) }}</span>
+              {{ (site.last_attempt.finished_at or site.last_attempt.started_at)|local_dt(site.timezone or tz) }}
+              {% if site.last_attempt.status == 'FAILED' and site.last_attempt.outcome %}<div class="muted">{{ site.last_attempt.outcome }}</div>{% endif %}
+            {% else %}<span class="muted">{{ 'nessuno' if ui_it else 'none yet' }}</span>{% endif %}
+          </td>
+          <td>{% if site.last_success %}{{ site.last_success.finished_at|local_dt(site.timezone or tz) }}{% else %}<span class="muted">{{ 'nessuno' if ui_it else 'none yet' }}</span>{% endif %}</td>
+          <td>{% if site.covered_through %}{{ site.covered_from|local_dt(site.timezone or tz) }} &rarr; {{ site.covered_through|local_dt(site.timezone or tz) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ ('attivo su richiesta' if ui_it else 'on, on request') if site.live_active else ('spento' if ui_it else 'off') }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty">{{ 'Nessuna sede Clover configurata.' if ui_it else 'No Clover site is configured.' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

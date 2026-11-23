@@ -18,7 +18,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = 'b2c320261121'
-down_revision = 'a1c220261121'
+down_revision = 'd2a120261122'  # re-parented after the engine revision applied on AWS 2026-11-23
 branch_labels = None
 depends_on = None
 

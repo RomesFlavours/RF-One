@@ -306,10 +306,8 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     # First import.
     # =========================================================================
     # Explicitly approved test identities: production imports never create people.
-    from .employee_directory import import_snapshot, attach_link
-    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
-    for link_id in pending:
-        attach_link(session, link_id=link_id, create_new=True)
+    from .registry_fixtures import cards_with_pos_ids
+    cards_with_pos_ids(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
     session.flush()
     summary1 = import_clover_period(
         session, location_id=location.id, period_start=period_start, period_end=period_end, client=client,
@@ -427,7 +425,9 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
         len(shift_rows) == 1 and shift_rows[0].source_shift_id == "SHIFT-IN-WINDOW",
     )
     result.check("summary: shifts imported count matches", summary1.shifts_imported == 1)
-    emp1_row = session.scalars(select(m.Employee).filter_by(source_system_id=source_system.id, source_employee_id="EMP1")).one()
+    # The card is the one whose POS ID (Clover employee EMP1) was recorded on the Registry card.
+    emp1_row = session.get(m.Employee, session.scalar(select(m.EmployeeCloverLink.employee_id).where(
+        m.EmployeeCloverLink.merchant_id == client.merchant_id, m.EmployeeCloverLink.external_employee_id == "EMP1")))
     result.check(
         "Shift: clock-in/clock-out and employee linkage preserved as source facts (not yet used for any "
         "eligibility/distribution decision)",
@@ -539,10 +539,13 @@ def _build_fixture_and_assert(session: Session, result: ValidationResult) -> Non
     result.check(
         "Historical Backfill/Live Sync (shared path): the first import writes exactly one SourceRecord "
         "per Clover record fetched, for every entity type this connector acquires (order/payment/refund/"
-        "employee/tender/device/shift)",
+        "tender/device/shift)",
         len(order_a_mirror) == 1 and len(payment_a_mirror) == 1 and len(refund_1_mirror) == 1
-        and len(employee_1_mirror) == 1 and len(tender_mirror) == 1 and len(device_mirror) == 1
-        and len(shift_mirror) == 1,
+        and len(tender_mirror) == 1 and len(device_mirror) == 1 and len(shift_mirror) == 1,
+    )
+    result.check(
+        "REGISTRY_MULTISITE_001: Clover's staff list is never read, so no employee SourceRecord is written",
+        len(employee_1_mirror) == 0 and not any(str(path).endswith("/employees") for path, *_ in client.calls),
     )
     first_run = session.scalars(
         select(m.IngestionRun)

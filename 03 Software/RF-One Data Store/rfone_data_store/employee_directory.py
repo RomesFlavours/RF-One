@@ -611,3 +611,11 @@ def source_absence_link_ids(links):
     """Absence is a site condition, not an alarm for retired duplicate accounts."""
     present_merchants = {link.merchant_id for link in links if link.state == "PRESENT"}
     return {link.id for link in links if link.state == "MISSING_REVIEW" and link.merchant_id not in present_merchants}
+
+
+def resolved_identities(db, merchant_id):
+    """{Clover employee id: RF-One person} at one merchant — only links already confirmed (Product Owner
+    2026-11-23: Registry reads no Clover data; Clover's staff list is never imported)."""
+    return {link.external_employee_id: link.employee_id for link in db.scalars(
+        select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == merchant_id,
+                                         m.EmployeeCloverLink.employee_id.is_not(None)))}

@@ -269,7 +269,7 @@ def _test_live_sync_cycle_populates_provider_mirror(session: Session, result: Va
     })
 
     # Fixture people are explicitly confirmed before acquisition starts.
-    from .employee_directory import import_snapshot, attach_link
+    from .registry_fixtures import cards_with_pos_ids
     records = list(client.employees)
     known = {record["id"] for record in records}
     for payment in client.payments:
@@ -277,9 +277,7 @@ def _test_live_sync_cycle_populates_provider_mirror(session: Session, result: Va
         if reference.get("id") and reference["id"] not in known:
             records.append({"id": reference["id"], "name": "Confirmed test person"})
             known.add(reference["id"])
-    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=records)
-    for link_id in pending:
-        attach_link(session, link_id=link_id, create_new=True)
+    cards_with_pos_ids(session, location_id=location.id, merchant_id=client.merchant_id, records=records)
     session.flush()
     summary = run_live_sync_cycle(session, location_id=location.id, client=client, now=now)
     session.commit()
@@ -385,10 +383,8 @@ def _test_live_sync_cycle_reduced_scope_and_idempotency(session: Session, result
         "result": "SUCCESS", "tipAmount": 200,
     })
 
-    from .employee_directory import import_snapshot, attach_link
-    _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
-    for link_id in pending:
-        attach_link(session, link_id=link_id, create_new=True)
+    from .registry_fixtures import cards_with_pos_ids
+    cards_with_pos_ids(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
     session.flush()
     summary1 = run_live_sync_cycle(session, location_id=location.id, client=client, now=now)
     session.commit()

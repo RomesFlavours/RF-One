@@ -78,21 +78,16 @@ class TwoCloverSitesTest(unittest.TestCase):
         # Clover rosters: Anna works at both sites, with a different Clover id at each merchant.
         self.wp_roster = [{"id": "W-ANNA", "name": "Anna Rossi"}, {"id": "W-LUCA", "name": "Luca Bianchi"}]
         self.md_roster = [{"id": "M-ANNA", "name": "Anna Rossi"}, {"id": "M-SARA", "name": "Sara Verdi"}]
-        _, pending = directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id=WP_MERCHANT,
-                                               records=self.wp_roster)
-        for link_id in pending:
-            directory.attach_link(self.db, link_id=link_id, create_new=True)
-        self.anna = self._person_for("W-ANNA")
-        self.luca = self._person_for("W-LUCA")
-        _, pending = directory.import_snapshot(self.db, location_id=self.md.id, merchant_id=MD_MERCHANT,
-                                               records=self.md_roster)
-        for link_id in pending:
-            link = self.db.get(m.EmployeeCloverLink, link_id)
-            if link.external_employee_id == "M-ANNA":
-                directory.attach_link(self.db, link_id=link_id, employee_id=self.anna.id)  # same person
-            else:
-                directory.attach_link(self.db, link_id=link_id, create_new=True)
-        self.sara = self._person_for("M-SARA")
+        # REGISTRY_MULTISITE_001: the cards exist in Registry and carry each site's POS ID (no roster import).
+        self.anna, self.luca, self.sara = (m.Employee(display_name=n) for n in ("Anna Rossi", "Luca Bianchi", "Sara Verdi"))
+        self.db.add_all([self.anna, self.luca, self.sara])
+        self.db.flush()
+        for person, location, merchant, pos in ((self.anna, self.wp, WP_MERCHANT, "W-ANNA"),
+                                                (self.luca, self.wp, WP_MERCHANT, "W-LUCA"),
+                                                (self.anna, self.md, MD_MERCHANT, "M-ANNA"),
+                                                (self.sara, self.md, MD_MERCHANT, "M-SARA")):
+            self.db.add(m.EmployeeCloverLink(employee_id=person.id, location_id=location.id, merchant_id=merchant,
+                                             external_employee_id=pos, state="MANUAL"))
         self.db.commit()
 
     def tearDown(self):
@@ -206,34 +201,6 @@ class TwoCloverSitesTest(unittest.TestCase):
                          {self.anna.id})
 
     # -- 4. a site's roster update never changes the other site's states -----
-    def test_wp_roster_update_does_not_change_md_states_and_vice_versa(self):
-        md_before = {l.id: l.state for l in self.db.scalars(
-            select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == MD_MERCHANT))}
-        directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id=WP_MERCHANT,
-                                  records=[{"id": "W-LUCA", "name": "Luca Bianchi"}])  # Anna left WP's roster
-        self.db.commit()
-        states = {l.external_employee_id: l.state for l in self.db.scalars(select(m.EmployeeCloverLink))}
-        self.assertEqual(states["W-ANNA"], "MISSING_REVIEW")
-        self.assertEqual(states["M-ANNA"], "PRESENT", "Anna is still on Mount Dora's roster")
-        self.assertEqual({l.id: l.state for l in self.db.scalars(select(m.EmployeeCloverLink).where(
-            m.EmployeeCloverLink.merchant_id == MD_MERCHANT))}, md_before)
-        directory.import_snapshot(self.db, location_id=self.md.id, merchant_id=MD_MERCHANT, records=[])
-        self.db.commit()
-        self.assertEqual(self.db.scalar(select(m.EmployeeCloverLink.state).where(
-            m.EmployeeCloverLink.external_employee_id == "W-LUCA")), "PRESENT")
-        self.assertTrue(all(p.active is not False for p in (self.anna, self.luca, self.sara)))  # never deactivated
-
-    def test_cross_site_change_inside_an_import_is_refused(self):
-        before = directory._other_site_states(self.db, WP_MERCHANT, self.wp.id)
-        md_link = self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == MD_MERCHANT))
-        md_link.state = "MISSING_REVIEW"
-        with self.assertRaises(ValueError):
-            directory._refuse_other_site_changes(self.db, WP_MERCHANT, self.wp.id, before)
-        self.db.rollback()
-        with self.assertRaises(ValueError):
-            directory.import_snapshot(self.db, location_id=self.wp.id, merchant_id=MD_MERCHANT,
-                                      records=self.md_roster)  # roster of one merchant onto the other site
-
     # -- 5. shifts without a Location: reconstructed from Clover, or pending -------
     def _old_shift(self, source_id, employee, *, mirrored_at=None):
         shift = m.Shift(source_system_id=self.source.id, source_shift_id=source_id, employee_id=employee.id,
@@ -280,23 +247,21 @@ class TwoCloverSitesTest(unittest.TestCase):
         self.assertEqual(pending_shift_count(self.db, start=PERIOD_START, end=PERIOD_END), 3)
         self.assertEqual(self.db.scalar(select(m.Shift.location_id).where(m.Shift.source_shift_id == "OLD-WP")), None)
 
-    # -- 6. Registry: MD roster prepared while the site is inactive -----------
-    def test_md_roster_refresh_allowed_while_inactive_without_touching_wp_or_sales(self):
-        wp_links_before = {l.id: (l.state, l.last_seen_at) for l in self.db.scalars(
-            select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == WP_MERCHANT))}
-        client = self._md_client()
-        client.employees = self.md_roster + [{"id": "M-NEW", "name": "Nuovo Cuoco"}]
-        problems = correction_sync.refresh_roster_site(self.db, restaurant_id=self.md_restaurant.id, client=client)
-        self.assertEqual(problems, [])
-        self.db.expire_all()
-        new = self.db.scalar(select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.external_employee_id == "M-NEW"))
-        self.assertEqual((new.location_id, new.employee_id, new.state), (self.md.id, None, "PRESENT"))  # pending identity
-        self.assertEqual({l.id: (l.state, l.last_seen_at) for l in self.db.scalars(
-            select(m.EmployeeCloverLink).where(m.EmployeeCloverLink.merchant_id == WP_MERCHANT))}, wp_links_before)
-        self.assertEqual([path for path, _ in client.calls], [f"/v3/merchants/{MD_MERCHANT}/employees"],
-                         "roster only: no orders, payments, shifts or refunds are read")
-        self.assertEqual(self.db.scalar(select(m.Order.id).where(m.Order.location_id == self.md.id)), None)
-        self.assertFalse(self.md.active)
+    # -- 6. Registry: no roster path (REGISTRY_MULTISITE_001) ------------------
+
+
+    def test_no_roster_path_remains_for_either_site(self):
+        # REGISTRY_MULTISITE_001: the roster-only Mount Dora refresh and the cross-site roster import are gone.
+        for name in ("refresh_roster_site", "ensure_roster_site", "_refresh_employees", "_refresh_roster_sites"):
+            self.assertFalse(hasattr(correction_sync, name), name)
+        # Product Owner 2026-11-23: Registry reads no Clover data — no Clover acquisition module calls the
+        # directory's staff-list import any more.
+        import inspect
+        from rfone_data_store.technical.connectors.clover import acquisition as acq, ingest, historical_backfill_detail
+        for module in (correction_sync, acq, ingest, historical_backfill_detail):
+            source = inspect.getsource(module)
+            for name in ("import_snapshot", "attach_link", "observe_historical_employee", "sync_site"):
+                self.assertNotIn(name + "(", source, f"{module.__name__}: {name}")
 
 
 if __name__ == "__main__":

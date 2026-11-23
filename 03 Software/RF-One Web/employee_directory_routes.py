@@ -1,19 +1,17 @@
-"""Administration > Employee Directory; existing RF-One access and Clover jobs."""
+"""Administration > Employee Directory; existing RF-One access. No Clover download from here (Product Owner
+2026-11-23: Registry reads no Clover data; downloads are on the Clover Acquisition page)."""
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 from flask import abort, flash, redirect, render_template, request, url_for
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import employee_directory as directory
 from rfone_data_store import models as m
 from rfone_data_store import access_profiles as profiles
 from rfone_data_store import rfone_web_session as shared_session
-from rfone_data_store.technical.connectors.clover import acquisition_jobs as jobs
-from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
 
 
 def _employee_groups(rows, locations):
@@ -88,26 +86,6 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 flash(str(exc), "error")
                 return redirect(url_for("employee_directory_home"))
 
-    def _sites(db):
-        locations = list(db.scalars(select(m.Location).join(
-            m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id
-        ).where(m.SourceSystem.code == "CLOVER").order_by(m.Location.id)))
-        sites = []
-        md_id = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-        for location in locations:
-            # Connection configuration belongs to the worker. The web app only
-            # needs the non-secret configured marker for MD, not the token.
-            md = location.source_location_id == md_id if md_id else "dora" in location.name.casefold()
-            configured = bool(location.source_location_id) and (not md or bool(md_id and (
-                os.environ.get("CLOVER_MD_API_TOKEN") or os.environ.get("RFONE_CLOVER_MD_CONFIGURED") == "1")))
-            last_sync = db.scalar(select(func.max(m.IngestionRun.finished_at)).where(
-                m.IngestionRun.location_id == location.id,
-                m.IngestionRun.source_system_id == location.source_system_id,
-                m.IngestionRun.resource_type.is_(None),
-                m.IngestionRun.status == "COMPLETE",
-            ))
-            sites.append({"location": location, "configured": configured, "last_sync": last_sync})
-        return sites
 
     @app.route("/administration/employees")
     @gate
@@ -137,15 +115,11 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
                        for l in all_links if directory.pending_requires_review(db, l)]
             if scope_ids is not None:pending=[]
-            sites = _sites(db)
             active_groups, dismissed = _employee_groups(rows, locations)
             return render_template(
                 "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
                 pending=pending, locations=locations,
-                employees=directory.employee_options(db, include_inactive=True), sites=sites, query=query,
-                md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-                                  and s["configured"] for s in sites),
-                can_sync=shared_session.account_may_enter_domain(db, account, "CLOVER_ACQUISITION"),
+                employees=directory.employee_options(db, include_inactive=True), query=query,
                 can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
             )
 
@@ -330,24 +304,3 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 accounts={a.id: a.display_name for a in db.scalars(select(m.RFOneAccount))},
                 people_by_department=people_by_department)
 
-    @app.route("/administration/employees/sync-now", methods=["POST"])
-    @gate
-    @require_domain_access("CLOVER_ACQUISITION")
-    def employee_directory_sync():
-        require_csrf()
-        with SessionFactory() as db:
-            account = load_current_account(db)
-            try:
-                location_id = int(request.form.get("location_id", ""))
-                site = next((s for s in _sites(db) if s["location"].id == location_id), None)
-                if site is None or not site["configured"]:
-                    raise ValueError("This site's Clover connection is not configured.")
-                run = jobs.request_sync_now(db, location_id=location_id, launcher=get_launcher(),
-                                            requested_by_account_id=account.id)
-                db.commit()
-                flash(f"Synchronization requested (run {run.id}). Refresh this page to see the outcome.", "info")
-            except (ValueError, ImportAlreadyRunningError, jobs.JobLaunchError, jobs.NoSyncStartingPointError,
-                    jobs.NotACloverLocationError) as exc:
-                db.rollback()
-                flash(str(exc), "error")
-        return redirect(url_for("employee_directory_home"))

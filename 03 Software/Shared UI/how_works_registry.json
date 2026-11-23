@@ -87,6 +87,7 @@
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
         "employee_departments.html": "help/employee_departments.html#employee-departments",
+        "admin_clover_download.html": "help/clover_download.html#clover-download",
         "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition",
         "tips_validation_runs.html": "help/tips_validation_runs.html#tips-validation-runs",
         "tips_validation_run.html": "help/tips_validation.html#tips-validation",
@@ -181,6 +182,7 @@
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
+        "admin_clover_download.html": "help/clover_download.html#clover-download",
         "training_workspace/students.html": "help/training_students.html#training-students",
         "training_workspace/content.html": "help/training_content.html#training-content",
         "training_workspace/course.html": "help/training_course.html#training-course",
@@ -224,6 +226,7 @@
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
+        "admin_clover_download.html": "help/clover_download.html#clover-download",
         "role_profiles.html": "help/registry.html#registry",
         "employee_departments.html": "help/employee_departments.html#employee-departments",
         "clover_acquisition.html": "help/clover_acquisition.html#clover-acquisition",
@@ -298,6 +301,7 @@
       "root": "03 Software/RF-One Web",
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
+        "admin_clover_download.html": "help/clover_download.html#clover-download",
         "kitchen_dashboard.html": "help/kitchen_dashboard.html#kitchen-dashboard",
         "kitchen_recipes.html": "help/kitchen_recipes.html#kitchen-recipes",
         "kitchen_configuration.html": "help/kitchen_configuration.html#kitchen-configuration",

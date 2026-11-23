@@ -24,6 +24,19 @@ from . import mapping, parser, reader
 T = TypeVar("T")
 
 
+# Person attribution columns of Clover work (Shift, Order, Payment, Refund).
+ATTRIBUTION_COLUMNS = ("employee_id", "override_in_employee_id", "override_out_employee_id")
+
+
+def keep_resolved_attribution(existing: Any, values: dict[str, Any]) -> dict[str, Any]:
+    """REGISTRY_MULTISITE_001 (Codex review 1): when Clover re-reads or corrects a record already
+    stored, an attribution already resolved to a person is history and is never replaced — not even when
+    the record's POS ID now belongs to somebody else after a correction. A record still without a person
+    (NULL) can still be attributed. Every other column is refreshed from Clover as before."""
+    return {key: value for key, value in values.items()
+            if not (key in ATTRIBUTION_COLUMNS and getattr(existing, key, None) is not None)}
+
+
 def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], values: dict[str, Any]) -> T:
     """Idempotent insert-or-update keyed by `unique_filter` (expected to
     match one of the schema's `UniqueConstraint`s — task §9). Existing rows
@@ -34,7 +47,7 @@ def upsert(session: Session, model: type[T], unique_filter: dict[str, Any], valu
         if model is m.Employee:
             values = {k: v for k, v in values.items() if k not in
                       {"display_name", "custom_id", "active", "system_role", "location_id"}}
-        for key, value in values.items():
+        for key, value in keep_resolved_attribution(existing, values).items():
             setattr(existing, key, value)
         return existing
     if model is m.Employee:
@@ -512,28 +525,11 @@ def ingest_employees(
     ingestion_run_id: int,
     retrieved_at: datetime,
 ) -> dict[str, int]:
-    from ....employee_directory import import_snapshot
+    """REGISTRY_MULTISITE_001: the bundle's staff list never creates, updates or proposes a Registry card.
+    Only POS IDs already typed on Registry cards at this site resolve a Clover employee."""
+    from ....employee_directory import resolved_identities
     location = session.get(m.Location, location_id)
-    result, pending = import_snapshot(
-        session, location_id=location_id, merchant_id=location.source_location_id,
-        records=bundle.employees, observed_at=retrieved_at, run_id=ingestion_run_id,
-    )
-    if pending:
-        # Do not let historical-stub fallback manufacture another identity
-        # for a current employee whose match still needs human confirmation.
-        raise ValueError("Employee identities require confirmation in Employee Directory before bulk ingestion.")
-    for raw in bundle.employees:
-        source_id = raw["id"]
-        _add_source_record(
-            session,
-            ingestion_run_id=ingestion_run_id,
-            source_system_id=source_system_id,
-            entity_type="employee",
-            source_id=source_id,
-            retrieved_at=retrieved_at,
-            raw_path=str(bundle.run_dir / "employees.json"),
-        )
-    return result
+    return resolved_identities(session, location.source_location_id)
 
 
 def ingest_source_roles(
@@ -571,63 +567,6 @@ def ingest_source_roles(
     return result
 
 
-def ingest_employee_source_roles(
-    session: Session,
-    bundle: reader.CloverSourceBundle,
-    source_system_id: int,
-    employee_map: dict[str, int],
-    source_role_map: dict[str, int],
-    retrieved_at: datetime,
-    stats: IngestionStats,
-) -> None:
-    """Employee <-> named Role membership (TASK_CLOVER_004), discovered via
-    `employees?expand=role` — confirmed to return the SPECIFIC named Role
-    (id/name/systemRole), not merely the systemRole tier `bundle.employees`
-    already carries. Source is `bundle.employees_expand_role`, which is
-    `None` if that supplementary cache was never fetched — in that case this
-    is a no-op, never a fabricated membership. Clover's Employee resource
-    (and therefore this relationship) is a CURRENT SNAPSHOT ONLY — an
-    employee id absent from `bundle.employees_expand_role` (e.g. a
-    historical stub, TASK_DATABASE_002 § 7) simply gets no membership row,
-    never an invented one."""
-    for emp_raw in bundle.employees_expand_role or []:
-        employee_source_id = emp_raw.get("id")
-        employee_id = employee_map.get(employee_source_id)
-        if employee_id is None:
-            continue
-        current, complete = set(), "roles" in emp_raw
-        for role_ref in (emp_raw.get("roles") or {}).get("elements", []):
-            role_source_id = role_ref.get("id")
-            source_role_id = source_role_map.get(role_source_id)
-            if source_role_id is None:
-                stats.bump("employee_source_roles_unresolved_role")
-                complete = False
-                continue
-            current.add(source_role_id)
-            existing = session.scalars(
-                select(m.EmployeeSourceRole).filter_by(
-                    employee_id=employee_id, source_role_id=source_role_id
-                )
-            ).first()
-            if existing is not None:
-                existing.observed_at = retrieved_at
-            else:
-                session.add(
-                    m.EmployeeSourceRole(
-                        employee_id=employee_id,
-                        source_role_id=source_role_id,
-                        source_system_id=source_system_id,
-                        observed_at=retrieved_at,
-                    )
-                )
-            stats.bump("employee_source_roles")
-        if complete:
-            # REGISTRY_CLOVER_DEPARTMENTS_001: only Clover's current role(s) stay (no accumulation).
-            from .historical_backfill_detail import _drop_stale_source_roles
-            _drop_stale_source_roles(session, employee_id, source_system_id, current)
-    session.flush()
-
-
 def ingest_employee_stub_references(
     session: Session,
     bundle: reader.CloverSourceBundle,
@@ -646,18 +585,12 @@ def ingest_employee_stub_references(
 
     Unknown historical references now require approval in the RF-One directory.
     No source stub may manufacture an RF-One person."""
-    from ....employee_directory import observe_historical_employee
     referenced = parser.referenced_employee_ids(bundle.shifts, bundle.orders, bundle.payments, bundle.refunds)
     missing = sorted(referenced - set(employee_map.keys()))
-    location = session.get(m.Location, location_id)
-    for source_id in missing:
-        person = observe_historical_employee(session, location_id=location_id,
-            merchant_id=location.source_location_id, raw={"id": source_id}, available=False,
-            observed_at=retrieved_at, run_id=ingestion_run_id)
-        if person is None:
-            raise ValueError("Historical employee requires confirmation in RF-One before bulk ingestion.")
-        employee_map[source_id] = person.id
-    session.flush()
+    if missing:
+        # REGISTRY_MULTISITE_001: no card or proposal is created; the operator types the POS ID on the card.
+        raise ValueError(f"{len(missing)} Clover employee ID(s) have no POS ID on a Registry card at this site; "
+                         "bulk ingestion stopped before writing work records.")
 
 
 @dataclass
@@ -1170,9 +1103,8 @@ def run_full_ingestion(
     catalog.source_role_by_source_id = ingest_source_roles(
         session, bundle, location_id, source_system_id, ingestion_run_id, retrieved_at
     )
-    ingest_employee_source_roles(
-        session, bundle, source_system_id, catalog.employee_by_source_id, catalog.source_role_by_source_id, retrieved_at, stats
-    )
+    # Product Owner 2026-11-23: Registry reads no Clover data — Clover's employee roles are never written
+    # onto RF-One cards (the former ingest_employee_source_roles step is removed).
     ingest_shifts(session, bundle, source_system_id, catalog.employee_by_source_id, ingestion_run_id, retrieved_at, stats)
 
     _p("Ingesting orders...")
