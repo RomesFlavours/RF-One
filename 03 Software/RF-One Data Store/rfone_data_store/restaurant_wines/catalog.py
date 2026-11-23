@@ -171,6 +171,38 @@ def update_wine(session: Session, wine: m.Wine, data: WineInput) -> m.Wine:
     return wine
 
 
+def set_vintage(session: Session, wine: m.Wine, vintage_year: int | None) -> m.Wine:
+    """Overwrite the catalog vintage from a Wine list row dialog (the
+    Availability vintage is uncertain; the list is where it gets corrected).
+    An empty vintage means non-vintage."""
+    if vintage_year is not None and not MIN_VINTAGE_YEAR <= vintage_year <= MAX_VINTAGE_YEAR:
+        raise WineCatalogError(f"Vintage must be between {MIN_VINTAGE_YEAR} and {MAX_VINTAGE_YEAR}.")
+    non_vintage = vintage_year is None
+    if wine.vintage_year == vintage_year and wine.non_vintage == non_vintage:
+        return wine
+    key = identity_key(wine.wine_type_id, wine.producer, wine.label_name, vintage_year, non_vintage,
+                       wine.bottle_size_ml)
+    _check_duplicate(session, key, wine.id)
+    wine.vintage_year = vintage_year
+    wine.non_vintage = non_vintage
+    wine.identity_key = key
+    session.flush()
+    return wine
+
+
+def delete_wine(session: Session, wine: m.Wine) -> int:
+    """Remove the wine from the whole Wines module: its rows on every Wine
+    list version (past ones included) and the catalog record. Returns the
+    number of Wine list rows removed."""
+    items = session.scalars(select(m.WineListItem).where(m.WineListItem.wine_id == wine.id)).all()
+    for item in items:
+        session.delete(item)
+    session.flush()
+    session.delete(wine)
+    session.flush()
+    return len(items)
+
+
 def list_wines(session: Session, query: str | None = None) -> list[m.Wine]:
     stmt = select(m.Wine).options(joinedload(m.Wine.wine_type)).join(m.WineType, m.WineType.id == m.Wine.wine_type_id)
     words = clean_name(query).split()
