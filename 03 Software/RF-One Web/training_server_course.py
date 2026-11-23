@@ -354,16 +354,18 @@ def install(app, *, SessionFactory, auth):
                 if _resend_too_soon(db, invitation.id):
                     return jsonify(status='skipped', message='Wait at least one minute before asking again '
                                    '(up to five per hour).'), 409
-                # Same invitation row: a fresh secret replaces the old one (only its digest is ever stored, so the
-                # previous link cannot be read back); the newest email is the one that works.
+                # Same invitation row. Only the digest of a link is stored, so a fresh secret is prepared and
+                # emailed FIRST; the previous link stays valid until the email service accepts the new one, and
+                # only then the new secret replaces it (REGISTRY_MULTISITE_001, Codex review).
                 token = secrets.token_urlsafe(32)
-                invitation.token_digest = enroll.digest(token)
-                directory._event(db, RESEND_ACTION, employee_id=card_id, account_id=trainer.id,
-                                 details={'invitation_id': invitation.id, 'restaurant_id': site.id})
                 link = public_base() + url_for('tw_enrollment_link', token=token)
-                email = invitation.email
-                db.commit()
-                return _send_invitation(email, link)
+                resend = dict(invitation_id=invitation.id, card_id=card_id, site_id=site.id, email=invitation.email,
+                              old_digest=invitation.token_digest, actor_id=trainer.id)
+                db.rollback()   # nothing changed yet: the email is sent with no transaction or lock held
+                if not _deliver(resend['email'], link):
+                    return jsonify(status='created', message='The email could not be sent. The link you already '
+                                   'received still works; try again in a minute.'), 502
+                return _swap_after_delivery(resend, token)
             try:
                 invitation, token = enroll.issue(db, actor=trainer, email=email, restaurant_id=site.id,
                                                  role_id=role[0], area_id=role[1])
@@ -381,6 +383,32 @@ def install(app, *, SessionFactory, auth):
                 db.rollback()
                 return jsonify(status='skipped', message=str(exc) if isinstance(exc, ValueError) else 'Try again in a minute.'), 409
         return _send_invitation(email, link)
+
+    def _deliver(email, link):
+        try:
+            from training_enrollment_routes import invitation_email
+            subject, body = invitation_email('', link)
+            account_email.send_email(to_address=email, subject=subject, text_body=body)
+        except account_email.EmailSendError:
+            return False
+        return True
+
+    def _swap_after_delivery(resend, token):
+        """The new email was accepted: from now on its link is the one that works, on the same invitation.
+        An invitation activated, revoked or resent meanwhile is never changed (never reopened)."""
+        with SessionFactory() as db:
+            invitation = db.scalar(select(enroll.EnrollmentInvitation)
+                                   .where(enroll.EnrollmentInvitation.id == resend['invitation_id']).with_for_update())
+            if invitation is None or invitation.consumed_at:
+                return jsonify(status='activated', login_url=public_base() + url_for('tw_login'),
+                               message='You have already activated your RF-One Training access. Sign in.'), 200
+            if invitation.revoked_at or invitation.token_digest != resend['old_digest']:
+                return jsonify(status='skipped', message='Your invitation changed meanwhile. Ask your manager.'), 409
+            invitation.token_digest = enroll.digest(token)
+            directory._event(db, RESEND_ACTION, employee_id=resend['card_id'], account_id=resend['actor_id'],
+                             details={'invitation_id': invitation.id, 'restaurant_id': resend['site_id']})
+            db.commit()
+        return jsonify(status='sent')
 
     def _send_invitation(email, link):
         try:

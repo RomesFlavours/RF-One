@@ -9,7 +9,10 @@ goes to the Training test client, Training's call back reads the course's own re
   2. No site is ever assumed: a hire without a site gets no code; a code whose site is unknown or missing
      at Training, or a site without a unique Server role, is refused with nothing saved and no email.
   3. Asking again with the same code and email: the same invitation's link is sent again (same card and
-     site, no second invitation or account); once activated, sign in; another code or email: no resend.
+     site, no second invitation or account). The link already received keeps working until the email service
+     accepts the new email (a refused send changes nothing); after a successful resend the new link works.
+     Activated (also while the new email is being sent): never reopened, sign in. Another code or email: no
+     resend.
   4. Codes issued before the switch: an active RF-One invitation stays usable; a code still valid without a
      site is bound to the site confirmed for the hire, and used there.
 Never sends mail, never contacts AWS, Clover or the real course.
@@ -66,7 +69,7 @@ class ServerCourseInviteTest(base.RegistryTrainingHttpTest):
         self.store, self.course = _load_course(folder)
         import training_server_course as sc
         self.sc = sc
-        self.sent = []
+        self.sent, self.fail_send, self.on_send = [], False, None
         trainer_id = self.trainer_id
         patches = [
             # the course asks Training: the request goes to the Training test client
@@ -102,6 +105,11 @@ class ServerCourseInviteTest(base.RegistryTrainingHttpTest):
         return Answer(body)
 
     def _send(self, *, to_address, subject, text_body, **kwargs):
+        from rfone_data_store.technical import account_email
+        if self.on_send:
+            self.on_send()
+        if self.fail_send:
+            raise account_email.EmailSendError("the email service refused the message")
         self.sent.append((to_address, text_body))
 
     def _hire(self, location, name="New Server"):
@@ -179,6 +187,20 @@ class ServerCourseInviteTest(base.RegistryTrainingHttpTest):
             card_id = directory.card_for_person(db, first.person_id).id
         before = self._counts()
         old_token = LINK_RE.search(self.sent[0][1]).group(1)
+        # asked again while the email service refuses it: nothing changes, the link already received still works
+        self.fail_send = True
+        ok, message = self.course.request_invite(hid, email)
+        self.fail_send = False
+        self.assertFalse(ok)
+        self.assertIn("still works", message)
+        self.assertEqual(len(self.sent), 1)
+        with self.factory() as db:
+            row = db.get(en.EnrollmentInvitation, first_id)
+            self.assertEqual((row.token_digest, row.revoked_at, row.consumed_at), (first_digest, None, None))
+            self.assertIsNotNone(en.lookup(db, old_token))
+            self.assertEqual(db.scalar(select(m.EmployeeDirectoryEvent.id).where(
+                m.EmployeeDirectoryEvent.action == "SERVER_COURSE_RESEND")), None)
+        self.assertEqual(self._counts(), before)
         # asked again: same code, same invitation, link sent again to the same address
         ok, message = self.course.request_invite(hid, email)
         self.assertTrue(ok, message)
@@ -211,6 +233,35 @@ class ServerCourseInviteTest(base.RegistryTrainingHttpTest):
             self.assertEqual(len(list(db.scalars(select(en.EnrollmentInvitation)))), 1)
             self.assertEqual(len(list(db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.email == email)))), 1)
             self.assertEqual(len(list(db.scalars(select(m.Employee)))), 1)
+
+    def _activated_during_the_resend(self, location, site_id, email):
+        """The candidate activates with the link already received while the new email is being sent: the
+        activated invitation is never reopened and the new link never works."""
+        hid = self._hire(location)
+        self.assertTrue(self.course.request_invite(hid, email)[0])
+        old_token = LINK_RE.search(self.sent[0][1]).group(1)
+        with self.factory() as db:
+            first = db.scalar(select(en.EnrollmentInvitation)); first_id, first_digest = first.id, first.token_digest
+        self.on_send = lambda: self.assertEqual(self._activate(old_token).status_code, 302)
+        ok, message = self.course.request_invite(hid, email)
+        self.on_send = None
+        self.assertTrue(ok, message)
+        self.assertIn("already activated", message)
+        with self.factory() as db:
+            row = db.get(en.EnrollmentInvitation, first_id)
+            self.assertIsNotNone(row.consumed_at)
+            self.assertEqual(row.token_digest, first_digest)
+            self.assertIsNone(en.lookup(db, LINK_RE.search(self.sent[1][1]).group(1)))
+            self.assertEqual(len(list(db.scalars(select(en.EnrollmentInvitation)))), 1)
+            self.assertEqual(len(list(db.scalars(select(m.RFOneAccount).where(m.RFOneAccount.email == email)))), 1)
+            card = directory.card_for_person(db, row.person_id)
+            self.assertEqual(directory.employee_site_ids(db, card.id), {site_id})
+
+    def test_activated_during_resend_winter_park(self):
+        self._activated_during_the_resend("Winter Park", self.wp_id, "wp.race@example.invalid")
+
+    def test_activated_during_resend_mount_dora(self):
+        self._activated_during_the_resend("Mount Dora", self.md_id, "md.race@example.invalid")
 
     def test_resend_winter_park(self):
         self._resend_flow("Winter Park", self.wp_id, "wp.again@example.invalid")

@@ -11,8 +11,17 @@ report    — people per site (explicit assignments only) and the doubtful cases
             company evidence of MD without an MD assignment, Trainees without a card, former pending Clover
             identities (history only), cards whose person would need the explicit EMPLOYEE status.
 snapshot  — fingerprints of what the migration must preserve: identities, POS links, assignments, Tips
-            history attributions (shifts, orders, payments, refunds, tip entitlements and payment lines).
-compare   — exit status 0 only when every fingerprint is identical and the EMPLOYEE statuses added are
+            history attributions (shifts, orders, payments, refunds, tip entitlements and payment lines), the
+            permission grants (accounts' status/administrator/owner flags, Domain accesses, selected items and
+            companies, company memberships, role profiles and role permissions) and the EFFECTIVE permissions:
+            for every account and Domain, whether it may enter, whether it administers it and which restaurants
+            it reaches, computed by RF-One's own central rules (`account_may_enter_domain`,
+            `account_is_domain_admin`, `site_selection.account_restaurant_ids`). A database before
+            b2c320261121 (no `company_scope`, no company-access table) is read with that migration's defaults
+            (ALL, none), so a before/after pair across the release is compared on the same terms.
+compare   — exit status 0 only when every fingerprint (permissions included: any grant or effective permission
+            changed, added or revoked makes it fail and is listed in `permission_changes`) is identical and the
+            EMPLOYEE statuses added are
             exactly the list the "before" snapshot expected (`employee_status_expected`, same SQL as
             c7d820261122); a re-run after a rollback/re-upgrade expects and adds nothing.
 """
@@ -120,6 +129,100 @@ def _digest(rows):
             "sha256": hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()}
 
 
+# Permission grants: the columns that carry meaning (timestamps and credentials left out), and the value a
+# column added later has on a database that predates it (b2c320261121: company_scope server default 'ALL').
+GRANT_COLUMNS = {
+    "rfone_accounts": ("id", "status", "is_admin", "is_owner"),
+    "rfone_account_domain_access": ("account_id", "domain_code", "role_code", "enabled", "scope", "company_scope"),
+    "rfone_account_domain_item_access": ("account_id", "domain_code", "item_code"),
+    "rfone_account_domain_company_access": ("account_id", "domain_code", "company_id"),
+    "rfone_company_contexts": ("id", "name", "kind", "legal_entity_id", "active"),
+    "rfone_person_company_memberships": ("id", "employee_id", "account_id", "company_id", "valid_from", "valid_to"),
+    "rfone_role_profile_assignments": ("id", "membership_id", "role_id", "area_id", "valid_from", "valid_to"),
+    "rfone_role_permissions": ("id", "role_id", "domain_code", "scope", "role_code", "items"),
+    "restaurants": ("id", "legal_entity_id"),
+}
+GRANT_DEFAULTS = {"company_scope": "ALL", "scope": "ALL"}
+# What the central rules also read to decide (person behind an account, active card, active role/area).
+EFFECTIVE_CONTEXT = ("legal_entities", "employees", "employee_identity_aliases", "employee_context_links",
+                     "rfone_training_identity_links", "training_accounts", "restaurant_roles", "operational_areas",
+                     "operational_area_roles")
+
+
+def _columns(conn, table):
+    return {c["name"] for c in inspect(conn).get_columns(table)}
+
+
+def _grant_rows(conn, tables):
+    """{table: [rows]} with the meaningful columns; a missing column takes its later default."""
+    out = {}
+    for table, wanted in GRANT_COLUMNS.items():
+        if table not in tables:
+            out[table] = []
+            continue
+        have = _columns(conn, table)
+        select = ", ".join(c for c in wanted if c in have)
+        rows = _rows(conn, f"SELECT {select} FROM {table}")
+        for row in rows:
+            for column in wanted:
+                if column not in row:
+                    row[column] = GRANT_DEFAULTS.get(column)
+            for key, value in row.items():
+                if isinstance(value, bool):
+                    row[key] = int(value)
+        out[table] = sorted(rows, key=lambda r: json.dumps(r, sort_keys=True, default=str))
+    return out
+
+
+def _effective_permissions(conn, tables):
+    """{"<account_id>:<DOMAIN>": {"enter", "admin", "restaurants"}} by RF-One's central rules, evaluated on an
+    in-memory copy of the permission tables (so the same rules read a database before or after the release)."""
+    from datetime import datetime as _datetime
+    from sqlalchemy import create_engine as _engine, insert, types as _types
+    from sqlalchemy.orm import Session
+    from rfone_data_store import models as m, access_profiles, rfone_web_session, site_selection  # noqa: F401
+    copy = _engine("sqlite://")
+    needed = [m.Base.metadata.tables[name] for name in (*GRANT_COLUMNS, *EFFECTIVE_CONTEXT)
+              if name in m.Base.metadata.tables]
+    m.Base.metadata.create_all(copy, tables=needed)
+    with copy.begin() as target:
+        for table in needed:
+            if table.name not in tables:
+                continue
+            have = _columns(conn, table.name) & {c.name for c in table.columns}
+            rows = _rows(conn, f"SELECT {', '.join(sorted(have))} FROM {table.name}")
+            for row in rows:
+                for column in table.columns:
+                    value = row.get(column.name)
+                    if isinstance(value, str) and isinstance(column.type, _types.DateTime):
+                        row[column.name] = _datetime.fromisoformat(value)
+                    elif isinstance(value, str) and isinstance(column.type, _types.JSON):
+                        row[column.name] = json.loads(value)
+                    if column.name not in row and not column.nullable and column.server_default is None \
+                            and not column.primary_key:
+                        row[column.name] = GRANT_DEFAULTS.get(column.name, "" if column.type.python_type is str else 0)
+            if rows:
+                target.execute(insert(table), rows)
+    effective = {}
+    with Session(copy) as db:
+        domains = sorted({r[0] for r in db.execute(text(
+            "SELECT domain_code FROM rfone_account_domain_access UNION SELECT domain_code FROM rfone_role_permissions"))})
+        for account in db.scalars(select_accounts(m)):
+            for domain in domains:
+                enter = rfone_web_session.account_may_enter_domain(db, account, domain)
+                admin = rfone_web_session.account_is_domain_admin(db, account, domain)
+                reach = sorted(site_selection.account_restaurant_ids(db, account, domain))
+                if enter or admin or reach:
+                    effective[f"{account.id}:{domain}"] = {"enter": enter, "admin": admin, "restaurants": reach}
+    copy.dispose()
+    return effective
+
+
+def select_accounts(m):
+    from sqlalchemy import select
+    return select(m.RFOneAccount).order_by(m.RFOneAccount.id)
+
+
 def snapshot(conn):
     tables = _tables(conn)
     queries = {
@@ -152,8 +255,29 @@ def snapshot(conn):
             conn, "SELECT person_id FROM person_company_statuses WHERE code = 'EMPLOYEE'"))
         if "person_employee_links" in tables and "employee_directory_events" in tables:
             out["employee_status_expected"] = _employee_status_to_record(conn)
+    if "rfone_accounts" in tables and "rfone_account_domain_access" in tables:
+        grants = _grant_rows(conn, tables)
+        out["permission_grants"] = {"digest": _digest(grants), "rows": grants}
+        effective = _effective_permissions(conn, tables)
+        out["effective_permissions"] = {"digest": _digest(effective), "rows": effective}
     out["alembic"] = [row["version_num"] for row in _rows(conn, "SELECT version_num FROM alembic_version")]
     return out
+
+
+def _permission_changes(before, after):
+    """What changed in the effective permissions and grants: [{kind, key, before, after}]."""
+    changes = []
+    b, a = (before.get("effective_permissions") or {}).get("rows", {}), (after.get("effective_permissions") or {}).get("rows", {})
+    for key in sorted(set(b) | set(a)):
+        if b.get(key) != a.get(key):
+            changes.append({"kind": "effective", "key": key, "before": b.get(key), "after": a.get(key)})
+    b, a = (before.get("permission_grants") or {}).get("rows", {}), (after.get("permission_grants") or {}).get("rows", {})
+    for table in sorted(set(b) | set(a)):
+        old = {json.dumps(r, sort_keys=True, default=str) for r in b.get(table, [])}
+        new = {json.dumps(r, sort_keys=True, default=str) for r in a.get(table, [])}
+        changes += [{"kind": "grant", "key": table, "before": json.loads(r), "after": None} for r in sorted(old - new)]
+        changes += [{"kind": "grant", "key": table, "before": None, "after": json.loads(r)} for r in sorted(new - old)]
+    return changes
 
 
 def compare(before, after):
@@ -164,7 +288,11 @@ def compare(before, after):
     removed_status = sorted(set(before.get("employee_statuses", [])) - set(after.get("employee_statuses", [])))
     expected = sorted(before.get("employee_status_expected", []))
     exact = added_status == expected
-    return {"identical": not differences and not removed_status and exact, "differences": differences,
+    permission_changes = _permission_changes(before, after)
+    if ("permission_grants" in before) != ("permission_grants" in after):
+        differences.append("permission_grants")
+    return {"identical": not differences and not removed_status and exact and not permission_changes,
+            "differences": differences, "permission_changes": permission_changes,
             "employee_status_added": added_status, "employee_status_expected": expected,
             "employee_status_exact": exact, "employee_status_removed": removed_status,
             "alembic": [before.get("alembic"), after.get("alembic")]}

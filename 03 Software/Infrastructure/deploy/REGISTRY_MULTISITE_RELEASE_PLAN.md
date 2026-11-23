@@ -76,7 +76,8 @@ The report is reproducible: `python registry_multisite_migration_check.py --url 
 | ECS task `rfone-clover-acquisition-job` (now `:12`) | same jobs image | staff-list read + Registry import and historical identity reader (`_resolve_historical_employee`) in Sync Now / Historical Backfill; the Historical Backfill read of `/employees?expand=role` that wrote the cards' Clover roles (`EmployeeSourceRole`); the staff list as a pre-flight source (`source_guard.CORE_SOURCES`) |
 | ECS task `rfone-clover-live-sync` (`:1`) | same jobs image if it is still run | same as the acquisition job |
 | App Runner `rfone-tips` | Data Store of this branch (unattributed-work rule, message text) | — (reads only) |
-| Training service (the one serving `training_cloud`) | invite form with training site and role; Confirm hire writes on the card | — |
+| App Runner `rfone-trainer-test` (the Server Course) | `Server Course/` of this branch: each invitation code bound to the training site the manager chose for the hire; same email → same code (automatic resend) | the hand-off fallback to Winter Park |
+| App Runner `rfone-training` (the Training service, image `rfone-web:training-*`, serves `training_cloud`) | invite form with training site and role; Confirm hire writes on the card; Server Course invitation with the code's site and role Server, automatic resend | invitation without a site |
 
 Kept: Clover acquisition of shifts, orders, payments and refunds for Tips; existing Clover links (POS IDs)
 and the work they attribute.
@@ -89,16 +90,52 @@ and the work they attribute.
    check `python "03 Software/Shared UI/check_how_works.py" --app "RF-One Web" --rev <commit> --since <live>`
    with no new error (local result: same 24 inherited errors as the base, +2 pages with help).
 2. **Read-only pre-check** — `registry_multisite_migration_check.py report` and `snapshot --json before.json`
-   on RDS (read-only task as in §0). Record `employee_status_to_record` (expected today: `[]`).
+   on RDS (read-only task as in §0). Record `employee_status_to_record` (expected today: `[]`). The snapshot
+   also holds the **permissions**: the grants (`permission_grants`: accounts' status/administrator/owner,
+   Domain accesses, selected items and companies, memberships, role profiles, role permissions) and the
+   **effective permissions** (`effective_permissions`: for every account and Domain, may enter / administers /
+   restaurants reached, computed by RF-One's central rules). At `a1c220261121` the missing `company_scope` is
+   read as `ALL` (the default `b2c320261121` gives every existing access), so before and after compare on the
+   same terms.
+2a. **Server role at Mount Dora** (read-only finding 2026-11-22, task `15ad0c6e3e5a4d7d8e907a705cfe0303`,
+   `transaction_read_only = on`): the only `Server` role is id 3 with `restaurant_id = 1` (Winter Park only), in
+   area 1 «Restaurant Operations»; the Server choices at restaurant 4 are **none**. Without this step every
+   Server Course invitation for a Mount Dora hire is refused («The Server role is not set up at Rome's Flavours
+   - MD yet»), nothing is saved. Preparation, before step 3, with Pino's authorization:
+   - make the existing role shared by every site, as Cook, Dishwasher and Server Help already are (Registry has
+     one role catalog: the Roles tab refuses a second role with the same name):
+     `UPDATE restaurant_roles SET restaurant_id = NULL WHERE id = 3 AND name = 'Server' AND restaurant_id = 1`
+     (exactly 1 row, else stop), in a one-off task of the migration image, in one transaction;
+   - it changes no assignment, no Clover role mapping, no role permission, no role profile and no account: it
+     only makes «Server» selectable at MD. **No operational permission is granted**: Domain entry comes only
+     from `rfone_account_domain_access`, and the restaurants reached from role profiles explicitly assigned to a
+     person; a Training entry writes neither;
+   - proof: `snapshot` right before and right after the update → `compare` must report `identical: true` with
+     `permission_changes: []` (the `restaurant_roles` row is not a permission grant; any effect on effective
+     permissions would make it fail); then the read-only query of §0 for `server_choices_md` gives exactly
+     one row (role 3, area 1);
+   - back: `UPDATE restaurant_roles SET restaurant_id = 1 WHERE id = 3` (only while no MD card uses role 3).
 3. **Migration** — one-off migration task (image built from the full development tree, as for
    `a1c220261121`): `alembic upgrade c7d820261122`.
 4. **Post-check** — `snapshot --json after.json`; `compare before.json after.json` must be `identical: true`
-   with `employee_status_exact: true` (added = the list of step 2); `alembic current` = `c7d820261122`.
+   with `employee_status_exact: true` (added = the list of step 2) **and `permission_changes: []`** — any grant
+   or effective permission added, changed or revoked fails the check (exit 1) and is listed; `alembic current` =
+   `c7d820261122`. Proved locally on a database built by the real chain to `a1c220261121`: upgrade → identical,
+   permissions included; a simulated revocation, a simulated grant and an administrator flag each make `compare`
+   fail and name the account and Domain (`test_registry_multisite_permissions.py`, §6).
 5. **Workers** — new revisions of `rfone-clover-correction-sync` and `rfone-clover-acquisition-job` with
    the jobs image, same command. Never ship a migration file whose parent is missing in the worker image.
-6. **rfone-web**, then **rfone-tips**, then the **Training service**. English release interface
-   (UI_DEVELOPMENT_LANGUAGE_001); the local copy stays Italian.
-7. **Verification** — Registry: WP lists the 21 WP-assigned people, MD an empty list, an unknown site a
+6. **rfone-web**, then **rfone-tips**, then **`rfone-trainer-test` → `rfone-training`** (in this order: the new
+   course works with the current Training, which ignores the site; the new Training refuses a code without a
+   site, so it must never run before the new course). English release interface (UI_DEVELOPMENT_LANGUAGE_001);
+   the local copy stays Italian.
+6a. **«Crea in Clover» stays off** — on every service after its update, read-only:
+   `aws apprunner describe-service` for `rfone-web`, `rfone-training`, `rfone-tips`, `rfone-trainer-test` and
+   `aws ecs describe-task-definition` for the new worker revisions: `RFONE_CLOVER_EMPLOYEE_CREATE` absent from
+   environment and secrets, and no `CLOVER_SANDBOX_API_TOKEN__*`. On a Registry card without POS ID the site
+   shows «Creation in Clover is not enabled on this installation» and no «Create in Clover» button; the POS ID
+   is typed by hand.
+7. **Verification** — Server Course: one test hire at WP and one at MD ask for the Training account → one invitation and one email each, the card at the chosen site with role Server, no other permission (then dismissed). Registry: WP lists the 21 WP-assigned people, MD an empty list, an unknown site a
    notice; no Clover queue anywhere; one correction cycle runs without calling `/employees`
    (CloudWatch); a manual test card at MD appears only at MD (then dismissed).
 
@@ -176,3 +213,16 @@ reads; POS IDs keep attributing work (rehearsal phase 5); attributions already r
   reattach then restores and verifies it; the Trainee is still a Trainee on the same card. SQLite and
   PostgreSQL (disposable cluster, port 55499, deleted afterwards): ALL EXPECTATIONS MET. Outputs:
   `07 Tasks/Reports/REGISTRY_MULTISITE_001_evidence/rollback_rehearsal_round3_{sqlite,postgresql}.json`.
+
+### Codex review 4 fixes (2026-11-22, after 409ce8f)
+
+- Server Course resend: the new link is emailed first; the link already received stays valid until the email
+  service accepts the new email, then the same invitation takes the new link. A refused send changes nothing;
+  an invitation activated meanwhile is never reopened. Tests on WP and MD: success, failure, activation during
+  the resend (`RF-One Web/tests/test_server_course_invite_http.py`).
+- Permissions in the before/after check (§4 steps 2, 2a, 4): `test_registry_multisite_permissions.py` builds a
+  database by the real chain to `a1c220261121` (no `company_scope`), seeds accounts, Domain accesses,
+  companies, a membership and a role profile; snapshot → upgrade head → snapshot: identical, effective
+  permissions included; a revocation (one access disabled), a new access and an administrator flag each make
+  `compare` exit 1 with the account/Domain in `permission_changes`.
+
