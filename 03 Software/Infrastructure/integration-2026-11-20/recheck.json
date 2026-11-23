@@ -1,0 +1,1189 @@
+[
+ {
+  "path": "RF-One Data Store/clover_connector_release_check.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "0100c0b8",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "59246b03",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/README.md",
+  "versions": [
+   [
+    "clover-jobs",
+    "1506115d",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "1fc0f384",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/test_employee_directory.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "f44ed0c3",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "59246b03",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/test_historical_tip_payments.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "email+web",
+    "a195e4c3",
+    "exact"
+   ],
+   [
+    "tips",
+    "68771e43",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/test_shared_schema_compatibility.py",
+  "versions": [
+   [
+    "tips",
+    "1fc0f384",
+    "exact"
+   ],
+   [
+    "email+web",
+    "dda54aef",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Data Store/migrations/env.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "a24e1330",
+    "exact"
+   ],
+   [
+    "tips",
+    "1fc0f384",
+    "exact"
+   ],
+   [
+    "email+web",
+    "7291a4ac",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_acquisition_safety_validation.py",
+  "versions": [
+   [
+    "training",
+    "4661aa72",
+    "exact"
+   ],
+   [
+    "clover-jobs",
+    "fc86bb15",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_acquisition_validation.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "e5957e42",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_correction_sync_validation.py",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "training",
+    "889cc8c2",
+    "exact"
+   ]
+  ],
+  "decision": "use clover-jobs+email+tips+web",
+  "same_as_auto_merge": false
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_live_sync_validation.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "9f51b069",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/database.py",
+  "versions": [
+   [
+    "clover-jobs+kitchen+training",
+    "7fcb1a67",
+    "exact"
+   ],
+   [
+    "tips",
+    "1fc0f384",
+    "exact"
+   ],
+   [
+    "email+web",
+    "b059ebbb",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/historical_backfill_extractor_validation.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ],
+   [
+    "training",
+    "f98373a6",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": false
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/kitchen.py",
+  "versions": [
+   [
+    "email+tips+web",
+    "30a27a7f",
+    "exact"
+   ],
+   [
+    "kitchen+training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/kitchen_configuration.py",
+  "versions": [
+   [
+    "email+tips+web",
+    "30a27a7f",
+    "exact"
+   ],
+   [
+    "kitchen+training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/rfone_account_service.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "9c154f99",
+    "exact"
+   ],
+   [
+    "email+kitchen+tips+training+web",
+    "61dec3e2",
+    "exact"
+   ]
+  ],
+  "decision": "use email+kitchen+tips+training+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/rfone_recovery_service.py",
+  "versions": [
+   [
+    "clover-jobs+tips",
+    "cc1e1cf0",
+    "exact"
+   ],
+   [
+    "email+training+web",
+    "77522e7d",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/rfone_web_session.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "9c154f99",
+    "exact"
+   ],
+   [
+    "email+kitchen+tips+training+web",
+    "9b239a19",
+    "exact"
+   ]
+  ],
+  "decision": "use email+kitchen+tips+training+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/bank_reconciliation/card_configuration.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "013f799a",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/bank_reconciliation/configuration.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "743d8a5b",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/dev_journal/service.py",
+  "versions": [
+   [
+    "clover-jobs+tips+training",
+    "9c154f99",
+    "exact"
+   ],
+   [
+    "email+web",
+    "9b239a19",
+    "exact"
+   ]
+  ],
+  "decision": "use email+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/payroll/adp_importer.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "209747c4",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/profile/bootstrap.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "7da020f3",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/projects/service.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "d3632a80",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/purchasing/repository.py",
+  "versions": [
+   [
+    "clover-jobs+email+tips+training+web",
+    "27ed4205",
+    "exact"
+   ],
+   [
+    "kitchen",
+    "491694b9",
+    "exact"
+   ]
+  ],
+  "decision": "use kitchen",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "training",
+    "4661aa72",
+    "exact"
+   ]
+  ],
+  "decision": "use clover-jobs+email+tips+web",
+  "same_as_auto_merge": false
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/live_sync.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "9f51b069",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "1fc0f384",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py",
+  "versions": [
+   [
+    "training",
+    "fda32ee1",
+    "exact"
+   ],
+   [
+    "clover-jobs+email+tips+web",
+    "223c1a8e",
+    "exact"
+   ]
+  ],
+  "decision": "use clover-jobs+email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/distribution_rule_service.py",
+  "versions": [
+   [
+    "clover-jobs+email+training+web",
+    "65aef8a3",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/historical_payments.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "email+web",
+    "a195e4c3",
+    "exact"
+   ],
+   [
+    "tips",
+    "68771e43",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/host_audit_report.py",
+  "versions": [
+   [
+    "clover-jobs+email+training+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "tips",
+    "68771e43",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/rule_ai_authoring.py",
+  "versions": [
+   [
+    "clover-jobs+email+training+web",
+    "7da020f3",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/scheduler.py",
+  "versions": [
+   [
+    "clover-jobs+training",
+    "229cd90c",
+    "exact"
+   ],
+   [
+    "email+tips+web",
+    "1fc0f384",
+    "exact"
+   ]
+  ],
+  "decision": "use email+tips+web",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/training/service.py",
+  "versions": [
+   [
+    "clover-jobs+email+kitchen+tips+web",
+    "cc1e1cf0",
+    "exact"
+   ],
+   [
+    "training",
+    "30a27a7f",
+    "exact"
+   ]
+  ],
+  "decision": "use training",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/training/workspace.py",
+  "versions": [
+   [
+    "kitchen+tips",
+    "9b239a19",
+    "exact"
+   ],
+   [
+    "email+training+web",
+    "77522e7d",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/app.py",
+  "versions": [
+   [
+    "email",
+    "7291a4ac",
+    "exact"
+   ],
+   [
+    "web",
+    "7291a4ac",
+    "closest (26 lines off)"
+   ]
+  ],
+  "decision": "HAND REVIEW (a non-chosen version was released from a folder)",
+  "same_as_auto_merge": false
+ },
+ {
+  "path": "RF-One Web/email_routes.py",
+  "versions": [
+   [
+    "email",
+    "e0de5f59",
+    "exact"
+   ],
+   [
+    "web",
+    "577705cb",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/training_integration.py",
+  "versions": [
+   [
+    "email+web",
+    "4deed86c",
+    "exact"
+   ],
+   [
+    "training",
+    "77522e7d",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/static/css/rf-one.css",
+  "versions": [
+   [
+    "email+web",
+    "01ab2f1f",
+    "exact"
+   ],
+   [
+    "kitchen",
+    "18ff9e35",
+    "exact"
+   ],
+   [
+    "training",
+    "a455f9f4",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/static/js/rf-one-modal.js",
+  "versions": [
+   [
+    "email+training+web",
+    "28136cc4",
+    "exact"
+   ],
+   [
+    "kitchen",
+    "cd0248d1",
+    "exact"
+   ]
+  ],
+  "decision": "use kitchen",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "RF-One Web/static/js/rf-one-row-return.js",
+  "versions": [
+   [
+    "email+training+web",
+    "013f799a",
+    "exact"
+   ],
+   [
+    "kitchen",
+    "cd0248d1",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/base.html",
+  "versions": [
+   [
+    "kitchen",
+    "18ff9e35",
+    "exact"
+   ],
+   [
+    "email+web",
+    "61dec3e2",
+    "exact"
+   ],
+   [
+    "training",
+    "5b3f64d7",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/email_control.html",
+  "versions": [
+   [
+    "web",
+    "577705cb",
+    "exact"
+   ],
+   [
+    "email",
+    "e0de5f59",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/email_detail.html",
+  "versions": [
+   [
+    "email",
+    "e0de5f59",
+    "exact"
+   ],
+   [
+    "web",
+    "577705cb",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/employee_directory_detail.html",
+  "versions": [
+   [
+    "email",
+    "9bcfc551",
+    "exact"
+   ],
+   [
+    "web",
+    "9eb87521",
+    "closest (7 lines off)"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/forgot_password.html",
+  "versions": [
+   [
+    "email",
+    "cc1e1cf0",
+    "exact"
+   ],
+   [
+    "web",
+    "f1397729",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/login.html",
+  "versions": [
+   [
+    "email",
+    "97c72365",
+    "exact"
+   ],
+   [
+    "web",
+    "60ccdc3e",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "RF-One Web/templates/_how_works.html",
+  "versions": [
+   [
+    "email+training+web",
+    "9bcfc551",
+    "exact"
+   ],
+   [
+    "kitchen",
+    "504778dd",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/RF-One-Training.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "cc1e1cf0",
+    "exact"
+   ],
+   [
+    "training",
+    "5f175b65",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/templates/training/assignment_detail.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/templates/training/attempt_result.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/templates/training/final_quiz.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/templates/training/overall_attempt_result.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/templates/training/overall_quiz.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Training/templates/training/trainer_new_student.html",
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "7f90d4b4",
+    "exact"
+   ],
+   [
+    "training",
+    "76747f07",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Shared UI/How Works Standard.md",
+  "versions": [
+   [
+    "tips",
+    "6d08519d",
+    "exact"
+   ],
+   [
+    "kitchen+training",
+    "3c2a3eb2",
+    "exact"
+   ]
+  ],
+  "decision": "HAND REVIEW"
+ },
+ {
+  "path": "Tips/app.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "tips",
+    "68771e43",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/imported_data_view.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "ce191087",
+    "exact"
+   ],
+   [
+    "tips",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/test_imported_clover_data_control_http.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "25bbc558",
+    "exact"
+   ],
+   [
+    "tips",
+    "a195e4c3",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/tips_test_session.py",
+  "versions": [
+   [
+    "clover-jobs",
+    "25bbc558",
+    "exact"
+   ],
+   [
+    "tips",
+    "604570a8",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/base.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "883bed3c",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/calculate_tips.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "43585216",
+    "exact"
+   ],
+   [
+    "tips",
+    "5258d8bb",
+    "closest (7 lines off)"
+   ]
+  ],
+  "decision": "use tips (live-only build, closest commit)",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/configuration.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "52f077fa",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/distribution_rule_detail.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "52f077fa",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/historical_tip_payments.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "223c1a8e",
+    "exact"
+   ],
+   [
+    "tips",
+    "68771e43",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/home.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "889cc8c2",
+    "exact"
+   ],
+   [
+    "tips",
+    "68771e43",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/host_audit.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "883bed3c",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/_distribution_rules_section.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "52f077fa",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/_general_configuration_section.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "52f077fa",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ },
+ {
+  "path": "Tips/templates/_nav_macros.html",
+  "versions": [
+   [
+    "clover-jobs",
+    "0529c55e",
+    "exact"
+   ],
+   [
+    "tips",
+    "83d583ca",
+    "exact"
+   ]
+  ],
+  "decision": "use tips",
+  "same_as_auto_merge": true
+ }
+]

@@ -3,6 +3,8 @@
 {% block page_title %}RF-One · Training — Whole-path quiz{% endblock %}
 {% block page_subtitle %}Whole-path quiz{% endblock %}
 {% block content %}
+{% set help_section='training_legacy_overall_quiz' %}
+{% include '_how_works.html' %}
 
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), ('Whole-path quiz', None)]) }}
 

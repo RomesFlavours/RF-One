@@ -2,8 +2,9 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}Training Identity · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Training Identity', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Registry', profile_return|default(url_for('role_profiles_home', tab='people'), true)), ('Training Identity', None)]) }}
 <h1>Training Identity</h1>
+<p><a href="{{ profile_return|default(url_for('role_profiles_home', tab='people'), true) }}">Back to person</a></p>
 <p class="muted">{{ account.display_name }} ({{ account.username }})</p>
 
 <div class="card">
@@ -21,6 +22,7 @@
     {% if unlinked_accounts %}
       <form method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="from_person" value="{{ profile_person|default('', true) }}">
         <input type="hidden" name="action" value="link_existing">
         <div class="field-row">
           <label for="training_account_id">Existing Training account</label>
@@ -40,6 +42,7 @@
     <h2>Or create a new Training identity</h2>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="from_person" value="{{ profile_person|default('', true) }}">
       <input type="hidden" name="action" value="create_new">
       <div class="field-row">
         <label for="role_code">Training role</label>

@@ -34,12 +34,10 @@ How single sign-on works here (no second login):
      session key too, for free — logging out of RF-One always logs out of
      Training in the same request.
 
-`role_code` is authoritative for this integration: whenever it disagrees
-with the linked `TrainingAccount.role`, this module overwrites the latter
-to match, every time the gate runs — so there is exactly one place
-(`RFOneAccountDomainAccess.role_code`, via `/admin/accounts/<id>/access`)
-where a Training role is ever set for an RF-One-integrated account, never
-two independently-editable roles.
+Registry effective permissions are authoritative in the current company.
+The Training identity and its history remain domain-owned. A request-only
+role view applies the current effective role without rewriting stored
+Training identity data during navigation.
 """
 
 from __future__ import annotations
@@ -136,25 +134,21 @@ class TrainingAuthorizationResult:
 
 
 def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> TrainingAuthorizationResult:
-    """Re-verifies (every call — never cached) that `rfone_account` may
-    enter Training right now. READ-ONLY: never writes to the database —
-    a navigation check (GET or otherwise) must never have a side effect on
-    `TrainingAccount.role`. If the linked `TrainingAccount.role` disagrees
-    with `RFOneAccountDomainAccess.role_code`, this is reported as
-    `role_mismatch=True` rather than silently corrected — only an explicit,
-    authorized POST (see `sync_training_role_if_linked`,
-    `link_existing_training_account`, `create_and_link_training_identity`)
-    may ever write that column."""
+    """Read-only, per-request Registry authorization with a linked domain identity.
+
+    The role can differ across companies; a stored Training role cannot
+    replace the effective Registry role or preserve a revoked privilege.
+    """
 
     access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
     access = next((r for r in access_rows if r.domain_code == TRAINING_DOMAIN_CODE), None)
     if access is None or not access.enabled:
-        return TrainingAuthorizationResult(None, "Il tuo account RF-One non ha accesso al Domain Training.")
+        return TrainingAuthorizationResult(None, "Your RF-One account has no Training access.")
 
     role_code = effective_training_role(access.role_code)
     if role_code is None:
         return TrainingAuthorizationResult(
-            None, "Il tuo accesso a Training non ha un ruolo valido assegnato. Contatta un amministratore.",
+            None, "Your Training access has no valid role. Contact an administrator.",
         )
 
     link = session.query(m.RFOneTrainingIdentityLink).filter(
@@ -162,23 +156,22 @@ def check_training_authorization(session, rfone_account: "m.RFOneAccount") -> Tr
     ).first()
     if link is None:
         return TrainingAuthorizationResult(
-            None, "Il tuo account non ha ancora un'identità Training collegata. Contatta un amministratore.",
+            None, "Your account has no linked Training identity. Contact an administrator.",
         )
 
     training_account = session.get(m.TrainingAccount, link.training_account_id)
     if training_account is None:
         return TrainingAuthorizationResult(
-            None, "L'identità Training collegata non è più valida. Contatta un amministratore.",
+            None, "The linked Training identity is no longer valid. Contact an administrator.",
         )
 
-    if training_account.role != role_code:
-        return TrainingAuthorizationResult(
-            None,
-            "Il ruolo Training del tuo account non è coerente. Contatta un amministratore per correggerlo.",
-            role_mismatch=True,
-        )
+    from rfone_data_store.training.workspace import TrainingStudentProfile
+    profile = session.get(TrainingStudentProfile, training_account.id)
+    if profile and profile.archived_at:
+        return TrainingAuthorizationResult(None, 'Student archived. Training access is unavailable.')
 
-    return TrainingAuthorizationResult(training_account, None)
+    from rfone_data_store.web_access import AuthorizedTrainingAccount
+    return TrainingAuthorizationResult(AuthorizedTrainingAccount(training_account, role_code), None)
 
 
 def _role_mismatch_response(message: str):
@@ -201,7 +194,7 @@ def enforce_training_sso(app_auth_module, session_factory) -> "object | None":
         account = app_auth_module.load_current_account(db)
         if account is None or account.status != "ACTIVE":
             flask_session.pop(TRAINING_SESSION_ACCOUNT_KEY, None)
-            flash("Effettua l'accesso a RF-One per continuare.", "error")
+            flash("Sign in to RF-One to continue.", "error")
             return redirect(url_for("login", next=request.path))
 
         result = check_training_authorization(db, account)
@@ -215,6 +208,8 @@ def enforce_training_sso(app_auth_module, session_factory) -> "object | None":
             flash(result.error, "error")
             return redirect(url_for("home"))
 
+        from flask import g
+        g.rfone_training_account = result.training_account
         flask_session[TRAINING_SESSION_ACCOUNT_KEY] = result.training_account.id
 
     return None
@@ -308,12 +303,12 @@ def link_existing_training_account(session, *, rfone_account_id: int, training_a
     `TrainingAccount.role` to match, in the SAME flush/transaction (task
     §2, second bullet) — never touches any OTHER, unlinked account."""
     if get_link_for_rfone_account(session, rfone_account_id) is not None:
-        raise AlreadyLinkedError("Questo account RF-One è già collegato a un'identità Training.")
+        raise AlreadyLinkedError("This RF-One account already has a linked Training identity.")
     existing_for_training = session.query(m.RFOneTrainingIdentityLink).filter(
         m.RFOneTrainingIdentityLink.training_account_id == training_account_id
     ).first()
     if existing_for_training is not None:
-        raise AlreadyLinkedError("Questa identità Training è già collegata a un altro account RF-One.")
+        raise AlreadyLinkedError("This Training identity is already linked to another RF-One account.")
 
     link = m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account_id, training_account_id=training_account_id)
     session.add(link)
@@ -342,7 +337,7 @@ def create_and_link_training_identity(
         raise ValueError(f"Invalid role_code {role_code!r} — must be one of {VALID_TRAINING_ROLE_CODES}")
     role_code = effective_training_role(role_code)
     if get_link_for_rfone_account(session, rfone_account_id) is not None:
-        raise AlreadyLinkedError("Questo account RF-One è già collegato a un'identità Training.")
+        raise AlreadyLinkedError("This RF-One account already has a linked Training identity.")
 
     rfone_account = session.get(m.RFOneAccount, rfone_account_id)
     if rfone_account is None:
@@ -375,66 +370,120 @@ def is_pure_training_student(session, rfone_account: "m.RFOneAccount") -> bool:
     amministratori o account con privilegi in altri Domain")."""
     if rfone_account.is_admin:
         return False
-    access_rows = account_service.list_domain_access_for_account(session, rfone_account.id)
-    enabled_rows = [r for r in access_rows if r.enabled]
-    if len(enabled_rows) != 1:
-        return False
-    row = enabled_rows[0]
-    return row.domain_code == TRAINING_DOMAIN_CODE and row.role_code == "student"
+    from rfone_data_store import access_profiles as profiles
+    companies = profiles.company_ids_for_account(session, rfone_account.id) | {None}
+    grants = [value for company in companies for value in
+              profiles.effective_permissions(session, rfone_account.id, company_id=company).items()]
+    return bool(grants) and all(code == TRAINING_DOMAIN_CODE and
+                               effective_training_role(value['role_code']) == 'student'
+                               for code, value in grants)
 
 
 def list_training_students(session) -> list["m.RFOneAccount"]:
     """All RF-One accounts a Training trainer may see/manage in this
     integration — pure Training students only (see
     `is_pure_training_student`)."""
-    candidates = session.query(m.RFOneAccount).join(
-        m.RFOneAccountDomainAccess, m.RFOneAccountDomainAccess.account_id == m.RFOneAccount.id,
-    ).filter(
-        m.RFOneAccountDomainAccess.domain_code == TRAINING_DOMAIN_CODE,
-        m.RFOneAccountDomainAccess.role_code == "student",
-        m.RFOneAccountDomainAccess.enabled.is_(True),
+    candidates = session.query(m.RFOneAccount).filter(
+        m.RFOneAccount.status == "ACTIVE"
     ).order_by(m.RFOneAccount.display_name).all()
     return [a for a in candidates if is_pure_training_student(session, a)]
 
 
 def create_student_via_rf_one(
     session, *, username: str, display_name: str, password: str, email: str,
+    confirmation: str | None = None,
 ) -> tuple["m.RFOneAccount", "m.TrainingAccount"]:
-    """Atomically provisions an RF-One-loginable student: an `RFOneAccount`
-    (never admin, never any Domain but TRAINING), its `TRAINING`
-    `RFOneAccountDomainAccess` (role_code='student'), a linked
-    `TrainingAccount` (Training's own required password column filled with
-    a random, unused placeholder — the account only ever logs in via
-    RF-One), and the identity link. `password` here becomes the account's
-    real, sole (RF-One) password. `email` is required (task: "richiedi
-    l'email nei flussi di creazione, compreso quello degli studenti
-    Training") and recorded unverified — the caller is responsible for
-    sending the verification code (`app.py`'s
-    `training_trainer_new_student` route), never this module, which knows
-    nothing about email delivery."""
-    try:
-        rfone_account = account_service.create_account(
-            session, username=username, display_name=display_name, password=password,
-            status="ACTIVE", is_admin=False, email=email,
-        )
-    except account_service.UsernameTakenError as exc:
-        raise StudentCreationError(str(exc)) from exc
+    """One transaction over Registry, qualification, login and existing Training data.
 
-    account_service.set_domain_access(
-        session, account_id=rfone_account.id, domain_code=TRAINING_DOMAIN_CODE, enabled=True, role_code="student",
-    )
-
-    try:
-        training_account = training_service.create_account(
-            session, display_name=display_name, username=username,
-            password=secrets.token_urlsafe(32), role="student",
-        )
-    except training_service.UsernameTakenError as exc:
-        raise StudentCreationError(
-            f"Username {username!r} is already taken in Training's own roster."
-        ) from exc
-
-    link = m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account.id, training_account_id=training_account.id)
-    session.add(link)
+    Caller commits and then sends the invitation. Existing credentials and grants
+    are never overwritten; uncertain matches require explicit human confirmation.
+    """
+    from sqlalchemy import select
+    from rfone_data_store import student_registry as registry
+    from rfone_data_store.training import workspace as ws
+    if not display_name.strip() or len(display_name.strip()) > 255 or not username.strip() or len(username.strip()) > 64:
+        raise StudentCreationError('Enter a valid name and username.')
+    email = account_service._validate_email_format(email)
+    person, rfone_account = registry.resolve(session, name=display_name, email=email,
+        username=username, confirmation=confirmation)
+    new_account = rfone_account is None
+    if new_account:
+        rfone_account = account_service.create_account(session, username=username,
+            display_name=display_name, password=password or secrets.token_urlsafe(32),
+            status='ACTIVE', is_admin=False, email=email)
+    else:
+        if rfone_account.status != 'ACTIVE':
+            raise StudentCreationError('Inactive account: an RF-One administrator must review it.')
+        if rfone_account.email != email:
+            raise StudentCreationError('Use the email already registered for this account. Changes require RF-One verification.')
+    link = get_link_for_rfone_account(session, rfone_account.id)
+    access = next((g for g in account_service.list_domain_access_for_account(session, rfone_account.id)
+        if g.domain_code == TRAINING_DOMAIN_CODE), None)
+    if access is not None and (not access.enabled or access.role_code != 'student'):
+        raise StudentCreationError('Existing Training access requires administrator review. No permissions were changed.')
+    if link:
+        training_account = session.get(m.TrainingAccount, link.training_account_id)
+        if training_account.role != 'student':
+            raise StudentCreationError('The Training identity has a role other than student.')
+    else:
+        # A legacy Training name is not enough evidence to link a person.
+        if session.scalar(select(m.TrainingAccount.id).where(m.TrainingAccount.username == rfone_account.username)):
+            raise StudentCreationError('An existing Training identity requires explicit linking by an RF-One administrator.')
+        training_account = training_service.create_account(session,
+            display_name=rfone_account.display_name, username=rfone_account.username,
+            password=secrets.token_urlsafe(32), role='student')
+        session.add(m.RFOneTrainingIdentityLink(rfone_account_id=rfone_account.id,
+            training_account_id=training_account.id))
+    if access is None:
+        account_service.set_domain_access(session, account_id=rfone_account.id,
+            domain_code=TRAINING_DOMAIN_CODE, enabled=True, role_code='student')
+    registry.attach(session, person, rfone_account, training_account)
+    if new_account:
+        ws.profile(session, training_account.id).must_change_password = True
     session.flush()
     return rfone_account, training_account
+
+
+def _ascii_letters(value: str) -> str:
+    import unicodedata
+    decomposed = unicodedata.normalize('NFKD', value or '')
+    return ''.join(c for c in decomposed if c.isascii() and c.isalpha())
+
+
+def proposed_username(first_name: str, last_name: str) -> str:
+    """First name + first three letters of the surname, each starting uppercase
+    (Mario Rossi -> MarioRos; a shorter surname uses the letters available).
+    Accents are folded and spaces/apostrophes dropped. Login normalization
+    stores and compares usernames in lowercase, so 'MarioRos' signs in as
+    'marioros' with any capitalization."""
+    first, last = _ascii_letters(first_name), _ascii_letters(last_name)
+    if not first or not last:
+        raise StudentCreationError('Enter a first name and surname containing letters.')
+    return first[:56].capitalize() + last[:3].capitalize()
+
+
+def generate_username(session, first_name: str, last_name: str) -> str:
+    """The proposed username, or the first free numbered variant (MarioRos2, …).
+    Never reuses an existing RF-One or legacy Training username."""
+    from sqlalchemy import select, func
+    base = proposed_username(first_name, last_name)
+    taken = {name.lower() for name in session.scalars(select(m.RFOneAccount.username)
+        .where(func.lower(m.RFOneAccount.username).like(base.lower() + '%')))}
+    taken |= {name.lower() for name in session.scalars(select(m.TrainingAccount.username)
+        .where(func.lower(m.TrainingAccount.username).like(base.lower() + '%')))}
+    candidate, index = base, 1
+    while candidate.lower() in taken:
+        index += 1
+        candidate = f'{base}{index}'
+    return candidate
+
+
+def generate_initial_password(length: int = 14) -> str:
+    """Random initial password with upper, lower case letters and digits;
+    visually ambiguous characters are excluded because it is typed from email."""
+    upper, lower, digits = 'ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789'
+    alphabet = upper + lower + digits
+    while True:
+        value = ''.join(secrets.choice(alphabet) for _ in range(length))
+        if any(c in upper for c in value) and any(c in lower for c in value) and any(c in digits for c in value):
+            return value

@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from rfone_data_store import employee_directory as person_directory
+
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 
 from auth import (
     current_account_id, get_csrf_token, load_current_account, log_in, log_out,
@@ -60,7 +62,15 @@ def _group_pills_by_area(pills: list) -> list[tuple[str, list]]:
 
 @training_bp.context_processor
 def _inject_csrf():
-    return {"csrf_token": get_csrf_token}
+    context = {"csrf_token": get_csrf_token}
+    if current_account_id() is not None:
+        from rfone_data_store.employee_directory import context_person_id
+        from rfone_data_store import models as identity_models
+        with SessionFactory() as db:
+            person_id = context_person_id(db, "TRAINING", current_account_id())
+            person = db.get(identity_models.Employee, person_id) if person_id is not None else None
+            context["reference_person_name"] = person.display_name if person else None
+    return context
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +169,10 @@ def assignment_detail(assignment_id: int):
         db.commit()
 
         pill = assignment.pill
+        if 'tw_assigned_course' in current_app.view_functions and db.get(m.TrainingCourseAssignmentRevision,assignment.id):
+            return redirect(url_for('tw_assigned_course',assignment_id=assignment.id))
+        if pill.slug == 'visual-menu':
+            return redirect('/training/visual-menu')
         dish = get_dish(pill.slug)
         self_check_questions = svc.get_self_check_questions(db, pill.id)
         self_check_view = [
@@ -184,6 +198,8 @@ def final_quiz(assignment_id: int):
         if account is None or account.role != "student":
             abort(404)
         assignment = _load_own_assignment(db, account.id, assignment_id)
+        if assignment.pill.slug == 'visual-menu' or db.get(m.TrainingCourse,assignment.pill_id):
+            abort(404)
 
         if request.method == "POST":
             require_csrf()
@@ -431,8 +447,11 @@ def trainer_student_detail(account_id: int):
             for pill in all_pills
         ]
         areas_order = [area for area, _pills in pills_by_area]
+        student_person_id = person_directory.context_person_id(db, "TRAINING", student.id)
+        student_person = db.get(m.Employee, student_person_id) if student_person_id is not None else None
         return render_template(
-            "training/trainer_student_detail.html", account=account, student=student, needs_view=needs_view,
+            "training/trainer_student_detail.html",
+            student_person_name=student_person.display_name if student_person else None, account=account, student=student, needs_view=needs_view,
             all_pills=all_pills, pills_by_area=pills_by_area, overall_history=overall_history,
             all_pills_data=all_pills_data, areas_order=areas_order,
         )

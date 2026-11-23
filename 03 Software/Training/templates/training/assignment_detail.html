@@ -3,6 +3,8 @@
 {% block page_title %}RF-One · Training — {{ pill.title }}{% endblock %}
 {% block page_subtitle %}Pill · {{ pill.title }}{% endblock %}
 {% block content %}
+{% set help_section='training_legacy_assignment_detail' %}
+{% include '_how_works.html' %}
 
 {{ breadcrumb([('RF-One', rfone_home_url()), ('Training', url_for('training.home')), (pill.title, None)]) }}
 

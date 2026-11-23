@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a class="back-link" href="{{ url_for('priority_policies_home') }}">&larr; Back to Priority Policies</a>
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Policy</div>
+      <div class="value">{{ policy.name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Status</div>
+      <div class="value">
+        <span class="badge status-{{ 'completed' if policy.is_active else 'failed' }}">{{ 'ACTIVE' if policy.is_active else 'INACTIVE' }}</span>
+      </div>
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('priority_policy_toggle_active', policy_id=policy.id) }}" class="inline-form">
+    <button type="submit" class="btn secondary">{{ 'Deactivate this policy' if policy.is_active else 'Reactivate this policy' }}</button>
+  </form>
+
+  <details class="edit-toggle">
+    <summary>Rename policy</summary>
+    <form method="post" action="{{ url_for('priority_policy_update', policy_id=policy.id) }}" class="req-form">
+      <label>Name</label>
+      <input type="text" name="name" value="{{ policy.name }}" required>
+      <button type="submit" class="btn" style="margin-top:.6rem;">Save name</button>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Rules ({{ policy.rules|length }})</h2>
+  <p class="muted" style="font-size:.8rem;">
+    Each rule maps ONE (Signal Definition, observed status) pair to a qualitative contribution — never a number.
+    A deactivated rule is kept for reference but no longer contributes.
+  </p>
+  {% if policy.rules %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Signal Definition</th><th>Observed status</th><th>Contribution</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for r in policy.rules %}
+      <tr>
+        <td>{{ r.signal_definition.name }}</td>
+        <td><span class="badge signal-{{ r.observed_status|lower }}">{{ r.observed_status|replace('_',' ') }}</span></td>
+        <td>
+          <form method="post" action="{{ url_for('priority_policy_rule_update', policy_id=policy.id, rule_id=r.id) }}" class="inline-form">
+            <select name="contribution" onchange="this.form.submit()">
+              {% for c in priority_contributions %}<option value="{{ c }}" {{ 'selected' if c == r.contribution else '' }}>{{ c|replace('_',' ') }}</option>{% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>{% if r.is_active %}<span class="badge status-completed">ACTIVE</span>{% else %}<span class="badge status-failed">INACTIVE</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('priority_policy_rule_toggle_active', policy_id=policy.id, rule_id=r.id) }}" class="inline-form">
+            <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">{{ 'Deactivate' if r.is_active else 'Reactivate' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('priority_policy_rule_remove', policy_id=policy.id, rule_id=r.id) }}" class="inline-form">
+            <button type="submit" class="btn secondary" style="font-size:.78rem; padding:.35rem .8rem;">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No rules yet — every Application will be STANDARD until at least one rule is added.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add a rule</h2>
+  <form method="post" action="{{ url_for('priority_policy_rule_add', policy_id=policy.id) }}" class="req-form">
+    <label>Signal Definition</label>
+    <select name="signal_definition_id" required>
+      {% for d in definitions %}<option value="{{ d.id }}">{{ d.name }} ({{ d.signal_family|replace('_',' ')|title }})</option>{% endfor %}
+    </select>
+    <label>Observed status</label>
+    <select name="observed_status" required>
+      {% for s in signal_statuses %}<option value="{{ s }}">{{ s|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <label>Contribution to Review Priority</label>
+    <select name="contribution" required>
+      {% for c in priority_contributions %}<option value="{{ c }}">{{ c|replace('_',' ') }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn" style="margin-top:.6rem;">Add rule</button>
+  </form>
+</div>
+
+{% endblock %}

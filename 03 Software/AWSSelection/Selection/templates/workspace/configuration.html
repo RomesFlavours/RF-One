@@ -1,0 +1,75 @@
+{% extends 'workspace/base.html' %}
+{% block title %}Configurazioni{% endblock %}
+{% set crumbs = [('Configurazioni', none)] %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>
+<h1>Configurazioni</h1>
+<style>
+.configuration-block {border:1px solid var(--line);border-radius:10px;margin:1rem 0;overflow:hidden}
+.configuration-block-header {display:flex;align-items:center;gap:.5rem;padding:.8rem 1rem;background:var(--surface,#fff)}
+.configuration-block-header h2 {margin:0;flex:1;min-width:0}
+.configuration-toggle {background:none;color:inherit;border:0;padding:0;text-align:left;font:inherit;cursor:pointer}
+.configuration-arrows {display:flex;gap:.3rem;flex-shrink:0}
+.configuration-arrows button {padding:.25rem .55rem}
+.configuration-block-body {padding:0 1rem 1rem;overflow-wrap:anywhere}
+.configuration-toggle::before {content:'▾';margin-right:.5rem}
+.configuration-toggle[aria-expanded="false"]::before {content:'▸'}
+</style>
+<div id="configuration-blocks">
+<section class="configuration-block" data-configuration-block="observations"><div class="configuration-block-header"><h2><button type="button" class="configuration-toggle" aria-expanded="true" aria-controls="observations-content">Osservazioni del colloquio</button></h2><div class="configuration-arrows"><button type="button" data-move="up" aria-label="Sposta osservazioni in alto">↑</button><button type="button" data-move="down" aria-label="Sposta osservazioni in basso">↓</button></div></div><div class="configuration-block-body" id="observations-content">
+{% include 'workspace/_observation_configuration.html' %}
+</div></section>
+<section class="configuration-block" data-configuration-block="automations"><div class="configuration-block-header"><h2><button type="button" class="configuration-toggle" aria-expanded="true" aria-controls="automations-content">Azioni e procedure automatiche</button></h2><div class="configuration-arrows"><button type="button" data-move="up" aria-label="Sposta automazioni in alto">↑</button><button type="button" data-move="down" aria-label="Sposta automazioni in basso">↓</button></div></div><div class="configuration-block-body" id="automations-content">
+{% include 'workspace/_automation_configuration.html' %}
+</div></section>
+<section class="configuration-block" data-configuration-block="roles">
+<div class="configuration-block-header"><h2><button type="button" class="configuration-toggle" aria-expanded="true" aria-controls="roles-content">Posizioni di Lavoro</button></h2><div class="configuration-arrows"><button type="button" data-move="up" aria-label="Sposta Posizioni di Lavoro in alto">↑</button><button type="button" data-move="down" aria-label="Sposta Posizioni di Lavoro in basso">↓</button></div></div>
+<div class="configuration-block-body" id="roles-content">
+
+{% if actor.is_owner %}<p><button type="button" id="add-role">Nuova Posizione di Lavoro</button></p>{% endif %}
+{% if old_screening_enabled and current_job %}<p class="small"><a href="{{ url_for('positions.default_selection_criteria',role_code=current_job.role_code) }}">Criteri predefiniti della PDL della ricerca corrente: {{ ROLE_LABEL.get(current_job.role_code,current_job.role_code) }}</a></p>{% endif %}
+<div style="overflow-x:auto"><table><thead><tr><th>Nome</th>{% if actor.is_owner %}<th>Azione</th>{% endif %}</tr></thead><tbody>
+{% for role in role_rows %}<tr id="role-{{ role.code }}" data-rr-key="role:{{ role.code }}">
+<td>{{ role.name }}{% if old_screening_enabled %}<div class="small"><a href="{{ url_for('positions.default_selection_criteria',role_code=role.code) }}">Criteri predefiniti della PDL</a></div>{% endif %}</td>
+{% if actor.is_owner %}<td><button type="button" class="btn btn-small" data-edit-role data-code="{{ role.code }}" data-name="{{ role.name }}" data-version="{{ role.version }}">Modifica</button></td>{% endif %}
+</tr>{% else %}<tr><td colspan="2">Nessuna Posizione di Lavoro presente.</td></tr>{% endfor %}
+</tbody></table></div>
+</div></section>
+<section class="configuration-block" data-configuration-block="application">
+<div class="configuration-block-header"><h2><button type="button" class="configuration-toggle" aria-expanded="true" aria-controls="application-content">Pagina di applicazione</button></h2><div class="configuration-arrows"><button type="button" data-move="up" aria-label="Sposta Pagina di applicazione in alto">↑</button><button type="button" data-move="down" aria-label="Sposta Pagina di applicazione in basso">↓</button></div></div>
+<div class="configuration-block-body" id="application-content">
+{% if current_job %}
+{% if current_job.status == 'OPEN' %}
+<p><span class="badge ok">Aperta</span> <a href="{{ public_url }}" target="_blank" rel="noopener">{{ public_url }}</a></p>
+<p>I candidati verificano la propria e-mail, caricano un curriculum e completano una breve intervista in inglese, digitando o usando la voce. Possono salvare e riprendere più tardi. Usa questo URL come collegamento «Candidati sul sito aziendale» su Indeed.</p>
+{% elif current_job.status == 'CLOSED' %}
+<p><span class="badge warn">Chiusa</span> <a href="{{ public_url }}" target="_blank" rel="noopener">{{ public_url }}</a></p>
+<p>La pagina resta disponibile ma non accetta nuove candidature. Per riceverne altre, riapri la posizione da Decisioni.</p>
+{% else %}<p><span class="badge">Bozza</span> La pagina di applicazione si apre quando pubblichi la posizione da Selezione → Completa e pubblica.</p>{% endif %}
+{% else %}<p>Scegli una posizione in Selezione per visualizzare la relativa pagina di applicazione.</p>{% endif %}
+</div></section>
+</div>
+<script defer src="{{ url_for('static', filename='js/selection-configuration-blocks.js') }}"></script>
+{% if actor.is_owner %}
+<dialog id="role-editor" style="max-width:34rem;width:90%;max-height:85vh;overflow:auto;border:1px solid #88985e;border-radius:12px">
+<div style="position:sticky;top:0;background:white;display:flex;align-items:center;justify-content:space-between;gap:1rem"><h2 id="role-title">Posizione di Lavoro</h2><div><button type="button" id="role-help" aria-label="Aiuto sulla Posizione di Lavoro">?</button> <button type="button" id="close-role" aria-label="Chiudi">×</button></div></div>
+<form method="post" id="role-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="code"><input type="hidden" name="version">
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<label for="role-name">Nome</label><input id="role-name" name="name" maxlength="120" required>
+
+
+<p><button type="submit">Salva</button> <button type="button" id="cancel-role">Annulla</button></p>
+</form></dialog>
+<script>
+const editor=document.getElementById('role-editor'), form=document.getElementById('role-form');
+let origin=null;
+function openRole(value,button){document.querySelector('[aria-controls="roles-content"]').setAttribute('aria-expanded','true');document.getElementById('roles-content').hidden=false;origin=button;form.elements.code.value=value.code||'';form.elements.version.value=value.version||'';form.elements.name.value=value.name||'';document.getElementById('role-title').textContent=value.code?'Modifica Posizione di Lavoro':'Nuova Posizione di Lavoro';editor.showModal();}
+function closeRole(){editor.close();if(origin)origin.focus();}
+document.getElementById('add-role').onclick=e=>openRole({},e.currentTarget);
+document.querySelectorAll('[data-edit-role]').forEach(b=>b.onclick=()=>openRole({code:b.dataset.code,name:b.dataset.name,version:b.dataset.version},b));
+document.getElementById('close-role').onclick=closeRole;document.getElementById('cancel-role').onclick=closeRole;
+document.getElementById('role-help').onclick=()=>{document.getElementById('selection-page-help').showModal();document.getElementById('role-editor-guide').scrollIntoView();};
+{% if dialog %}openRole({{ dialog|tojson }},Array.from(document.querySelectorAll('[data-edit-role]')).find(b=>b.dataset.code==={{ dialog.code|tojson }})||document.getElementById('add-role'));{% endif %}
+</script>
+{% endif %}
+{% endblock %}

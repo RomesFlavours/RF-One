@@ -60,6 +60,18 @@ def map_device(device_raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def preserve_employee_details(values: dict[str, Any]) -> dict[str, Any]:
+    """Partial references and unavailable profiles cannot erase known facts.
+
+    Complete observations are retained independently in SourceRecord. This
+    canonical profile keeps last known details until replacement facts exist.
+    """
+    protected = {'display_name', 'custom_id', 'system_role', 'active',
+                 'source_created_at', 'source_modified_at'}
+    return {k: v for k, v in values.items()
+            if k not in protected or (v is not None and (not isinstance(v, str) or v.strip()))}
+
+
 def map_employee(employee_raw: dict[str, Any]) -> dict[str, Any]:
     return {
         "source_employee_id": employee_raw.get("id"),

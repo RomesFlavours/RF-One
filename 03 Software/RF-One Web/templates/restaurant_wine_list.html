@@ -61,7 +61,7 @@
     <table class="table-compact">
       <thead>
         <tr>
-          <th>Type · Label</th><th>Producer</th><th>Vintage</th><th>Format</th>
+          <th class="col-narrow"></th><th>Type · Label</th><th>Producer</th><th>Vintage</th><th>Format</th>
           <th class="col-amount">Cost used</th><th class="col-amount">Value</th>
           <th class="col-amount">Bottle price</th><th class="col-amount">Glass price</th>
           <th class="col-narrow"></th><th class="col-narrow"></th>
@@ -70,6 +70,7 @@
       <tbody>
         {% for it in items %}
         <tr>
+          <td>{% if editable %}<button type="button" class="btn-secondary btn-inline wines-edit-btn" data-edit-item="{{ it.id }}">Edit</button>{% endif %}</td>
           <td><strong>{{ it.wine.type_name }}</strong>{% if it.wine.label_name %} · {{ it.wine.label_name }}{% endif %}
             <span class="cell-note">{{ it.wine.category_label }} · {{ it.wine.style_label }}</span></td>
           <td>{{ it.wine.producer }}</td>
@@ -102,7 +103,6 @@
           <td>
             {% if editable %}
             <div class="wines-row-actions">
-              <button type="button" class="btn-secondary" data-edit-item="{{ it.id }}">Edit</button>
               {% if it.bottle_manual or it.glass_manual %}
               <form method="post" action="{{ url_for('restaurant_wine_list_item_restore', item_id=it.id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -123,7 +123,7 @@
             <form method="post" action="{{ url_for('restaurant_wine_list_item_delete', item_id=it.id) }}"
                   data-confirm="Remove {{ it.wine.display_name }} from this Wine list? It stays in the catalog.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-danger btn-inline" style="padding:.3rem .6rem;font-size:.75rem">Delete</button>
+              <button type="submit" class="btn-danger btn-inline wines-delete-btn">Delete</button>
             </form>
             {% endif %}
           </td>
@@ -190,6 +190,11 @@
       </div>
       <p id="if-wine-name" hidden><strong></strong></p>
       <div class="wines-grid">
+        <div id="if-vintage-block" hidden>
+          <label for="if-vintage">Vintage</label>
+          <input id="if-vintage" type="number" name="vintage_year" min="1900" max="2100" step="1" placeholder="NV">
+          <span class="wines-hint" style="margin-top:-.7rem">Saving overwrites the vintage in Availability. Empty = non-vintage.</span>
+        </div>
         <div><label for="if-cost">Cost used (USD)</label><input id="if-cost" type="number" name="cost_used" min="0" step="0.01" placeholder="Unknown"></div>
         <div><label for="if-value">Value</label><input id="if-value" type="number" name="value_factor" min="0.0001" step="0.01" value="1"></div>
         <div><label class="wines-check" style="margin-top:1.3rem"><input type="checkbox" id="if-glass" name="sells_by_glass" value="1"> Sold by the glass</label></div>
@@ -326,7 +331,12 @@ document.addEventListener("DOMContentLoaded", function () {
     wineName.hidden = !item;
     document.getElementById("item-modal-title").textContent = item ? "Edit Wine list row" : "Add a wine to this Wine list";
     document.getElementById("if-submit").textContent = item ? "Save" : "Add to Wine list";
+    var vintageBlock = document.getElementById("if-vintage-block");
+    var vintageInput = document.getElementById("if-vintage");
+    vintageBlock.hidden = !item;
+    vintageInput.disabled = !item;
     if (item) {
+      vintageInput.value = item.wine.non_vintage ? "" : item.wine.vintage_year;
       wineName.querySelector("strong").textContent = item.wine.display_name + " · " + item.wine.bottle_size_ml + " ml";
       cost.value = item.cost_used;
       value.value = item.value;

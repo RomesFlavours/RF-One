@@ -116,6 +116,11 @@ def _json_error(message: str, status: int = 400):
 def register_restaurant_wines_routes(app, *, require_domain_access, SessionFactory, load_current_account, require_csrf):
     gate = require_domain_access(DOMAIN_CODE)
 
+    @app.route("/restaurant/wines/how-it-works")
+    @gate
+    def restaurant_wines_how_it_works():
+        return render_template("restaurant_wines_how_it_works.html")
+
     # -----------------------------------------------------------------
     # Wine Types
     # -----------------------------------------------------------------
@@ -226,6 +231,20 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
     @gate
     def restaurant_wine_update(wine_id: int):
         return _save_wine(wine_id)
+
+    @app.route("/restaurant/wines/availability/<int:wine_id>/delete", methods=["POST"])
+    @gate
+    def restaurant_wine_delete(wine_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            wine = db.get(m.Wine, wine_id)
+            if wine is None:
+                abort(404)
+            name = catalog.display_name(wine)
+            removed = catalog.delete_wine(db, wine)
+            db.commit()
+        flash(f"{name} deleted from Availability and from every Wine list ({removed} list rows).", "info")
+        return redirect(url_for("restaurant_wine_availability", q=request.form.get("q") or None))
 
     # -----------------------------------------------------------------
     # Wine List
@@ -360,6 +379,9 @@ def register_restaurant_wines_routes(app, *, require_domain_access, SessionFacto
             version = item.wine_list
             try:
                 wine_lists.update_item(db, item, today=_local_today(db), **_price_inputs(request.form))
+                if "vintage_year" in request.form:
+                    # The row dialog's vintage overwrites the Availability vintage.
+                    catalog.set_vintage(db, item.wine, _int(request.form.get("vintage_year"), "Vintage"))
                 db.commit()
             except (_BadInput, wine_lists.WineListError, ValueError) as exc:
                 db.rollback()
