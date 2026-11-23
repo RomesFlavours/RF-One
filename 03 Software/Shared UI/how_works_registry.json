@@ -5,7 +5,9 @@
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
         "role_profiles.html": "help/registry.html#registry",
-        "employee_departments.html": "help/employee_departments.html#employee-departments"
+        "employee_departments.html": "help/employee_departments.html#employee-departments",
+      "employee_directory.html": "help/employee_directory.html#employee-directory",
+      "employee_directory_detail.html": "help/employee_directory_detail.html#employee-directory-detail"
       },
       "not_operational": {},
       "help_missing": {
@@ -50,8 +52,6 @@
         "dev_journal_list.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "dev_journal_work.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "dev_journal_work_form.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "employee_directory.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
-        "employee_directory_detail.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "forgot_password.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "forgot_password_code.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",
         "home.html": "Inherited unchanged page outside this Registry/Training release overlay; baseline coverage not certified here.",

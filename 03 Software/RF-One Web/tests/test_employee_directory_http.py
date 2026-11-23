@@ -1,5 +1,5 @@
 """Directory HTTP/access/job and populated migration acceptance. No live services."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import sys
@@ -17,7 +17,6 @@ from rfone_data_store import employee_directory as directory
 m = fixture.m
 web = fixture.web_app
 SessionFactory = fixture.SessionFactory
-jobs = fixture.jobs
 PASSWORD = fixture.PASSWORD
 ROOT = "/administration/employees"
 
@@ -151,29 +150,14 @@ class EmployeeDirectoryHttpTest(unittest.TestCase):
         with SessionFactory() as db:
             self.assertEqual(len(list(db.scalars(select(m.Employee)))), 1)
 
-    def test_05_sync_reuses_jobs_permissions_and_csrf(self):
-        user = self.client("directory-user")
-        data = {"location_id": self.location_id, "csrf_token": fixture.csrf(user.get('/profile', base_url=fixture.HOST).data)}
-        self.assertEqual(user.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST).status_code, 403)
-        allowed = self.client("directory-sync")
-        self.assertEqual(allowed.post(ROOT + "/sync-now", data={"location_id": self.location_id}, base_url=fixture.HOST).status_code, 400)
-        with SessionFactory() as db:
-            now = datetime.now(timezone.utc)
-            db.add(m.IngestionRun(source_system_id=self.source_id, location_id=self.location_id, status="COMPLETE",
-                started_at=now-timedelta(hours=2), finished_at=now-timedelta(hours=1),
-                acquisition_mode=jobs.MODE_BACKFILL, source_window_end=now-timedelta(hours=1)))
-            db.commit()
-        data["csrf_token"] = fixture.csrf(allowed.get(ROOT, base_url=fixture.HOST).data)
-        response = allowed.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST)
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(len(web.clover_job_launcher.run_ids), 1)
-        page = allowed.get(ROOT, base_url=fixture.HOST).data
-        self.assertIn(b"Ultima sincronizzazione:", page)
-        self.assertNotIn(b"QUEUED", page)
-        self.assertLess(page.index(b"Ultima sincronizzazione:"), page.index(b"Sincronizza ora"))
-        # Duplicate submission uses exactly the existing acquisition lock.
-        allowed.post(ROOT + "/sync-now", data=data, base_url=fixture.HOST)
-        self.assertEqual(len(web.clover_job_launcher.run_ids), 1)
+    def test_05_sync_is_available_only_in_clover_acquisition(self):
+        client = self.client("directory-sync")
+        self.assertEqual(client.post(ROOT + "/sync-now", base_url=fixture.HOST).status_code, 404)
+        response = client.get(ROOT, base_url=fixture.HOST)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Ultima sincronizzazione", response.data)
+        self.assertNotIn(b"Sincronizza ora", response.data)
+        self.assertEqual(client.get("/clover-acquisition", base_url=fixture.HOST).status_code, 200)
 
     def test_06_consolidation_works_on_migrated_schema_and_preserves_history(self):
         with SessionFactory() as db:
