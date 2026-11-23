@@ -2,9 +2,10 @@
 
 The only Clover write RF-One performs: create ONE employee in ONE merchant with ONE already-existing Clover
 role. It never creates, changes or deletes roles, permissions or other employees, and it never imports Clover
-staff data into Registry. Reading here is limited to (a) the chosen role, to check that it exists and is at the
-base Employee level, (b) the created employee, to confirm its role, and (c) employees carrying the RF-One
-custom ID, to recover the link after an uncertain answer.
+staff data into Registry. Permissions stay with Clover: RF-One sends no system level and checks none.
+Reading here is limited to (a) the merchant's role catalogue, only to find the ID of the role with the same
+name as the Registry role, (b) the created employee, to read back its role, and (c) employees carrying the
+RF-One custom ID, to recover the link after an uncertain answer.
 
 Writing is OFF unless the installation enables it explicitly:
 
@@ -25,7 +26,6 @@ from typing import Any, Protocol
 ENABLE_ENV = "RFONE_CLOVER_EMPLOYEE_CREATE"
 SANDBOX_TOKEN_PREFIX = "CLOVER_SANDBOX_API_TOKEN__"
 BASE_URLS = {"sandbox": "https://apisandbox.dev.clover.com", "production": "https://api.clover.com"}
-BASE_SYSTEM_ROLE = "EMPLOYEE"
 TIMEOUT_SECONDS = 20
 PAGE_SIZE = 100
 
@@ -35,11 +35,10 @@ class WriterNotAvailable(ValueError):
 
 
 @dataclass
-class RoleCheck:
-    found: bool
-    system_role: str | None = None
-    name: str | None = None
-    error: str | None = None           # Clover could not be read: nothing is sent
+class RoleLookup:
+    ok: bool                           # False: Clover could not be read, nothing is sent
+    role_ids: list[str] = field(default_factory=list)   # roles whose name equals the Registry role name
+    error: str | None = None
 
 
 @dataclass
@@ -62,10 +61,15 @@ class CloverEmployeeWriter(Protocol):
     merchant_id: str
     mode: str
 
-    def check_role(self, role_id: str) -> RoleCheck: ...
+    def find_roles_by_name(self, name: str) -> RoleLookup: ...
     def create_employee(self, *, name: str, custom_id: str, role_id: str) -> CreateResult: ...
     def employee_role_ids(self, employee_id: str) -> list[str] | None: ...
     def find_by_custom_id(self, custom_id: str) -> FindResult: ...
+
+
+def same_name_key(name) -> str:
+    """The same name: identical text, ignoring surrounding spaces and letter case only."""
+    return " ".join(str(name or "").split()).casefold()
 
 
 def enabled_mode() -> str | None:
@@ -131,17 +135,22 @@ class HttpCloverEmployeeWriter:
             data = None
         return response.status_code, data, None if response.ok else f"HTTP {response.status_code}"
 
-    def check_role(self, role_id):
-        status, data, error = self._get(f"/v3/merchants/{self.merchant_id}/roles/{role_id}")
-        if status == 404:
-            return RoleCheck(found=False)
-        if error or not isinstance(data, dict):
-            return RoleCheck(found=False, error=error or "unreadable answer")
-        return RoleCheck(found=True, system_role=data.get("systemRole"), name=data.get("name"))
+    def find_roles_by_name(self, name):
+        wanted, found, offset = same_name_key(name), [], 0
+        while True:
+            status, data, error = self._get(f"/v3/merchants/{self.merchant_id}/roles",
+                                            {"limit": PAGE_SIZE, "offset": offset})
+            if error or not isinstance(data, dict):
+                return RoleLookup(ok=False, error=error or "unreadable answer")
+            elements = data.get("elements") or []
+            found += [str(r["id"]) for r in elements if r.get("id") and same_name_key(r.get("name")) == wanted]
+            if len(elements) < PAGE_SIZE:
+                return RoleLookup(ok=True, role_ids=sorted(set(found)))
+            offset += PAGE_SIZE
 
     def create_employee(self, *, name, custom_id, role_id):
         import requests
-        body = {"name": name, "customId": custom_id, "role": BASE_SYSTEM_ROLE, "roles": [{"id": role_id}]}
+        body = {"name": name, "customId": custom_id, "roles": [{"id": role_id}]}   # no system level: Clover decides
         try:
             response = self._session.post(self._base + f"/v3/merchants/{self.merchant_id}/employees",
                                           headers=self._headers(), json=body, timeout=TIMEOUT_SECONDS)

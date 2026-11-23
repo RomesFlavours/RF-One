@@ -55,20 +55,20 @@
   <h3>{{ card.site.name }}</h3>
   <p>POS ID: <strong>{{ card.pos.external_employee_id if card.pos else 'Non inserito' }}</strong></p>
   {% if card.clover and can_manage %}{% set cc = card.clover %}<div class="clover-create" data-clover-create="{{ card.site.id }}">
-    {% if cc.plan and cc.plan.clover_role_label %}<p>Ruolo RF-One {{ cc.plan.role_name }} → ruolo Clover <strong>{{ cc.plan.clover_role_label }}</strong></p>{% endif %}
+    {% if cc.plan and cc.plan.role_name %}<p>Ruolo Registry in questa sede: <strong>{{ cc.plan.role_name }}</strong> — in Clover si usa il ruolo con lo stesso nome.</p>{% endif %}
     {% if cc.last %}{% set d = cc.last.details %}<p class="{{ 'error' if cc.last.action in ('CLOVER_CREATE_REFUSED','CLOVER_CREATE_UNCERTAIN','CLOVER_CREATE_BLOCKED') else 'muted' }}">Ultimo esito «Crea in Clover» ({{ cc.last.created_at.strftime('%Y-%m-%d %H:%M') }} UTC):
       {% if cc.last.action == 'CLOVER_CREATE_DONE' %}creato, POS ID {{ d.pos_id }}{% if not d.role_confirmed %} (ruolo non confermato da Clover){% endif %}
       {% elif cc.last.action == 'CLOVER_CREATE_RECOVERED' %}collegamento recuperato, POS ID {{ d.pos_id }}
       {% elif cc.last.action == 'CLOVER_CREATE_REFUSED' %}rifiutato da Clover: {{ d.reason }}
       {% elif cc.last.action == 'CLOVER_CREATE_UNCERTAIN' %}esito incerto: {{ d.reason }}
       {% elif cc.last.action == 'CLOVER_CREATE_BLOCKED' %}non inviato: {{ d.reason }}
-      {% elif cc.last.action == 'CLOVER_CREATE_CLEARED' %}richiesta chiusa: in Clover non c’era nessun dipendente{% endif %}</p>{% endif %}
-    {% if card.pos %}{% elif cc.open %}<p class="error" role="status">Una richiesta a Clover è aperta (custom ID {{ cc.open.details.custom_id }}): prima di ogni nuovo inserimento RF-One cerca il dipendente in Clover.</p>
+      {% endif %}</p>{% endif %}
+    {% if card.pos %}{% elif cc.open %}<p class="error" role="status">Una richiesta a Clover è aperta (custom ID {{ cc.open.details.custom_id }}): prima di ogni nuovo inserimento RF-One cerca il dipendente in Clover. Si chiude solo quando il dipendente viene trovato (o se inserisci il POS ID a mano).</p>
       <form method="post" class="inline-form" onsubmit="var b=this.querySelector('button');if(b.disabled){return false;}b.disabled=true;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="clover_create"><input type="hidden" name="restaurant_id" value="{{ card.site.id }}"><button type="submit">Verifica e recupera da Clover</button></form>
-      {% if cc.can_clear %}<form method="post" class="inline-form" onsubmit="return confirm('Hai verificato in Clover che il dipendente non esiste?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="clover_clear"><input type="hidden" name="restaurant_id" value="{{ card.site.id }}"><button type="submit" class="secondary">Nessun dipendente in Clover: chiudi la richiesta</button></form>{% endif %}
+
     {% elif cc.plan.missing %}<p class="muted">«Crea in Clover» non disponibile:</p><ul class="muted">{% for item in cc.plan.missing %}<li>{{ item }}</li>{% endfor %}</ul>
     {% else %}<form method="post" class="inline-form" onsubmit="var b=this.querySelector('button');if(b.disabled){return false;}b.disabled=true;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="clover_create"><input type="hidden" name="restaurant_id" value="{{ card.site.id }}"><button type="submit">Crea in Clover</button></form>
-      <p class="muted">Crea la persona nel Clover di questa sede con il ruolo indicato e ne salva l’ID come POS ID. Prima dell’invio RF-One verifica in Clover che il ruolo esista e sia di livello base Employee.</p>{% endif %}
+      <p class="muted">Crea la persona nel Clover di questa sede con il ruolo che ha in Registry e ne salva l’ID come POS ID. I permessi restano gestiti da Clover.</p>{% endif %}
   </div>{% endif %}
   {% if not card.has_pos %}<p class="muted">Questa sede non ha un collegamento POS: il POS ID non si può inserire.</p>
   {% elif can_manage %}<form method="post">

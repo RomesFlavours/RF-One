@@ -47,8 +47,8 @@ class WriterTest(unittest.TestCase):
         result = writer(s).create_employee(name="Giulia Both", custom_id="RF1-7", role_id="ROLE1")
         self.assertEqual((result.outcome, result.employee_id), ("CREATED", "EMPNEW"))
         self.assertEqual(s.calls, [("POST", "https://apisandbox.dev.clover.com/v3/merchants/MD123/employees",
-                                    {"name": "Giulia Both", "customId": "RF1-7", "role": "EMPLOYEE",
-                                     "roles": [{"id": "ROLE1"}]}, "Bearer tok")])
+                                    {"name": "Giulia Both", "customId": "RF1-7", "roles": [{"id": "ROLE1"}]},
+                                    "Bearer tok")])        # no system level: permissions stay with Clover
 
     def test_answers_are_classified_and_never_retried(self):
         for response, outcome in ((Response(400, {"message": "bad"}), "REFUSED"), (Response(401, {}), "REFUSED"),
@@ -59,13 +59,16 @@ class WriterTest(unittest.TestCase):
             self.assertEqual(writer(s).create_employee(name="n", custom_id="c", role_id="r").outcome, outcome)
             self.assertEqual(len(s.calls), 1)
 
-    def test_role_check_and_custom_id_search(self):
-        s = Session(get={"/roles/R1": Response(200, {"name": "Server", "systemRole": "EMPLOYEE"}),
+    def test_role_by_same_name_and_custom_id_search(self):
+        s = Session(get={"/roles": Response(200, {"elements": [{"id": "R1", "name": "Server"},
+                                                               {"id": "R2", "name": "Server Help"},
+                                                               {"id": "R3", "name": "Host"}, {"id": "R4", "name": "HOST "}]}),
                          "/employees": Response(200, {"elements": [{"id": "A", "customId": "RF1-7"},
                                                                    {"id": "B", "customId": "RF1-70"}]})})
         w = writer(s, mode="production")
-        self.assertEqual((w.check_role("R1").found, w.check_role("R1").system_role), (True, "EMPLOYEE"))
-        self.assertFalse(w.check_role("R2").found)
+        self.assertEqual(w.find_roles_by_name("Server").role_ids, ["R1"])             # never "Server Help"
+        self.assertEqual(w.find_roles_by_name("Host").role_ids, ["R3", "R4"])          # not unique: caller stops
+        self.assertEqual(w.find_roles_by_name("Cook").role_ids, [])
         self.assertEqual(w.find_by_custom_id("RF1-7").employee_ids, ["A"])        # exact custom ID only
         self.assertTrue(all(c[1].startswith("https://api.clover.com/v3/merchants/MD123/") for c in s.calls))
         self.assertFalse(any(c[0] == "POST" for c in s.calls))

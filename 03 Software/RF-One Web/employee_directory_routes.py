@@ -155,7 +155,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     abort(403)
                 require_csrf()
                 anchor = ""
-                if request.form.get("action") in ("clover_create", "clover_clear"):
+                if request.form.get("action") == "clover_create":
                     # REGISTRY_CLOVER_CREATE_001: the service commits its own steps (claim before Clover is called),
                     # so this request's row lock is released first; nothing was written by it.
                     restaurant_id = int(request.form.get("restaurant_id", "0") or 0)
@@ -164,13 +164,9 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     db.commit()
                     from rfone_data_store import clover_employee_create as clover_create
                     factory = app.config.get("CLOVER_EMPLOYEE_WRITER_FACTORY") or clover_create.employee_writer.get_writer
-                    if request.form["action"] == "clover_create":
-                        outcome = clover_create.create_in_clover(
-                            SessionFactory, employee_id=employee_id, restaurant_id=restaurant_id, account_id=account.id,
-                            writer_factory=factory, writer_available=_clover_writer_available())
-                    else:
-                        outcome = clover_create.clear_attempt(SessionFactory, employee_id=employee_id,
-                            restaurant_id=restaurant_id, account_id=account.id, writer_factory=factory)
+                    outcome = clover_create.create_in_clover(
+                        SessionFactory, employee_id=employee_id, restaurant_id=restaurant_id, account_id=account.id,
+                        writer_factory=factory, writer_available=_clover_writer_available())
                     flash(outcome.message, outcome.level)
                     return redirect(url_for("employee_directory_detail", employee_id=employee_id) + f"#site-{restaurant_id}")
                 try:

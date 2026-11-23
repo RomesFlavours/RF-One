@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """REGISTRY_CLOVER_CREATE_001 — «Crea in Clover» on the Registry card, against a simulated Clover (never a real one).
 
-WP and MD with the same person, merchant and role per request, one Clover ID per site, missing/ambiguous/
-unsafe role, disabled installation, uncertain answer, interruption between creation and save, concurrency,
-refusal, and the manual POS ID that stays available.
+WP and MD with the same person: merchant and role (same name as the Registry role) per request, one Clover ID
+per site; role missing or not unique in the merchant; disabled installation; late/uncertain answer, interruption
+between creation and save, concurrency, refusal; the manual POS ID that stays available.
 """
 from __future__ import annotations
 
@@ -70,10 +70,11 @@ class FakeClover:
     """Simulated Clover: per merchant, the existing roles and the employees created. Records every call."""
 
     def __init__(self):
-        self.roles = {}            # merchant -> {role_id: (name, systemRole)}
+        self.roles = {}            # merchant -> [(role_id, name, systemRole)]
+        self.late = []             # creations Clover performs only later (late answer)
         self.employees = {}        # merchant -> [dict]
         self.calls = []            # (merchant, op, details)
-        self.behaviour = {}        # merchant -> "ok" | "uncertain_created" | "uncertain_nothing" | "refuse" | "interrupt" | "slow"
+        self.behaviour = {}        # merchant -> "ok" | "uncertain_created" | "late" | "refuse" | "interrupt" | "slow"
         self.search_ok = True
 
     def writer(self, merchant_id):
@@ -85,17 +86,18 @@ class FakeClover:
             def __init__(self):
                 self.merchant_id = merchant_id
 
-            def check_role(self, role_id):
-                clover.calls.append((merchant_id, "check_role", role_id))
-                role = clover.roles.get(merchant_id, {}).get(role_id)
-                return ew.RoleCheck(found=role is not None, name=role and role[0], system_role=role and role[1])
+            def find_roles_by_name(self, name):
+                clover.calls.append((merchant_id, "roles", name))
+                return ew.RoleLookup(ok=True, role_ids=sorted(r[0] for r in clover.roles.get(merchant_id, [])
+                                                              if ew.same_name_key(r[1]) == ew.same_name_key(name)))
 
             def create_employee(self, *, name, custom_id, role_id):
                 clover.calls.append((merchant_id, "create", {"name": name, "custom_id": custom_id, "role_id": role_id}))
                 behaviour = clover.behaviour.get(merchant_id, "ok")
                 if behaviour == "refuse":
                     return ew.CreateResult("REFUSED", status_code=400, message="invalid name")
-                if behaviour == "uncertain_nothing":
+                if behaviour == "late":                  # Clover will create it later, after the timeout
+                    clover.late.append((merchant_id, name, custom_id, role_id))
                     return ew.CreateResult("UNCERTAIN", message="Clover did not answer in time.")
                 if behaviour == "slow":
                     time.sleep(0.6)
@@ -118,6 +120,12 @@ class FakeClover:
                 return ew.FindResult(ok=True, employee_ids=[e["id"] for e in clover.employees.get(merchant_id, [])
                                                              if e["customId"] == custom_id])
         return Writer()
+
+    def deliver_late(self):
+        for merchant_id, name, custom_id, role_id in self.late:
+            staff = self.employees.setdefault(merchant_id, [])
+            staff.append({"id": f"{merchant_id}-E{len(staff) + 1}", "name": name, "customId": custom_id, "roles": [role_id]})
+        self.late = []
 
     def creates(self, merchant_id=None):
         return [c for c in self.calls if c[1] == "create" and (merchant_id is None or c[0] == merchant_id)]
@@ -153,24 +161,16 @@ class CloverCreateHttpTest(unittest.TestCase):
                 sites[key] = restaurant
             area = m.OperationalArea(name="Restaurant Operations"); db.add(area); db.flush()
             roles = {}
-            for name in ("Server", "Cook", "Host", "Dishwasher"):
+            for name in ("Server", "Cook", "Host", "Manager"):
                 role = m.RestaurantRole(name=name, code=name.upper()); db.add(role); db.flush()
                 db.add(m.OperationalAreaRole(operational_area_id=area.id, restaurant_role_id=role.id))
                 roles[name] = role
-            now = datetime.now(timezone.utc)
-
-            def mapping(site, clover_role, label, role):
-                db.add(m.RegistryRoleMapping(restaurant_id=sites[site].id, source="CLOVER", original_key=clover_role,
-                                             original_label=label, restaurant_role_id=roles[role].id,
-                                             valid_from=now, origin="SEED"))
-            mapping("wp", "CR-WP-SERVER", "Server", "Server")
-            mapping("md", "CR-MD-SERVER", "Server", "Server")
-            mapping("wp", "CR-WP-HOST", "Host", "Host")                   # exists in Clover at MANAGER level
-            mapping("wp", "CR-WP-DISH-A", "Dish A", "Dishwasher")         # ambiguous: two Clover roles
-            mapping("wp", "CR-WP-DISH-B", "Dish B", "Dishwasher")
-            mapping("md", "CR-MD-GONE", "Old role", "Host")               # configured but missing in Clover
-            CLOVER.roles = {"MERCH-WP": {"CR-WP-SERVER": ("Server", "EMPLOYEE"), "CR-WP-HOST": ("Host", "MANAGER")},
-                            "MERCH-MD": {"CR-MD-SERVER": ("Server", "EMPLOYEE")}}
+            # Clover role catalogues: WP has Server, Manager (any level: Clover manages permissions) and two roles
+            # whose name is "Host" (not unique); Cook does not exist anywhere; MD has its own Server role.
+            CLOVER.roles = {"MERCH-WP": [("CR-WP-SERVER", "Server", "EMPLOYEE"), ("CR-WP-MANAGER", "Manager", "MANAGER"),
+                                         ("CR-WP-HOST1", "Host", "EMPLOYEE"), ("CR-WP-HOST2", " host", "EMPLOYEE"),
+                                         ("CR-WP-SERVERHELP", "Server Help", "EMPLOYEE")],
+                            "MERCH-MD": [("CR-MD-SERVER", "Server", "EMPLOYEE"), ("CR-MD-BOH", "BOH", "EMPLOYEE")]}
             admin = accounts.create_account(db, username="admin", display_name="Admin A.", password=PASSWORD,
                                             email="admin@example.invalid", is_admin=True)
             db.flush()
@@ -187,8 +187,8 @@ class CloverCreateHttpTest(unittest.TestCase):
                 "giulia": person("Giulia Both", "Server", "wp", "md"),
                 "cook": person("Carlo Cook", "Cook", "wp"),
                 "host": person("Hana Host", "Host", "wp"),
-                "dish": person("Dino Dish", "Dishwasher", "wp"),
-                "gone": person("Gina Gone", "Host", "md"),
+                "boss": person("Mario Manager", "Manager", "wp"),
+                "late": person("Lia Late", "Server", "md"),
                 "nopos": person("Nora NoPos", "Server", "nopos"),
                 "unsure": person("Ugo Uncertain", "Server", "wp"),
                 "crash": person("Cora Crash", "Server", "md"),
@@ -227,36 +227,39 @@ class CloverCreateHttpTest(unittest.TestCase):
     # 1-2. WP and MD, same person ------------------------------------------------------------------------------
     def test_same_person_wp_and_md_each_merchant_with_its_role_and_its_own_id(self):
         block = self.site_block("giulia", "wp")
-        self.assertIn("Crea in Clover", block); self.assertIn("ruolo Clover <strong>Server</strong>", block)
+        self.assertIn("Crea in Clover", block); self.assertIn("Ruolo Registry in questa sede: <strong>Server</strong>", block)
         before = len(CLOVER.calls)
-        self.assertIn("Created in Clover", self.act("giulia", "wp"))
-        self.assertIn("Created in Clover", self.act("giulia", "md"))
+        self.assertIn("Created in Clover with the role «Server»", self.act("giulia", "wp"))
+        self.assertIn("Created in Clover with the role «Server»", self.act("giulia", "md"))
         creates = [c for c in CLOVER.calls[before:] if c[1] == "create"]
-        self.assertEqual([(c[0], c[2]["role_id"], c[2]["custom_id"]) for c in creates],
-                         [("MERCH-WP", "CR-WP-SERVER", f"RF1-{self.ids['giulia']}"),
-                          ("MERCH-MD", "CR-MD-SERVER", f"RF1-{self.ids['giulia']}")])
-        pos = self.pos("giulia")
-        self.assertEqual(pos[self.sites["wp"]], creates[0][2] and "MERCH-WP-E" + pos[self.sites["wp"]].split("-E")[1])
-        self.assertTrue(pos[self.sites["wp"]].startswith("MERCH-WP-E") and pos[self.sites["md"]].startswith("MERCH-MD-E"))
+        self.assertEqual([(c[0], c[2]["role_id"], c[2]["custom_id"], c[2]["name"]) for c in creates],
+                         [("MERCH-WP", "CR-WP-SERVER", f"RF1-{self.ids['giulia']}", "Giulia Both"),
+                          ("MERCH-MD", "CR-MD-SERVER", f"RF1-{self.ids['giulia']}", "Giulia Both")])
+        wp_id = next(e["id"] for e in CLOVER.employees["MERCH-WP"] if e["customId"] == f"RF1-{self.ids['giulia']}")
+        md_id = next(e["id"] for e in CLOVER.employees["MERCH-MD"] if e["customId"] == f"RF1-{self.ids['giulia']}")
+        self.assertEqual(self.pos("giulia"), {self.sites["wp"]: wp_id, self.sites["md"]: md_id})
         # Reopen the card: each site keeps its own Clover ID; the second save did not overwrite the first.
-        self.assertIn(pos[self.sites["wp"]], self.site_block("giulia", "wp"))
-        self.assertIn(pos[self.sites["md"]], self.site_block("giulia", "md"))
+        self.assertIn(f"<strong>{wp_id}</strong>", self.site_block("giulia", "wp"))
+        self.assertIn(f"<strong>{md_id}</strong>", self.site_block("giulia", "md"))
         # Already linked: the link is shown and nothing is sent again.
         again = len(CLOVER.creates())
         self.assertIn("already has the POS ID", self.act("giulia", "wp"))
         self.assertEqual(len(CLOVER.creates()), again)
         self.assertNotIn(">Crea in Clover</button>", self.site_block("giulia", "wp"))
 
-    # 1. what is missing, shown before any request --------------------------------------------------------------
-    def test_missing_or_unsafe_configuration_stops_before_writing(self):
+    def test_any_role_level_is_left_to_clover(self):
+        self.assertIn("Created in Clover with the role «Manager»", self.act("boss", "wp"))
+        self.assertEqual(CLOVER.creates("MERCH-WP")[-1][2]["role_id"], "CR-WP-MANAGER")
+
+    # 1. role not identifiable, missing configuration -----------------------------------------------------------
+    def test_role_missing_or_not_unique_is_shown_and_nothing_is_sent(self):
         before = len(CLOVER.creates())
-        self.assertIn("No Clover role corresponds to the RF-One role «Cook»", self.site_block("cook", "wp"))
-        self.assertIn("No Clover role corresponds", self.act("cook", "wp"))
-        self.assertIn("more than one Clover role", self.site_block("dish", "wp"))
+        self.assertIn("No Clover role named «Cook» exists in this merchant", self.act("cook", "wp"))
+        page = self.act("host", "wp")
+        self.assertIn("2 Clover roles named «Host» (CR-WP-HOST1, CR-WP-HOST2)", page)
+        self.assertIn("cannot be identified uniquely", page)
         self.assertIn("no Clover connection", self.site_block("nopos", "nopos"))
-        self.assertIn("level MANAGER, above the base Employee level", self.act("host", "wp"))
-        self.assertIn("does not exist in this merchant", self.act("gone", "md"))
-        self.assertEqual(len(CLOVER.creates()), before)                    # nothing was written
+        self.assertEqual(len(CLOVER.creates()), before)                    # nothing was written, no other role chosen
         self.assertIn("non inviato", self.site_block("host", "wp"))         # outcome shown on the card
         self.assertEqual(self.pos("host"), {})
 
@@ -271,30 +274,37 @@ class CloverCreateHttpTest(unittest.TestCase):
             os.environ.pop(ew.ENABLE_ENV, None)
             web_app.app.config["CLOVER_EMPLOYEE_WRITER_AVAILABLE"] = lambda merchant_id: None
 
-    # 3. uncertain answers, interruption, concurrency -------------------------------------------------------------
-    def test_uncertain_answer_never_sends_a_second_creation_until_resolved(self):
-        CLOVER.behaviour["MERCH-WP"] = "uncertain_nothing"
+    # 3. late answer, uncertain answer, interruption, concurrency -----------------------------------------------
+    def test_late_clover_answer_recovers_the_first_insert_without_a_second_send(self):
+        CLOVER.behaviour["MERCH-MD"] = "late"
         try:
-            self.assertIn("uncertain", self.act("unsure", "wp"))
+            self.assertIn("uncertain", self.act("late", "md"))
         finally:
-            CLOVER.behaviour.pop("MERCH-WP")
-        creates = len(CLOVER.creates())
-        page = self.act("unsure", "wp")                                      # search finds nothing -> no new insert
-        self.assertIn("No second employee is sent", page)
+            CLOVER.behaviour.pop("MERCH-MD")
+        sent = len(CLOVER.creates())
+        self.assertIn("No second employee is sent", self.act("late", "md"))   # empty search: blocked, not re-enabled
+        self.assertIn("No second employee is sent", self.act("late", "md"))   # repeated clicks: still blocked
         CLOVER.search_ok = False
-        self.assertIn("could not be searched", self.act("unsure", "wp"))
+        self.assertIn("could not be searched", self.act("late", "md"))
         CLOVER.search_ok = True
-        self.assertEqual(len(CLOVER.creates()), creates)
-        self.assertIn("Verifica e recupera da Clover", self.site_block("unsure", "wp"))
-        self.assertIn("too recent", self.act("unsure", "wp", "clover_clear"))
-        with SessionFactory() as db:                                        # two minutes later
-            for e in cc.open_attempts(db, self.ids["unsure"], self.sites["wp"]):
-                e.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        with SessionFactory() as db:                                        # time passes: still blocked
+            for e in cc.open_attempts(db, self.ids["late"], self.sites["md"]):
+                e.created_at = datetime.now(timezone.utc) - timedelta(days=2)
             db.commit()
-        self.assertIn("request is closed", self.act("unsure", "wp", "clover_clear"))
-        self.assertIn("Created in Clover", self.act("unsure", "wp"))
-        self.assertEqual(len(CLOVER.creates()), creates + 1)
-        self.assertEqual(len([e for e in CLOVER.employees["MERCH-WP"] if e["customId"] == f"RF1-{self.ids['unsure']}"]), 1)
+        self.assertIn("No second employee is sent", self.act("late", "md"))
+        self.assertIn("Verifica e recupera da Clover", self.site_block("late", "md"))
+        self.assertNotIn(">Crea in Clover</button>", self.site_block("late", "md"))
+        self.assertEqual(self.client.post(f"/administration/employees/{self.ids['late']}", base_url=HOST,
+                         data={"csrf_token": csrf(self.card("late")), "action": "clover_clear",
+                               "restaurant_id": self.sites["md"]}, follow_redirects=True).status_code, 200)
+        self.assertIsNotNone(cc.status(SessionFactory(), self.ids["late"], self.sites["md"])["open"])  # no manual closing
+        CLOVER.deliver_late()                                               # Clover's late answer: it did create it
+        self.assertIn("Link recovered", self.act("late", "md"))
+        self.assertEqual(len(CLOVER.creates()), sent)                       # no second send
+        created = [e for e in CLOVER.employees["MERCH-MD"] if e["customId"] == f"RF1-{self.ids['late']}"]
+        self.assertEqual(len(created), 1)
+        self.assertEqual(self.pos("late"), {self.sites["md"]: created[0]["id"]})
+        self.assertIn("collegamento recuperato", self.site_block("late", "md"))
 
     def test_created_but_interrupted_before_save_is_recovered_first(self):
         CLOVER.behaviour["MERCH-MD"] = "interrupt"
@@ -313,16 +323,15 @@ class CloverCreateHttpTest(unittest.TestCase):
         created = [e for e in CLOVER.employees["MERCH-MD"] if e["customId"] == f"RF1-{self.ids['crash']}"]
         self.assertEqual(len(created), 1)
         self.assertEqual(self.pos("crash"), {self.sites["md"]: created[0]["id"]})
-        self.assertIn("collegamento recuperato", self.site_block("crash", "md"))
 
     def test_uncertain_but_created_is_recovered(self):
-        CLOVER.behaviour["MERCH-MD"] = "uncertain_created"
+        CLOVER.behaviour["MERCH-WP"] = "uncertain_created"
         try:
-            self.act("refuse", "md")
+            self.act("unsure", "wp")
         finally:
-            CLOVER.behaviour.pop("MERCH-MD")
-        self.assertIn("Link recovered", self.act("refuse", "md"))
-        self.assertEqual(len([e for e in CLOVER.employees["MERCH-MD"] if e["customId"] == f"RF1-{self.ids['refuse']}"]), 1)
+            CLOVER.behaviour.pop("MERCH-WP")
+        self.assertIn("Link recovered", self.act("unsure", "wp"))
+        self.assertEqual(len([e for e in CLOVER.employees["MERCH-WP"] if e["customId"] == f"RF1-{self.ids['unsure']}"]), 1)
 
     def test_double_click_and_concurrent_requests_send_at_most_one(self):
         CLOVER.behaviour["MERCH-WP"] = "slow"
@@ -345,18 +354,13 @@ class CloverCreateHttpTest(unittest.TestCase):
         self.assertEqual(len(self.pos("race")), 1)
 
     def test_refused_is_shown_and_creates_nothing(self):
-        with SessionFactory() as db:
-            card = directory.create_person(db, display_name="Rex Refused", restaurant_id=self.sites["md"],
-                                           role_id=db.scalar(select(m.RestaurantRole.id).where(m.RestaurantRole.name == "Server")),
-                                           area_id=db.scalar(select(m.OperationalArea.id)))
-            db.commit(); self.ids["rex"] = card.id
         CLOVER.behaviour["MERCH-MD"] = "refuse"
         try:
-            self.assertIn("Clover refused the creation (HTTP 400)", self.act("rex", "md"))
+            self.assertIn("Clover refused the creation (HTTP 400)", self.act("refuse", "md"))
         finally:
             CLOVER.behaviour.pop("MERCH-MD")
-        self.assertIn("rifiutato da Clover", self.site_block("rex", "md"))
-        self.assertIn(">Crea in Clover</button>", self.site_block("rex", "md"))   # a new attempt is allowed
+        self.assertIn("rifiutato da Clover", self.site_block("refuse", "md"))
+        self.assertIn(">Crea in Clover</button>", self.site_block("refuse", "md"))   # definite refusal: may retry
 
     # 2. manual entry stays; no Clover -> Registry import -------------------------------------------------------
     def test_manual_pos_id_still_links_an_existing_clover_employee(self):
@@ -367,6 +371,7 @@ class CloverCreateHttpTest(unittest.TestCase):
         with SessionFactory() as db:
             names = set(db.scalars(select(m.Employee.display_name)))
         self.assertFalse(any(n and n.startswith("MERCH-") for n in names))
+        self.assertIn("Salva POS ID", self.site_block("manual", "wp"))
 
 
 if __name__ == "__main__":
