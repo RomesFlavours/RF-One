@@ -1,0 +1,23 @@
+<section id="clover-download">
+{% if ui_it %}
+  <p>Questa pagina stabilisce <strong>a che ora RF-One scarica ogni giorno i dati Clover</strong> e mostra com'è andato l'ultimo scarico di ciascuna sede. È riservata agli amministratori.</p>
+  <h3>Orario dello scarico ordinario</h3>
+  <p>Un solo orario vale per tutte le sedi; il valore iniziale è mezzanotte, ora di New York. Scegli il nuovo orario e premi <strong>Salva orario</strong>. Lo scarico di oggi, se già eseguito, non viene ripetuto: il nuovo orario vale dal prossimo scarico. Se RF-One era fermo all'orario previsto, lo scarico mancato parte appena RF-One riparte, anche se il riavvio avviene il giorno dopo prima del nuovo orario. Al cambio dell'ora legale: in primavera un orario che non esiste (per esempio 02:30) diventa l'ora successiva (03:30); in autunno un orario che si ripete (per esempio 01:30) vale la prima volta.</p>
+  <h3>Cosa viene scaricato</h3>
+  <p>A ogni scarico RF-One prende, per ogni sede Clover attiva, i dati nuovi e gli aggiornamenti dei dati già presenti, usando il negozio Clover e le credenziali di quella sede. Ripetere uno scarico non crea mai doppioni. Una sede inattiva non viene scaricata.</p>
+  <h3>Stato per sede</h3>
+  <p><strong>Ultimo scarico</strong> indica l'esito dell'ultimo tentativo (con il motivo se è fallito). <strong>Ultimo scarico riuscito</strong> e <strong>Dati coperti</strong> contano solo gli scarichi completati. Quando lo scarico notturno è completato per tutte le sedi attive, Tips può calcolare e pagare. Un tentativo fallito non estende mai la copertura, e lo scarico successivo riprende dal punto in cui la sede era rimasta. Se una sede fallisce, le altre vengono completate comunque. Gli orari sono nell'ora locale della sede.</p>
+  <h3>Live</h3>
+  <p>Lo scarico Live è spento normalmente. Si accende solo quando una funzione RF-One autorizzata lo chiede, per le sole sedi e i soli dati richiesti, e si spegne da solo alla fine della richiesta. Da questa pagina non si avvia nessuno scarico.</p>
+{% else %}
+  <p>This page sets <strong>the time at which RF-One downloads Clover data every day</strong> and shows how each site's last download went. It is reserved to administrators.</p>
+  <h3>Ordinary download time</h3>
+  <p>One time applies to every site; the initial value is midnight, New York time. Choose the new time and press <strong>Save time</strong>. Today's download, if already done, is not repeated: the new time applies from the next download. If RF-One was stopped at the planned time, the missed download starts as soon as RF-One runs again, also when the restart happens the next day before the new time. At daylight-saving changes: in spring a time that does not exist (for example 02:30) becomes the next hour (03:30); in autumn a repeated time (for example 01:30) applies the first time.</p>
+  <h3>What is downloaded</h3>
+  <p>At each download RF-One takes, for every active Clover site, the new records and the updates to records already present, using that site's own Clover merchant and credentials. Repeating a download never creates duplicates. An inactive site is not downloaded.</p>
+  <h3>Status by site</h3>
+  <p><strong>Last download</strong> shows the outcome of the last attempt (with the reason when it failed). <strong>Last successful download</strong> and <strong>Data covered</strong> count only completed downloads. Once the nightly download is completed for every active site, Tips can calculate and pay. A failed attempt never extends the coverage, and the next download resumes from where the site stopped. If one site fails, the others are still completed. Times are in the site's local time.</p>
+  <h3>Live</h3>
+  <p>The Live download is normally off. It turns on only when an authorized RF-One function asks for it, for the requested sites and data only, and turns off by itself when the request ends. This page starts no download.</p>
+{% endif %}
+</section>
