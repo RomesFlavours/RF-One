@@ -230,6 +230,30 @@ def main() -> int:
         check("export carries no cost, Value or notes", "internal note" not in text and "1.05" not in text and ",42," not in text)
         resp = c.get(f"/restaurant/wines/lists/{future_id}/export.csv")
         check("a future version can be exported too", resp.status_code == 200)
+
+        # Vintage edited in the Wine list row dialog overwrites Availability
+        resp = c.post(f"/restaurant/wines/items/{manual_id}", data={
+            "csrf_token": csrf, "cost_used": "47", "value_factor": "1.1", "applied_bottle": "125",
+            "vintage_year": "2018"})
+        with SessionFactory() as s:
+            check("the row dialog vintage overwrites the Availability vintage",
+                  resp.json["ok"] and s.get(m.Wine, w2).vintage_label == "2018", str(resp.json))
+        page = c.get(f"/restaurant/wines?entity={rfwp_id}").data.decode()
+        check("the Wine list shows Edit before the wine and the vintage field in the row dialog",
+              page.index("data-edit-item") < page.index("Domini Veneti</td>") and 'id="if-vintage"' in page)
+
+        # Delete from Availability removes the wine from the whole module
+        avail = c.get("/restaurant/wines/availability").data.decode()
+        check("Availability shows Edit at the left and a Delete action",
+              f'/restaurant/wines/availability/{w1}/delete' in avail
+              and avail.index(f'data-edit-wine="{w1}"') < avail.index(f'/availability/{w1}/delete'))
+        resp = c.post(f"/restaurant/wines/availability/{w1}/delete", data={"csrf_token": csrf})
+        with SessionFactory() as s:
+            check("deleting from Availability removes the wine and its rows on every list",
+                  resp.status_code == 302 and s.get(m.Wine, w1) is None
+                  and s.query(m.WineListItem).filter_by(wine_id=w1).count() == 0)
+        resp = c.post(f"/restaurant/wines/availability/{w3}/delete", data={"csrf_token": "wrong"})
+        check("Availability delete without a valid CSRF token is refused", resp.status_code == 400)
     finally:
         try:
             os.remove(_TEST_DB_PATH)

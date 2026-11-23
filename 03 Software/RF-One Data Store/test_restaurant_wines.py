@@ -342,6 +342,28 @@ def main() -> int:
                   text)
             check("export leaves the glass price empty when not sold by the glass",
                   "RFWP,2026-10-01,Red,Amarone,,Venturini,2019,750,125," in lines, text)
+
+            # ---- Vintage overwrite from a Wine list row -------------------
+            catalog.set_vintage(s, w2, 2020)
+            s.commit()
+            check("set_vintage overwrites the catalog vintage", s.get(m.Wine, w2.id).vintage_label == "2020")
+            catalog.set_vintage(s, w2, None)
+            s.commit()
+            check("an empty vintage makes the wine non-vintage", s.get(m.Wine, w2.id).vintage_label == "NV")
+            try:
+                catalog.set_vintage(s, w2, 1800)
+                check("an out-of-range vintage is refused", False)
+            except catalog.WineCatalogError:
+                s.rollback()
+                check("an out-of-range vintage is refused", True)
+
+            # ---- Delete a wine from the whole module ---------------------
+            rows_before = s.query(m.WineListItem).filter_by(wine_id=w2.id).count()
+            removed = catalog.delete_wine(s, w2)
+            s.commit()
+            check("delete_wine removes the wine and all its Wine list rows",
+                  removed == rows_before and rows_before > 0 and s.get(m.Wine, w2.id) is None
+                  and s.query(m.WineListItem).filter_by(wine_id=w2.id).count() == 0, str((removed, rows_before)))
     finally:
         cleanup_disposable_test_database_url(url)
 
