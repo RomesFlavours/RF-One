@@ -332,6 +332,14 @@ class AcquisitionRunStatus:
     notes: str | None
 
 
+def location_is_active(session: Session, location_id: int) -> bool:
+    location = session.get(m.Location, location_id)
+    if location is None or location.active is False:
+        return False
+    merchant = session.get(m.Merchant, location.merchant_id)
+    return merchant is None or merchant.active is not False
+
+
 def active_clover_location_ids(session: Session) -> list[int]:
     """Every active Clover Location with an active merchant, in id order
     (CLOVER_ACQUISITION_ENGINE_001)."""

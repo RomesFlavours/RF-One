@@ -693,6 +693,7 @@ class _CycleLockSummary:
 
 def run_correction_cycle(
     session: Session, *, location_id: int, client: CloverReadClient | None = None, now: datetime | None = None,
+    resources: tuple[str, ...] = ALL_RESOURCES,
 ) -> CorrectionCycleSummary | None:
     """One correction cycle for one Location: Orders, then Payments, then
     Refunds — each independently windowed/cursored/committed. Returns `None`
@@ -700,6 +701,9 @@ def run_correction_cycle(
     (Live Sync, Backfill, or another correction cycle) is already RUNNING
     for it right now — never an error; the next tick tries again."""
     now = now or datetime.now(UTC)
+    # CLOVER_ACQUISITION_ENGINE_001: a Live download may ask for a subset of the resources.
+    if not resources or set(resources) - set(ALL_RESOURCES):
+        raise ValueError(f"resources must be a non-empty subset of {ALL_RESOURCES}")
     merchant = _resolve_clover_merchant(session, location_id)
     if merchant is None:
         LOG.info("location_id=%s is not a Clover-sourced Location — skipping this correction cycle.", location_id)
@@ -754,26 +758,29 @@ def run_correction_cycle(
             for done in identity_holds.reattribute_untraced_confirmations(session, merchant_id):
                 LOG.info("location_id=%s: held work attributed after identity confirmation: %s", location_id, done)
         session.commit()
-        summary.results.append(
-            _correct_orders(
-                session, resolved_client, location_id=location_id, source_system_id=source_system_id,
-                merchant_id=merchant_id, now=now,
+        if RESOURCE_ORDERS in resources:
+            summary.results.append(
+                _correct_orders(
+                    session, resolved_client, location_id=location_id, source_system_id=source_system_id,
+                    merchant_id=merchant_id, now=now,
+                )
             )
-        )
         beat()
-        summary.results.append(
-            _correct_payments(
-                session, resolved_client, location_id=location_id, source_system_id=source_system_id,
-                merchant_id=merchant_id, now=now,
+        if RESOURCE_PAYMENTS in resources:
+            summary.results.append(
+                _correct_payments(
+                    session, resolved_client, location_id=location_id, source_system_id=source_system_id,
+                    merchant_id=merchant_id, now=now,
+                )
             )
-        )
         beat()
-        summary.results.append(
-            _correct_refunds(
-                session, resolved_client, location_id=location_id, source_system_id=source_system_id,
-                merchant_id=merchant_id, now=now,
+        if RESOURCE_REFUNDS in resources:
+            summary.results.append(
+                _correct_refunds(
+                    session, resolved_client, location_id=location_id, source_system_id=source_system_id,
+                    merchant_id=merchant_id, now=now,
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 — mirrors acquisition.import_clover_period's own top-level
         # guard: a genuinely unexpected failure (e.g. `_start_cursor_run`'s
         # own flush, or a resource's final commit) must still release the
