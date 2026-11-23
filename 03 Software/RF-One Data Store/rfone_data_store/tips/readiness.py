@@ -51,7 +51,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models as m
-from ..technical.connectors.clover.correction_sync import describe_reconciliation_status
 from . import distribution_engine as engine_svc
 
 UTC = timezone.utc
@@ -123,7 +122,7 @@ def _restaurant_location_ids(session: Session, restaurant_id: int) -> list[int]:
     )
 
 
-def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateReadiness:
+def describe_readiness(session: Session, restaurant_id: int, *, now: datetime | None = None) -> BusinessDateReadiness:
     """The one entry point a Process Activation caller needs: what is the
     candidate Business Date, what condition makes it ready, and has it
     already been processed / does it need to be resumed (task §4's explicit
@@ -147,9 +146,10 @@ def describe_readiness(session: Session, restaurant_id: int) -> BusinessDateRead
     run = latest_run_covering(session, restaurant_id, business_date)
     already_calculated = run is not None
 
-    reconciliation = describe_reconciliation_status(
-        session, location_ids=_restaurant_location_ids(session, restaurant_id), period_end=period_end,
-    )
+    # CLOVER_ACQUISITION_ENGINE_001 (Product Owner 2026-11-23): once the nightly Clover download is done for
+    # EVERY active site, Tips are ready to be processed. Inactive sites are not required.
+    from ..operational_acquisition import describe_nightly_download
+    reconciliation = describe_nightly_download(session, now=now)
 
     return BusinessDateReadiness(
         business_date=business_date, has_orders=True, calculation_run=run, already_calculated=already_calculated,
