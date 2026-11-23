@@ -43,7 +43,7 @@ from rfone_data_store.selection import workspace_models as ps
 from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 from rfone_data_store.technical import smtp_email, sms_text
 
-from . import ai_adapter, cv_received, engine, job_ad, position_settings, sp_queue
+from . import ai_adapter, cv_received, engine, job_ad, position_settings, sp_queue, staff_alerts
 from .routes import (
     CLIENT_NAME, ROLE_LABEL, ROLE_LABEL_EN, _book, _cfg, _conflicts, _raw_resume, _restaurant_id, _local, external_url,
 )
@@ -300,6 +300,7 @@ def job_page(token):
                                            text="This résumé was already received for this position. Thank you!")
                 if result["status"] == "OK":
                     cv_received.queue(db, result["pc"].id)
+                    staff_alerts.new_application(db, result["pc"].id)
                     application = _start_interview(db, position, result["pc"])
                     return redirect(url_for(".candidate_interview", token=application.token))
                 flash("We could not read this file. Please upload a PDF, DOCX or TXT résumé.")

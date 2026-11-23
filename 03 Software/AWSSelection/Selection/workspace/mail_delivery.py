@@ -143,6 +143,8 @@ def install():
     @careers.bp.route('/candidate/bridge/mail/claim', methods=['POST'])
     def mail_claim():
         relay_payload()
+        from . import staff_alerts
+        staff_alerts.run_daily_reminder(_cfg.SessionFactory)   # once a day; never blocks mail delivery
         with _cfg.SessionFactory() as db:
             item = claim(db)
             db.commit()
