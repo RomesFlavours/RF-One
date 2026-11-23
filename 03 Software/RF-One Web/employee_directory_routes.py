@@ -1,19 +1,16 @@
-"""Administration > Employee Directory; existing RF-One access and Clover jobs."""
+"""Administration > Employee Directory and Registry departments."""
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 from flask import abort, flash, redirect, render_template, request, url_for
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import employee_directory as directory
 from rfone_data_store import models as m
 from rfone_data_store import access_profiles as profiles
 from rfone_data_store import rfone_web_session as shared_session
-from rfone_data_store.technical.connectors.clover import acquisition_jobs as jobs
-from rfone_data_store.technical.connectors.clover.acquisition import ImportAlreadyRunningError
 
 
 def _employee_groups(rows, locations):
@@ -36,7 +33,7 @@ def _employee_groups(rows, locations):
 
 
 def register_employee_directory_routes(app, *, require_domain_access, SessionFactory,
-                                       load_current_account, require_csrf, get_launcher=lambda: None):
+                                       load_current_account, require_csrf):
     gate = require_domain_access("EMPLOYEES")
 
     def _context_permissions(db, account):
@@ -88,27 +85,6 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                 flash(str(exc), "error")
                 return redirect(url_for("employee_directory_home"))
 
-    def _sites(db):
-        locations = list(db.scalars(select(m.Location).join(
-            m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id
-        ).where(m.SourceSystem.code == "CLOVER").order_by(m.Location.id)))
-        sites = []
-        md_id = os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-        for location in locations:
-            # Connection configuration belongs to the worker. The web app only
-            # needs the non-secret configured marker for MD, not the token.
-            md = location.source_location_id == md_id if md_id else "dora" in location.name.casefold()
-            configured = bool(location.source_location_id) and (not md or bool(md_id and (
-                os.environ.get("CLOVER_MD_API_TOKEN") or os.environ.get("RFONE_CLOVER_MD_CONFIGURED") == "1")))
-            last_sync = db.scalar(select(func.max(m.IngestionRun.finished_at)).where(
-                m.IngestionRun.location_id == location.id,
-                m.IngestionRun.source_system_id == location.source_system_id,
-                m.IngestionRun.resource_type.is_(None),
-                m.IngestionRun.status == "COMPLETE",
-            ))
-            sites.append({"location": location, "configured": configured, "last_sync": last_sync})
-        return sites
-
     @app.route("/administration/employees")
     @gate
     def employee_directory_home():
@@ -137,15 +113,11 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
             pending = [{"link": l, "candidates": directory.candidates(db, l.snapshot or {})}
                        for l in all_links if directory.pending_requires_review(db, l)]
             if scope_ids is not None:pending=[]
-            sites = _sites(db)
             active_groups, dismissed = _employee_groups(rows, locations)
             return render_template(
                 "employee_directory.html", active_groups=active_groups, dismissed=dismissed,
                 pending=pending, locations=locations,
-                employees=directory.employee_options(db, include_inactive=True), sites=sites, query=query,
-                md_configured=any(s["location"].source_location_id == os.environ.get("CLOVER_MD_MERCHANT_ID", "").strip()
-                                  and s["configured"] for s in sites),
-                can_sync=shared_session.account_may_enter_domain(db, account, "CLOVER_ACQUISITION"),
+                employees=directory.employee_options(db, include_inactive=True), query=query,
                 can_manage=shared_session.account_is_domain_admin(db, account, "EMPLOYEES"),
             )
 
@@ -265,7 +237,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     create_new=request.form.get("create_new") == "yes", account_id=account.id,
                 )
                 db.commit()
-                flash("Clover identity linked. Run Sync Now to recover any pending work records.", "info")
+                flash("Clover identity linked. To recover pending work records, use Clover Acquisition.", "info")
                 return redirect(url_for("employee_directory_home", q=request.form.get("q", "")))
             except (ValueError, IntegrityError) as exc:
                 db.rollback()
@@ -296,7 +268,7 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                             original_label=request.form.get("original_label"),
                             restaurant_role_id=number("restaurant_role_id"), department_id=number("department_id"),
                             account_id=account.id)
-                        flash("Corrispondenza salvata. Le assegnazioni della sede sono state aggiornate.", "info")
+                        flash("Corrispondenza storica salvata.", "info")
                     elif action == "role":
                         role = departments.save_role(db, role_id=number("role_id"), name=request.form.get("name"),
                                                      department_id=number("department_id"), account_id=account.id)
@@ -316,38 +288,17 @@ def register_employee_directory_routes(app, *, require_domain_access, SessionFac
                     db.rollback()
                     flash(str(exc) if isinstance(exc, ValueError) else "Il dato è cambiato nel frattempo. Ricarica e riprova.", "error")
                 return redirect(url_for("employee_departments") + (f"#{anchor}" if anchor else ""))
-            data = departments.overview(db)
+            at = departments.utc_now()
+            data = departments.overview(db, at=at)
             installed = departments.available(db)
             people_by_department = {}
-            for item in departments.classification(db):
+            for item in departments.classification(db, at=at):
                 if item["department_code"]:
-                    people_by_department[item["department_code"]] = people_by_department.get(item["department_code"], 0) + 1
+                    people_by_department.setdefault(item["department_code"], set()).add(item["employee_id"])
             return render_template(
                 "employee_departments.html", data=data, installed=installed, can_manage=can_manage,
                 departments=list(db.scalars(select(m.RegistryDepartment).order_by(m.RegistryDepartment.name))) if installed else [],
                 rf_roles=[r for r in db.scalars(select(m.RestaurantRole).order_by(m.RestaurantRole.name)) if r.active is not False],
                 areas={a.id: a for a in db.scalars(select(m.OperationalArea))},
                 accounts={a.id: a.display_name for a in db.scalars(select(m.RFOneAccount))},
-                people_by_department=people_by_department)
-
-    @app.route("/administration/employees/sync-now", methods=["POST"])
-    @gate
-    @require_domain_access("CLOVER_ACQUISITION")
-    def employee_directory_sync():
-        require_csrf()
-        with SessionFactory() as db:
-            account = load_current_account(db)
-            try:
-                location_id = int(request.form.get("location_id", ""))
-                site = next((s for s in _sites(db) if s["location"].id == location_id), None)
-                if site is None or not site["configured"]:
-                    raise ValueError("This site's Clover connection is not configured.")
-                run = jobs.request_sync_now(db, location_id=location_id, launcher=get_launcher(),
-                                            requested_by_account_id=account.id)
-                db.commit()
-                flash(f"Synchronization requested (run {run.id}). Refresh this page to see the outcome.", "info")
-            except (ValueError, ImportAlreadyRunningError, jobs.JobLaunchError, jobs.NoSyncStartingPointError,
-                    jobs.NotACloverLocationError) as exc:
-                db.rollback()
-                flash(str(exc), "error")
-        return redirect(url_for("employee_directory_home"))
+                people_by_department={code: len(people) for code, people in people_by_department.items()})

@@ -568,7 +568,6 @@ register_restaurant_wines_routes(
 register_employee_directory_routes(
     app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
     load_current_account=load_current_account, require_csrf=require_csrf,
-    get_launcher=lambda: clover_job_launcher,
 )
 
 

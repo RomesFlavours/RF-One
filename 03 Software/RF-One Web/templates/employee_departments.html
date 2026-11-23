@@ -13,7 +13,7 @@
 <h1>Reparti e ruoli</h1>
 <hr>
 <div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
-<p>Tabella unica di RF-One: ogni ruolo originale (Clover o documento storico) corrisponde a un ruolo RF-One, e ogni ruolo RF-One appartiene a un reparto. Su Clover non cambia nulla.</p>
+<p>Il reparto di una persona è quello del ruolo della sua assegnazione RF-One in vigore.</p>
 {% if not installed %}
 <p class="error" role="alert">La tabella Ruolo/Reparto non è ancora installata in questo database.</p>
 {% else %}
@@ -39,22 +39,22 @@
 {% endif %}
 
 {% for site in data.sites %}
-<h2 id="site-{{ site.restaurant_id }}">Ruoli originali · {{ site.restaurant }}</h2>
+<h2 id="site-{{ site.restaurant_id }}">Ruoli dei documenti storici · {{ site.restaurant }}</h2>
 <div class="table-scroll"><table>
 <thead><tr><th>Ruolo originale</th><th>Provenienza</th><th>Persone</th><th>Ruolo RF-One</th><th>Reparto</th>{% if can_manage %}<th></th>{% endif %}<th>Storico</th></tr></thead>
 <tbody>{% for row in site.rows %}{% set key = site.restaurant_id ~ '-' ~ row.source ~ '-' ~ loop.index %}
 <tr id="orig-{{ key }}" data-rr-key="orig:{{ site.restaurant_id }}:{{ row.source }}:{{ row.original_key }}"{% if row.missing_department %} style="background:#fff4d6"{% endif %}>
   <td translate="no">{% if can_manage %}<form method="post" id="map-{{ key }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="map"><input type="hidden" name="restaurant_id" value="{{ site.restaurant_id }}"><input type="hidden" name="source" value="{{ row.source }}"><input type="hidden" name="original_key" value="{{ row.original_key }}"><input type="hidden" name="original_label" value="{{ row.original_label }}"><input type="hidden" name="return_to" value="orig-{{ key }}"></form>{% endif %}<strong>{{ row.original_label }}</strong>{% if row.missing_department %}<div><strong>Senza reparto</strong></div>{% endif %}</td>
-  <td>{{ row.source_label }}{% if row.location %} · {{ row.location }}{% endif %}</td>
-  <td>{{ row.people }}{% if row.source != 'CLOVER' %} <span class="muted">(storico)</span>{% elif row.pending %} <span class="muted">({{ row.pending }} da confermare)</span>{% endif %}</td>
+  <td>{{ row.source_label }}</td>
+  <td>{{ row.people }}</td>
   <td>{% if can_manage %}<select name="restaurant_role_id" form="map-{{ key }}" aria-label="Ruolo RF-One di {{ row.original_label }}"><option value="">Da definire</option>{% for r in rf_roles if r.restaurant_id in (none, site.restaurant_id) %}<option value="{{ r.id }}"{% if r.id == row.restaurant_role_id %} selected{% endif %}>{{ r.name }}</option>{% endfor %}</select>{% else %}{% for r in rf_roles if r.id == row.restaurant_role_id %}{{ r.name }}{% else %}Da definire{% endfor %}{% endif %}</td>
   <td>{% if row.role_has_department or not can_manage %}{{ row.department.code if row.department else 'Da definire' }}{% if row.role_has_department %} <span class="muted">(dal ruolo RF-One)</span>{% endif %}{% if can_manage %}<input type="hidden" name="department_id" form="map-{{ key }}" value="{{ row.own_department_id or '' }}">{% endif %}
       {% else %}<select name="department_id" form="map-{{ key }}" aria-label="Reparto di {{ row.original_label }}"><option value="">Da definire</option>{% for d in departments if d.active or d.id == row.own_department_id %}<option value="{{ d.id }}"{% if d.id == row.own_department_id %} selected{% endif %}>{{ d.code }} · {{ d.name }}</option>{% endfor %}</select>{% endif %}</td>
   {% if can_manage %}<td><button type="submit" form="map-{{ key }}">Salva</button></td>{% endif %}
-  <td>{{ history_list(row.history, row.timezone) }}{% if row.source == 'CLOVER' %}<div class="muted">id ruolo Clover {{ row.original_key }}</div>{% endif %}</td>
+  <td>{{ history_list(row.history, none) }}</td>
 </tr>{% endfor %}</tbody>
 </table></div>
-{% else %}<p>Nessun ruolo originale disponibile.</p>{% endfor %}
+{% else %}<p>Nessun ruolo da documenti storici disponibile.</p>{% endfor %}
 
 <h2 id="departments">Reparti RF-One</h2>
 <div class="table-scroll"><table>
