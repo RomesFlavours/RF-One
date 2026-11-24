@@ -28,13 +28,14 @@
   <table class="table-compact">
     <thead>
       <tr>
-        <th>Type · Label</th><th>Producer</th><th>Vintage</th><th>Category</th><th>Format</th>
+        <th class="col-narrow"></th><th>Type · Label</th><th>Producer</th><th>Vintage</th><th>Category</th><th>Format</th>
         <th>Supplier</th><th class="col-amount">Cost</th><th>Availability</th><th class="col-narrow"></th>
       </tr>
     </thead>
     <tbody>
       {% for w in wines %}
       <tr>
+        <td><button type="button" class="btn-secondary btn-inline wines-edit-btn" data-edit-wine="{{ w.id }}">Edit</button></td>
         <td><strong>{{ w.type_name }}</strong>{% if w.label_name %} · {{ w.label_name }}{% endif %}
           {% if w.denomination or w.region %}<span class="cell-note">{{ [w.denomination, w.region]|select|join(' · ') }}</span>{% endif %}</td>
         <td>{{ w.producer }}</td>
@@ -44,7 +45,14 @@
         <td>{{ w.supplier_name or '—' }}</td>
         <td class="col-amount">{% if w.cost_known %}${{ w.cost_usd }}{% if w.cost_date %}<span class="cell-note">{{ w.cost_date }}</span>{% endif %}{% else %}<span class="badge warn">Cost unknown</span>{% endif %}</td>
         <td>{{ w.availability_label }}</td>
-        <td><button type="button" class="btn-secondary btn-inline" data-edit-wine="{{ w.id }}">Edit</button></td>
+        <td>
+          <form method="post" action="{{ url_for('restaurant_wine_delete', wine_id=w.id) }}"
+                data-confirm="Delete {{ w.display_name }}? It will disappear from Availability and from every Wine list.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="q" value="{{ query }}">
+            <button type="submit" class="btn-danger btn-inline wines-delete-btn">Delete</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -197,6 +205,12 @@ document.addEventListener("DOMContentLoaded", function () {
     syncVintage();
     error.hidden = true;
   }
+
+  document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+    f.addEventListener("submit", function (event) {
+      if (!window.confirm(f.getAttribute("data-confirm"))) { event.preventDefault(); }
+    });
+  });
 
   document.getElementById("wine-new").addEventListener("click", function () { fill(null); modal.open(this); });
   document.querySelectorAll("[data-edit-wine]").forEach(function (button) {

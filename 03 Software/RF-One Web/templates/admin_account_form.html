@@ -2,12 +2,14 @@
 {% from "_nav_macros.html" import breadcrumb %}
 {% block page_title %}{{ "Create account" if mode == "create" else "Edit account" }} · RF-One{% endblock %}
 {% block content %}
-{{ breadcrumb([('RF-One', url_for('home')), ('Accounts', url_for('admin_accounts')), ('Create account' if mode == 'create' else 'Edit account', None)]) }}
+{{ breadcrumb([('RF-One', url_for('home')), ('Registry', profile_return|default(url_for('role_profiles_home', tab='people'), true)), ('Create account' if mode == 'create' else 'Edit account', None)]) }}
 <h1>{{ "Create account" if mode == "create" else "Edit account" }}</h1>
+<p><a href="{{ profile_return|default(url_for('role_profiles_home', tab='people'), true) }}">Back to person</a></p>
 
 <div class="card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="from_person" value="{{ profile_person|default('', true) }}">
 
     <div class="field-row">
       <label for="username">Username</label>
@@ -77,6 +79,7 @@
     <h2>Reset password</h2>
     <form method="post" action="{{ url_for('admin_account_reset_password', account_id=account.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="from_person" value="{{ profile_person|default('', true) }}">
       <div class="field-row">
         <label for="new_password">New password</label>
         <input type="password" id="new_password" name="password" autocomplete="new-password" required>

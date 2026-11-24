@@ -96,6 +96,11 @@ _engine = create_configured_engine(_DB_URL)
 SessionFactory = create_session_factory(_engine)
 
 app = Flask(__name__)
+from rfone_data_store.web_access import install_access_context
+install_access_context(app, SessionFactory)
+app.extensions["rfone_managed_training"] = True
+from ui_text import ui
+app.jinja_env.globals["ui"] = ui
 # The SAME signing secret RF-One Web uses, so Tips can verify the RF-One
 # session cookie it reads (`_require_rfone_login` below). Tips never issues
 # a login of its own; it also signs its flash messages with it.
@@ -168,7 +173,10 @@ def _require_rfone_login():
     if request.endpoint is None or request.endpoint in _PUBLIC_ENDPOINTS or request.blueprint == "training":
         return None
     with SessionFactory() as db_session:
-        if rfone_identity.current_account(db_session) is not None:
+        account = rfone_identity.current_account(db_session)
+        if account is not None:
+            if not shared_session.account_may_enter_domain(db_session, account, "TIPS"):
+                abort(403)
             return None
     # Back to the page asked for; after a refused POST, to Tips's first page
     # (the form's own URL cannot be reopened with a GET).
@@ -180,6 +188,26 @@ def _require_rfone_login():
     if target is None:
         abort(401)
     return redirect(target)
+
+@app.before_request
+def _central_training_entry():
+    # The public dish guide is a separate endpoint, not this blueprint.
+    # Operational Training has one RF1 entry; legacy Training cookies and
+    # its old student-provisioning/login routes must not bypass Registry.
+    if request.blueprint != "training":
+        return None
+    with SessionFactory() as db:
+        from rfone_data_store.web_access import training_account_for_rf1
+        if training_account_for_rf1(db, rfone_identity.current_account(db)) is None:
+            abort(403)
+    base = rfone_web_link.base_url()
+    if base is None:
+        abort(503, description="RF-One Web navigation is not configured.")
+    target = request.path
+    if target in ("/training/login", "/training/logout"):
+        target = "/training"
+    return redirect(base + target, code=303 if request.method == "POST" else 302)
+
 
 # RF-One UI Rules (`03 Software/Shared UI/UI Rules.md`): local times,
 # "Surname I." — the same shared formatter RF-One Web registers.
@@ -389,14 +417,15 @@ def _clover_acquisition_panel(session, restaurant) -> dict:
     return panel
 
 
-def _employee_names(session, source_employee_ids) -> dict:
-    """Clover employee id -> "Surname I." (RF-One UI Rules §2). The id stays
-    in the database; it is never what a person reads."""
-    ids = {i for i in source_employee_ids if i}
-    if not ids:
-        return {}
-    employees = session.scalars(select(m.Employee).where(m.Employee.source_employee_id.in_(ids))).all()
-    return {e.source_employee_id: display_format.employee_short_name(e.display_name) for e in employees}
+def _employee_names(session, employee_ids) -> dict:
+    """RF-One identity -> operational name; external IDs are merchant-scoped."""
+    from rfone_data_store.employee_directory import resolve_employee_id
+    ids = {i for i in employee_ids if i is not None}
+    canonical = {i: resolve_employee_id(session, i) for i in ids}
+    employees = {e.id: e for e in session.scalars(
+        select(m.Employee).where(m.Employee.id.in_(set(canonical.values()))))}
+    return {original: display_format.employee_short_name(employees[target].display_name)
+            for original, target in canonical.items() if target in employees}
 
 
 @app.route("/")
@@ -464,16 +493,32 @@ def home():
                     .order_by(m.Shift.clock_in)
                 )
                 for shift in session.scalars(shift_stmt).all():
-                    employee = session.get(m.Employee, shift.employee_id)
                     shifts_rows.append(
                         {
-                            "employee_id": employee.source_employee_id if employee else None,
+                            "employee_id": shift.employee_id,
                             "clock_in": shift.clock_in,
                             "clock_out": shift.clock_out,
                             "source_shift_id": shift.source_shift_id,
                         }
                     )
 
+        pagination = {}
+        for key, values in (("orders", imported["orders_rows"]), ("payments", imported["payments_rows"]), ("shifts", shifts_rows)):
+            pages = max(1, (len(values) + 99) // 100)
+            page = max(1, min(request.args.get(key + "_page", 1, type=int), pages))
+            offset = (page - 1) * 100
+            links = {}
+            for direction, number in (("previous", page - 1), ("next", page + 1)):
+                args = request.args.to_dict()
+                args.update(from_date=from_date, through_date=through_date)
+                args[key + "_page"] = number
+                links[direction] = url_for("home", **args) + "#" + key + "-detail"
+            pagination[key] = dict(page=page, pages=pages, total=len(values), first=offset+1 if values else 0,
+                last=min(offset+100, len(values)), **links)
+            if key == "shifts":
+                shifts_rows = values[offset:offset+100]
+            else:
+                imported[key + "_rows"] = values[offset:offset+100]
         employee_names = _employee_names(
             session, [r["employee_id"] for r in imported["payments_rows"] + imported["orders_rows"] + shifts_rows],
         )
@@ -482,7 +527,7 @@ def home():
             "home.html", restaurant=restaurant, from_date=from_date, through_date=through_date,
             no_business_date_data=no_business_date_data, clover=clover, tz=clover["tz_name"],
             employee_names=employee_names,
-            **imported, shifts_rows=shifts_rows,
+            **imported, shifts_rows=shifts_rows, pagination=pagination,
             active_nav="historical-backfill",
         )
 
@@ -849,6 +894,22 @@ def tips_run_history():
         )
 
 
+@app.route("/historical-tip-payments")
+def historical_tip_payments():
+    from rfone_data_store.tips import historical_payments
+    with SessionFactory() as session:
+        restaurant = _default_restaurant(session)
+        documents = historical_payments.list_documents(session, restaurant_id=restaurant.id) if restaurant else []
+        run_id = request.args.get("document", type=int)
+        if run_id is None and documents:
+            run_id = documents[0]["run_id"]
+        report = historical_payments.report(session, restaurant_id=restaurant.id, run_id=run_id) if restaurant and run_id else None
+        if run_id and report is None:
+            abort(404)
+        return render_template("historical_tip_payments.html", documents=documents, report=report,
+            active_nav="tips-runs", crumbs=[("Saved Periods", url_for("tips_run_history")), ("Historical paid tips", None)])
+
+
 @app.route("/tips-runs/<int:run_id>")
 def tips_run_report(run_id: int):
     """§18 — the Calculation Run Report, read back from what was saved.
@@ -909,7 +970,7 @@ def calculate_tips_order_drilldown(order_id: int):
                       if recipient_ids else [])
         }
         order = drilldown["order"]
-        order_employee_name = _employee_names(session, [order.source_employee_id]).get(order.source_employee_id)
+        order_employee_name = _employee_names(session, [order.employee_id]).get(order.employee_id)
         return render_template(
             "order_drilldown.html", restaurant=restaurant, start_at=start_at, end_at=end_at,
             drilldown=drilldown, recipient_names=recipient_names, order_employee_name=order_employee_name,
@@ -1579,10 +1640,13 @@ def distribution_rule_create():
             return redirect(url_for("configuration_home", _anchor="distribution-rules"))
 
         try:
+            if request.form.get("eligibility_mode") == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY:
+                effective_from = rule_svc.effective_business_date_boundary(session, restaurant.id, effective_from)
             rule_svc.create_rule(
                 session, restaurant_id=restaurant.id, source_role_id=source_role_id,
                 recipient_role_id=recipient_role_id, calculation_base=calculation_base, rate=rate,
                 effective_from=effective_from, created_by=created_by,
+                **_rule_axes_from_form(),
             )
             session.commit()
         except ValueError as exc:
@@ -1628,9 +1692,12 @@ def distribution_rule_new_version(rule_id: int):
             return redirect(url_for("distribution_rule_detail", rule_id=rule_id))
 
         try:
+            if request.form.get("eligibility_mode") == m.ELIGIBILITY_MODE_WORKED_DURING_BUSINESS_DAY:
+                effective_from = rule_svc.effective_business_date_boundary(session, rule.restaurant_id, effective_from)
             new_version = rule_svc.create_new_version(
                 session, rule_id, source_role_id=source_role_id, recipient_role_id=recipient_role_id,
                 calculation_base=calculation_base, rate=rate, effective_from=effective_from, created_by=created_by,
+                **_rule_axes_from_form(),
             )
             # TIPS_FINALIZED_PERIOD_CALCULATION_AND_REPORT_001 §7 — say out
             # loud what entering this version did to the others. Silently
@@ -1673,6 +1740,7 @@ def distribution_rule_toggle_active(rule_id: int):
 # ---------------------------------------------------------------------------
 
 def _host_audit_filters(session, restaurant):
+    from rfone_data_store.employee_directory import employee_options
     employees = []
     if restaurant is not None:
         location_ids = list(
@@ -1681,11 +1749,7 @@ def _host_audit_filters(session, restaurant):
             )
         )
         if location_ids:
-            employees = list(
-                session.scalars(
-                    select(m.Employee).where(m.Employee.location_id.in_(location_ids)).order_by(m.Employee.display_name)
-                )
-            )
+            employees = employee_options(session, location_ids=location_ids, include_inactive=True)
     return employees
 
 
@@ -1696,6 +1760,10 @@ def _host_audit_report_from_request(session, restaurant):
     start_at = request.args.get("start_at") or ""
     end_at = request.args.get("end_at") or ""
     if restaurant is None or not employee_id or not start_at or not end_at:
+        return None
+    from rfone_data_store.employee_directory import resolve_employee_id
+    employee_id = resolve_employee_id(session, employee_id)
+    if employee_id not in {option.id for option in _host_audit_filters(session, restaurant)}:
         return None
     _, tz, _, _, _ = _restaurant_period_config(session, restaurant)
     period = _calculation_period_dt(start_at, end_at, tz)
@@ -1715,10 +1783,13 @@ def host_audit_home():
     with SessionFactory() as session:
         restaurant = _default_restaurant(session)
         employees = _host_audit_filters(session, restaurant)
+        from rfone_data_store.employee_directory import resolve_employee_id
+        selected_id = request.args.get("employee_id", type=int)
+        selected_id = resolve_employee_id(session, selected_id) if selected_id is not None else None
         report = _host_audit_report_from_request(session, restaurant)
         return render_template(
             "host_audit.html", restaurant=restaurant, employees=employees, report=report,
-            employee_id=request.args.get("employee_id", type=int),
+            employee_id=selected_id,
             start_at=request.args.get("start_at") or "",
             end_at=request.args.get("end_at") or "", active_nav="host-audit",
         )
@@ -1827,6 +1898,15 @@ def restaurant_role_edit(role_id: int):
             return redirect(url_for("restaurant_roles_home"))
 
         return render_template("restaurant_role_form.html", mode="edit", role=role, restaurant=None)
+
+
+
+def _rule_axes_from_form():
+    return dict(
+        aggregation_scope=request.form.get("aggregation_scope", m.AGGREGATION_SCOPE_ORDER),
+        eligibility_mode=request.form.get("eligibility_mode", m.ELIGIBILITY_MODE_ACTIVE_AT_SETTLEMENT),
+        distribution_method=request.form.get("distribution_method", m.DISTRIBUTION_METHOD_EQUAL),
+    )
 
 
 if __name__ == "__main__":

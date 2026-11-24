@@ -1,0 +1,75 @@
+{% extends 'training_workspace/_base.html' %}
+{% set active_tab = 'student_home' %}
+{% set help_section = 'training_student_home' %}
+{% set it = config.get('RFONE_LOCAL_OPERATOR') %}
+{% block title %}{{ 'Il tuo percorso' if it else 'Your training' }}{% endblock %}
+{% block main %}
+{% set sc = server_course_progress() if server_course_progress is defined else None %}
+{% set sc_pill = server_course_pill_id() if server_course_pill_id is defined else None %}
+{% set full_name = account.acting_identity.display_name or account.username %}
+{% set first = (full_name.split(' ')[0] if full_name else '') %}
+{% set rows = [] %}{% for entry in needs_view %}{% for row in entry.assignments %}{% set _ = rows.append(row) %}{% endfor %}{% endfor %}
+{% set done = rows|selectattr('status', 'equalto', 'completed')|list|length %}
+{% set pct_all = ((done * 100) // rows|length) if rows else 0 %}
+<div class="td">
+<section class="td-hero">
+  <div class="td-hero-text">
+    <p class="td-eyebrow">Rome's Flavours Academy</p>
+    <h1>{{ ('Ciao ' ~ first ~ ', benvenuto nella tua formazione') if it else ('Hi ' ~ first ~ ', welcome to your training') }}</h1>
+    <p class="td-lead">{{ 'Qui trovi tutto per prepararti al servizio. Segui i corsi con calma: i progressi si salvano da soli.' if it else "Everything you need to get ready for the floor is right here. Go at your own pace: your progress saves as you go." }}</p>
+    {% if rows %}<div class="td-overall" aria-label="{{ done }} of {{ rows|length }} courses complete">
+      <div class="td-bar"><span style="width:{{ pct_all }}%"></span></div>
+      <p>{{ done }} {{ 'di' if it else 'of' }} {{ rows|length }} {{ 'corsi completati' if it else ('course complete' if rows|length == 1 else 'courses complete') }}</p>
+    </div>{% endif %}
+  </div>
+  <aside class="td-me">
+    <span class="td-avatar" aria-hidden="true">{{ (first[:1] or '?')|upper }}</span>
+    <div><strong>{{ full_name }}</strong><span class="muted">{{ 'Nome utente' if it else 'Username' }}: {{ account.username }}</span></div>
+    <form method="post" action="{{ url_for('training.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="td-link-button">{{ 'Esci' if it else 'Log out' }}</button></form>
+  </aside>
+</section>
+
+<h2 class="td-section-title">{{ 'I tuoi corsi' if it else 'Your courses' }}</h2>
+{% if rows %}<div class="td-grid">
+{% for row in rows %}
+  {% set is_sc = sc_pill is not none and row.pill.id == sc_pill %}
+  {% set is_menu = row.pill.slug == 'visual-menu' %}
+  {% if is_sc and sc and sc.units_total %}
+    {% set pct = (sc.units_complete * 100) // sc.units_total %}
+    {% set state = 'completed' if sc.complete else ('in_progress' if sc.units_complete else row.status) %}
+  {% else %}
+    {% set state = row.status %}{% set pct = 100 if state == 'completed' else (50 if state == 'in_progress' else 0) %}
+  {% endif %}
+  <article class="td-course td-{{ state }}">
+    <div class="td-banner" style="background-image:url('{{ url_for('static', filename='img/training/' ~ ('visual-menu' if is_menu else ('server-course' if is_sc else 'course')) ~ '.jpg') }}')">
+      <span class="td-pill td-pill-{{ state }}">{{ {'completed': ('Completato' if it else 'Complete'), 'in_progress': ('In corso' if it else 'In progress')}.get(state, 'Da iniziare' if it else 'Not started') }}</span>
+    </div>
+    <h3>{{ row.pill.title }}</h3>
+    <p class="td-desc">{% if is_menu %}{{ 'Impara ogni piatto del menu: cosa contiene, come si presenta e come descriverlo agli ospiti.' if it else "Get to know every dish on our menu: what's in it, how it looks and how to describe it to guests." }}{% elif is_sc %}{{ "Il corso con il Trainer AI: brevi unità con un test veloce dopo ognuna." if it else 'Your course with the AI Trainer: short units, each with a quick test at the end.' }}{% else %}{{ row.pill.learning_objectives|truncate(140) }}{% endif %}</p>
+    <div class="td-progress">
+      <div class="td-bar"><span style="width:{{ pct }}%"></span></div>
+      <p class="muted">{% if is_sc and sc and sc.units_total %}{{ sc.units_complete }} {{ 'di' if it else 'of' }} {{ sc.units_total }} {{ 'unità' if it else 'units' }}{% if sc.complete %} · {{ ('firmato' if it else 'signed off') if sc.signed else ('in attesa della firma del responsabile' if it else "waiting for your lead's sign-off") }}{% endif %}{% elif row.latest_attempt %}{{ 'Ultimo risultato' if it else 'Last score' }}: {{ row.latest_attempt.points_earned }} / {{ row.latest_attempt.points_possible }}{% else %}&nbsp;{% endif %}</p>
+    </div>
+    <a class="td-cta{{ ' td-cta-quiet' if state == 'completed' }}" href="{{ url_for('tw_server_course') if is_sc else url_for('training.assignment_detail', assignment_id=row.assignment.id) }}">{{ {'completed': ('Rivedi' if it else 'Review'), 'in_progress': ('Continua' if it else 'Continue')}.get(state, 'Inizia' if it else 'Start') }}</a>
+  </article>
+{% endfor %}
+</div>
+{% else %}<div class="td-empty"><p>{{ 'Stiamo preparando i tuoi corsi. Aggiorna la pagina tra un momento; se non compaiono, avvisa il tuo responsabile.' if it else "We're getting your courses ready. Refresh this page in a moment, and if they still don't show up, let your manager know." }}</p></div>{% endif %}
+
+<div class="td-extras">
+  <a class="td-tile" href="{{ url_for('training_menu') }}">
+    <span class="td-banner td-banner-short" style="background-image:url('{{ url_for('static', filename='img/training/dish-guide.jpg') }}')"></span>
+    <span class="td-tile-body"><strong>{{ 'Guida dei piatti' if it else 'Dish guide' }}</strong><span class="muted">{{ 'Cerca un piatto quando ti serve, anche durante il turno.' if it else 'Look up any dish whenever you need it, even during a shift.' }}</span><span class="td-cta td-cta-quiet">{{ 'Apri la guida' if it else 'Open the dish guide' }}</span></span>
+  </a>
+  {% if overall_available or overall_history %}<section class="td-tile td-quiz">
+    <span class="td-banner td-banner-short" style="background-image:url('{{ url_for('static', filename='img/training/final-quiz.jpg') }}')"></span>
+    <span class="td-tile-body"><strong>{{ 'Quiz finale' if it else 'Final quiz' }}</strong>
+    {% if overall_available %}<span class="muted">{{ 'Hai finito tutti i corsi: sei pronto per il quiz finale.' if it else "You've finished all your courses. You're ready for the final quiz!" }}</span>
+      <a class="td-cta" href="{{ url_for('training.overall_quiz') }}">{{ 'Inizia il quiz' if it else 'Take the final quiz' }}</a>
+    {% else %}<span class="muted">{{ 'I tuoi risultati del quiz finale.' if it else 'Your final quiz results.' }}</span>{% endif %}
+    {% if overall_history %}<span class="td-history"><span class="td-history-title">{{ 'Risultati' if it else 'Your results' }}</span>{% for a in overall_history %}<a href="{{ url_for('training.overall_attempt_result', attempt_id=a.id) }}"><span>{{ a.submitted_at|local_dt(tz) }}</span><b>{{ a.points_earned }} {{ 'su' if it else 'out of' }} {{ a.points_possible }}</b></a>{% endfor %}</span>{% endif %}
+    </span>
+  </section>{% endif %}
+</div>
+</div>
+{% endblock %}

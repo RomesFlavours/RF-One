@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_nav_macros.html" import breadcrumb %}
+{% set help_section = 'employee_departments' %}
+{% block page_title %}Reparti e ruoli · Anagrafica dipendenti · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% macro history_list(items, tz) %}<details><summary>{{ items|length }} {{ 'versione' if items|length == 1 else 'versioni' }}</summary><ul>{% for h in items %}
+<li>{{ h.valid_from|local_dt(tz) }}{% if h.valid_to %} → {{ h.valid_to|local_dt(tz) }}{% else %} · attuale{% endif %}:{% if h.rf_role is defined %} ruolo RF-One {{ h.rf_role or 'da definire' }} ·{% endif %} reparto {{ h.department or 'da definire' }} · {{ 'tabella iniziale' if h.origin == 'SEED' else (accounts.get(h.account_id) or 'persona') }}</li>
+{% else %}<li>Nessuna versione registrata.</li>{% endfor %}</ul></details>{% endmacro %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}"></script>
+{{ breadcrumb([('RF-One', url_for('home')), ('Anagrafica dipendenti', url_for('employee_directory_home')), ('Reparti e ruoli', none)]) }}
+<h1>Reparti e ruoli</h1>
+<hr>
+<div style="display:flex;justify-content:flex-end">{% with ui=registry_ui %}{% include '_how_works.html' %}{% endwith %}</div>
+<p>Il reparto di una persona è quello del ruolo della sua assegnazione RF-One in vigore.</p>
+{% if not installed %}
+<p class="error" role="alert">La tabella Ruolo/Reparto non è ancora installata in questo database.</p>
+{% else %}
+{% if data.missing %}<p role="status"><strong>{{ data.missing }} {{ 'voce' if data.missing == 1 else 'voci' }} senza reparto</strong>, evidenziate nelle tabelle.</p>{% endif %}
+
+<h2 id="rf-roles">Ruoli RF-One</h2>
+<div class="table-scroll"><table>
+<thead><tr><th>Ruolo RF-One</th><th>Reparto</th><th>Persone oggi</th><th>Solo storico</th>{% if can_manage %}<th></th>{% endif %}<th>Storico</th></tr></thead>
+<tbody>{% for role in data.roles %}
+<tr id="rf-role-{{ role.id }}" data-rr-key="rf-role:{{ role.id }}"{% if role.missing_department %} style="background:#fff4d6"{% endif %}>
+  <td>{% if can_manage %}<form method="post" id="role-{{ role.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="role"><input type="hidden" name="role_id" value="{{ role.id }}"><input type="hidden" name="return_to" value="rf-role-{{ role.id }}"></form><input name="name" form="role-{{ role.id }}" value="{{ role.name }}" maxlength="255" required aria-label="Nome del ruolo RF-One">{% else %}{{ role.name }}{% endif %}{% if role.missing_department %}<div><strong>Senza reparto</strong></div>{% endif %}</td>
+  <td>{% if can_manage %}<select name="department_id" form="role-{{ role.id }}" aria-label="Reparto di {{ role.name }}"><option value="">Da definire</option>{% for d in departments if d.active or d.id == role.department_id %}<option value="{{ d.id }}"{% if d.id == role.department_id %} selected{% endif %}>{{ d.code }} · {{ d.name }}</option>{% endfor %}</select>{% else %}{{ role.department.code if role.department else 'Da definire' }}{% endif %}</td>
+  <td>{{ role.people_today }}</td><td>{{ role.people_history }}</td>
+  {% if can_manage %}<td><button type="submit" form="role-{{ role.id }}">Salva</button></td>{% endif %}
+  <td>{{ history_list(role.history, none) }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% if can_manage %}
+<form method="post" class="employee-sync"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="role"><input type="hidden" name="return_to" value="rf-roles">
+<label>Nuovo ruolo RF-One <input name="name" maxlength="255" required></label>
+<label>Reparto <select name="department_id"><option value="">Da definire</option>{% for d in departments if d.active %}<option value="{{ d.id }}">{{ d.code }} · {{ d.name }}</option>{% endfor %}</select></label>
+<button type="submit">Crea ruolo</button></form>
+{% endif %}
+
+{% for site in data.sites %}
+<h2 id="site-{{ site.restaurant_id }}">Ruoli dei documenti storici · {{ site.restaurant }}</h2>
+<div class="table-scroll"><table>
+<thead><tr><th>Ruolo originale</th><th>Provenienza</th><th>Persone</th><th>Ruolo RF-One</th><th>Reparto</th>{% if can_manage %}<th></th>{% endif %}<th>Storico</th></tr></thead>
+<tbody>{% for row in site.rows %}{% set key = site.restaurant_id ~ '-' ~ row.source ~ '-' ~ loop.index %}
+<tr id="orig-{{ key }}" data-rr-key="orig:{{ site.restaurant_id }}:{{ row.source }}:{{ row.original_key }}"{% if row.missing_department %} style="background:#fff4d6"{% endif %}>
+  <td translate="no">{% if can_manage %}<form method="post" id="map-{{ key }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="map"><input type="hidden" name="restaurant_id" value="{{ site.restaurant_id }}"><input type="hidden" name="source" value="{{ row.source }}"><input type="hidden" name="original_key" value="{{ row.original_key }}"><input type="hidden" name="original_label" value="{{ row.original_label }}"><input type="hidden" name="return_to" value="orig-{{ key }}"></form>{% endif %}<strong>{{ row.original_label }}</strong>{% if row.missing_department %}<div><strong>Senza reparto</strong></div>{% endif %}</td>
+  <td>{{ row.source_label }}</td>
+  <td>{{ row.people }}</td>
+  <td>{% if can_manage %}<select name="restaurant_role_id" form="map-{{ key }}" aria-label="Ruolo RF-One di {{ row.original_label }}"><option value="">Da definire</option>{% for r in rf_roles if r.restaurant_id in (none, site.restaurant_id) %}<option value="{{ r.id }}"{% if r.id == row.restaurant_role_id %} selected{% endif %}>{{ r.name }}</option>{% endfor %}</select>{% else %}{% for r in rf_roles if r.id == row.restaurant_role_id %}{{ r.name }}{% else %}Da definire{% endfor %}{% endif %}</td>
+  <td>{% if row.role_has_department or not can_manage %}{{ row.department.code if row.department else 'Da definire' }}{% if row.role_has_department %} <span class="muted">(dal ruolo RF-One)</span>{% endif %}{% if can_manage %}<input type="hidden" name="department_id" form="map-{{ key }}" value="{{ row.own_department_id or '' }}">{% endif %}
+      {% else %}<select name="department_id" form="map-{{ key }}" aria-label="Reparto di {{ row.original_label }}"><option value="">Da definire</option>{% for d in departments if d.active or d.id == row.own_department_id %}<option value="{{ d.id }}"{% if d.id == row.own_department_id %} selected{% endif %}>{{ d.code }} · {{ d.name }}</option>{% endfor %}</select>{% endif %}</td>
+  {% if can_manage %}<td><button type="submit" form="map-{{ key }}">Salva</button></td>{% endif %}
+  <td>{{ history_list(row.history, none) }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p>Nessun ruolo da documenti storici disponibile.</p>{% endfor %}
+
+<h2 id="departments">Reparti RF-One</h2>
+<div class="table-scroll"><table>
+<thead><tr><th>Reparto</th><th>Codice</th><th>Area</th><th>Persone oggi</th><th>Stato</th>{% if can_manage %}<th></th>{% endif %}</tr></thead>
+<tbody>{% for d in departments %}
+<tr id="department-{{ d.id }}" data-rr-key="department:{{ d.id }}">
+  {% if can_manage %}
+  <td><form method="post" id="dep-{{ d.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="department"><input type="hidden" name="department_id" value="{{ d.id }}"><input type="hidden" name="return_to" value="department-{{ d.id }}"></form><input name="name" form="dep-{{ d.id }}" value="{{ d.name }}" maxlength="120" required aria-label="Nome del reparto"></td>
+  <td><input name="code" form="dep-{{ d.id }}" value="{{ d.code }}" maxlength="32" size="6" required aria-label="Codice del reparto"></td>
+  {% else %}<td>{{ d.name }}</td><td>{{ d.code }}</td>{% endif %}
+  <td>{{ areas[d.operational_area_id].name if d.operational_area_id in areas else '' }}</td>
+  <td>{{ people_by_department.get(d.code, 0) if d.active else '' }}</td>
+  <td>{% if can_manage %}<select name="active" form="dep-{{ d.id }}" aria-label="Stato del reparto"><option value="1"{% if d.active %} selected{% endif %}>Attivo</option><option value="0"{% if not d.active %} selected{% endif %}>Archiviato</option></select>{% else %}{{ 'Attivo' if d.active else 'Archiviato' }}{% endif %}</td>
+  {% if can_manage %}<td><button type="submit" form="dep-{{ d.id }}">Salva</button></td>{% endif %}
+</tr>{% else %}<tr><td colspan="6">Nessun reparto.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if can_manage %}
+<form method="post" class="employee-sync"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="department"><input type="hidden" name="return_to" value="departments">
+<label>Nuovo reparto <input name="name" maxlength="120" required></label> <label>Codice <input name="code" maxlength="32" size="6" required></label> <button type="submit">Crea reparto</button></form>
+{% endif %}
+{% endif %}
+{% endblock %}

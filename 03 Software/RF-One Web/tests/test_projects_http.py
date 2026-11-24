@@ -236,7 +236,7 @@ def main() -> int:
           "Ricerca immobile" in other and "Permessi" not in other and "Gantt — Secondo locale Orlando" in other)
     check("31. Gantt: Print button; commands hidden in print",
           "data-gantt-print" in g and 'class="btn-row no-print pm-gantt-commands"' in g)
-    css = web_app.app.test_client().get("/static/css/rf-one-projects.css").data.decode()
+    css = web_app.app.test_client().get("/static/css/rf-one-projects.css").data.decode().replace("\r\n", "\n")
     check("32. print CSS: landscape, collapsed rows only hidden on screen, colours kept, rows not split",
           "@page { size: landscape" in css and "@media screen {\n  .pm-gantt tr.pm-collapsed { display: none; }" in css
           and "print-color-adjust: exact" in css and "break-inside: avoid" in css)
@@ -322,6 +322,25 @@ def main() -> int:
         owner = s.get(m.ProjectResponsible, pulizie.responsible_id).project_id
     check("R14. typing another project's name creates this project's own entry, never links across projects",
           owner == p1 and pulizie.responsible_id != orlando)
+
+    from rfone_data_store import employee_directory as directory
+    with SessionFactory() as s:
+        person = directory.create_person(s, display_name="Shared project person")
+        s.commit()
+        person_id = person.id
+    check("P1. native RF-One people appear in the project selector without POS", "Shared project person" in client.get("/projects").get_data(as_text=True))
+    response = post(f"/projects/{p1}/responsibles", employee_id=str(person_id), name="")
+    with SessionFactory() as s:
+        link = s.scalar(select(m.EmployeeContextLink).where(m.EmployeeContextLink.employee_id == person_id))
+        shared_responsible = link.project_responsible_id
+    check("P2. selecting a person creates an explicit reference", response.status_code == 302 and shared_responsible is not None)
+    response = post(f"/projects/{p1}/tasks", title="Shared identity task", chapter_id=str(c1),
+        planned_start_date="2026-11-06", planned_duration_days="1", percent_complete="0",
+        responsible_id=str(shared_responsible), responsible_name="")
+    with SessionFactory() as s:
+        selected = s.scalar(select(m.ProjectTask).where(m.ProjectTask.title == "Shared identity task"))
+        selected_id = selected.responsible_id
+    check("P3. task selection preserves the responsible identity", response.status_code == 302 and selected_id == shared_responsible)
 
     print(f"\n{len(passed)} passed, {len(failed)} failed.")
     return 0 if not failed else 1

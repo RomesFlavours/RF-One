@@ -47,6 +47,7 @@ def run_validation(session_factory: sessionmaker[Session]) -> ValidationResult:
             _test_no_clover_location_is_not_ready(session, result)
             _test_ready_once_cursors_have_passed_now(session, result)
             _test_persistently_failing_after_threshold(session, result)
+            _test_paid_period_end_not_current_moment(session, result)
             _test_blocking_attention_overrides_reconciliation(session, result)
         finally:
             session.rollback()
@@ -88,8 +89,12 @@ def _seed_cursor(session: Session, *, location, source_system, resource_type: st
 
 
 def _seed_all_cursors_past(session: Session, *, location, source_system, instant: datetime) -> None:
+    """CLOVER_ACQUISITION_ENGINE_001: the gate reads the nightly download of EVERY active Clover site already
+    due at `instant` (the former Live/Correction cursors are kept as noise and must not be enough on their own)."""
+    from .acquisition_fixtures import cover_every_active_site
     for resource_type in (None, "orders", "payments", "refunds"):
         _seed_cursor(session, location=location, source_system=source_system, resource_type=resource_type, window_end=instant)
+    cover_every_active_site(session, now=instant)
     session.commit()
 
 
@@ -133,34 +138,42 @@ def _test_ready_once_cursors_have_passed_now(session: Session, result: Validatio
 
 
 def _test_persistently_failing_after_threshold(session: Session, result: ValidationResult) -> None:
-    """NOT READY is an ordinary, expected wait — `is_persistently_failing`
-    only becomes True once the SAME condition has held for longer than
-    `persistent_failure_threshold`, checked by re-calling the identical
-    canonical function at an EARLIER instant, never a second, independently
-    -implemented staleness heuristic."""
+    """NOT READY is an ordinary, expected wait. CLOVER_ACQUISITION_ENGINE_001
+    (Product Owner 2026-11-23): `is_persistently_failing` becomes True only
+    once the nightly download (default 00:00 America/New_York) is more than
+    `persistent_failure_threshold` past its due time without completing."""
+    from .acquisition_fixtures import record_nightly_download
     restaurant, location, source_system = _make_restaurant_with_clover_location(session, suffix="persist")
-    now = T0 + timedelta(days=5)
+    due = datetime(2026, 6, 6, 4, 0, tzinfo=UTC)  # 2026-06-06 00:00 New York
+    record_nightly_download(session, location_id=location.id, now=due, status=m.ACQUISITION_REQUEST_FAILED)
+    session.commit()
+    soon = readiness_svc.describe_payment_readiness(
+        session, restaurant.id, now=due + timedelta(minutes=10), persistent_failure_threshold=timedelta(minutes=30))
+    result.check("nightly download failed 10 minutes ago: NOT READY, NOT persistently failing",
+                 not soon.ready and not soon.is_persistently_failing)
+    late = readiness_svc.describe_payment_readiness(
+        session, restaurant.id, now=due + timedelta(hours=7), persistent_failure_threshold=timedelta(minutes=30))
+    result.check("nightly download still not done 7 hours after its time: persistently failing",
+                 not late.ready and late.is_persistently_failing)
 
-    # Cursors exist but have NOT reached `now` — reconciliation is behind,
-    # but only just, well within the persistent-failure threshold.
-    _seed_all_cursors_past(session, location=location, source_system=source_system, instant=now - timedelta(minutes=5))
-    recent_lag = readiness_svc.describe_payment_readiness(
-        session, restaurant.id, now=now, persistent_failure_threshold=timedelta(minutes=30),
-    )
-    result.check(
-        "reconciliation lagging by only 5 minutes (under the 30-minute threshold): NOT READY but NOT "
-        "persistently failing — a normal, non-alarming wait",
-        not recent_lag.ready and not recent_lag.is_persistently_failing,
-    )
 
-    long_lag = readiness_svc.describe_payment_readiness(
-        session, restaurant.id, now=now + timedelta(hours=1), persistent_failure_threshold=timedelta(minutes=30),
-    )
-    result.check(
-        "reconciliation still lagging an hour later (well past the 30-minute threshold): escalated to "
-        "persistently failing",
-        not long_lag.ready and long_lag.is_persistently_failing,
-    )
+def _test_paid_period_end_not_current_moment(session: Session, result: ValidationResult) -> None:
+    """CLOVER_ACQUISITION_ENGINE_001 (Product Owner 2026-11-23): once the
+    nightly download is done, Tips are ready — a Payment Cycle prepared at
+    09:00 (its `period_end` is the preparation moment) is READY at once,
+    without waiting for the next night."""
+    restaurant, location, source_system = _make_restaurant_with_clover_location(session, suffix="period")
+    nine_am = datetime(2026, 6, 21, 13, 0, tzinfo=UTC)      # 2026-06-21 09:00 New York
+    session.add(m.TipPaymentCycle(restaurant_id=restaurant.id, period_start=nine_am - timedelta(days=7),
+                                  period_end=nine_am, status=m.TIP_PAYMENT_CYCLE_STATUS_OPEN, triggered_by="MANUAL"))
+    session.commit()
+    _seed_all_cursors_past(session, location=location, source_system=source_system,
+                           instant=nine_am - timedelta(days=1))  # only the previous night's download
+    before = readiness_svc.describe_payment_readiness(session, restaurant.id, now=nine_am)
+    result.check("tonight's nightly download not done yet: NOT READY", not before.ready)
+    _seed_all_cursors_past(session, location=location, source_system=source_system, instant=nine_am)
+    after = readiness_svc.describe_payment_readiness(session, restaurant.id, now=nine_am)
+    result.check("nightly download done: READY at 09:00, not the next day", after.ready and after.reconciliation_ready)
 
 
 def _test_blocking_attention_overrides_reconciliation(session: Session, result: ValidationResult) -> None:

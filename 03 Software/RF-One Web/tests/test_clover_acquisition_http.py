@@ -126,10 +126,15 @@ def main() -> int:
         s.flush()
         account_service.set_domain_access(s, account_id=operator.id, domain_code="CLOVER_ACQUISITION",
                                           enabled=True, role_code=None)
+        account_service.set_domain_access(s, account_id=operator.id, domain_code="EMPLOYEES",
+                                          enabled=True, role_code=None)
         account_service.set_domain_access(s, account_id=bank_only.id, domain_code="BANK", enabled=True,
                                           role_code=None)
+        employee = m.Employee(display_name="Registry help fixture")
+        s.add(employee)
         s.commit()
         operator_id = operator.id
+        employee_id = employee.id
 
     launcher = RecordingLauncher()
     web_app.clover_job_launcher = launcher
@@ -188,6 +193,20 @@ def main() -> int:
     home = op.get("/", base_url=HOST)
     check("H: Home offers Clover Acquisition to an account holding the access",
           b"Clover Acquisition" in home.data and b"/clover-acquisition" in home.data)
+
+    registry = "/administration/employees"
+    page = op.get(registry, base_url=HOST)
+    check("Registry shows neither sync status nor the acquisition button",
+          page.status_code == 200 and all(text not in page.data for text in
+          (b"Ultima sincronizzazione", b"Sincronizza ora", b"Ultimo aggiornamento")))
+    detail = op.get(f"{registry}/{employee_id}", base_url=HOST)
+    check("Registry list and detail show contextual help",
+          b"data-how-works" in page.data and detail.status_code == 200 and b"data-how-works" in detail.data)
+    check("Registry sync route is gone even for an authorized Clover operator",
+          op.post(registry + "/sync-now", base_url=HOST).status_code == 404 and job_count() == 0)
+    page = op.get(registry + "/departments", base_url=HOST)
+    check("Registry departments render from RF-One roles",
+          page.status_code == 200 and b"Reparti e ruoli" in page.data and b"id ruolo Clover" not in page.data)
 
     # ---- E: opening the page never creates a job --------------------------
     for _ in range(3):

@@ -13,7 +13,7 @@
 <nav class="breadcrumb" aria-label="You are here">
   <ol>
   {%- for label, href in items %}
-    <li>{% if loop.last %}<span aria-current="page">{{ label }}</span>{% elif href %}<a href="{{ href }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif %}</li>
+    <li>{% if loop.last %}<span aria-current="page">{{ ui(label) }}</span>{% elif href %}<a href="{{ href }}">{{ ui(label) }}</a>{% else %}<span>{{ ui(label) }}</span>{% endif %}</li>
   {%- endfor %}
   </ol>
 </nav>

@@ -1,0 +1,1421 @@
+[
+ {
+  "path": "RF-One Data Store/clover_connector_release.json",
+  "status": "conflict",
+  "notes": [
+   "tips: 2 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 60ff804 Pino: Record immutable Employee Directory worker i"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-10 5c7e0f1 Pino: feat: manage Registry contacts and preserve "
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 5258d8b Pino: chore(tips): recover verified currently depl"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/clover_connector_release_check.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 0100c0b Pino: Preserve deployed worker startup integrity c"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-02 59246b0 Pino: Clover: hold only records of unconfirmed emp"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/README.md",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-17 1506115 Pino: test/docs: validate canonical Clover correct"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-01 1fc0f38 Pino: Shared migrations: one chain, no migration a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/test_employee_directory.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 f44ed0c Pino: Preserve actual Clover shift location across"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-02 59246b0 Pino: Clover: hold only records of unconfirmed emp"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/test_historical_tip_payments.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/test_shared_schema_compatibility.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "tips",
+    "first seen 2026-11-01 1fc0f38 Pino: Shared migrations: one chain, no migration a"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-02 dda54ae Shelbi Fox: Shared schema tests: expect this tree'"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/migrations/env.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-08-27 a24e133 Pino: Formalize Core, Payroll, Personnel Cost, Res"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-01 1fc0f38 Pino: Shared migrations: one chain, no migration a"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-17 7291a4a Pino: Prepare additive RF-One email AWS release on"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_acquisition_safety_validation.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "training",
+    "first seen 2026-09-26 4661aa7 Pino: Never take a failed Clover read for an empty"
+   ],
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 fc86bb1 Pino: Employee Directory: shared RF-One identities"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_acquisition_validation.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-10-05 e5957e4 Pino: Clover acquisition: drop a gratuity line rem"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_correction_sync_validation.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/clover_live_sync_validation.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-09-26 9f51b06 Pino: Run Clover acquisitions as jobs outside the "
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/database.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+kitchen+training",
+    "first seen 2026-09-05 7fcb1a6 Pino: RF-One baseline before Global Integrity Fix "
+   ],
+   [
+    "tips",
+    "first seen 2026-11-01 1fc0f38 Pino: Shared migrations: one chain, no migration a"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-02 b059ebb Shelbi Fox: rfone-web limits: 45 s interview turn,"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/employee_directory.py",
+  "status": "conflict",
+  "notes": [
+   "tips+web: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+kitchen+training",
+    "first seen 2026-11-02 59246b0 Pino: Clover: hold only records of unconfirmed emp"
+   ],
+   [
+    "tips+web",
+    "first seen 2026-11-20 9c986a5 Shelbi Fox: Live snapshot: App Runner rfone-web, 2"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/historical_backfill_extractor_validation.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/kitchen.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+tips+web",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ],
+   [
+    "kitchen+training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/kitchen_configuration.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+tips+web",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ],
+   [
+    "kitchen+training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/models.py",
+  "status": "conflict",
+  "notes": [
+   "training: 3 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-10 9b239a1 Pino: fix: enforce Registry permissions across RF1"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 5258d8b Pino: chore(tips): recover verified currently depl"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-20 d472c69 Shelbi Fox: Live snapshot: App Runner rfone-kitche"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/rfone_account_service.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-21 9c154f9 Pino: Admin permissions: several administrators, a"
+   ],
+   [
+    "email+kitchen+tips+training+web",
+    "first seen 2026-11-10 61dec3e Pino: feat: release Anagrafica roles and personal "
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/rfone_recovery_service.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+tips",
+    "first seen 2026-09-11 cc1e1cf Pino: Add RF-One Web operational shell, Training i"
+   ],
+   [
+    "email+training+web",
+    "first seen 2026-11-13 77522e7 Codex: Release Registry Training onboarding activa"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/rfone_web_session.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-21 9c154f9 Pino: Admin permissions: several administrators, a"
+   ],
+   [
+    "email+kitchen+tips+training+web",
+    "first seen 2026-11-10 9b239a1 Pino: fix: enforce Registry permissions across RF1"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/bank_reconciliation/card_configuration.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-10-12 013f799 Pino: Bank worktree snapshot: uncommitted work of "
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/bank_reconciliation/configuration.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-10-14 743d8a5 Pino: Bank: remove the old (non-AI) rule system (B"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/dev_journal/service.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+tips+training",
+    "first seen 2026-10-21 9c154f9 Pino: Admin permissions: several administrators, a"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-10 9b239a1 Pino: fix: enforce Registry permissions across RF1"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/payroll/adp_importer.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-08-31 209747c Pino: RF-One 1.0 foundation and restaurant modules"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/profile/bootstrap.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-09-20 7da020f Pino: Complete Tips calculation pipeline and emplo"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/projects/service.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-10-12 d3632a8 Pino: MyRF Project Management: a Responsible per T"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/purchasing/repository.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+training+web",
+    "first seen 2026-09-16 27ed420 Pino: Close Purchased human review reliability gap"
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-20 d472c69 Shelbi Fox: Live snapshot: App Runner rfone-kitche"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/selection/parsing/ai_client.py",
+  "status": "conflict",
+  "notes": [
+   "tips: 3 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-10-12 013f799 Pino: Bank worktree snapshot: uncommitted work of "
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-03 e897489 Shelbi Fox: AI client and scan reading: total_max_"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 4400e5c Pino: Preserve existing provider source encoding"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/acquisition.py",
+  "status": "conflict",
+  "notes": [
+   "email+web: 3 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "training",
+    "first seen 2026-10-05 e5957e4 Pino: Clover acquisition: drop a gratuity line rem"
+   ],
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 f44ed0c Pino: Preserve actual Clover shift location across"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-02 59246b0 Pino: Clover: hold only records of unconfirmed emp"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/correction_sync.py",
+  "status": "conflict",
+  "notes": [
+   "email+tips+web: 6 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "training",
+    "first seen 2026-09-28 889cc8c Pino: Run the Clover Correction Poller on AWS and "
+   ],
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-02 59246b0 Pino: Clover: hold only records of unconfirmed emp"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/historical_backfill_detail.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/ingest.py",
+  "status": "conflict",
+  "notes": [
+   "email+tips+web: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "training",
+    "first seen 2026-09-06 f98373a Pino: feat: finalize canonical db and clover conne"
+   ],
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/live_sync.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-09-26 9f51b06 Pino: Run Clover acquisitions as jobs outside the "
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-01 1fc0f38 Pino: Shared migrations: one chain, no migration a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/technical/connectors/clover/mapping.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "training",
+    "first seen 2026-09-24 fda32ee Pino: Fix the final Bank and Tips release blockers"
+   ],
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/calculation_run_service.py",
+  "status": "conflict",
+  "notes": [
+   "email+web: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-09-24 fda32ee Pino: Fix the final Bank and Tips release blockers"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-02 59246b0 Pino: Clover: hold only records of unconfirmed emp"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-20 9c986a5 Shelbi Fox: Live snapshot: App Runner rfone-web, 2"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/distribution_engine.py",
+  "status": "conflict",
+  "notes": [
+   "web: 7 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs+email+training",
+    "first seen 2026-09-22 07932b0 Pino: Give every imported Order its operating day,"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-20 76b32c8 Shelbi Fox: Live snapshot: App Runner rfone-tips, "
+   ],
+   [
+    "web",
+    "first seen 2026-11-20 9c986a5 Shelbi Fox: Live snapshot: App Runner rfone-web, 2"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/distribution_rule_service.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+training+web",
+    "first seen 2026-09-22 65aef8a Pino: Close, validate and finalize a Tips period"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/historical_payments.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "email+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/host_audit_report.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+training+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/rule_ai_authoring.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+training+web",
+    "first seen 2026-09-20 7da020f Pino: Complete Tips calculation pipeline and emplo"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/tips/scheduler.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+training",
+    "first seen 2026-09-17 229cd90 Pino: feat: integrate canonical Tips workflow and "
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-01 1fc0f38 Pino: Shared migrations: one chain, no migration a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/training/service.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+kitchen+tips+web",
+    "first seen 2026-09-11 cc1e1cf Pino: Add RF-One Web operational shell, Training i"
+   ],
+   [
+    "training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Data Store/rfone_data_store/training/workspace.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "kitchen+tips",
+    "first seen 2026-11-10 9b239a1 Pino: fix: enforce Registry permissions across RF1"
+   ],
+   [
+    "email+training+web",
+    "first seen 2026-11-13 77522e7 Codex: Release Registry Training onboarding activa"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/app.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email",
+    "first seen 2026-11-17 7291a4a Pino: Prepare additive RF-One email AWS release on"
+   ],
+   [
+    "web",
+    "first seen 2026-11-20 e79a91d Shelbi Fox: Live snapshot: store with main's line "
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/email_routes.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email",
+    "first seen 2026-11-17 e0de5f5 Pino: Add centralized RF-One Aruba email service a"
+   ],
+   [
+    "web",
+    "first seen 2026-11-17 577705c Pino: Redesign Email Control with compact overview"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/training_integration.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+web",
+    "first seen 2026-11-13 4deed86 Codex: Release Registry Training onboarding activa"
+   ],
+   [
+    "training",
+    "first seen 2026-11-13 77522e7 Codex: Release Registry Training onboarding activa"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/static/css/rf-one.css",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+web",
+    "first seen 2026-10-28 01ab2f1 Pino: Group active employees by site and collapse "
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-20 d472c69 Shelbi Fox: Live snapshot: App Runner rfone-kitche"
+   ],
+   [
+    "training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/static/js/rf-one-modal.js",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+training+web",
+    "first seen 2026-09-20 28136cc Pino: Fix Bank settlement configuration and modal "
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-13 cd0248d Pino: WIP snapshot: preserve local Shared integrat"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/static/js/rf-one-row-return.js",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+training+web",
+    "first seen 2026-10-12 013f799 Pino: Bank worktree snapshot: uncommitted work of "
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-13 cd0248d Pino: WIP snapshot: preserve local Shared integrat"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/base.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "kitchen",
+    "first seen 2026-11-04 18ff9e3 Pino: Prepare isolated Selection Render free trial"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-10 61dec3e Pino: feat: release Anagrafica roles and personal "
+   ],
+   [
+    "training",
+    "first seen 2026-11-20 d27c619 Shelbi Fox: Live snapshot: App Runner rfone-traini"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/email_control.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "web",
+    "first seen 2026-11-17 577705c Pino: Redesign Email Control with compact overview"
+   ],
+   [
+    "email",
+    "first seen 2026-11-17 e0de5f5 Pino: Add centralized RF-One Aruba email service a"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/email_detail.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email",
+    "first seen 2026-11-17 e0de5f5 Pino: Add centralized RF-One Aruba email service a"
+   ],
+   [
+    "web",
+    "first seen 2026-11-17 577705c Pino: Redesign Email Control with compact overview"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/employee_directory_detail.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email",
+    "first seen 2026-11-10 9bcfc55 Pino: feat: make Registry People-first and consoli"
+   ],
+   [
+    "web",
+    "first seen 2026-11-20 9c986a5 Shelbi Fox: Live snapshot: App Runner rfone-web, 2"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/forgot_password.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email",
+    "first seen 2026-09-11 cc1e1cf Pino: Add RF-One Web operational shell, Training i"
+   ],
+   [
+    "web",
+    "first seen 2026-11-20 9c986a5 Shelbi Fox: Live snapshot: App Runner rfone-web, 2"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/login.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email",
+    "first seen 2026-09-26 97c7236 Pino: Start manual Clover acquisitions only as a s"
+   ],
+   [
+    "web",
+    "first seen 2026-11-20 9c986a5 Shelbi Fox: Live snapshot: App Runner rfone-web, 2"
+   ]
+  ]
+ },
+ {
+  "path": "RF-One Web/templates/_how_works.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "email+training+web",
+    "first seen 2026-11-10 9bcfc55 Pino: feat: make Registry People-first and consoli"
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-20 d472c69 Shelbi Fox: Live snapshot: App Runner rfone-kitche"
+   ]
+  ]
+ },
+ {
+  "path": "Shared UI/how_works_registry.json",
+  "status": "conflict",
+  "notes": [
+   "email+web: 3 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ],
+   [
+    "training",
+    "first seen 2026-11-13 1156551 RF-One Training Release: Release English direct an"
+   ],
+   [
+    "email+web",
+    "first seen 2026-11-13 4deed86 Codex: Release Registry Training onboarding activa"
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-20 d472c69 Shelbi Fox: Live snapshot: App Runner rfone-kitche"
+   ]
+  ]
+ },
+ {
+  "path": "Training/auth.py",
+  "status": "conflict",
+  "notes": [
+   "training: 2 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-11 cc1e1cf Pino: Add RF-One Web operational shell, Training i"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-11-10 9b239a1 Pino: fix: enforce Registry permissions across RF1"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "Training/RF-One-Training.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-11 cc1e1cf Pino: Add RF-One Web operational shell, Training i"
+   ],
+   [
+    "training",
+    "first seen 2026-11-18 5f175b6 Shelbi Fox: Dish guide: Vegetable Festival name an"
+   ]
+  ]
+ },
+ {
+  "path": "Training/routes.py",
+  "status": "conflict",
+  "notes": [
+   "training: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "training",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/assignment_detail.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/attempt_result.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/final_quiz.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "training",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/overall_attempt_result.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/overall_quiz.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/student_home.html",
+  "status": "conflict",
+  "notes": [
+   "training: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "training",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/trainer_home.html",
+  "status": "conflict",
+  "notes": [
+   "training: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "training",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/trainer_new_student.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs+email+tips+web",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "training",
+    "first seen 2026-11-12 76747f0 Codex: Publish Visual Menu management and active K"
+   ]
+  ]
+ },
+ {
+  "path": "Training/templates/training/trainer_student_detail.html",
+  "status": "conflict",
+  "notes": [
+   "training: 1 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 7f90d4b Pino: Read Backfill dates as local civil days, ali"
+   ],
+   [
+    "email+tips+web",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ],
+   [
+    "training",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ]
+  ]
+ },
+ {
+  "path": "Shared UI/How Works Standard.md",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "tips",
+    "first seen 2026-11-02 6d08519 Pino: How Works: apply the Product Owner release d"
+   ],
+   [
+    "kitchen+training",
+    "first seen 2026-11-10 30a27a7 RF-One Training Release: Publish English Training "
+   ]
+  ]
+ },
+ {
+  "path": "Shared UI/help/_how_works.html",
+  "status": "conflict",
+  "notes": [
+   "kitchen: 2 conflicting hunk(s)"
+  ],
+  "versions": [
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ],
+   [
+    "training",
+    "first seen 2026-11-10 9bcfc55 Pino: feat: make Registry People-first and consoli"
+   ],
+   [
+    "kitchen",
+    "first seen 2026-11-20 d472c69 Shelbi Fox: Live snapshot: App Runner rfone-kitche"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/app.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/imported_data_view.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 ce19108 Pino: Show Orders and Transactions summaries on Im"
+   ],
+   [
+    "tips",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/test_imported_clover_data_control_http.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-28 25bbc55 Pino: Require the RF-One login on Tips and fix the"
+   ],
+   [
+    "tips",
+    "first seen 2026-10-29 a195e4c Pino: Make RF-One the reference person directory a"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/tips_test_session.py",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-28 25bbc55 Pino: Require the RF-One login on Tips and fix the"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 604570a Pino: test(tips): grant fixture domain access and "
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/base.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-28 883bed3 Pino: Align Tips navigation with Compensation"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/calculate_tips.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 4358521 Pino: Calculate Tips on an exact local date and ti"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-20 76b32c8 Shelbi Fox: Live snapshot: App Runner rfone-tips, "
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/configuration.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 52f077f Pino: Merge Distribution Rules and Tips Configurat"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/distribution_rule_detail.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 52f077f Pino: Merge Distribution Rules and Tips Configurat"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/historical_tip_payments.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-10-28 223c1a8 Pino: Complete Employee Directory on current AWS b"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/home.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-28 889cc8c Pino: Run the Clover Correction Poller on AWS and "
+   ],
+   [
+    "tips",
+    "first seen 2026-11-11 68771e4 Pino: perf(tips): batch eligibility and audit read"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/host_audit.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-28 883bed3 Pino: Align Tips navigation with Compensation"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/_distribution_rules_section.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 52f077f Pino: Merge Distribution Rules and Tips Configurat"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/_general_configuration_section.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 52f077f Pino: Merge Distribution Rules and Tips Configurat"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ },
+ {
+  "path": "Tips/templates/_nav_macros.html",
+  "status": "clean",
+  "notes": [],
+  "versions": [
+   [
+    "clover-jobs",
+    "first seen 2026-09-27 0529c55 Pino: Show Clover times in local time, employees a"
+   ],
+   [
+    "tips",
+    "first seen 2026-11-09 83d583c Pino: feat(tips): compose daily source pools and h"
+   ]
+  ]
+ }
+]

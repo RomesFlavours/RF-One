@@ -29,6 +29,10 @@ def test_account(tips_app) -> tuple[int, int]:
                 s, username=TEST_USERNAME, display_name="Tips Test", password="a-long-enough-test-password",
             )
             s.commit()
+        # Authentication alone no longer grants Tips access (Registry gate).
+        account_service.set_domain_access(s, account_id=account.id, domain_code="TIPS",
+            enabled=True, role_code=None)
+        s.commit()
         return account.id, account.session_version
 
 

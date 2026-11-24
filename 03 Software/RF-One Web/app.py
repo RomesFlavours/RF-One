@@ -39,18 +39,21 @@ from auth import (  # noqa: E402
     require_admin, require_csrf, require_login,
 )
 from db import SessionFactory  # noqa: E402
-from domain_registry import DOMAINS, DOMAINS_BY_CODE, TIPS_HOME_URL  # noqa: E402
+from email_routes import register_email_routes  # noqa: E402
+from domain_registry import DOMAINS, DOMAINS_BY_CODE, SELECTION_OLD_LINK, TIPS_HOME_URL  # noqa: E402
 from rfone_data_store import display_format  # noqa: E402
 from rfone_data_store import public_entry  # noqa: E402
 from rfone_data_store import models as m  # noqa: E402
+from interview_routes import home_state as interview_home_state, register_interview_routes  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from rfone_data_store import legal_entity_service  # noqa: E402
 from rfone_data_store import rfone_account_service as account_service  # noqa: E402
 from rfone_data_store import rfone_recovery_service as recovery_service  # noqa: E402
 from rfone_data_store import rfone_web_session as shared_session  # noqa: E402
-from rfone_data_store.technical import ses_email  # noqa: E402
+from rfone_data_store.technical import account_email as ses_email  # noqa: E402
 from compensation_routes import register_compensation_routes  # noqa: E402
 from workweek_settings_routes import register_workweek_settings_routes  # noqa: E402
+from clover_download_settings_routes import register_clover_download_settings_routes  # noqa: E402
 from organizational_responsibility_routes import register_organizational_responsibility_routes  # noqa: E402
 from bank_routes import register_bank_routes  # noqa: E402
 from tips_validation_routes import register_tips_validation_routes  # noqa: E402
@@ -58,6 +61,7 @@ from clover_acquisition_routes import register_clover_acquisition_routes  # noqa
 from restaurant_wines_routes import register_restaurant_wines_routes  # noqa: E402
 from projects_routes import register_projects_routes  # noqa: E402
 from dev_journal_routes import register_dev_journal_routes  # noqa: E402
+from employee_directory_routes import register_employee_directory_routes  # noqa: E402
 import training_integration  # noqa: E402
 
 app = Flask(__name__)
@@ -77,6 +81,9 @@ if not _secret_key:
         "explicitly instead."
     )
 app.secret_key = _secret_key
+register_email_routes(app, SessionFactory=SessionFactory,
+                      load_current_account=load_current_account, require_csrf=require_csrf,
+                      get_timezone=lambda: inject_site_timezone()['tz'])
 
 # HTTPS-only cookies: App Runner terminates TLS at the edge, so the app
 # itself is always reached over HTTPS in any real deployment — the session
@@ -136,6 +143,7 @@ app.jinja_env.filters["short_name"] = display_format.employee_short_name
 app.jinja_env.filters["first_name_initial"] = display_format.employee_first_name_initial
 app.jinja_env.globals["zone_label"] = display_format.zone_label
 app.jinja_env.globals["tips_home_url"] = TIPS_HOME_URL
+app.jinja_env.globals["selection_old_link"] = SELECTION_OLD_LINK
 # The first breadcrumb level, named the same in every app hosting shared
 # templates (Training's): RF-One Web's own Home here.
 app.jinja_env.globals["rfone_home_url"] = lambda: url_for("home")
@@ -336,7 +344,7 @@ def logout():
 #     Domain on Home counts as operational.
 #   * Bank is presented under Administration instead of as a Domain.
 _HOME_WORK_IN_PROGRESS_CODES: frozenset[str] = frozenset()  # Selection released (SELECTION_AWS_PUBLISH_001)
-_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION"})
+_HOME_ADMINISTRATION_CODES = frozenset({"BANK", "CLOVER_ACQUISITION", "EMPLOYEES"})
 # System-level services, shown in their own "Services" block, never as a Domain.
 _HOME_SERVICE_CODES = frozenset({"DEV_JOURNAL"})
 
@@ -369,6 +377,8 @@ def home():
             bank_available="BANK" in enabled_codes,
             clover_acquisition_available="CLOVER_ACQUISITION" in enabled_codes,
             dev_journal_available="DEV_JOURNAL" in enabled_codes,
+            employees_available="EMPLOYEES" in enabled_codes,
+            **interview_home_state(db, account),
         )
 
 
@@ -484,6 +494,13 @@ register_workweek_settings_routes(
     require_csrf=require_csrf, load_current_account=load_current_account,
 )
 
+# Settings > Clover download (CLOVER_ACQUISITION_ENGINE_001) — the one daily
+# time of the shared Clover acquisition engine, and each site's outcome.
+register_clover_download_settings_routes(
+    app, require_admin=require_admin, SessionFactory=SessionFactory,
+    require_csrf=require_csrf, load_current_account=load_current_account,
+)
+
 # ---------------------------------------------------------------------------
 # Organization — Organizational Responsibility + Attention Management (TASK_
 # ATTENTION_ORG_RUNTIME §12). Since ACCOUNT_ITEM_ACCESS_001 its own Domain
@@ -556,6 +573,11 @@ register_restaurant_wines_routes(
     load_current_account=load_current_account, require_csrf=require_csrf,
 )
 
+register_employee_directory_routes(
+    app, require_domain_access=require_domain_access, SessionFactory=SessionFactory,
+    load_current_account=load_current_account, require_csrf=require_csrf,
+)
+
 
 # ---------------------------------------------------------------------------
 # MyRF Project Management — Projects, a Project's plan and its read-only
@@ -588,9 +610,7 @@ register_dev_journal_routes(
 @app.route("/admin/accounts")
 @require_admin
 def admin_accounts():
-    with SessionFactory() as db:
-        accounts = account_service.list_accounts(db)
-        return render_template("admin_accounts.html", accounts=accounts)
+    return redirect(url_for('role_profiles_home', tab='people'))
 
 
 @app.route("/admin/accounts/new", methods=["GET", "POST"])
@@ -646,6 +666,8 @@ def admin_account_edit(account_id: int):
         account = account_service.get_account(db, account_id)
         if account is None:
             abort(404)
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
 
         if request.method == "POST":
             require_csrf()
@@ -666,12 +688,12 @@ def admin_account_edit(account_id: int):
                 flash(str(exc), "error")
                 db.refresh(account)
                 return render_template("admin_account_form.html", mode="edit", account=account,
-                                       actor_id=current_account_id()), 400
+                                       actor_id=current_account_id(), profile_person=profile_person, profile_return=profile_return), 400
 
             flash("Account updated.", "info")
-            return redirect(url_for("admin_accounts"))
+            return redirect(profile_return)
 
-        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id())
+        return render_template("admin_account_form.html", mode="edit", account=account, actor_id=current_account_id(), profile_person=profile_person, profile_return=profile_return)
 
 
 @app.route("/admin/accounts/<int:account_id>/reset-password", methods=["POST"])
@@ -686,18 +708,28 @@ def admin_account_reset_password(account_id: int):
         if account is None:
             abort(404)
 
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
+        saved = False
         if password != password_confirm:
             flash("Passwords did not match.", "error")
         else:
             try:
                 account_service.set_password(db, account, password)
                 db.commit()
+                saved = True
                 flash("Password updated.", "info")
             except ValueError as exc:
                 db.rollback()
                 flash(str(exc), "error")
 
-    return redirect(url_for("admin_account_edit", account_id=account_id))
+    if saved and account_id == current_account_id():
+        # Resetting one's own password invalidates the session. Preserve the
+        # canonical return through the existing login instead of losing it.
+        log_out()
+        flash("Password updated. Sign in again to continue.", "info")
+        return redirect(url_for("login", next=profile_return))
+    return redirect(profile_return) if saved else redirect(url_for("admin_account_edit", account_id=account_id, from_person=profile_person, _anchor="reset-password"))
 
 
 @app.route("/admin/accounts/<int:account_id>/access", methods=["GET", "POST"])
@@ -708,6 +740,10 @@ def admin_account_access(account_id: int):
         if account is None:
             abort(404)
 
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
+        status = 200
+        submitted = None
         if request.method == "POST":
             require_csrf()
             try:
@@ -738,13 +774,15 @@ def admin_account_access(account_id: int):
             except ValueError as exc:
                 db.rollback()
                 flash(f"Nothing saved. {exc}", "error")
-                return redirect(url_for("admin_account_access", account_id=account_id))
-            db.commit()
-            flash("Domain access updated.", "info")
-            return redirect(url_for("admin_accounts"))
+                status = 400
+                submitted = request.form
+            else:
+                db.commit()
+                flash("Domain access updated.", "info")
+                return redirect(profile_return)
 
-        access_by_code = {row.domain_code: row for row in account_service.list_domain_access_for_account(db, account.id)}
-        items_by_code = account_service.list_domain_item_access_for_account(db, account.id)
+        access_by_code = {row.domain_code: row for row in account_service.list_direct_domain_access_for_account(db, account.id)}
+        items_by_code = account_service.list_direct_domain_item_access_for_account(db, account.id)
         domains_view = []
         for d in DOMAINS:
             access = access_by_code.get(d.code)
@@ -754,11 +792,16 @@ def admin_account_access(account_id: int):
                 mode = _ACCESS_SELECTED
             else:
                 mode = _ACCESS_ALL
+            if submitted is not None:
+                legacy = _ACCESS_ALL if submitted.get(f'enabled_{d.code}') == 'on' else _ACCESS_NONE
+                mode = submitted.get(f'access_{d.code}', legacy)
+                access = {'role_code': submitted.get(f'role_{d.code}', '')}
+                items_by_code[d.code] = set(submitted.getlist(f'items_{d.code}'))
             domains_view.append({
                 "domain": d, "access": access, "mode": mode,
                 "selected_items": items_by_code.get(d.code, set()) if mode == _ACCESS_SELECTED else set(),
             })
-        return render_template("admin_account_access.html", account=account, domains_view=domains_view)
+        return render_template("admin_account_access.html", account=account, domains_view=domains_view,profile_return=profile_return,profile_person=profile_person), status
 
 
 # The three access choices of the Access screen (ACCOUNT_ITEM_ACCESS_001).
@@ -846,6 +889,8 @@ def admin_account_training_link(account_id: int):
         account = account_service.get_account(db, account_id)
         if account is None:
             abort(404)
+        from registry_navigation import account_return
+        profile_person, profile_return = account_return(db, account)
         existing_link = training_integration.get_link_for_rfone_account(db, account_id)
 
         if request.method == "POST":
@@ -870,10 +915,10 @@ def admin_account_training_link(account_id: int):
             except (ValueError, training_integration.AlreadyLinkedError) as exc:
                 db.rollback()
                 flash(str(exc), "error")
-                return redirect(url_for("admin_account_training_link", account_id=account_id))
+                return render_template("admin_account_training_link.html", account=account, existing_link=existing_link, linked_training_account=None, unlinked_accounts=training_integration.list_unlinked_training_accounts(db), profile_person=profile_person, profile_return=profile_return), 400
 
             flash("Training identity linked.", "info")
-            return redirect(url_for("admin_accounts"))
+            return redirect(profile_return)
 
         unlinked_accounts = training_integration.list_unlinked_training_accounts(db) if existing_link is None else []
         linked_training_account = (
@@ -882,6 +927,7 @@ def admin_account_training_link(account_id: int):
         return render_template(
             "admin_account_training_link.html", account=account, existing_link=existing_link,
             linked_training_account=linked_training_account, unlinked_accounts=unlinked_accounts,
+            profile_person=profile_person, profile_return=profile_return,
         )
 
 
@@ -895,6 +941,8 @@ def admin_account_training_link(account_id: int):
 @app.route("/training-trainer/students/new", methods=["GET", "POST"])
 @training_integration.require_training_trainer(auth, SessionFactory)
 def training_trainer_new_student():
+    return redirect("/training/manage/students")
+
     if request.method == "POST":
         require_csrf()
         username = request.form.get("username", "").strip()
@@ -987,8 +1035,11 @@ def profile():
             log_out()
             return redirect(url_for("login"))
         pending = recovery_service.get_pending_code(db, account.id, recovery_service.PURPOSE_EMAIL_VERIFICATION)
+        from rfone_data_store.employee_directory import context_person_id
+        person_id = context_person_id(db, "RFONE_ACCOUNT", account.id)
+        reference_person = db.get(m.Employee, person_id) if person_id is not None else None
         return render_template(
-            "profile.html", account=account,
+            "profile.html", account=account, reference_person=reference_person,
             pending_email=pending.target_email if pending is not None else None,
         )
 
@@ -1124,17 +1175,26 @@ _FORGOT_PASSWORD_GENERIC_MESSAGE = "If the details match an eligible account, yo
 def forgot_password():
     if request.method == "POST":
         require_csrf()
-        username_raw = request.form.get("username", "")
-        email_raw = request.form.get("email", "")
-        normalized_username = username_raw.strip().lower()
+        # One box: the username OR the verified email (18 Nov 2026). The code only ever goes to the
+        # account's own verified email, so knowing the email or the username is enough to ask for it.
+        identifier = request.form.get("username", "").strip()
+        normalized_username = identifier.lower()
 
         with SessionFactory() as db:
-            account = account_service.get_account_by_username(db, normalized_username)
+            if "@" in identifier:
+                matches = list(db.scalars(select(m.RFOneAccount).where(
+                    m.RFOneAccount.email == account_service.normalize_email(identifier),
+                    m.RFOneAccount.status == "ACTIVE", m.RFOneAccount.email_verified_at.is_not(None)).limit(2)))
+                # an email shared by two accounts is ambiguous: nobody gets a code, same answer
+                account = matches[0] if len(matches) == 1 else None
+                if account is not None:
+                    normalized_username = account.username
+            else:
+                account = account_service.get_account_by_username(db, normalized_username)
             eligible = (
                 account is not None
                 and account.status == "ACTIVE"
                 and account.email_verified_at is not None
-                and account.email == account_service.normalize_email(email_raw)
             )
             if eligible:
                 try:
@@ -1207,3 +1267,24 @@ def forgot_password_code():
         return redirect(url_for("login"))
 
     return render_template("forgot_password_code.html")
+
+
+# Additive TEST feature; keep existing authentication and directory access.
+register_interview_routes(app, SessionFactory=SessionFactory, require_login=require_login,
+    require_admin=require_admin, require_csrf=require_csrf, require_domain_access=require_domain_access)
+
+
+from forgot_username_routes import register_forgot_username_routes  # noqa: E402
+register_forgot_username_routes(app, SessionFactory=SessionFactory, require_csrf=require_csrf, m=m,
+    account_service=account_service, send_email=ses_email.send_email,
+    from_address=EMAIL_FROM_ADDRESS, region_name=AWS_REGION)
+from role_profile_routes import register_role_profile_routes
+register_role_profile_routes(app, SessionFactory=SessionFactory, require_admin=require_admin,
+    load_current_account=load_current_account, require_csrf=require_csrf, domains=DOMAINS)
+
+
+# Shared login must never expose modules while a new student awaits activation.
+@app.before_request
+def pending_training_activation_gate():
+    from training_activation_guard import reject_pending_session
+    return reject_pending_session(app, SessionFactory, auth)

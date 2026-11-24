@@ -1,0 +1,38 @@
+{# Approved CV Selection SP look, scoped to .sp (used by the Applications tab and the Evaluation dossier). #}
+<style>
+  .sp { --ink:#22261c; --muted:#6b705f; --line:#dfe1d6; --card:#fff; --olive:#5d6b2f;
+        --olive-soft:#eef1e2; --red:#9b2c22; --red-soft:#f8e9e6; --amber:#8a5a00; --amber-soft:#fbf1dc;
+        --blue:#2f5470; --blue-soft:#e6eef4; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
+  .sp * { box-sizing:border-box; }
+  .sp h1 { font-size:22px; margin:4px 0 4px; } .sp h2 { font-size:16px; margin:0 0 10px; }
+  .sp .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin:14px 0; }
+  .sp .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--olive); color:#fff;
+              text-align:center; line-height:22px; font-size:12px; margin-right:6px; }
+  .sp .muted { color:var(--muted); } .sp .small { font-size:12px; }
+  .sp table { width:100%; border-collapse:collapse; }
+  .sp th, .sp td { text-align:left; vertical-align:top; padding:8px 8px; border-bottom:1px solid var(--line); }
+  .sp th { font-size:12px; color:var(--muted); font-weight:600; }
+  .sp button, .sp .btn { font:inherit; border:1px solid var(--olive); background:var(--olive); color:#fff; border-radius:6px;
+                         padding:6px 12px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .sp button.light, .sp .btn.light { background:#fff; color:var(--olive); }
+  .sp button.tiny { padding:1px 7px; font-size:12px; }
+  .sp button:disabled { opacity:.5; cursor:default; }
+  .sp input, .sp select, .sp textarea { font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:5px; }
+  .sp .badge { display:inline-block; border-radius:10px; padding:1px 8px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .sp .gA { background:var(--olive-soft); color:var(--olive); } .sp .gB { background:var(--blue-soft); color:var(--blue); }
+  .sp .gC { background:var(--amber-soft); color:var(--amber); } .sp .gD { background:var(--red-soft); color:var(--red); }
+  .sp .gX { background:#ecebe6; color:var(--muted); }
+  .sp .rank { font-size:22px; font-weight:700; color:var(--olive); }
+  .sp ul.tight { margin:0; padding-left:16px; } .sp ul.tight li { margin:1px 0; }
+  .sp .flag { color:var(--red); } .sp .verify { color:var(--amber); }
+  .sp .quote { color:var(--muted); font-style:italic; }
+  .sp .lvl { display:inline-block; width:60px; height:8px; background:var(--line); border-radius:4px; vertical-align:middle; }
+  .sp .lvl i { display:block; height:8px; border-radius:4px; background:var(--olive); }
+  .sp .s-SHOWN { color:var(--olive); } .sp .s-PARTIAL { color:var(--blue); } .sp .s-CLAIMED, .sp .s-MISSING { color:var(--amber); }
+  .sp .s-AGAINST { color:var(--red); } .sp .s-NOT_ASSESSABLE { color:var(--muted); }
+  .sp .why { font-size:12px; color:var(--muted); margin-top:4px; }
+  .sp .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .sp tr.rejected td { opacity:.7; }
+  .sp details.reject form { margin-top:6px; display:grid; gap:4px; min-width:180px; }
+  @media (max-width: 900px) { .sp .grid2 { grid-template-columns:1fr; } .sp .hide-sm { display:none; } }
+</style>

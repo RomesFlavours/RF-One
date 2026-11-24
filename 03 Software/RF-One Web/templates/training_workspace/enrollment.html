@@ -1,0 +1,17 @@
+{% extends 'training_workspace/_base.html' %}
+{% block title %}Invite student · Training{% endblock %}
+{% block main %}
+{% if error and draft %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<div class="tw-heading"><div><h1>Invite student</h1><p>Choose a confirmed Selection candidate or send a direct invitation. The person will complete their details and activate Training.</p></div></div>
+<p><a href="{{ url_for('tw_students') }}">← Back to students</a></p>
+{% if invitation_url %}<section class="tw-card"><h2>Invitation ready</h2><p>The personal link works once and expires after 48 hours. A new invitation to the same email replaces the previous one.</p><label>Activation link<input id="created-invitation-link" readonly value="{{ invitation_url }}" onclick="this.select()"></label><p>No new person records have been created. Activation completes the required links.</p></section>{% else %}
+<section class="tw-card"><form method="post" id="enrollment-form" class="tw-enrollment-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<fieldset><legend>How is the person joining?</legend><label><input type="radio" name="mode" value="direct" {% if draft.get('mode','direct')=='direct' %}checked{% endif %}> Direct invitation</label><label><input type="radio" name="mode" value="selection" {% if draft.get('mode')=='selection' %}checked{% endif %}> Confirmed in Selection</label></fieldset>
+<div id="selection-source" {% if draft.get('mode','direct')!='selection' %}hidden{% endif %}><label>Confirmed candidate<select name="selection_id" {% if draft.get('mode','direct')!='selection' %}disabled{% endif %}><option value="">Choose a person</option>{% for row in confirmed %}<option value="{{ row.id }}" data-name="{{ row.name }}" data-email="{{ row.email }}" data-phone="{{ row.phone }}" {% if draft.get('selection_id')==row.id|string %}selected{% endif %}>{{ row.name }} · {{ row.position }}</option>{% endfor %}</select></label>{% if not confirmed %}<p>No currently confirmed candidates in the Selection positions you can manage.</p>{% endif %}<p>Available CV details are prefilled. Check the contact address before creating the invitation.</p></div>
+<div class="tw-form-grid"><label>Full name <span class="muted">(if available)</span><input name="name" maxlength="255" value="{{ draft.get('name','') }}"></label><label>Invitee email<input type="email" name="email" required maxlength="255" value="{{ draft.get('email','') }}"></label><label>Phone <span class="muted">(optional)</span><input type="tel" name="phone" maxlength="64" value="{{ draft.get('phone','') }}"></label></div>
+{% if matches %}<fieldset><legend>Confirm the existing person record</legend>{% for candidate in matches %}<label><input type="radio" name="confirmation" value="{{ candidate.key }}" required> {{ candidate.name }}</label>{% endfor %}<p>If this is a different person, stop and request a Registry review. Records are never merged automatically.</p></fieldset>{% endif %}
+<p>The person will confirm their details and choose a password. Existing RF-One account holders reuse their account by confirming the current password. No employee record is created.</p>
+<div class="tw-modal-actions"><a href="{{ url_for('tw_students') }}">Cancel</a><button type="submit">Create invitation</button></div>
+</form></section><script defer src="{{ url_for('static',filename='js/training-enrollment.js') }}"></script>{% endif %}
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Client</div>
+      <div class="value">{{ client_name }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Pending matches</div>
+      <div class="value">{{ matches|length }}</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.82rem;">
+    A STRONG or POSSIBLE name-based match is never merged automatically — confirm only if you recognize this as
+    genuinely the same person; otherwise reject to keep the records separate. False separation is always preferred
+    over an incorrect merge.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Pending suggestions</h2>
+  {% if matches %}
+    {% for match in matches %}
+    <div class="match-card">
+      <div class="req-title">
+        {{ match.source_person.full_name or '(name not extracted)' }}
+        (new Application) &rarr; possibly
+        {{ match.suggested_person.full_name or '(name not extracted)' }}
+        <span class="badge confidence-{{ match.confidence|lower }}">{{ match.confidence|replace('_',' ') }}</span>
+      </div>
+      <p style="font-size:.82rem; margin:.3rem 0;">{{ match.match_basis }}</p>
+      <p class="muted" style="font-size:.76rem;">
+        New Application: <a href="{{ url_for('application_detail', application_id=match.application_id) }}">#{{ match.application_id }}</a>
+        &middot; Suggested person contact: {{ match.suggested_person.primary_email or '(no email on file)' }}
+        {% if match.suggested_person.primary_phone %} &middot; {{ match.suggested_person.primary_phone }}{% endif %}
+      </p>
+      <form method="post" action="{{ url_for('identity_match_confirm', match_id=match.id) }}" class="req-form">
+        <input type="hidden" name="next" value="{{ url_for('identity_matches_home') }}">
+        <label>Note (optional)</label>
+        <textarea name="note" placeholder="Why this is confirmed to be the same person"></textarea>
+        <button type="submit" class="btn" style="margin-top:.6rem;">Confirm — same person</button>
+      </form>
+      <form method="post" action="{{ url_for('identity_match_reject', match_id=match.id) }}" class="req-form">
+        <input type="hidden" name="next" value="{{ url_for('identity_matches_home') }}">
+        <label>Note (optional)</label>
+        <textarea name="note" placeholder="Why these are different people"></textarea>
+        <button type="submit" class="btn secondary" style="margin-top:.6rem;">Reject — keep separate</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+  <p class="empty">No pending identity matches.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -8,7 +8,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block page_title %}RF-One · Tips{% endblock %}</title>
+<title>{% block page_title %}{{ ui("RF-One · Tips") }}{% endblock %}</title>
 {% if brand_logo_filename %}
   <link rel="icon" type="image/png" href="{{ url_for('shared_brand_logo', filename=brand_logo_filename) }}?v=2">
 {% endif %}
@@ -28,7 +28,7 @@
     <a href="{{ rfone_web_home_url() or url_for('home') }}" class="brand">
       <span class="brand-name-group">
         <span class="brand-wordmark">{{ brand_name }}</span>
-        <span class="brand-suffix">RF-One</span>
+        <span class="brand-suffix">{{ ui("RF-One") }}</span>
       </span>
     </a>
     <!-- The RF-One product logo — owned by RF-One, not Tips. Served from
@@ -62,12 +62,13 @@
      breadcrumb reads RF-One > Tips > Calculate Tips > Explain / Audit Host
      Tips (TIPS_NAVIGATION_STANDARD_001). #}
   <div class="nav-tabs">
-    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">Clover Acquisition</a>
-    <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav in ('calculate-tips', 'host-audit') else '' }}">Calculate Tips</a>
-    <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">Saved Periods</a>
-    <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">Payment Control (Mercury Sandbox pilot)</a>
-    <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">Configuration</a>
+    <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">{{ ui("Clover Acquisition") }}</a>
+    <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav in ('calculate-tips', 'host-audit') else '' }}">{{ ui("Calculate Tips") }}</a>
+    <a href="{{ url_for('tips_run_history') }}" class="{{ 'active' if active_nav == 'tips-runs' else '' }}">{{ ui("Saved Periods") }}</a>
+    <a href="{{ url_for('payment_control_home') }}" class="{{ 'active' if active_nav == 'payment-control' else '' }}">{{ ui("Payment Control (Mercury Sandbox pilot)") }}</a>
+    <a href="{{ url_for('configuration_home') }}" class="{{ 'active' if active_nav == 'configuration' else '' }}">{{ ui("Configuration") }}</a>
   </div>
+  {% include '_how_works.html' %}
   {% block content %}{% endblock %}
 </div>
 </body>
