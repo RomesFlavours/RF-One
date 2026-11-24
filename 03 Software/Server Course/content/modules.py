@@ -65,7 +65,7 @@ MODULES = [
             {
                 "id": "m2.nuts",
                 "title": "Nuts and fish on our menu",
-                "known": "Names where nuts and fish hide on our menu: pine nuts in the basil pesto (gnocchi al pesto, on top of the lasagna, in the meatballs) and in the caponata; pistachio in the shrimp fettuccine and the cannoli; hazelnut in the Nutella (Campo dei Fiori, the pannacotta topping); amaretto in the tiramisu, which the kitchen must confirm for a nut allergy; anchovy (a fish) in the shrimp fettuccine and the puttanesca; shrimp (a shellfish, which is a different allergy from fish) in the shrimp fettuccine; and knows the pesto and the lasagna are made ahead, so nothing can be taken out of them.",
+                "known": "Names where nuts and fish hide on our menu: pine nuts in the basil pesto (gnocchi al pesto, on top of the lasagna, in the meatballs) and in the caponata; pistachio in the shrimp fettuccine, the cannoli and on the Tuscany cutting board; hazelnut in the Nutella (Campo dei Fiori, the pannacotta topping); amaretto in the tiramisu, which the kitchen must confirm for a nut allergy; anchovy (a fish) in the shrimp fettuccine, the puttanesca and the Amalfi Coast pizza; shrimp (a shellfish, which is a different allergy from fish) in the shrimp fettuccine; and knows the pesto and the lasagna are made ahead, so nothing can be taken out of them.",
                 "scenario": "A guest with a nut allergy wants the homemade meatballs and asks if there's anything to worry about. What do you tell them?",
             },
             {
@@ -123,7 +123,7 @@ MODULES = [
             {
                 "id": "m8.starters",
                 "title": "Starters, soups and salads",
-                "known": "Can describe the starters from their components: Caprese (imported buffalo mozzarella, tomatoes, basil, arugula), Prosciutto and Cantaloupe (Parma prosciutto, cantaloupe, glaze), Campari tomatoes with goat cheese, the Garnished Focaccia and the Tuscany cutting board for sharing; knows the soups (velvet tomato, minestrone) come with homemade bread, the bruschetta come with a small side salad, and the caponata has pine nuts.",
+                "known": "Can describe the starters from their components: Caprese (imported buffalo mozzarella, tomatoes, basil, arugula), Prosciutto and Cantaloupe (Parma prosciutto, cantaloupe, glaze), Campari tomatoes with goat cheese, the Garnished Focaccia and the Tuscany cutting board for sharing (three cured meats, three cheeses, pistachios, marinated artichokes, black olives, bread and honey); knows the soups (velvet tomato, minestrone) come with homemade bread, the bruschetta come with a small side salad, and the caponata has pine nuts.",
                 "scenario": "A table of four wants something to share to start, and one of them doesn't eat meat. What do you suggest, and how do you describe it?",
             },
             {
@@ -135,7 +135,7 @@ MODULES = [
             {
                 "id": "m8.pizza",
                 "title": "Our pizzas",
-                "known": "Knows most pizzas are named after places in Rome and can say what's on the main ones: Via Napoli (tomato, mozzarella), Testaccio (with hot pepper), Colosseo (gorgonzola, red peppers, hot salami), Dolomiti (white, porcini, speck, truffle oil), Villa Borghese (sausage, mushrooms, truffle oil), Rome's Flavours (sausage, broccoli, Grana), Mercati Traianei (Amatriciana sauce, red onion, bacon), the Bolognese pizza, and the vegetable ones (Piazza di Spagna, Trinita dei Monti, Via Sicilia); and that the crust is crunchy underneath and soft on top.",
+                "known": "Knows most pizzas are named after places in Rome and can say what's on the main ones: Via Napoli (tomato, mozzarella), Testaccio (with hot pepper), Amalfi Coast (tomato, oregano, olive oil, garlic, anchovies, no cheese), Colosseo (gorgonzola, red peppers, hot salami), Dolomiti (white, porcini, speck, truffle oil), Villa Borghese (sausage, mushrooms, truffle oil), Rome's Flavours (sausage, broccoli, Grana), Mercati Traianei (Amatriciana sauce, red onion, bacon), the Bolognese pizza, and the vegetable ones (Piazza di Spagna, Trinita dei Monti, Via Sicilia); and that the crust is crunchy underneath and soft on top.",
                 "scenario": "A guest asks what the Colosseo and the Dolomiti are, and which one is less spicy. How do you answer?",
             },
             {

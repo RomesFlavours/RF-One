@@ -75,6 +75,7 @@
   <div class="domain-card home-block">
     <div class="domain-name">Settings</div>
     {% if account.is_admin %}
+      <a class="home-row" href="{{ url_for('admin_clover_download') }}">{% if clover_download_ui_it %}<strong>Scarico Clover</strong> &mdash; L'orario giornaliero dello scarico dei dati Clover di tutte le sedi.{% else %}<strong>Clover download</strong> &mdash; The daily time Clover data is downloaded for every site.{% endif %}</a>
       <a class="home-row" href="{{ url_for('admin_legal_entities') }}"><strong>Legal Entities</strong> &mdash; Manage legal entities.</a>
     {% endif %}
     {#- Organization is no longer here: it is a Domain card above, granted

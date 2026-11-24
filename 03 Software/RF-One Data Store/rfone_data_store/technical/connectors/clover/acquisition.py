@@ -332,6 +332,29 @@ class AcquisitionRunStatus:
     notes: str | None
 
 
+def location_is_active(session: Session, location_id: int) -> bool:
+    location = session.get(m.Location, location_id)
+    if location is None or location.active is False:
+        return False
+    merchant = session.get(m.Merchant, location.merchant_id)
+    return merchant is None or merchant.active is not False
+
+
+def active_clover_location_ids(session: Session) -> list[int]:
+    """Every active Clover Location with an active merchant, in id order
+    (CLOVER_ACQUISITION_ENGINE_001)."""
+    from sqlalchemy import select as _select
+    rows = session.execute(
+        _select(m.Location.id)
+        .join(m.SourceSystem, m.SourceSystem.id == m.Location.source_system_id)
+        .join(m.Merchant, m.Merchant.id == m.Location.merchant_id)
+        .where(m.SourceSystem.code == "CLOVER", m.Location.source_location_id.is_not(None),
+               m.Location.active.is_(True), m.Merchant.active.is_(True))
+        .order_by(m.Location.id)
+    ).scalars().all()
+    return list(rows)
+
+
 def _resolve_clover_merchant(session: Session, location_id: int) -> tuple[int, str] | None:
     """Returns `(source_system_id, source_location_id/merchant_id)` for
     `location_id`, or `None` if it is not a Clover-sourced Location with a

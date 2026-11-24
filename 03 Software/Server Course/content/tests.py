@@ -124,7 +124,7 @@ TESTS = {
          "options": ["No, it's cured pork, sliced to order from the whole leg", "Yes, it's raw pork, which is why it's sliced so thin to order", "No, it's ham that is slowly cooked, then sliced thin"],
          "why": "Cured means treated with salt and spices so it's ready to eat. Not raw."},
         {"q": "A vegan guest asks for a pizza. What's true?",
-         "options": ["The dough has no animal products, but every pizza on the menu has mozzarella",
+         "options": ["The dough has no animal products, but every pizza on the menu has cheese or anchovies",
                      "Any pizza on the menu is vegan, because the dough itself is vegan",
                      "The Dolomiti is vegan, because it's a white pizza with mushrooms"],
          "why": "Tell the guest honestly, and ask the front of house lead and the kitchen what can be offered. The house pasta has eggs too."},
