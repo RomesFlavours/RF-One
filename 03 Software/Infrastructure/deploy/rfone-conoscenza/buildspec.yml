@@ -1,0 +1,13 @@
+version: 0.2
+# Used as buildspecOverride on the existing rfone-web-build project; IMAGE_TAG is passed per release.
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
+  build:
+    commands:
+      - docker build -t $ECR_URI:$IMAGE_TAG .
+  post_build:
+    commands:
+      - docker push $ECR_URI:$IMAGE_TAG
+      - docker inspect --format='{{index .RepoDigests 0}}' $ECR_URI:$IMAGE_TAG

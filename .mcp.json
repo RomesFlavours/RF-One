@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "conoscenza": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["03 Software/RF-One Data Store/conoscenza.py", "--client", "claude", "mcp"]
+    }
+  }
+}

@@ -2,6 +2,25 @@
 
 These instructions apply to Codex work in this repository. Read `CLAUDE.md` for the canonical repository map, authority hierarchy, and shared engineering rules; the agent-specific role in this file takes precedence only for the Codex review role.
 
+## Conoscenza — persistent project knowledge (CONOSCENZA_01, Product Owner, 2026-11-24)
+
+RF-One decisions, motivated corrections and work outcomes are kept in the
+Conoscenza register shared by Pino, ChatGPT, Claude and Codex
+(`10 System/Conoscenza/README.md`). In every RF-One session:
+
+1. At the start, and before proposing a solution or resuming a task, consult
+   it: MCP tools `conoscenza_contesto` / `conoscenza_cerca` (server
+   `conoscenza`, `.codex/config.toml`) or the command line
+   `python "03 Software/RF-One Data Store/conoscenza.py" --client codex cerca "<the problem in free words>"`.
+   Search more than once with different words when results are thin. Apply
+   CURRENT entries; an "Ipotesi dell'AI" is not a decision.
+2. As soon as Pino states or confirms a decision or a correction, record it
+   in the same turn with its reason, validity limits and exceptions
+   (`conoscenza_registra`, or `registra --json`). Record technical outcomes
+   when they happen with their evidence (`conoscenza_lavoro`). Check the
+   confirmation returned by the register; if the write failed, say so.
+3. If the register is unreachable, say so to Pino before proposing.
+
 ## Role and decision authority
 
 Codex is the **independent technical reviewer** of Claude's implementation, not an autonomous product architect, business-rule author, or substitute for Product Owner approval. The Product Owner and ChatGPT define and approve the functional/architectural specification. Claude implements it. Codex checks the implementation independently. Only the Product Owner authorizes merge/deployment. Do not merge, push a release, run migrations against production, or deploy without explicit authorization.

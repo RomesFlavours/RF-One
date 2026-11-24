@@ -2,6 +2,29 @@
 
 # RF-One Project Instructions
 
+## Conoscenza — persistent project knowledge (CONOSCENZA_01, Product Owner, 2026-11-24)
+
+RF-One decisions, motivated corrections and work outcomes are kept in the
+Conoscenza register shared by Pino, ChatGPT, Claude and Codex
+(`10 System/Conoscenza/README.md`). In every RF-One session:
+
+1. At the start, and before proposing a solution or resuming a task, consult
+   it: MCP tools `conoscenza_contesto` / `conoscenza_cerca` (server
+   `conoscenza`, `.mcp.json`) or, if the tools are not loaded, the command
+   line `python "03 Software/RF-One Data Store/conoscenza.py" --client claude cerca "<the problem in free words>"`.
+   Search more than once with different words when results are thin. Apply
+   CURRENT entries; an "Ipotesi dell'AI" is not a decision.
+2. As soon as Pino states or confirms a decision or a correction, record it
+   in the same turn with its reason, validity limits and exceptions
+   (`conoscenza_registra`, or `registra --json`). Record technical outcomes
+   when they happen with their evidence (`conoscenza_lavoro`). Do not wait
+   for the end of the chat. Check the confirmation returned by the register;
+   if the write failed, say so to Pino.
+3. If the register is unreachable, say so to Pino before proposing.
+
+This complements, and does not replace, `Decisioni RF1.md`.
+
+
 This file defines the working rules that must always be followed when contributing to the RF-One repository.
 
 ---
