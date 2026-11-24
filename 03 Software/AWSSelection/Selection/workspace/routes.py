@@ -56,6 +56,7 @@ from rfone_data_store.selection.parsing.ai_client import AIProviderUnavailable
 
 from . import ai_adapter, engine, organization_adapter, mail_delivery, position_settings, ai_checks, training_invite, pdl_rule_application
 from . import practical_test
+from . import not_selected_email
 from .channels import CHANNEL_LABELS, CHANNELS
 from .role_descriptions import ROLE_DESCRIPTIONS, default_description, is_default_or_empty
 from . import job_ad
@@ -1274,6 +1275,11 @@ def record_decision(db, actor, position_id):
         _record_decision(db, actor, position, _pc(db, position, pc_id), decision, reason, note)
     db.commit()
     flash(f"Decision recorded for {len(pc_ids)} candidate(s).")
+    # Not selected: a kind email after a 2-hour grace period; any other decision cancels one still waiting.
+    queued = not_selected_email.after_decisions(db, pc_ids, decision, reason, actor.id)
+    if queued:
+        flash(f"{queued} candidate(s) will get a polite Not selected email in 2 hours. "
+              "Change the decision before then and the email is cancelled.")
     if decision == ps.D_HIRED:
         # The decision is saved first; the Training invitation never blocks or undoes it.
         for pc_id in pc_ids:
