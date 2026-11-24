@@ -1,16 +1,14 @@
 {
   "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
   "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
-  "revision": "a1c220261121",
-  "previous_revision": "e9a120261117",
-  "verified_utc": "2026-11-21T04:14:28.032023+00:00",
-  "applied_by": "REGISTRY_CLOVER_DEPARTMENTS_001 (feature/registry-clover-departments 4df0068)",
+  "revision": "d2a120261122",
+  "previous_revision": "a1c220261121",
+  "verified_utc": "2026-11-24T01:05:00+00:00",
+  "applied_by": "CLOVER_ACQUISITION_ENGINE_001 (release/clover-engine-*-20261123), Pino-authorized",
   "evidence": {
-    "source_commit": "4df0068",
-    "image": "rfone-web:registry-departments-20261121t030713z-migration2",
-    "snapshot": "rfone-dev-pre-registry-departments-20261121t030713z",
-    "migration_task": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/8ab75d4fe1b444d9bb39f5b26b3e77b6",
-    "protected_row_counts_unchanged": true,
-    "tips_results_unchanged_14_days": true
+    "source_commit": "91c3417 / 0f0414b",
+    "migration_task": "rfone-clover-engine-migration:1 (refuses any start other than a1c220261121)",
+    "snapshot": "rfone-dev-pre-clover-engine-20261123t164758z",
+    "verified_by": "read-only alembic_version read on rfone-dev, 23 Nov 2026 about 20:05 EST: d2a120261122"
   }
 }
