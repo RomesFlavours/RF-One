@@ -4,21 +4,21 @@ For Codex (or any reviewer) before this branch is merged into `main`. Nothing he
 
 ## What this branch is
 
-One tree that reproduces every live AWS service as of 23 Nov 2026, 15:00 UTC. Base: `main` at 9c154f9 (21 Oct).
+One tree that reproduces every live AWS service as of 24 Nov 2026, 01:30 UTC. Base: `main` at 9c154f9 (21 Oct).
 
 | Live service | Image or task | Built from |
 |---|---|---|
-| rfone-web (App Runner) | rfone-web:wines-20261123-31ec638a6744 | release/registry-web-20261121 (7580fa2) + codex/wines-20261123 (31ec638) |
+| rfone-web (App Runner) | rfone-web:clover-engine-20261123-web | release/clover-engine-web-20261123 (0f0414b): Wines 31ec638 + Registry hotfix c0f7c5b + engine |
 | rfone-training | rfone-web:training-welcome-def9cb4 | snapshot branch |
 | rfone-kitchen | rfone-web:kitchen-local-20261116t151940z | snapshot branch |
-| rfone-tips | rfone-tips:tip-role-history-20261118c-tips | snapshot branch |
+| rfone-tips | rfone-tips:clover-engine-20261123-tips | release/clover-engine-tips-20261123 (166f886) |
 | rfone-selection | rfone-selection:sel-40b9877 | snapshot branch |
 | rfone-email-service (ECS) | rfone-web:email-7291a4ac8419 | snapshot branch |
-| rfone-clover-correction-sync (ECS) | rfone-tips@sha256:8ba25ab6... (registry-clover-departments-20261121b-jobs) | release/registry-clover-jobs-20261121 (7b5d35c) |
+| rfone-clover-correction-sync (ECS :14, nightly engine) | rfone-tips:clover-engine-20261123-jobs | release/clover-engine-jobs-20261123 (faff93e) |
 | rfone-clover-acquisition-job (ECS task :12) | rfone-tips@sha256:970c0fe6... (tip-role-history-20261118d-jobs) | live image, checked 21 Nov |
 | Course test sites | rfone-selection-ai-test trainer images | snapshot branches |
 
-Database: rfone-dev at `a1c220261121` (see `RF-One Data Store/migrations/aws_applied_revision.json`).
+Database: rfone-dev at `d2a120261122` (see `RF-One Data Store/migrations/aws_applied_revision.json`).
 
 ## Commits to review
 
@@ -37,6 +37,8 @@ In this folder:
 - `verify-later.txt`: open points and fixes.
 - `FOLD-2026-11-21.md`: the 20 Nov night release and the eight Web/Clover worker differences.
 - `FOLD-2026-11-23.md`: the 23 Nov Wines release.
+- `FOLD-2026-11-23b.md`: the 23 Nov Registry hotfixes.
+- `FOLD-2026-11-23c.md`: the 23 Nov Clover engine release and the Server Course update.
 
 ## What was already verified (please challenge it)
 
