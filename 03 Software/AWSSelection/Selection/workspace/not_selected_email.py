@@ -49,11 +49,10 @@ def body(first_name, title, location):
     where = "Rome's Flavours" + (f" {location}" if location else '')
     greeting = f"Hi {first_name}," if first_name else "Hello,"
     return (f"{greeting}\n\n"
-            f"Thank you for applying for the {title} position at {where}, and for the time you put into your application.\n\n"
-            "We read every application carefully. For this position, we have decided to move forward with other candidates.\n\n"
-            "We know this isn't the news you were hoping for, and we truly appreciate your interest in joining our team. "
-            "We would be glad to hear from you again, so please keep an eye on our careers page for future openings.\n\n"
-            "We wish you all the best.\n\n"
+            f"Thank you for your interest in joining the team at {where}.\n\n"
+            "After reviewing your application, we've decided to move forward with other candidates at this time.\n\n"
+            "We appreciate your interest and the time you took to apply. We encourage you to check back for future opportunities.\n\n"
+            "We wish you all the best!\n\n"
             "Warm regards,\n"
             "The Rome's Flavours Team")
 
