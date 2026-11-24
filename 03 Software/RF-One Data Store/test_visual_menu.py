@@ -39,8 +39,19 @@ def main():
         assert any('circular' in i for i in read_card(db,1,'dish')['issues'])
         db.execute(components.insert().values(recipe_id=1,position=3,preparation_reference='Unknown sauce'))
         assert any('Unresolved' in i for i in read_card(db,1,'dish')['issues'])
+        # 24 Nov 2026: pine nuts are a nut warning; editor preparation codes never reach the card.
+        db.execute(components.delete().where(components.c.preparation_reference=='Unknown sauce'))
+        db.execute(components.delete().where(components.c.recipe_id==2, components.c.preparation_id==1))
+        key = '0123456789abcdef0123456789abcdef'
+        db.execute(recipes.insert().values(id=3,code='PR-'+key,name='Zucchini Baked',kind='preparation'))
+        db.execute(components.insert().values(recipe_id=1,position=4,preparation_id=3,preparation_reference='PR-'+key+'-Zucchini Baked'))
+        db.execute(components.insert().values(recipe_id=3,position=1,ingredient_reference='Pesto Genovese (pine nuts)'))
+        card = read_card(db,1,'dish')
+        assert 'Tree nuts (pine nuts)' in {a['name'] for a in card['allergens']}
+        assert 'Zucchini Baked' in card['components'] and not any(c.startswith('PR-') for c in card['components'])
+        assert any(p['name'] == 'Zucchini Baked' for p in card['preparations'])
     engine.dispose()
-    print('PASS: live changes, nested allergens, cycle detection, unresolved preparations, restaurant isolation, no recipe copies')
+    print('PASS: live changes, nested allergens, cycle detection, unresolved preparations, restaurant isolation, no recipe copies, pine nuts, editor codes')
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ ALLERGEN_TERMS = {
     'Crustaceans': r'\bshrimps?\b|\bprawns?\b|\bgamber\w*|\blobster\b|\bcrab\b',
     'Tree nuts (pistachio)': r'\bpistac\w*',
     'Tree nuts (other)': r'\balmond\w*|\bwalnuts?\b|\bcashews?\b|\bhazelnut\w*|\bpecans?\b',
+    'Tree nuts (pine nuts)': r'\bpine\s*nuts?\b|\bpinoli\b|\bpignoli\w*',
     'Peanuts': r'\bpeanuts?\b|\barachid\w*',
     'Milk': r'\bmilk\b|\bbutter\b|\bcheese\b|\bcream\b|\bmozzarella\b|\bricotta\b|\bmascarpone\b|\bgrana\b|\bparmigian\w*|\bpecorino\b|\bgorgonzola\b',
     'Soy': r'\bsoy\w*|\bsoia\b|\btofu\b',
@@ -73,7 +74,8 @@ def populate_recipe(db,result,recipe_id,photo_id=None):
             result['issues'].append('A recipe or preparation has no ingredient breakdown.')
         for line in lines:
             label = line['ingredient_reference'] or line['preparation_reference'] or 'Unnamed component'
-            label = re.sub(r'^(?:F-|Pr\d+-)', '', label).strip()
+            # Strip internal codes: F-, Pr12- and the Kitchen editor's PR-/D- plus its 32-character draft key.
+            label = re.sub(r'^(?:F-|Pr\d+-|(?:PR|D)-[0-9a-f]{32}-)', '', label).strip()
             if not trail and label not in result['components']:
                 result['components'].append(label)
             if line['preparation_id'] is not None:
