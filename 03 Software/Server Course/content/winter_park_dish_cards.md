@@ -145,13 +145,13 @@
 
 ### Tuscany Cutting Board
 
-**In one line:** The Tuscany cutting board presents a selection of cured meats and Pecorino.
+**In one line:** The Tuscany cutting board brings three cured meats and three cheeses, with pistachios, marinated artichokes, black olives, bread and honey.
 
 **Taste:** Shareable, Cured meats, Bold
 
-**Description:** The Tuscany cutting board presents a selection of cured meats and Pecorino. Prosciutto, smoky speck and spicy soppressata create different levels of flavour alongside the cheese.
+**Description:** Three cured meats (prosciutto, smoky speck and spicy soppressata) and three cheeses, served with pistachios, marinated artichokes, black olives, bread and honey. Pistachios are a tree nut: mention them for any nut allergy.
 
-**Ingredients:** Prosciutto; Speck; Spicy soppressata; Pecorino selection
+**Ingredients:** Prosciutto; Speck; Spicy soppressata; three cheeses; Pistachios; Marinated artichokes; Black olives; Bread; Honey
 
 **How to present it:** For guests who enjoy cured meats and want to share. Mention the spicy soppressata and ask whether the table enjoys stronger flavours.
 
@@ -159,7 +159,7 @@
 
 **Wines:** Grillo Per Mari , Casa di Grazia (Its fuller white-wine style can accompany the dish's savoury character.) / Pinot Nero , Tenuta del Morer (A lighter red option for a guest who prefers red alongside the dish's savoury flavours.)
 
-**Allergen notes (to confirm with the kitchen):** Milk , cheese, cream or butter listed in this recipe
+**Allergen notes (to confirm with the kitchen):** Milk , cheese, cream or butter listed in this recipe; Tree nuts: pistachios; Wheat: bread
 
 **Kitchen checks:** The 10-inch notation describes the board, not preparation time. Verify current meat/cheese selection, labels, accompaniments and portion size. 
 

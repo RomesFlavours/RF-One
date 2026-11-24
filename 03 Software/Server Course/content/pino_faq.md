@@ -29,7 +29,7 @@ Pino's list of the questions guests ask most (January 2024, received 3 November 
 - Prosciutto: cured pork, charcuterie. Not raw: cured, meaning treated with salt and other ingredients and spices that make it ready to eat. We buy the whole leg and slice it fresh to order (there's a picture on the wall you can point to).
 - Prosciutto di Parma: prosciutto made in Parma, in Emilia Romagna, the Italian region most famous for foods known around the world, like Parmigiano, prosciutto, tortellini and lasagna. It's a DOP product: its production is protected and it can only be made in that area.
 - Salame or pepperoni: salame isn't one specific cut of the pork like prosciutto. It's usually made of different parts, fat and lean, ground together, typically round.
-- Meatballs (allergy alert: dairy): ground beef with a touch of ground pork, with dairy, some bread, parsley and garlic. [The menu's components also list pesto and bacon. Pesto contains pine nuts and cheese: treat the meatballs as containing nuts and dairy until the kitchen confirms.]
+- Meatballs (allergy alert: dairy): ground beef with a touch of ground pork, with dairy, some bread, parsley and garlic. [Confirmed by the kitchen (Anthony, 23 Nov 2026): bread (wheat) and milk, no eggs, plus bacon and pesto, so pine nuts too. Treat the meatballs as containing wheat, dairy and nuts.]
 
 ## 3 Desserts
 
