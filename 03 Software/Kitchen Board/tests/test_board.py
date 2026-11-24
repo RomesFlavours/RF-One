@@ -26,19 +26,23 @@ class Clover:
         self.orders = [{'id':'order-1','title':'#3 - OUTSIDE','createdTime':stamp,
                         'modifiedTime':stamp,'state':'open'}]
         self.lines = [{'id':'line-1','name':'Pasta <script>alert(1)</script>',
-                       'binName':'GUEST 1','unitQty':2000,'note':'No salt',
+                       'binName':'GUEST 1','unitQty':2000,'note':'No salt','printed':True,
                        'modifications':{'elements':[{'id':'mod-1','name':'No cheese'}]}}]
         self.paths = []
+        self.deleted = set()
 
     def get(self, path, params=None):
         self.paths.append(path)
         data = {'id':'merchant'}
+        if '/orders/' in path and path.rsplit('/', 1)[1] in self.deleted:
+            return SimpleNamespace(ok=False, status_code=404, error='not found', data=None)
         if path.endswith('/orders'):
             data = {'elements':self.orders}
         elif path.endswith('/line_items'):
             if self.fail_lines:
                 return SimpleNamespace(ok=False, status_code=503, error='unavailable', data=None)
-            data = {'elements':self.lines}
+            # Dishes are sent to the kitchen unless a test says otherwise.
+            data = {'elements':[{'printed':True, **line} for line in self.lines]}
         return SimpleNamespace(ok=True, status_code=200, error=None, data=data)
 
 
@@ -89,7 +93,10 @@ class BoardTest(unittest.TestCase):
         self.assertTrue(self.client.post(path,headers=self.api,json={'released_by':'retry'}).json['already_released'])
         self.clover.lines[0]['name'] = 'Changed after release'
         self.sync()
-        self.assertEqual(self.client.get('/api/locations/1/orders',headers=self.api).json['total'],0)
+        # The change after release reaches the kitchen as an addition ticket; the archive stays frozen.
+        open_orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+        self.assertEqual([o['order_id'] for o in open_orders],['order-1-add1'])
+        self.assertEqual(open_orders[0]['changes']['changed'],['line-1'])
         with self.factory() as db:
             ticket = db.get(Ticket,(1,'order-1'))
             self.assertEqual(ticket.released_by,'tablet')
@@ -109,9 +116,15 @@ class BoardTest(unittest.TestCase):
         self.assertTrue(self.sync())
 
     def test_removed_lines_disappear_from_live_snapshot(self):
+        # 24 Nov: a dish already sent to the kitchen and then removed stays visible,
+        # struck out under REMOVED FROM ORDER, until the kitchen clears the ticket.
         self.sync()
         self.clover.lines = []
         self.sync()
+        orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+        self.assertEqual([o['lines'] for o in orders],[[]])
+        self.assertEqual([r['id'] for r in orders[0]['changes']['removed']],['line-1'])
+        self.client.post('/api/locations/1/orders/order-1/release',headers=self.api,json={'released_by':'pass'})
         self.assertEqual(self.client.get('/api/locations/1/orders',headers=self.api).json['orders'],[])
 
     def test_beverage_categories_and_exit(self):
@@ -433,6 +446,69 @@ class BoardTest(unittest.TestCase):
         self.sync()
         self.assertEqual([(o['order_id'], [l['name'] for l in o['lines']]) for o in self.orders_now()],
                          [('order-1-add1', ['Cannoli'])])
+
+
+    # --- 24 Nov 2026: sent-only dishes, changes after release, deleted orders ---
+    def open_ids(self):
+        return [o['order_id'] for o in self.client.get('/api/locations/1/orders',headers=self.api).json['orders']]
+
+    def test_dish_not_sent_to_kitchen_is_not_shown(self):
+        self.clover.lines.append({'id':'line-2','name':'Tiramisu','binName':'GUEST 1','unitQty':1000,'printed':False})
+        self.sync()
+        lines = self.client.get('/api/locations/1/orders',headers=self.api).json['orders'][0]['lines']
+        self.assertEqual([l['id'] for l in lines],['line-1'])
+        self.clover.lines[1]['printed'] = True
+        self.sync()
+        lines = self.client.get('/api/locations/1/orders',headers=self.api).json['orders'][0]['lines']
+        self.assertEqual([l['id'] for l in lines],['line-1','line-2'])
+
+    def test_order_with_nothing_sent_does_not_appear(self):
+        self.clover.lines[0]['printed'] = False
+        self.sync()
+        self.assertEqual(self.open_ids(),[])
+        self.clover.lines[0]['printed'] = True
+        self.sync()
+        self.assertEqual(self.open_ids(),['order-1'])
+
+    def test_removed_after_release_tells_the_kitchen_once(self):
+        self.sync()
+        self.client.post('/api/locations/1/orders/order-1/release',headers=self.api,json={'released_by':'pass'})
+        self.clover.lines = []
+        self.sync()
+        orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+        self.assertEqual([o['order_id'] for o in orders],['order-1-add1'])
+        self.assertEqual([r['id'] for r in orders[0]['changes']['removed']],['line-1'])
+        self.client.post('/api/locations/1/orders/order-1-add1/release',headers=self.api,json={'released_by':'pass'})
+        self.sync()
+        self.assertEqual(self.open_ids(),[])
+
+    def test_change_after_release_is_not_repeated(self):
+        self.sync()
+        self.client.post('/api/locations/1/orders/order-1/release',headers=self.api,json={'released_by':'pass'})
+        self.clover.lines[0]['unitQty'] = 3000
+        self.sync(); self.sync()
+        self.assertEqual(self.open_ids(),['order-1-add1'])
+        self.client.post('/api/locations/1/orders/order-1-add1/release',headers=self.api,json={'released_by':'pass'})
+        self.sync()
+        self.assertEqual(self.open_ids(),[])
+
+    def test_order_deleted_in_clover_is_flagged_until_cleared(self):
+        self.sync()
+        self.clover.orders = []
+        self.clover.deleted.add('order-1')
+        self.sync()
+        orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+        self.assertEqual([o['order_id'] for o in orders],['order-1'])
+        self.assertTrue(orders[0]['deleted_in_clover'])
+        self.client.post('/api/locations/1/orders/order-1/release',headers=self.api,json={'released_by':'pass'})
+        self.assertEqual(self.open_ids(),[])
+
+    def test_open_order_that_still_exists_is_not_flagged(self):
+        self.sync()
+        self.clover.orders = []
+        self.sync()
+        orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+        self.assertFalse(orders[0].get('deleted_in_clover'))
 
 
 if __name__ == '__main__':

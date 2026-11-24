@@ -52,7 +52,8 @@ def pending(session, location_id):
 
 
 # Keys the sync never receives from Clover; they survive every payload refresh.
-KEPT_KEYS = ('changes', 'release_history', 'addition_to', 'addition', 'released_line_ids', 'released_parts')
+KEPT_KEYS = ('changes', 'release_history', 'addition_to', 'addition', 'released_line_ids', 'released_parts',
+             'deleted_in_clover')
 UNDO_MINUTES = 15
 
 
@@ -126,26 +127,71 @@ def save_ticket(session, *, location_id, order, payload, synced_at):
     ).values(payload=merged, synced_at=synced_at).execution_options(synchronize_session=False))
 
 
+def _created(t):
+    c = t.created_at
+    return c if c is None or c.tzinfo else c.replace(tzinfo=timezone.utc)
+
+
 def _save_addition(session, location_id, order, ticket, payload, synced_at):
-    """Lines added in Clover after a release become their own ticket, never lost."""
+    """After a release, anything new in Clover becomes an ADDITION ticket, never lost:
+    dishes added, dishes changed after they went out (quantity, note, modifiers),
+    and dishes removed after they went out (shown struck out, so the kitchen stops)."""
     family = related(session, location_id, ticket.order_id)
-    sent = {l.get('id') for t in [ticket] + [t for t in family if t.released_at] for l in t.payload.get('lines', [])}
-    lines = [l for l in payload.get('lines', []) if l.get('id') not in sent]
+    out = sorted([ticket] + [t for t in family if t.released_at],
+                 key=lambda t: (_created(t) or now(), t.order_id))
+    kitchen_view = {}
+    for t in out:  # the last version of each dish that left the kitchen
+        for line in t.payload.get('lines', []):
+            if line.get('id'):
+                kitchen_view[line['id']] = line
+    reported = {r['id'] for t in [ticket] + family for r in (t.payload.get('changes') or {}).get('removed', [])}
+    current = {l.get('id'): l for l in payload.get('lines', []) if l.get('id')}
+    added = [i for i in current if i not in kitchen_view]
+    edited = [i for i in current if i in kitchen_view and _line_view(current[i]) != _line_view(kitchen_view[i])]
+    removed = [{'id': i, 'name': l.get('name') or '', 'quantity': l.get('quantity')}
+               for i, l in kitchen_view.items() if i not in current and i not in reported]
+    lines = [current[i] for i in current if i in added or i in edited]
     extra = additions(session, location_id, ticket.order_id)
     open_extra = next((t for t in extra if t.released_at is None), None)
+
+    def changes_for(previous=None):
+        previous = previous or {}
+        gone = previous.get('removed', []) + [r for r in removed if r['id'] not in {x['id'] for x in previous.get('removed', [])}]
+        if not (edited or gone or previous.get('at')):
+            return None
+        return {'new': [], 'changed': edited, 'removed': gone,
+                'at': previous.get('at') if not (edited or removed) else now().isoformat()}
+
     if open_extra is not None:
         lines = _without_released({'lines': lines}, open_extra.payload)['lines']
         body = {**payload, 'lines': lines, **{k: open_extra.payload[k] for k in KEPT_KEYS if k in open_extra.payload}}
+        changes = changes_for(open_extra.payload.get('changes'))
+        if changes:
+            body['changes'] = changes
         session.execute(update(Ticket).where(
             Ticket.location_id == location_id, Ticket.order_id == open_extra.order_id,
             Ticket.released_at.is_(None)
         ).values(payload=body, synced_at=synced_at).execution_options(synchronize_session=False))
-    elif lines:
+    elif lines or removed:
         number = max([int(t.order_id.rsplit('-add', 1)[1]) for t in extra] or [0]) + 1
+        body = {**payload, 'lines': lines, 'addition_to': ticket.order_id, 'addition': number}
+        changes = changes_for()
+        if changes:
+            body['changes'] = changes
         session.add(Ticket(location_id=location_id, order_id=f'{ticket.order_id}-add{number}',
-                           rfone_order_id=order.id, created_at=synced_at,
-                           payload={**payload, 'lines': lines, 'addition_to': ticket.order_id,
-                                    'addition': number}, synced_at=synced_at))
+                           rfone_order_id=order.id, created_at=synced_at, payload=body, synced_at=synced_at))
+
+
+def mark_deleted(session, location_id, order_id):
+    """Flag every open ticket of an order deleted in Clover. They stay on the board,
+    marked DELETED IN CLOVER, until the kitchen clears them with Release."""
+    stamp = now().isoformat()
+    for t in [session.get(Ticket, (location_id, order_id))] + related(session, location_id, order_id):
+        if t is None or t.released_at is not None or t.payload.get('deleted_in_clover'):
+            continue
+        session.execute(update(Ticket).where(
+            Ticket.location_id == location_id, Ticket.order_id == t.order_id, Ticket.released_at.is_(None)
+        ).values(payload={**t.payload, 'deleted_in_clover': stamp}).execution_options(synchronize_session=False))
 
 
 def release(session, location_id, order_id, actor, line_ids=None):

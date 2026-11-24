@@ -1,5 +1,6 @@
 """Order-only specialization of the existing Clover Live Sync acquisition path."""
 import logging
+import os
 import signal
 import threading
 from datetime import timedelta, timezone
@@ -10,7 +11,7 @@ from rfone_data_store import models as m
 from rfone_data_store.technical.connectors.clover import acquisition as a
 from rfone_data_store.technical.connectors.clover.historical_backfill_detail import ingest_order_item_and_modifier_detail
 from rfone_data_store.technical.connectors.clover.source_guard import require_complete, require_ok
-from store import Board, now, save_ticket
+from store import Board, Ticket, mark_deleted, now, pending, save_ticket
 
 LOG = logging.getLogger('kitchen_live_sync')
 
@@ -29,8 +30,17 @@ class DetailCapture:
         return result
 
 
+def sent_only():
+    """Show only dishes the server sent to the kitchen (Clover 'printed'), like the paper ticket.
+    KITCHEN_BOARD_SENT_ONLY=0 shows every dish as soon as it is rung in."""
+    return os.environ.get('KITCHEN_BOARD_SENT_ONLY', '1').strip() != '0'
+
+
 def ticket_payload(order_raw, lines):
     """Provider values stay verbatim; never infer seats, quantities or covers."""
+    if sent_only():
+        # A dish rung in but not yet sent to the kitchen is not the kitchen's yet.
+        lines = [line for line in lines if line.get('printed') is True]
     return {
         'title': order_raw.get('title') or order_raw['id'],
         'note': order_raw.get('note'),
@@ -45,7 +55,20 @@ def ticket_payload(order_raw, lines):
     }
 
 
-def run_cycle(session, location_id, client=None):
+def flag_deleted_orders(session, client, merchant_id, location_id, seen):
+    """An order deleted in Clover never comes back in the order list, so its ticket
+    would sit on the board forever. Ask Clover about each open ticket; a deleted
+    order stays on the board flagged DELETED IN CLOVER until the kitchen clears it,
+    so nobody keeps cooking it without being told."""
+    for order_id in sorted({t.payload.get('addition_to') or t.payload.get('part_of') or t.order_id
+                            for t in pending(session, location_id)} - seen):
+        result = client.get(f'/v3/merchants/{merchant_id}/orders/{order_id}')
+        gone = (not result.ok and result.status_code == 404) or (result.ok and (result.data or {}).get('deleted'))
+        if gone:
+            mark_deleted(session, location_id, order_id)
+
+
+def run_cycle(session, location_id, client=None, check_deleted=True):
     board = session.get(Board, location_id)
     if board is None:
         raise ValueError('Kitchen Board is not initialized for this Location')
@@ -79,6 +102,7 @@ def run_cycle(session, location_id, client=None):
         employees = a._existing_ids_by_source(session, m.Employee,
             source_system_id=source_system_id, source_id_column='source_employee_id')
         since = a._aware_utc(board.since)
+        seen = set()
         for raw in orders:
             # Unknown creation timestamps are errors, never silently omitted tickets.
             if not raw.get('id') or raw.get('createdTime') is None:
@@ -94,10 +118,14 @@ def run_cycle(session, location_id, client=None):
             ingest_order_item_and_modifier_detail(session, capture, raw, order,
                 source_system_id=source_system_id, ingestion_run_id=lock.id,
                 retrieved_at=end, mirror_source_record=a._mirror_source_record)
-            save_ticket(session, location_id=location_id, order=order,
-                        payload=ticket_payload(raw, capture.lines), synced_at=end)
+            payload = ticket_payload(raw, capture.lines)
+            seen.add(raw['id'])
+            if payload['lines'] or session.get(Ticket, (location_id, raw['id'])) is not None:
+                save_ticket(session, location_id=location_id, order=order, payload=payload, synced_at=end)
             summary.orders_updated += 1
             lock.heartbeat_at = now()
+        if check_deleted:
+            flag_deleted_orders(session, client, merchant_id, location_id, seen)
         board.last_sync = end
         board.sync_error = None
         a._finalize_import_run(lock, summary, location_id=location_id, mode='CORRECTION')
@@ -123,11 +151,14 @@ def run_forever(session_factory, location_id, interval=15):
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
+    cycle = 0
     while not stop.is_set():
         try:
             with session_factory() as session:
-                run_cycle(session, location_id)
+                # Deleted-order check about once a minute, not every 15 seconds.
+                run_cycle(session, location_id, check_deleted=(cycle % 4 == 0))
         except Exception:
             # Do not log credentials, raw responses or exception strings.
             LOG.error('Kitchen order sync failed for Location %s; next cycle will retry', location_id)
+        cycle += 1
         stop.wait(interval)

@@ -136,7 +136,9 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
             categories = categories_by_line(db, location_id, source_ids(waiting))
             timings = timing_by_line(db, location_id, source_ids(waiting))
             tickets = [serialize(t, location, categories, timings) for t in waiting]
-            tickets = [ticket for ticket in tickets if ticket['lines']]
+            # A ticket with no food left is hidden, unless it tells the kitchen to stop something.
+            tickets = [ticket for ticket in tickets if ticket['lines'] or ticket.get('deleted_in_clover')
+                       or (ticket.get('changes') or {}).get('removed')]
             return jsonify(orders=tickets,
                 visible_count=board.visible_count, total=len(tickets),
                 display_settings=read_settings(db,board),

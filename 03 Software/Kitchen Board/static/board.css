@@ -48,3 +48,8 @@ body:has(#board){margin:0;background:#fff}
 .allergy-warning,.note.allergy{color:#b3261e;font-weight:bold}
 .rail .line.void,.rail-probe .line.void{text-decoration:line-through;color:#7a2d24}
 .rail .removed-heading,.rail-probe .removed-heading{background:#f6dcd8;border-bottom-color:#b3261e;color:#7a2d24}
+
+/* An order deleted in Clover: stop cooking. Words first, colour second. */
+.ticket .kicker.flag-deleted{background:#1d1d1d;color:#fff;font-weight:bold}
+.rail .kicker.flag-deleted,.rail-probe .kicker.flag-deleted{display:block;font-size:.8em;padding:.1em .2em;margin-bottom:.1em}
+.ticket.deleted .line{text-decoration:line-through;opacity:.6}

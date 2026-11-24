@@ -24,10 +24,13 @@ if (board) {
     const out = (order.released_line_ids || []).length;
     if (out) flags.push(it ? `${out} GIÀ USCITI` : `${out} ALREADY OUT`);
     if (order.allergy) flags.push(it ? '⚠ ALLERGIA' : '⚠ ALLERGY');
+    if (order.deleted_in_clover) flags.unshift(it ? '✖ CANCELLATO IN CLOVER: FERMA' : '✖ DELETED IN CLOVER: STOP');
     const kicker = el('span', flags.join(' · '), 'kicker');
     kicker.classList.toggle('flag-addition', Boolean(order.addition));
     kicker.classList.toggle('flag-changed', Boolean(changes.at || out));
     kicker.classList.toggle('flag-allergy', Boolean(order.allergy));
+    kicker.classList.toggle('flag-deleted', Boolean(order.deleted_in_clover));
+    card.classList.toggle('deleted', Boolean(order.deleted_in_clover));
     const clock = el('time', null);
     clock.dataset.created = order.created_at;
     clock.dataset.localTime = order.local_time;
