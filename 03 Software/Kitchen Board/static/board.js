@@ -39,9 +39,13 @@ if (board) {
     card.append(kicker, el('h2', order.title), clock);
     if (order.note) card.append(el('p', order.note, order.note_allergy ? 'note allergy' : 'note'));
     // Preserve source order within each guest group; unassigned lines come first.
-    const timed = order.lines.some(line => line.service_timing?.length);
+    // Pino, 25 Nov: nothing the kitchen saw disappears. A removed dish stays in its
+    // own course and guest, struck out in red, so both versions are on the ticket.
+    const removed = (changes.removed || []).map(gone => ({...gone, removed: true, modifiers: []}));
+    const shown = [...order.lines, ...removed];
+    const timed = shown.some(line => line.service_timing?.length);
     const timingGroups = new Map();
-    for (const line of order.lines) {
+    for (const line of shown) {
       const key=(line.service_timing || []).join(' + ');
       if(!timingGroups.has(key)) timingGroups.set(key,[]);
       timingGroups.get(key).push(line);
@@ -62,6 +66,13 @@ if (board) {
     for (const [guest, lines] of [...groups].sort((a,b)=>guestNumber(a[0])-guestNumber(b[0]))) {
       if (guest && lines.length) card.append(el('h3', guest, 'guest'));
       for (const line of lines) {
+        const qty = item => (item.quantity == null ? '' : `${item.quantity} × `);
+        if (line.removed) {
+          const row = el('div', null, 'line void');
+          row.append(el('p', (it ? 'TOLTO: ' : 'REMOVED: ') + qty(line) + line.name));
+          card.append(row);
+          continue;
+        }
         const row = el('div', null, 'line');
         const isNew = (changes.new || []).includes(line.id), isChanged = (changes.changed || []).includes(line.id);
         row.classList.toggle('new', isNew); row.classList.toggle('changed', isChanged);
@@ -72,17 +83,17 @@ if (board) {
         for (const mod of line.modifiers) row.append(el('p', `+ ${mod}`, 'modifier'));
         if (line.allergy) row.append(el('p', it ? '⚠ ALLERGIA: controlla prima di cucinare' : '⚠ ALLERGY: check before cooking', 'allergy-warning'));
         card.append(row);
+        // The new version sits in red right above what was first asked, struck out.
+        const was = isChanged && (changes.was || {})[line.id];
+        if (was) {
+          const old = el('div', null, 'line void');
+          old.append(el('p', (it ? 'PRIMA: ' : 'WAS: ') + qty(was) + was.name));
+          if (was.note) old.append(el('p', was.note, 'note'));
+          for (const mod of was.modifiers || []) old.append(el('p', `+ ${mod}`, 'modifier'));
+          card.append(old);
+        }
       }
     }
-    }
-    // Lines removed in Clover after the kitchen saw the ticket stay visible, struck out.
-    if ((changes.removed || []).length) {
-      card.append(el('h3', it ? 'TOLTO DALL’ORDINE' : 'REMOVED FROM ORDER', 'timing removed-heading'));
-      for (const gone of changes.removed) {
-        const row = el('div', null, 'line void');
-        row.append(el('p', (it ? 'ANNULLATO: ' : 'VOID: ') + (gone.quantity == null ? '' : `${gone.quantity} × `) + gone.name));
-        card.append(row);
-      }
     }
     return card;
   }

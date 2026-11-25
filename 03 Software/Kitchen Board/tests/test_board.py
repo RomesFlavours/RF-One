@@ -327,6 +327,12 @@ class BoardTest(unittest.TestCase):
         self.sync()
         changes=self.orders_now()[0]['changes']
         self.assertEqual((changes['new'],changes['changed'],changes['removed']),(['line-2'],['line-1'],[]))
+        # 25 Nov: the original stays on the ticket, so the kitchen sees what was first asked.
+        self.assertEqual(changes['was']['line-1']['note'],'No salt')
+        self.assertNotIn('line-2',changes['was'])
+        self.clover.lines[0]['note']='Changed again'
+        self.sync()
+        self.assertEqual(self.orders_now()[0]['changes']['was']['line-1']['note'],'No salt')
         del self.clover.lines[1]
         self.sync()
         changes=self.orders_now()[0]['changes']
@@ -478,9 +484,20 @@ class BoardTest(unittest.TestCase):
         orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
         self.assertEqual([o['order_id'] for o in orders],['order-1-add1'])
         self.assertEqual([r['id'] for r in orders[0]['changes']['removed']],['line-1'])
+        self.assertIn('service_timing',orders[0]['changes']['removed'][0])
         self.client.post('/api/locations/1/orders/order-1-add1/release',headers=self.api,json={'released_by':'pass'})
         self.sync()
         self.assertEqual(self.open_ids(),[])
+
+    def test_change_after_release_keeps_what_went_out(self):
+        self.sync()
+        self.client.post('/api/locations/1/orders/order-1/release',headers=self.api,json={'released_by':'pass'})
+        self.clover.lines[0]['unitQty'] = 3000
+        self.sync()
+        orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
+        changes = orders[0]['changes']
+        self.assertEqual(changes['changed'],['line-1'])
+        self.assertNotEqual(changes['was']['line-1']['quantity'],orders[0]['lines'][0]['quantity'])
 
     def test_change_after_release_is_not_repeated(self):
         self.sync()

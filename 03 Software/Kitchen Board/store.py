@@ -61,6 +61,18 @@ def _line_view(line):
     return (line.get('name'), line.get('quantity'), line.get('note'), tuple(line.get('modifiers') or ()))
 
 
+def _as_sent(line):
+    """What the kitchen first saw of a dish, kept so a change never erases it."""
+    return {'name': line.get('name') or '', 'quantity': line.get('quantity'), 'note': line.get('note'),
+            'modifiers': list(line.get('modifiers') or ())}
+
+
+def _gone(i, line):
+    """A removed dish keeps its guest and course, so it stays struck out in its place."""
+    return {'id': i, 'name': line.get('name') or '', 'quantity': line.get('quantity'),
+            'guest': line.get('guest'), 'service_timing': list(line.get('service_timing') or ())}
+
+
 def _track_changes(old, new):
     """Remember what changed on an open ticket after the kitchen first saw it."""
     previous = old.get('changes') or {}
@@ -68,15 +80,20 @@ def _track_changes(old, new):
     new_lines = {l.get('id'): l for l in new.get('lines', []) if l.get('id')}
     added = [i for i in new_lines if i not in old_lines]
     edited = [i for i in new_lines if i in old_lines and _line_view(new_lines[i]) != _line_view(old_lines[i])]
-    gone = [{'id': i, 'name': l.get('name') or '', 'quantity': l.get('quantity')}
-            for i, l in old_lines.items() if i not in new_lines]
+    gone = [_gone(i, l) for i, l in old_lines.items() if i not in new_lines]
     if not (added or edited or gone):
         return previous or None
     keep = lambda ids: [i for i in ids if i in new_lines]
     removed = [r for r in previous.get('removed', []) if r['id'] not in new_lines]
     removed += [r for r in gone if r['id'] not in {x['id'] for x in removed}]
+    new_ids = keep(list(dict.fromkeys(previous.get('new', []) + added)))
+    was = {i: v for i, v in (previous.get('was') or {}).items() if i in new_lines}
+    for i in edited:
+        if i not in was and i not in new_ids:
+            was[i] = _as_sent(old_lines[i])
     return {
-        'new': keep(list(dict.fromkeys(previous.get('new', []) + added))),
+        'new': new_ids,
+        'was': was,
         'changed': [i for i in dict.fromkeys(previous.get('changed', []) + edited)
                     if i in new_lines and i not in added and i not in previous.get('new', [])],
         'removed': removed,
@@ -148,8 +165,7 @@ def _save_addition(session, location_id, order, ticket, payload, synced_at):
     current = {l.get('id'): l for l in payload.get('lines', []) if l.get('id')}
     added = [i for i in current if i not in kitchen_view]
     edited = [i for i in current if i in kitchen_view and _line_view(current[i]) != _line_view(kitchen_view[i])]
-    removed = [{'id': i, 'name': l.get('name') or '', 'quantity': l.get('quantity')}
-               for i, l in kitchen_view.items() if i not in current and i not in reported]
+    removed = [_gone(i, l) for i, l in kitchen_view.items() if i not in current and i not in reported]
     lines = [current[i] for i in current if i in added or i in edited]
     extra = additions(session, location_id, ticket.order_id)
     open_extra = next((t for t in extra if t.released_at is None), None)
@@ -159,7 +175,8 @@ def _save_addition(session, location_id, order, ticket, payload, synced_at):
         gone = previous.get('removed', []) + [r for r in removed if r['id'] not in {x['id'] for x in previous.get('removed', [])}]
         if not (edited or gone or previous.get('at')):
             return None
-        return {'new': [], 'changed': edited, 'removed': gone,
+        was = {**{i: _as_sent(kitchen_view[i]) for i in edited}, **(previous.get('was') or {})}
+        return {'new': [], 'changed': edited, 'removed': gone, 'was': {i: v for i, v in was.items() if i in edited},
                 'at': previous.get('at') if not (edited or removed) else now().isoformat()}
 
     if open_extra is not None:
