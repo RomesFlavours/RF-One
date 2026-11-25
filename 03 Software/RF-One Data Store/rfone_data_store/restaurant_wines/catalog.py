@@ -194,6 +194,9 @@ def delete_wine(session: Session, wine: m.Wine) -> int:
     """Remove the wine from the whole Wines module: its rows on every Wine
     list version (past ones included) and the catalog record. Returns the
     number of Wine list rows removed."""
+    from .drink_card import forget_wine  # its drink card description and pairings go too
+
+    forget_wine(session, wine.id)
     items = session.scalars(select(m.WineListItem).where(m.WineListItem.wine_id == wine.id)).all()
     for item in items:
         session.delete(item)

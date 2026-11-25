@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% from "_restaurant_wines_macros.html" import wines_header, wines_styles with context %}
+{% set help_section = 'wine_card' %}
+{% block page_title %}{{ t('Drink card', 'Carta bevande') }} · Wines · RF-One{% endblock %}
+{% block wrap_class %}wrap-wide{% endblock %}
+{% block content %}
+<script defer src="{{ url_for('static', filename='js/rf-one-busy.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-wines.js') }}?v=1"></script>
+<script defer src="{{ url_for('static', filename='js/rf-one-row-return.js') }}?v=1"></script>
+{{ wines_styles() }}
+{{ wines_header('card', t('Drink card', 'Carta bevande')) }}
+<div style="display:flex;justify-content:flex-end">{% with ui=page_ui %}{% include '_how_works.html' %}{% endwith %}</div>
+<style>
+  .card-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 460px); gap: 1.5rem; align-items: start; }
+  @media (max-width: 1100px) { .card-layout { grid-template-columns: 1fr; } }
+  .card-preview { position: sticky; top: 1rem; }
+  .card-preview iframe { width: 100%; height: 78vh; border: 1px solid var(--olive-150); border-radius: 8px; background: #f4f4f1; }
+  .card-step { margin-bottom: 1.6rem; }
+  .card-step h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+  .card-step h2 .num { display: inline-block; width: 1.5rem; height: 1.5rem; line-height: 1.5rem; text-align: center; border-radius: 50%; background: var(--olive-700); color: white; font-size: .8rem; margin-right: .4rem; }
+  .card-printed { font-size: .82rem; color: var(--ink); }
+  .card-flag { display: block; font-size: .72rem; color: #8a5a10; margin-top: .2rem; }
+  .card-ok { display: block; font-size: .72rem; color: var(--muted); margin-top: .2rem; }
+  .card-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0 1rem; }
+  .card-form-grid input, .card-form-grid select { max-width: 100%; }
+  .card-images td { font-size: .82rem; }
+  .card-images form { display: flex; gap: .4rem; align-items: center; margin: 0; flex-wrap: wrap; }
+  .card-images input[type=file] { font-size: .78rem; max-width: 15rem; margin: 0; }
+  .card-warning { border: 1px solid #d9a441; background: #fff7e6; border-radius: 8px; padding: .6rem .8rem; font-size: .85rem; margin-bottom: .6rem; }
+  .card-help-q { float: right; margin: .1rem 2.2rem 0 0; padding: .1rem .55rem; font-weight: 700; }
+  .card-reference img { max-width: 100%; border: 1px solid var(--olive-150); border-radius: 6px; margin-top: .4rem; }
+</style>
+
+{% if not sites %}
+  <p class="empty">{{ t('No site is linked to a Restaurant yet: there is no drink card to prepare.', 'Nessuna sede è collegata a un Ristorante: non c’è una carta da preparare.') }}</p>
+{% else %}
+
+<section class="card-step" id="site">
+  <h2><span class="num">1</span>{{ t('Site', 'Sede') }}</h2>
+  <form method="get" action="{{ url_for('restaurant_wine_card') }}" id="site-form" class="wines-toolbar" style="justify-content:flex-start">
+    <label for="site-select" class="sr-only">{{ t('Site', 'Sede') }}</label>
+    <select id="site-select" name="site">
+      {% for s in sites %}<option value="{{ s.location.id }}" {{ 'selected' if s.location.id == site.location.id }}>{{ s.name }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit" class="btn-secondary">{{ t('Show', 'Mostra') }}</button></noscript>
+  </form>
+  <p class="muted" style="margin:.3rem 0 0">
+    {% if site.entity is none %}{{ t('This site’s Restaurant has no Entity recorded, so there is no Wine list to use.', 'Il Ristorante di questa sede non ha una Entity registrata: non c’è una Wine list da usare.') }}
+    {% elif version %}{{ t('Wines', 'Vini') }}: <a href="{{ url_for('restaurant_wines_home', entity=site.entity.id, list=version.id) }}">{{ t('Wine list of', 'Wine list di') }} {{ site.entity.legal_name }} {{ t('from', 'dal') }} {{ version.effective_from.isoformat() }}</a> ({{ rows|length }}).
+    {% else %}{{ t('There is no Wine list in effect today for', 'Non c’è una Wine list in vigore oggi per') }} {{ site.entity.legal_name }}.{% endif %}
+    {% if menu_name %}{{ t('Pairings', 'Abbinamenti') }}: {{ t('active Kitchen menu', 'menu attivo di Kitchen') }} “{{ menu_name }}” ({{ dishes|length }} {{ t('dishes', 'piatti') }}).{% endif %}
+  </p>
+  {% if not menu_name %}
+    <p class="card-warning">{{ t('This site has no active Kitchen menu: automatic pairings are unavailable. Descriptions can still be prepared.', 'Questa sede non ha un menu attivo in Kitchen: gli abbinamenti automatici non sono disponibili. Le descrizioni si possono comunque preparare.') }}</p>
+  {% endif %}
+</section>
+
+<div class="card-layout">
+<div>
+<section class="card-step" id="texts">
+  <h2><span class="num">2</span>{{ t('Descriptions and pairings', 'Descrizioni e abbinamenti') }}</h2>
+  <div class="wines-toolbar" style="justify-content:flex-start">
+    <form method="post" action="{{ url_for('restaurant_wine_card_propose', location_id=site.location.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" {{ 'disabled' if not rows or not ai_configured }}
+        title="{{ t('The AI proposes the texts still to approve; approved ones stay as they are', 'L’AI propone i testi ancora da approvare; quelli approvati restano come sono') }}">{{ t('Propose with AI', 'Proponi con AI') }}</button>
+    </form>
+    <form method="post" action="{{ url_for('restaurant_wine_card_approve_all', location_id=site.location.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-secondary" {{ 'disabled' if not pending }}>{{ t('Approve all proposals', 'Approva tutte le proposte') }}{% if pending %} ({{ pending }}){% endif %}</button>
+    </form>
+  </div>
+  {% if not ai_configured %}<p class="muted">{{ t('The AI is not configured on this installation: write the descriptions with Edit.', 'L’AI non è configurata in questa installazione: scrivi le descrizioni con Modifica.') }}</p>{% endif %}
+  {% if to_review %}<p class="card-warning">{{ to_review }} {{ t('wines have a paired dish that left the active menu: open Edit and choose again.', 'vini hanno un piatto abbinato uscito dal menu attivo: apri Modifica e scegli di nuovo.') }}</p>{% endif %}
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="table-compact">
+      <thead><tr><th class="col-narrow"></th><th>{{ t('Wine', 'Vino') }}</th><th>{{ t('Printed text', 'Testo in carta') }}</th><th class="col-amount">G</th><th class="col-amount">B</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr data-rr-key="wine:{{ r.wine_id }}">
+          <td><button type="button" class="btn-secondary btn-inline wines-edit-btn" data-review="{{ r.wine_id }}">{{ t('Edit', 'Modifica') }}</button></td>
+          <td><strong>{{ r.name }}</strong><span class="cell-note">{{ r.producer }}{% if r.vintage %} · {{ r.vintage }}{% endif %}</span></td>
+          <td>
+            {% if r.printed %}<span class="card-printed">{{ r.printed }}</span>{% else %}<span class="badge warn">{{ t('No description', 'Senza descrizione') }}</span>{% endif %}
+            {% for name in r.removed %}<span class="card-flag">{{ t('Left the active menu:', 'Uscito dal menu attivo:') }} {{ name }}</span>{% endfor %}
+            {% if r.description_approved and r.pairings_reviewed %}<span class="card-ok">{{ t('Approved', 'Approvato') }}</span>
+            {% elif r.description or r.pairing_ids %}<span class="card-flag">{{ t('AI proposal to approve', 'Proposta AI da approvare') }}</span>{% endif %}
+          </td>
+          <td class="col-amount">{{ r.glass }}</td>
+          <td class="col-amount">{% if r.bottle %}{{ r.bottle }}{% else %}<span class="badge warn">{{ t('No price', 'Senza prezzo') }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="empty">{{ t('No wines to show for this site.', 'Nessun vino da mostrare per questa sede.') }}</p>
+  {% endif %}
+</section>
+
+<section class="card-step" id="waters">
+  <h2><span class="num">3</span>{{ t('Mineral waters', 'Acque minerali') }}</h2>
+  <p class="muted">{{ t('The section appears on the card when it has at least one water.', 'La sezione compare in carta quando contiene almeno un’acqua.') }}</p>
+  {% if waters %}
+  <table class="table-compact">
+    <thead><tr><th class="col-narrow"></th><th>{{ t('Name', 'Nome') }}</th><th>{{ t('Type', 'Tipo') }}</th><th>{{ t('Format', 'Formato') }}</th><th class="col-amount">{{ t('Price', 'Prezzo') }}</th><th class="col-narrow"></th></tr></thead>
+    <tbody>
+    {% for w in waters %}
+      <tr data-rr-key="water:{{ w.id }}">
+        <td><button type="button" class="btn-secondary btn-inline wines-edit-btn" data-water="{{ w.id }}">{{ t('Edit', 'Modifica') }}</button></td>
+        <td>{{ w.name }}</td><td>{{ t('Sparkling', 'Frizzante') if w.sparkling else t('Still', 'Naturale') }}</td><td>{{ w.size_label }}</td>
+        <td class="col-amount">${{ w.price }}</td>
+        <td>
+          <form method="post" action="{{ url_for('restaurant_wine_card_water_delete', location_id=site.location.id, water_id=w.id) }}" data-confirm="{{ t('Remove this water from the card?', 'Togliere questa acqua dalla carta?') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-danger btn-inline wines-delete-btn">{{ t('Delete', 'Elimina') }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <button type="button" class="btn-secondary" id="water-new">{{ t('Add a water', 'Aggiungi un’acqua') }}</button>
+</section>
+
+<section class="card-step" id="print">
+  <h2><span class="num">4</span>{{ t('Print layout', 'Impostazioni di stampa') }}</h2>
+  <form method="post" action="{{ url_for('restaurant_wine_card_settings', location_id=site.location.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="show_glass_price" value="{{ '1' if card.show_glass_price else '0' }}">
+    <div class="card-form-grid">
+      <div><label for="cs-preset">{{ t('Sheet size', 'Dimensioni del foglio') }}</label>
+        <select id="cs-preset">
+          <option value="">{{ t('Custom', 'Personalizzato') }}</option>
+          {% for key, p in paper_presets.items() %}<option value="{{ key }}" data-w="{{ p[1] }}" data-h="{{ p[2] }}">{{ p[0] }}</option>{% endfor %}
+        </select></div>
+      <div><label for="cs-w">{{ t('Width (in)', 'Larghezza (pollici)') }}</label><input id="cs-w" type="number" step="0.01" min="3" max="20" name="page_width_in" value="{{ card.page_width_in.normalize() }}" required></div>
+      <div><label for="cs-h">{{ t('Height (in)', 'Altezza (pollici)') }}</label><input id="cs-h" type="number" step="0.01" min="3" max="20" name="page_height_in" value="{{ card.page_height_in.normalize() }}" required></div>
+      <div><label for="cs-o">{{ t('Orientation', 'Orientamento') }}</label>
+        <select id="cs-o" name="orientation">
+          <option value="PORTRAIT" {{ 'selected' if card.orientation == 'PORTRAIT' }}>{{ t('Portrait', 'Verticale') }}</option>
+          <option value="LANDSCAPE" {{ 'selected' if card.orientation == 'LANDSCAPE' }}>{{ t('Landscape', 'Orizzontale') }}</option>
+        </select></div>
+      <div><label for="cs-pages">{{ t('Number of pages', 'Numero di pagine') }}</label><input id="cs-pages" type="number" min="1" max="24" step="1" name="page_count" value="{{ card.page_count }}" required></div>
+    </div>
+    <label class="wines-check"><input type="checkbox" id="cs-corners" name="corners_enabled" value="1" {{ 'checked' if card.corners_enabled }}> {{ t('Free corners for the menu holder', 'Angoli liberi per il portamenu') }}</label>
+    <div class="card-form-grid" id="cs-corner-block">
+      <div><label for="cs-leg">{{ t('Side of each free triangle (in)', 'Lato di ogni triangolo libero (pollici)') }}</label><input id="cs-leg" type="number" step="0.05" min="0" name="corner_leg_in" value="{{ card.corner_leg_in.normalize() }}"></div>
+    </div>
+    <div class="card-form-grid">
+      <div><label for="cs-heading">{{ t('Heading', 'Intestazione') }}</label><input id="cs-heading" type="text" maxlength="80" name="heading" value="{{ card.heading or '' }}"></div>
+      <div><label for="cs-sub">{{ t('Subheading', 'Sottotitolo') }}</label><input id="cs-sub" type="text" maxlength="80" name="subheading" value="{{ card.subheading or '' }}"></div>
+      <div><label for="cs-title">{{ t('Title', 'Titolo') }}</label><input id="cs-title" type="text" maxlength="80" name="title" value="{{ card.title }}" required></div>
+      <div><label for="cs-footer">{{ t('Footer note', 'Nota a piè di pagina') }}</label><input id="cs-footer" type="text" maxlength="160" name="footer_note" value="{{ card.footer_note or '' }}"></div>
+      <div><label for="cs-ink">{{ t('Text colour', 'Colore del testo') }}</label><input id="cs-ink" type="color" name="ink_color" value="{{ card.ink_color }}"></div>
+      <div><label for="cs-accent">{{ t('Price colour', 'Colore dei prezzi') }}</label><input id="cs-accent" type="color" name="accent_color" value="{{ card.accent_color }}"></div>
+      <div><label for="cs-line">{{ t('Line colour', 'Colore delle linee') }}</label><input id="cs-line" type="color" name="line_color" value="{{ card.line_color }}"></div>
+    </div>
+    <button type="submit">{{ t('Save and update preview', 'Salva e aggiorna l’anteprima') }}</button>
+  </form>
+
+  <h3 style="font-size:.95rem;margin-top:1.2rem">{{ t('Graphic example and decorations', 'Esempio grafico e decori') }}</h3>
+  <p class="muted">{{ t('Upload the graphic example to compare it with the preview, and the decorations (PNG or JPEG, at most 4 MB) printed on every page. Nothing is printed inside the free corners.', 'Carica l’esempio grafico per confrontarlo con l’anteprima e i decori (PNG o JPEG, al massimo 4 MB) stampati su ogni pagina. Negli angoli liberi non viene stampato nulla.') }}</p>
+  <table class="table-compact card-images">
+    <tbody>
+    {% for slot, labels in slot_labels.items() %}
+      <tr>
+        <td>{{ labels[1] if ui_it else labels[0] }}</td>
+        <td>{% if images.get(slot) %}<a href="{{ url_for('restaurant_wine_card_image_view', location_id=site.location.id, slot=slot) }}" target="_blank" rel="noopener">{{ images[slot] }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          <form method="post" enctype="multipart/form-data" action="{{ url_for('restaurant_wine_card_image', location_id=site.location.id, slot=slot) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="image" accept="image/png,image/jpeg" aria-label="{{ labels[1] if ui_it else labels[0] }}" required>
+            <button type="submit" class="btn-secondary btn-inline">{{ t('Upload', 'Carica') }}</button>
+          </form>
+          {% if images.get(slot) %}
+          <form method="post" action="{{ url_for('restaurant_wine_card_image', location_id=site.location.id, slot=slot) }}" style="margin-top:.3rem">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="remove" value="1">
+            <button type="submit" class="btn-danger btn-inline wines-delete-btn">{{ t('Remove', 'Rimuovi') }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+</div>
+
+<aside class="card-preview" id="preview">
+  <h2 style="font-size:1.05rem;margin:0 0 .5rem"><span class="num" style="display:inline-block;width:1.5rem;height:1.5rem;line-height:1.5rem;text-align:center;border-radius:50%;background:var(--olive-700);color:white;font-size:.8rem;margin-right:.4rem">5</span>{{ t('Preview and PDF', 'Anteprima e PDF') }}</h2>
+  <label class="wines-check"><input type="checkbox" id="glass-toggle" {{ 'checked' if card.show_glass_price }}> {{ t('Show glass price', 'Mostra prezzo al calice') }}</label>
+  {% if result.overflow %}
+    <div class="card-warning" role="alert"><strong>{{ t('The card does not fit', 'La carta non entra') }}:</strong>
+      {{ result.overflow|length }} {{ t('entries do not fit in', 'voci non entrano in') }} {{ result.page_count }} {{ t('pages', 'pagine') }} ({{ result.overflow[:3]|join(', ') }}{% if result.overflow|length > 3 %}…{% endif %}).
+      {{ t('Add pages, choose a larger sheet or remove entries. Export is disabled until it fits.', 'Aggiungi pagine, scegli un foglio più grande o togli delle voci. L’esportazione resta disattivata finché non entra.') }}</div>
+  {% endif %}
+  {% if result.long_descriptions %}
+    <div class="card-warning">{{ t('Descriptions longer than two lines:', 'Descrizioni più lunghe di due righe:') }} {{ result.long_descriptions|join(', ') }}.</div>
+  {% endif %}
+  <p class="muted" style="margin:.2rem 0 .5rem">{{ result.wine_count }} {{ t('wines', 'vini') }}, {{ result.water_count }} {{ t('waters', 'acque') }} · {{ t('pages used', 'pagine usate') }} {{ result.pages_used }} / {{ result.page_count }}</p>
+  <iframe id="preview-frame" title="{{ t('Drink card preview', 'Anteprima della carta') }}" src="{{ url_for('restaurant_wine_card_pdf', location_id=site.location.id) }}#view=FitH"></iframe>
+  <p style="margin-top:.6rem">
+    {% if result.exportable %}
+      <a class="btn" href="{{ url_for('restaurant_wine_card_pdf', location_id=site.location.id, download=1) }}">{{ t('Export PDF', 'Esporta PDF') }}</a>
+    {% else %}
+      <button type="button" disabled>{{ t('Export PDF', 'Esporta PDF') }}</button>
+    {% endif %}
+  </p>
+  {% if images.get('REFERENCE') %}
+  <details class="card-reference"><summary>{{ t('Graphic example', 'Esempio grafico') }}</summary>
+    <img src="{{ url_for('restaurant_wine_card_image_view', location_id=site.location.id, slot='REFERENCE') }}" alt="{{ t('Graphic example', 'Esempio grafico') }}">
+  </details>
+  {% endif %}
+</aside>
+</div>
+
+{# --- Review one wine ----------------------------------------------------- #}
+<div id="review-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-wide" role="dialog" aria-modal="true" aria-labelledby="review-title">
+    <button class="org-modal-close" type="button" aria-label="{{ t('Close', 'Chiudi') }}" data-modal-close>&times;</button>
+    <button type="button" class="btn-secondary card-help-q" aria-label="{{ t('How this window works', 'Come funziona questa finestra') }}" data-help-dialog="rf-help-review">?</button>
+    <div class="modal-header"><h3 id="review-title"></h3></div>
+    <form id="review-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="rv-desc">{{ t('Description (English, without the dishes)', 'Descrizione (in inglese, senza i piatti)') }}</label>
+      <textarea id="rv-desc" name="description" rows="2" maxlength="160"></textarea>
+      <div class="card-form-grid">
+        {% for n in [1, 2] %}
+        <div><label for="rv-dish{{ n }}">{{ t('Paired dish', 'Piatto abbinato') }} {{ n }}</label>
+          <select id="rv-dish{{ n }}" name="recipe_id" {{ 'disabled' if not dishes }}>
+            <option value="">{{ t('— none —', '— nessuno —') }}</option>
+            {% for d in dishes %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+          </select></div>
+        {% endfor %}
+      </div>
+      <p class="cell-note">{{ t('Printed as', 'In carta') }}: <em id="rv-printed"></em></p>
+      <div class="error" id="rv-error" hidden></div>
+      <div class="btn-row">
+        <button type="submit">{{ t('Save and approve', 'Salva e approva') }}</button>
+        <button type="button" class="btn-secondary" data-modal-close>{{ t('Cancel', 'Annulla') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# --- Add / edit a water ------------------------------------------------- #}
+<div id="water-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-narrow" role="dialog" aria-modal="true" aria-labelledby="water-title">
+    <button class="org-modal-close" type="button" aria-label="{{ t('Close', 'Chiudi') }}" data-modal-close>&times;</button>
+    <button type="button" class="btn-secondary card-help-q" aria-label="{{ t('How this window works', 'Come funziona questa finestra') }}" data-help-dialog="rf-help-water">?</button>
+    <div class="modal-header"><h3 id="water-title"></h3></div>
+    <form id="water-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="wf-name">{{ t('Name', 'Nome') }}</label><input id="wf-name" type="text" name="name" maxlength="120" required>
+      <label class="wines-check"><input type="checkbox" id="wf-sparkling" name="sparkling" value="1"> {{ t('Sparkling', 'Frizzante') }}</label>
+      <label for="wf-size">{{ t('Format', 'Formato') }}</label><input id="wf-size" type="text" name="size_label" maxlength="40" placeholder="750 mL" required>
+      <label for="wf-price">{{ t('Price (USD)', 'Prezzo (USD)') }}</label><input id="wf-price" type="number" name="price_usd" min="0" step="0.01" required>
+      <div class="error" id="wf-error" hidden></div>
+      <div class="btn-row">
+        <button type="submit">{{ t('Save', 'Salva') }}</button>
+        <button type="button" class="btn-secondary" data-modal-close>{{ t('Cancel', 'Annulla') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% for dialog_id, part in [('rf-help-review', 'review'), ('rf-help-water', 'water')] %}
+<dialog id="{{ dialog_id }}" aria-labelledby="{{ dialog_id }}-title" style="max-width:40rem;max-height:80vh;overflow:auto;border:1px solid #88985e;border-radius:12px;">
+  <div style="position:sticky;top:0;background:white;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+    <h2 id="{{ dialog_id }}-title" style="font-size:1rem">{{ t('How this window works', 'Come funziona questa finestra') }}</h2>
+    <button type="button" aria-label="{{ t('Close', 'Chiudi') }}" onclick="this.closest('dialog').close()">×</button>
+  </div>
+  {% set help_part = part %}{% include 'help/wine_card_modals.html' %}
+</dialog>
+{% endfor %}
+
+<script type="application/json" id="card-data">{{ {
+  'rows': rows, 'waters': waters, 'dishes': dishes, 'it': ui_it,
+  'reviewUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/wines/',
+  'waterUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/waters/',
+  'glassUrl': url_for('restaurant_wine_card_glass', location_id=site.location.id),
+}|tojson }}</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var data = JSON.parse(document.getElementById("card-data").textContent);
+  function t(en, it) { return data.it ? it : en; }
+
+  document.getElementById("site-select").addEventListener("change", function () {
+    RFOneWines.busyStart();
+    document.getElementById("site-form").submit();
+  });
+  document.querySelectorAll("form[data-confirm]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!window.confirm(form.getAttribute("data-confirm"))) { event.preventDefault(); }
+    });
+  });
+  document.querySelectorAll("[data-help-dialog]").forEach(function (button) {
+    button.addEventListener("click", function () { document.getElementById(button.getAttribute("data-help-dialog")).showModal(); });
+  });
+
+  // Print settings: a preset fills width and height; corners field follows its checkbox.
+  var preset = document.getElementById("cs-preset");
+  var widthInput = document.getElementById("cs-w"), heightInput = document.getElementById("cs-h");
+  Array.prototype.forEach.call(preset.options, function (option) {
+    if (option.dataset.w && Number(option.dataset.w) === Number(widthInput.value) && Number(option.dataset.h) === Number(heightInput.value)) { preset.value = option.value; }
+  });
+  preset.addEventListener("change", function () {
+    var option = preset.options[preset.selectedIndex];
+    if (option.dataset.w) { widthInput.value = option.dataset.w; heightInput.value = option.dataset.h; }
+  });
+  [widthInput, heightInput].forEach(function (input) { input.addEventListener("input", function () { preset.value = ""; }); });
+  var corners = document.getElementById("cs-corners");
+  function syncCorners() { document.getElementById("cs-corner-block").hidden = !corners.checked; }
+  corners.addEventListener("change", syncCorners); syncCorners();
+
+  // Glass price column: saved at once, the preview reloads.
+  document.getElementById("glass-toggle").addEventListener("change", function () {
+    var body = new FormData();
+    body.append("show_glass_price", this.checked ? "1" : "0");
+    RFOneWines.post(data.glassUrl, body, true).then(function (answer) {
+      if (answer.ok) { window.location.reload(); }
+    });
+  });
+
+  // ---- Review one wine ----------------------------------------------------
+  var reviewModal = RFOneModal.create({ overlay: document.getElementById("review-modal") });
+  var reviewForm = document.getElementById("review-form");
+  var desc = document.getElementById("rv-desc");
+  var dish1 = document.getElementById("rv-dish1"), dish2 = document.getElementById("rv-dish2");
+  var printed = document.getElementById("rv-printed");
+  var reviewError = document.getElementById("rv-error");
+  var current = null;
+  var dishNames = {};
+  data.dishes.forEach(function (d) { dishNames[d.id] = d.name; });
+  function updatePrinted() {
+    var sentence = desc.value.trim().replace(/\.+$/, "").trim();
+    var names = [dish1.value, dish2.value].filter(function (v, i, all) { return v && all.indexOf(v) === i; })
+      .map(function (v) { return dishNames[v]; });
+    if (names.length) { sentence = sentence ? sentence + ", ideal with " + names.join(" and ") : "Ideal with " + names.join(" and "); }
+    printed.textContent = sentence ? sentence + "." : "—";
+  }
+  [desc, dish1, dish2].forEach(function (node) { node.addEventListener("input", updatePrinted); node.addEventListener("change", updatePrinted); });
+  document.querySelectorAll("[data-review]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = Number(button.getAttribute("data-review"));
+      current = data.rows.filter(function (r) { return r.wine_id === id; })[0];
+      reviewForm.reset();
+      reviewError.hidden = true;
+      document.getElementById("review-title").textContent = current.name + (current.vintage ? " · " + current.vintage : "");
+      desc.value = current.description;
+      dish1.value = current.pairing_ids[0] ? String(current.pairing_ids[0]) : "";
+      dish2.value = current.pairing_ids[1] ? String(current.pairing_ids[1]) : "";
+      updatePrinted();
+      reviewModal.open(button);
+    });
+  });
+  reviewForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    RFOneWines.post(data.reviewUrl + current.wine_id, new FormData(reviewForm), true).then(function (answer) {
+      if (!answer.ok) { reviewError.textContent = answer.error; reviewError.hidden = false; return; }
+      window.location.href = answer.redirect;
+    });
+  });
+
+  // ---- Waters --------------------------------------------------------------
+  var waterModal = RFOneModal.create({ overlay: document.getElementById("water-modal") });
+  var waterForm = document.getElementById("water-form");
+  var waterError = document.getElementById("wf-error");
+  var water = null;
+  function openWater(trigger, w) {
+    water = w;
+    waterForm.reset();
+    waterError.hidden = true;
+    document.getElementById("water-title").textContent = w ? t("Edit water", "Modifica acqua") : t("Add a water", "Aggiungi un’acqua");
+    if (w) {
+      document.getElementById("wf-name").value = w.name;
+      document.getElementById("wf-sparkling").checked = w.sparkling;
+      document.getElementById("wf-size").value = w.size_label;
+      document.getElementById("wf-price").value = w.price;
+    }
+    waterModal.open(trigger);
+  }
+  document.getElementById("water-new").addEventListener("click", function () { openWater(this, null); });
+  document.querySelectorAll("[data-water]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = Number(button.getAttribute("data-water"));
+      openWater(button, data.waters.filter(function (w) { return w.id === id; })[0]);
+    });
+  });
+  waterForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var url = data.waterUrl + (water ? water.id : "new");
+    RFOneWines.post(url, new FormData(waterForm), true).then(function (answer) {
+      if (!answer.ok) { waterError.textContent = answer.error; waterError.hidden = false; return; }
+      window.location.href = answer.redirect;
+    });
+  });
+});
+</script>
+{% endif %}
+{% endblock %}
