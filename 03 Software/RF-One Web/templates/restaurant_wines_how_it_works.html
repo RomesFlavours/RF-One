@@ -14,7 +14,8 @@
 <li><strong>Select the Entity.</strong> Each Entity has its own dated Wine list versions.</li>
 <li><strong>Create a New Wine list.</strong> Choose an effective date and start empty or copy the list currently in effect.</li>
 <li><strong>Add wines and set prices.</strong> Choose catalog wines, enter their commercial Value, and decide whether they are sold by the glass. Review calculated prices or set them manually.</li>
-<li><strong>Review and export.</strong> Check incomplete prices and change warnings, then export the selected version as CSV. A future version becomes effective on its date.</li></ol></section>
+<li><strong>Review and export.</strong> Check incomplete prices and change warnings, then export the selected version as CSV. A future version becomes effective on its date.</li>
+<li><strong>Print the drink card.</strong> In <a href="{{ url_for('restaurant_wine_card') }}">Drink card</a>, choose a site: its card uses the Wine list in effect for the site's Entity, short descriptions and pairings with the dishes of the site's active Kitchen menu, and the mineral waters you add. Review the texts, set the print layout and export the PDF shown in the preview.</li></ol></section>
 <section id="catalog"><h2>Wine Types and Availability</h2>
 <p>Wine Types stores a standard name and alternative names. Names already assigned to another type are refused.</p>
 <p>Availability is the purchasing catalog, not an inventory count. A wine records its type, producer, label, vintage or non-vintage status, category, style, denomination, region, bottle size, supplier, cost, cost date and notes. Availability can be Available, Incoming or Not available.</p>
@@ -30,6 +31,7 @@
 <p>Copying the current list preserves its selected wines, costs used, commercial Values, calculation parameters and prices. Previous versions remain available for consultation and export, and cannot be edited. Dates follow the restaurant Location's timezone.</p></section>
 <section id="agent"><h2>Wines agent features</h2>
 <p>The current Wines implementation provides structured operational assistance: consistent wine identities, duplicate checks, cost and price validation, deterministic price calculations, per-Entity list versions, change warnings and CSV export.</p>
-<p>You supply and approve supplier information, availability, costs, commercial Value, selling prices and effective dates. The current module does not connect to a generative AI model, research suppliers, place orders, track physical stock or autonomously publish recommendations. These are not active features of this installation.</p></section>
+<p>You supply and approve supplier information, availability, costs, commercial Value, selling prices and effective dates.</p>
+<p>The only generative AI feature is in Drink card: on request, the AI (OpenAI) proposes a short English description for each wine and one or two dishes of the site's active menu to pair with it. Proposals are shown for review; nothing is printed as approved until a person approves it, and approved texts are never replaced by a new proposal. The module does not research suppliers, place orders, track physical stock or publish recommendations by itself.</p></section>
 <p><a class="btn" href="{{ url_for('restaurant_wines_home') }}">Back to Wine List</a></p>
 {% endblock %}

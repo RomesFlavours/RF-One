@@ -1,0 +1,25 @@
+{# Help of the two Drink card windows (How Works Standard §1.1): included in
+   the page's own "?" dialogs with `help_part` = "review" or "water". #}
+{% if help_part == 'review' %}
+<section id="wine-card-review">
+{% if ui_it %}
+  <p>Qui rivedi il testo di un vino in carta.</p>
+  <p><strong>Descrizione</strong>: una frase breve in inglese sul vino, senza i piatti; al massimo 160 caratteri, che in stampa non devono superare due righe. Vale per questo vino in tutte le sedi.</p>
+  <p><strong>Piatto abbinato 1 e 2</strong>: zero, uno o due piatti del menu attivo di questa sede. In carta vengono aggiunti alla descrizione con «ideal with …». <strong>In carta</strong> mostra la riga come verrà stampata.</p>
+  <p><strong>Salva e approva</strong> salva e approva descrizione e abbinamenti: le proposte successive dell’AI non li cambieranno. Se il salvataggio viene rifiutato, la finestra resta aperta con il motivo. <strong>Annulla</strong> o × chiudono senza salvare.</p>
+{% else %}
+  <p>Here you review one wine’s text on the card.</p>
+  <p><strong>Description</strong>: one short English sentence about the wine, without the dishes; at most 160 characters, which must not exceed two printed lines. It applies to this wine at every site.</p>
+  <p><strong>Paired dish 1 and 2</strong>: none, one or two dishes of this site’s active menu. On the card they are added to the description with “ideal with …”. <strong>Printed as</strong> shows the line as it will be printed.</p>
+  <p><strong>Save and approve</strong> saves and approves the description and pairings: later AI proposals will not change them. If the save is refused, the window stays open with the reason. <strong>Cancel</strong> or × close without saving.</p>
+{% endif %}
+</section>
+{% elif help_part == 'water' %}
+<section id="wine-card-water">
+{% if ui_it %}
+  <p>Qui aggiungi o modifichi un’acqua minerale della carta di questa sede: <strong>nome</strong>, <strong>frizzante</strong> (altrimenti naturale), <strong>formato</strong> (per esempio 750 mL) e <strong>prezzo</strong> in dollari. In carta compare nella sezione <em>Mineral water</em>, con «Still» o «Sparkling» e il formato sotto il nome. <strong>Salva</strong> aggiorna la carta; se un dato manca, la finestra resta aperta con il motivo.</p>
+{% else %}
+  <p>Here you add or change a mineral water on this site’s card: <strong>name</strong>, <strong>sparkling</strong> (otherwise still), <strong>format</strong> (for example 750 mL) and <strong>price</strong> in dollars. On the card it appears in the <em>Mineral water</em> section, with “Still” or “Sparkling” and the format under its name. <strong>Save</strong> updates the card; when something is missing the window stays open with the reason.</p>
+{% endif %}
+</section>
+{% endif %}
