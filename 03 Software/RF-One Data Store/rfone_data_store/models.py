@@ -14909,6 +14909,144 @@ class WineListItem(Base):
 
 
 # ---------------------------------------------------------------------------
+# Restaurant > Wines > Drink card (WINES_DRINK_CARD_001, Product Owner
+# 2026-11-24): the printable drink card of one site (Location) — its wines
+# come from the Wine list of the site's Entity, pairings from the site's
+# active Kitchen menu. No beer section (Product Owner choice A).
+# ---------------------------------------------------------------------------
+
+DRINK_CARD_ORIENTATION_PORTRAIT = "PORTRAIT"
+DRINK_CARD_ORIENTATION_LANDSCAPE = "LANDSCAPE"
+DRINK_CARD_ORIENTATIONS = (DRINK_CARD_ORIENTATION_PORTRAIT, DRINK_CARD_ORIENTATION_LANDSCAPE)
+
+DRINK_CARD_IMAGE_SLOTS = (
+    "REFERENCE", "LOGO", "HEADER_LEFT", "HEADER_RIGHT", "FOOTER_LEFT", "FOOTER_CENTER", "FOOTER_RIGHT",
+)
+
+
+class WineCardDescription(Base):
+    """The short English sentence printed under a wine on drink cards.
+
+    One per catalog wine, shared by every site (it describes the wine, not a
+    menu). `approved` marks a text a person reviewed or wrote: a new AI
+    proposal never replaces it."""
+
+    __tablename__ = "restaurant_wine_card_descriptions"
+
+    wine_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wines.id"), primary_key=True)
+    sentence: Mapped[str] = mapped_column(String(300), nullable=False)
+    approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WineCardPairing(Base):
+    """One dish paired with a wine at one site: a reference to the Kitchen
+    recipe, never a copied name, so the card always prints the dish's
+    current name. At most two per wine and site (`position` 1 or 2)."""
+
+    __tablename__ = "restaurant_wine_card_pairings"
+    __table_args__ = (
+        UniqueConstraint("location_id", "wine_id", "position", name="uq_restaurant_wine_card_pairings_slot"),
+        CheckConstraint("position IN (1, 2)", name="ck_restaurant_wine_card_pairings_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False, index=True)
+    wine_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wines.id"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("kitchen_recipes.id"), nullable=False)
+    approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WineCardPairingReview(Base):
+    """A person reviewed the pairings of one wine at one site — also when
+    they chose no dish at all, so a new AI proposal leaves that choice
+    alone."""
+
+    __tablename__ = "restaurant_wine_card_pairing_reviews"
+
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), primary_key=True)
+    wine_id: Mapped[int] = mapped_column(ForeignKey("restaurant_wines.id"), primary_key=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class DrinkCard(Base):
+    """The print settings of one site's drink card. The defaults are the
+    approved Winter Park card: four half-Letter portrait pages, 1-inch free
+    corners for the menu holder, glass prices shown."""
+
+    __tablename__ = "restaurant_drink_cards"
+    __table_args__ = (
+        UniqueConstraint("location_id", name="uq_restaurant_drink_cards_location"),
+        CheckConstraint("page_count BETWEEN 1 AND 24", name="ck_restaurant_drink_cards_pages"),
+        CheckConstraint("page_width_in > 0 AND page_height_in > 0", name="ck_restaurant_drink_cards_size"),
+        CheckConstraint("orientation IN ('PORTRAIT', 'LANDSCAPE')", name="ck_restaurant_drink_cards_orientation"),
+        CheckConstraint("corner_leg_in >= 0", name="ck_restaurant_drink_cards_corner"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(80), nullable=False, default="Wine List")
+    heading: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    subheading: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    footer_note: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+    page_width_in: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("5.5"))
+    page_height_in: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("8.5"))
+    orientation: Mapped[str] = mapped_column(String(16), nullable=False, default=DRINK_CARD_ORIENTATION_PORTRAIT)
+    corners_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    corner_leg_in: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("1"))
+    show_glass_price: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    ink_color: Mapped[str] = mapped_column(String(7), nullable=False, default="#2E3A1C")
+    accent_color: Mapped[str] = mapped_column(String(7), nullable=False, default="#A0401C")
+    line_color: Mapped[str] = mapped_column(String(7), nullable=False, default="#B08A5A")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DrinkCardWater(Base):
+    """A mineral water added to one site's drink card."""
+
+    __tablename__ = "restaurant_drink_card_waters"
+    __table_args__ = (
+        CheckConstraint("price_usd >= 0", name="ck_restaurant_drink_card_waters_price"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    drink_card_id: Mapped[int] = mapped_column(ForeignKey("restaurant_drink_cards.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    sparkling: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    size_label: Mapped[str] = mapped_column(String(40), nullable=False)
+    price_usd: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class DrinkCardImage(Base):
+    """An image of one site's drink card: the uploaded graphic example
+    (`REFERENCE`, shown next to the preview, never printed) or a decoration
+    printed in a fixed place of every page."""
+
+    __tablename__ = "restaurant_drink_card_images"
+    __table_args__ = (
+        UniqueConstraint("drink_card_id", "slot", name="uq_restaurant_drink_card_images_slot"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    drink_card_id: Mapped[int] = mapped_column(ForeignKey("restaurant_drink_cards.id"), nullable=False, index=True)
+    slot: Mapped[str] = mapped_column(String(24), nullable=False)
+    filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
 # MyRF — Project Management
 # (`01 Domains/Business Domain/Restaurant/MyRF/Project Management/README.md`)
 #

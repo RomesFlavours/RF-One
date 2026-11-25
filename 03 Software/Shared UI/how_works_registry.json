@@ -223,6 +223,7 @@
       "templates": "03 Software/RF-One Web/templates",
       "pages": {
         "admin_clover_download.html": "help/clover_download.html#clover-download",
+        "restaurant_wine_card.html": "help/wine_card.html#wine-card",
         "role_profiles.html": "help/registry.html#registry",
         "employee_departments.html": "help/employee_departments.html#employee-departments",
       "employee_directory.html": "help/employee_directory.html#employee-directory",

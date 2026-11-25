@@ -1,10 +1,12 @@
 """RF-One Web — Restaurant > Wines (RESTAURANT_WINES_FIRST_RELEASE_001).
 
-Three pages, gated by `require_domain_access("WINES")`:
+Four pages, gated by `require_domain_access("WINES")`:
 
   * Wine List   (`/restaurant/wines`)              — per Entity, versioned;
   * Availability (`/restaurant/wines/availability`) — the purchasable catalog;
-  * Wine Types  (`/restaurant/wines/types`)         — the type registry.
+  * Wine Types  (`/restaurant/wines/types`)         — the type registry;
+  * Drink card  (`/restaurant/wines/card`)          — the printable card of a
+    site (`restaurant_wine_card_routes.py`).
 
 All business rules live in `rfone_data_store.restaurant_wines`; this module
 only reads requests and renders. Dialog saves are sent with `fetch` and
@@ -27,6 +29,7 @@ from sqlalchemy import select
 from rfone_data_store import models as m
 from rfone_data_store.restaurant_wines import catalog, wine_lists, wine_types
 from rfone_data_store.restaurant_wines.pricing import PricingParameters, calculate_prices, cost_is_priceable
+from restaurant_wine_card_routes import register_restaurant_wine_card_routes
 
 DOMAIN_CODE = "WINES"
 
@@ -115,6 +118,8 @@ def _json_error(message: str, status: int = 400):
 
 def register_restaurant_wines_routes(app, *, require_domain_access, SessionFactory, load_current_account, require_csrf):
     gate = require_domain_access(DOMAIN_CODE)
+    # Drink card (WINES_DRINK_CARD_001): its own module, same gate.
+    register_restaurant_wine_card_routes(app, gate=gate, SessionFactory=SessionFactory, require_csrf=require_csrf)
 
     @app.route("/restaurant/wines/how-it-works")
     @gate
