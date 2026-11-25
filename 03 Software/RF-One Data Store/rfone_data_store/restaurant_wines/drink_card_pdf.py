@@ -30,17 +30,17 @@ FONT_BOLD = "Times-Bold"
 FONT_ITALIC = "Times-Italic"
 
 TITLE_SIZE = 18          # "Wine List", bold 18 pt (specification)
-SECTION_SIZE = 16
-NAME_SIZE = 13
-PRICE_SIZE = 13
+SECTION_SIZE = 14.5
+NAME_SIZE = 12.3
+PRICE_SIZE = 12.5
 COLUMN_LETTER_SIZE = 9
-DETAIL_SIZE = 10.5
+DETAIL_SIZE = 9.8
 FOOTER_SIZE = 10
 
 NAME_LEAD = 14.5
-PRODUCER_LEAD = 12.0
-DESCRIPTION_LEAD = 12.0
-ENTRY_GAP = 3.0          # the largest space is between one wine and the next
+PRODUCER_LEAD = 11.0
+DESCRIPTION_LEAD = 11.0
+ENTRY_GAP = 4.0          # the largest space is between one wine and the next
 SECTION_HEAD = 30.0      # section title, its rule and the space under it
 SECTION_GAP = 12.0
 COLUMN_GAP = 28.0        # right edge of G to right edge of B
@@ -49,6 +49,20 @@ MAX_DESCRIPTION_LINES = 2
 OUTER_INSET = 0.13 * INCH
 INNER_INSET = 0.20 * INCH
 CORNER_GAP = 0.06 * INCH
+
+FOOTER_SLOTS = ("FOOTER_LEFT", "FOOTER_RIGHT", "FOOTER_CENTER")
+
+# Type sizes, spacing and decoration boxes measured on the approved Winter Park card (5.5 x 8.5 in):
+# slot -> (distance from the side edge, distance from the top/bottom edge,
+# width, height) in inches, and the image anchor inside its box.
+DECOR_BOXES = {
+    "HEADER_LEFT": (0.53, 0.53, 0.72, 0.90, "nw"),
+    "HEADER_RIGHT": (0.54, 0.53, 0.70, 1.15, "ne"),
+    "FOOTER_LEFT": (0.53, 0.50, 0.85, 0.90, "sw"),
+    "FOOTER_RIGHT": (0.53, 0.50, 0.85, 0.90, "se"),
+}
+FOOTER_CENTER_BOX = (0.40, 2.90, 0.55)    # from the bottom edge, width, height
+LOGO_BOX = (0.49, 2.86, 0.66)             # from the top edge, width, height
 
 
 @dataclass
@@ -113,7 +127,10 @@ class _Geometry:
         self.w, self.h = w, h
         self.leg = float(spec.corner_leg_in) * INCH if spec.corners else 0.0
         self.top_offset = 1.62 * INCH       # from the top edge to the first section
-        self.bottom_offset = 1.25 * INCH    # from the bottom edge to the end of the text
+        # from the bottom edge to the end of the text; higher when footer
+        # decorations are printed, as on the Winter Park card
+        footer_decor = any(slot in spec.images for slot in FOOTER_SLOTS)
+        self.bottom_offset = (1.38 if footer_decor else 1.25) * INCH
         clear = self.leg + CORNER_GAP * 3 if self.leg else 0.0
         self.margin = max(0.5 * INCH, clear - self.top_offset, clear - self.bottom_offset)
         self.left = self.margin
@@ -145,24 +162,21 @@ def _frame(g: _Geometry, inset: float, gap: float) -> list[tuple[float, float]]:
     ]
 
 
-def _image_box(g: _Geometry, slot: str) -> tuple[float, float, float, float] | None:
-    """(x, y, width, height) of a decoration, kept out of the corners."""
-    bw, bh = 0.8 * INCH, 0.95 * INCH
-    off = max(0.42 * INCH, (g.leg + CORNER_GAP * 4) / 2 if g.leg else 0.0)
-    if slot == "HEADER_LEFT":
-        return off, g.h - off - bh, bw, bh
-    if slot == "HEADER_RIGHT":
-        return g.w - off - bw, g.h - off - bh, bw, bh
-    if slot == "FOOTER_LEFT":
-        return off, off, bw, bh
-    if slot == "FOOTER_RIGHT":
-        return g.w - off - bw, off, bw, bh
+def _image_box(g: _Geometry, slot: str) -> tuple[float, float, float, float, str] | None:
+    """(x, y, width, height, anchor) of a decoration, placed as on the
+    Winter Park card. `render` clips it to the free corners."""
+    if slot in DECOR_BOXES:
+        side, edge, bw, bh, anchor = DECOR_BOXES[slot]
+        side, edge, bw, bh = side * INCH, edge * INCH, bw * INCH, bh * INCH
+        x = side if slot.endswith("LEFT") else g.w - side - bw
+        y = g.h - edge - bh if slot.startswith("HEADER") else edge
+        return x, y, bw, bh, anchor
     if slot == "FOOTER_CENTER":
-        width = g.clear_width(0.25 * INCH) - 2 * (bw + 0.05 * INCH) if g.leg else g.w - 2 * (off + bw)
-        return (g.w - width) / 2, 0.25 * INCH, width, 0.8 * INCH
+        edge, bw, bh = (v * INCH for v in FOOTER_CENTER_BOX)
+        return (g.w - bw) / 2, edge, bw, bh, "s"
     if slot == "LOGO":
-        width = g.clear_width(0.35 * INCH) - 2 * bw
-        return (g.w - width) / 2, g.h - 1.08 * INCH, width, 0.7 * INCH
+        edge, bw, bh = (v * INCH for v in LOGO_BOX)
+        return (g.w - bw) / 2, g.h - edge - bh, bw, bh, "n"
     return None
 
 
@@ -189,7 +203,7 @@ def _page_decor(g: _Geometry, spec: CardSpec) -> list[tuple]:
             ops.append(("rule", center - half - 0.42 * INCH, center - half - 0.08 * INCH, y + size * 0.3, "accent", 0.6))
             ops.append(("rule", center + half + 0.08 * INCH, center + half + 0.42 * INCH, y + size * 0.3, "accent", 0.6))
     title_size = _fit(spec.title, FONT_BOLD, TITLE_SIZE, g.clear_width(1.35 * INCH) - 1.8 * INCH, 12)
-    ops.append(("text", center, g.h - 1.32 * INCH, spec.title, FONT_BOLD, title_size, "ink", "center", 0))
+    ops.append(("text", center, g.h - 1.42 * INCH, spec.title, FONT_BOLD, title_size, "ink", "center", 0))
     if spec.footer_note:
         size = _fit(spec.footer_note, FONT_ITALIC, FOOTER_SIZE, g.clear_width(1.1 * INCH) - 1.9 * INCH, 7)
         ops.append(("text", center, 1.12 * INCH, spec.footer_note, FONT_ITALIC, size, "accent", "center", 0))
@@ -319,8 +333,18 @@ def render(spec: CardSpec, result: Layout) -> bytes:
             elif kind == "image":
                 _, slot, box = op
                 if slot in readers and box:
-                    x, y, w, h = box
-                    c.drawImage(readers[slot], x, y, w, h, preserveAspectRatio=True, anchor="c", mask="auto")
+                    x, y, w, h, anchor = box
+                    c.saveState()
+                    if g.leg:   # never print inside the free corner triangles
+                        clip = c.beginPath()
+                        points = _frame(g, 0.0, CORNER_GAP)
+                        clip.moveTo(*points[0])
+                        for point in points[1:]:
+                            clip.lineTo(*point)
+                        clip.close()
+                        c.clipPath(clip, stroke=0, fill=0)
+                    c.drawImage(readers[slot], x, y, w, h, preserveAspectRatio=True, anchor=anchor, mask="auto")
+                    c.restoreState()
             elif kind == "text":
                 _, x, y, value, font, size, color, align, spacing = op
                 c.setFillColor(colors[color])
