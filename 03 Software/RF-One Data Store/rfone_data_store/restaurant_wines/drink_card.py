@@ -51,6 +51,7 @@ PAPER_PRESETS = {
 }
 
 IMAGE_TYPES = {"image/png", "image/jpeg"}
+PDF_TYPE = "application/pdf"     # accepted only for the graphic example (never printed)
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 _COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -536,6 +537,8 @@ def _sniff_type(data: bytes) -> str | None:
         return "image/png"
     if data.startswith(b"\xff\xd8\xff"):
         return "image/jpeg"
+    if data.startswith(b"%PDF-"):
+        return PDF_TYPE
     return None
 
 
@@ -547,8 +550,10 @@ def set_image(session: Session, card: m.DrinkCard, slot: str, filename: str, dat
     if len(data) > MAX_IMAGE_BYTES:
         raise DrinkCardError("The image is larger than 4 MB.")
     content_type = _sniff_type(data)
-    if content_type not in IMAGE_TYPES:
-        raise DrinkCardError("Use a PNG or JPEG image.")
+    if content_type == PDF_TYPE and slot != "REFERENCE":
+        raise DrinkCardError("A PDF can be uploaded only as the graphic example: use a PNG or JPEG image.")
+    if content_type not in IMAGE_TYPES and not (content_type == PDF_TYPE and slot == "REFERENCE"):
+        raise DrinkCardError("Use a PNG or JPEG image (or a PDF for the graphic example).")
     image = card_images(session, card).get(slot)
     if image is None:
         image = m.DrinkCardImage(drink_card_id=card.id, slot=slot)

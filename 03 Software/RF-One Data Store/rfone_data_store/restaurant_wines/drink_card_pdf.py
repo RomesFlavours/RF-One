@@ -32,18 +32,18 @@ FONT_BOLD = "Times-Bold"
 FONT_ITALIC = "Times-Italic"
 
 TITLE_SIZE = 18          # "Wine List", bold 18 pt (specification)
-SECTION_SIZE = 14.5
-NAME_SIZE = 12.3
-PRICE_SIZE = 12.5
-COLUMN_LETTER_SIZE = 9
-DETAIL_SIZE = 9.8
+SECTION_SIZE = 13.0
+NAME_SIZE = 11.0
+PRICE_SIZE = 11.2
+COLUMN_LETTER_SIZE = 8
+DETAIL_SIZE = 8.8
 FOOTER_SIZE = 10
 
-NAME_LEAD = 14.5
-PRODUCER_LEAD = 11.0
-DESCRIPTION_LEAD = 11.0
+NAME_LEAD = 13.0
+PRODUCER_LEAD = 10.0
+DESCRIPTION_LEAD = 10.0
 ENTRY_GAP = 4.0          # the largest space is between one wine and the next
-SECTION_HEAD = 30.0      # section title, its rule and the space under it
+SECTION_HEAD = 27.0      # section title, its rule and the space under it
 SECTION_GAP = 12.0
 COLUMN_GAP = 28.0        # right edge of G to right edge of B
 MAX_DESCRIPTION_LINES = 2
@@ -56,7 +56,8 @@ FOOTER_SLOTS = ("FOOTER_LEFT", "FOOTER_RIGHT", "FOOTER_CENTER")
 
 PRICE_COLOR = "#000000"   # prices are printed in black (Product Owner, 2026-11-26)
 
-# Type sizes, spacing and decoration boxes measured on the approved Winter Park card (5.5 x 8.5 in):
+# Decoration boxes measured on the approved Winter Park card (5.5 x 8.5 in); type sizes reduced
+# so that more wines fit (Product Owner, 2026-11-26):
 # slot -> (distance from the side edge, distance from the top/bottom edge,
 # width, height) in inches, and the image anchor inside its box.
 DECOR_BOXES = {

@@ -289,6 +289,17 @@ def main() -> int:
                       data={"csrf_token": csrf, "image": (io.BytesIO(b"not an image"), "x.png")},
                       content_type="multipart/form-data", follow_redirects=True)
         check("a non-image upload is refused", "PNG or JPEG" in resp.data.decode())
+        PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+        resp = c.post(f"/restaurant/wines/card/{wp}/images/HEADER_LEFT",
+                      data={"csrf_token": csrf, "image": (io.BytesIO(PDF), "sample.pdf")},
+                      content_type="multipart/form-data", follow_redirects=True)
+        check("a PDF is refused as a printed decoration", "only as the graphic example" in resp.data.decode())
+        resp = c.post(f"/restaurant/wines/card/{wp}/images/REFERENCE",
+                      data={"csrf_token": csrf, "image": (io.BytesIO(PDF), "graphic sample.pdf")}, content_type="multipart/form-data")
+        shown = c.get(f"/restaurant/wines/card/{wp}/images/REFERENCE")
+        page = c.get(f"/restaurant/wines/card?site={wp}").data.decode()
+        check("a PDF graphic example is uploaded and shown next to the preview", resp.status_code == 302
+              and shown.data == PDF and shown.mimetype == "application/pdf" and "card-reference-pdf" in page)
         resp = c.post(f"/restaurant/wines/card/{wp}/images/HEADER_LEFT",
                       data={"csrf_token": csrf, "image": (io.BytesIO(PNG), "olive.png")}, content_type="multipart/form-data")
         check("a decoration is uploaded", resp.status_code == 302
