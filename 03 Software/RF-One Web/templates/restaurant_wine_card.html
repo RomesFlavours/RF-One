@@ -29,6 +29,7 @@
   .card-warning { border: 1px solid #d9a441; background: #fff7e6; border-radius: 8px; padding: .6rem .8rem; font-size: .85rem; margin-bottom: .6rem; }
   .card-help-q { float: right; margin: .1rem 2.2rem 0 0; padding: .1rem .55rem; font-weight: 700; }
   .card-reference img { max-width: 100%; border: 1px solid var(--olive-150); border-radius: 6px; margin-top: .4rem; }
+  .card-reference-pdf { width: 100%; height: 34rem; border: 1px solid var(--olive-150); border-radius: 6px; margin-top: .4rem; }
 </style>
 
 {% if not sites %}
@@ -162,7 +163,7 @@
   </form>
 
   <h3 style="font-size:.95rem;margin-top:1.2rem">{{ t('Graphic example and decorations', 'Esempio grafico e decori') }}</h3>
-  <p class="muted">{{ t('Upload the graphic example to compare it with the preview, and the decorations (PNG or JPEG, at most 4 MB) printed on every page. Nothing is printed inside the free corners.', 'Carica l’esempio grafico per confrontarlo con l’anteprima e i decori (PNG o JPEG, al massimo 4 MB) stampati su ogni pagina. Negli angoli liberi non viene stampato nulla.') }}</p>
+  <p class="muted">{{ t('Upload the graphic example (PDF, PNG or JPEG) to compare it with the preview, and the background and decorations (PNG or JPEG) printed on every page; at most 4 MB per file. Nothing is printed inside the free corners.', 'Carica l’esempio grafico (PDF, PNG o JPEG) per confrontarlo con l’anteprima, e lo sfondo e i decori (PNG o JPEG) stampati su ogni pagina; al massimo 4 MB per file. Negli angoli liberi non viene stampato nulla.') }}</p>
   <table class="table-compact card-images">
     <tbody>
     {% for slot, labels in slot_labels.items() %}
@@ -172,7 +173,7 @@
         <td>
           <form method="post" enctype="multipart/form-data" action="{{ url_for('restaurant_wine_card_image', location_id=site.location.id, slot=slot) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="file" name="image" accept="image/png,image/jpeg" aria-label="{{ labels[1] if ui_it else labels[0] }}" required>
+            <input type="file" name="image" accept="{{ 'image/png,image/jpeg,application/pdf' if slot == 'REFERENCE' else 'image/png,image/jpeg' }}" aria-label="{{ labels[1] if ui_it else labels[0] }}" required>
             <button type="submit" class="btn-secondary btn-inline">{{ t('Upload', 'Carica') }}</button>
           </form>
           {% if images.get(slot) %}
@@ -211,7 +212,11 @@
   </p>
   {% if images.get('REFERENCE') %}
   <details class="card-reference"><summary>{{ t('Graphic example', 'Esempio grafico') }}</summary>
+    {% if reference_pdf %}
+    <iframe class="card-reference-pdf" title="{{ t('Graphic example', 'Esempio grafico') }}" src="{{ url_for('restaurant_wine_card_image_view', location_id=site.location.id, slot='REFERENCE') }}#view=FitH"></iframe>
+    {% else %}
     <img src="{{ url_for('restaurant_wine_card_image_view', location_id=site.location.id, slot='REFERENCE') }}" alt="{{ t('Graphic example', 'Esempio grafico') }}">
+    {% endif %}
   </details>
   {% endif %}
 </aside>

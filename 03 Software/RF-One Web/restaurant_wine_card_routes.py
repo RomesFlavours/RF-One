@@ -54,7 +54,8 @@ _IT = {
     "Unknown image position.": "Posizione dell'immagine sconosciuta.",
     "Choose an image file.": "Scegli un file immagine.",
     "The image is larger than 4 MB.": "L'immagine supera 4 MB.",
-    "Use a PNG or JPEG image.": "Usa un'immagine PNG o JPEG.",
+    "Use a PNG or JPEG image (or a PDF for the graphic example).": "Usa un'immagine PNG o JPEG (o un PDF per l'esempio grafico).",
+    "A PDF can be uploaded only as the graphic example: use a PNG or JPEG image.": "Un PDF si può caricare solo come esempio grafico: usa un'immagine PNG o JPEG.",
     "The AI is not configured on this installation: write the descriptions by hand.":
         "L'AI non è configurata in questa installazione: scrivi le descrizioni a mano.",
     "The AI could not be reached. Nothing was changed.": "L'AI non è raggiungibile. Non è stato cambiato nulla.",
@@ -78,7 +79,7 @@ def _t(en: str, it: str | None = None) -> str:
 
 
 IMAGE_SLOT_LABELS = {
-    "REFERENCE": ("Graphic example (reference only, not printed)", "Esempio grafico (solo riferimento, non stampato)"),
+    "REFERENCE": ("Graphic example, PDF or image (reference only, not printed)", "Esempio grafico, PDF o immagine (solo riferimento, non stampato)"),
     "BACKGROUND": ("Background, the whole page behind the text", "Sfondo, tutta la pagina dietro al testo"),
     "LOGO": ("Logo, replaces the heading", "Logo, al posto dell'intestazione"),
     "HEADER_LEFT": ("Decoration top left", "Decoro in alto a sinistra"),
@@ -150,6 +151,7 @@ def register_restaurant_wine_card_routes(app, *, gate, SessionFactory, require_c
                     waters=[{"id": w.id, "name": w.name, "sparkling": w.sparkling, "size_label": w.size_label,
                              "price": _money(w.price_usd)} for w in dc.list_waters(db, card)],
                     images={slot: img.filename for slot, img in images.items()},
+                    reference_pdf=images.get("REFERENCE") is not None and images["REFERENCE"].content_type == dc.PDF_TYPE,
                     result=result, today=today,
                     pending=sum(1 for w in wines if (w.description and not w.description_approved) or not w.pairings_reviewed),
                     to_review=sum(1 for w in wines if w.removed_dishes),
