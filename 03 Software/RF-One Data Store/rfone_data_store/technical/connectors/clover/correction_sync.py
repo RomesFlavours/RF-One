@@ -693,7 +693,7 @@ class _CycleLockSummary:
 
 def run_correction_cycle(
     session: Session, *, location_id: int, client: CloverReadClient | None = None, now: datetime | None = None,
-    resources: tuple[str, ...] = ALL_RESOURCES,
+    resources: tuple[str, ...] = ALL_RESOURCES, refresh_employees: bool = True,
 ) -> CorrectionCycleSummary | None:
     """One correction cycle for one Location: Orders, then Payments, then
     Refunds — each independently windowed/cursored/committed. Returns `None`
@@ -742,9 +742,12 @@ def run_correction_cycle(
     beat()
     session.commit()
     try:
-        summary.employee_errors = _refresh_employees(
-            session, resolved_client, location_id=location_id, merchant_id=merchant_id, run_id=lock_run.id,
-        )
+        # A Live download reads the roster once when it starts, not every 30 seconds:
+        # the server of each order already comes with the order (expand=employee).
+        if refresh_employees:
+            summary.employee_errors = _refresh_employees(
+                session, resolved_client, location_id=location_id, merchant_id=merchant_id, run_id=lock_run.id,
+            )
         if summary.employee_errors:
             # Only a failed or incomplete roster read stops the cycle; it is
             # logged so the stop is never silent.

@@ -129,6 +129,7 @@ def run_location_cycle(
     session: Session, *, location_id: int, trigger: str, start: datetime | None = None,
     resources: tuple[str, ...] = ALL_RESOURCES, client: CloverReadClient | None = None,
     now: datetime | None = None, session_factory: sessionmaker[Session] | None = None,
+    refresh_employees: bool = True,
 ) -> CycleOutcome:
     """One download for one site (see the module docstring). Never touches
     another site. `client` replaces the site's own Clover client (tests)."""
@@ -160,7 +161,8 @@ def run_location_cycle(
 
     try:
         correction = run_correction_cycle(session, location_id=location_id, client=resolved, now=now,
-                                          resources=tuple(resources))
+                                          resources=tuple(resources),
+                                          refresh_employees=refresh_employees or trigger != TRIGGER_LIVE)
     except Exception as exc:  # noqa: BLE001 — recorded as this download's outcome
         session.rollback()
         return outcome.fail(f"Updates: {_safe_error_summary(exc)}")

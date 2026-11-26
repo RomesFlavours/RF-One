@@ -287,6 +287,33 @@ class CloverAcquisitionEngineTest(unittest.TestCase):
                          MIDNIGHT_ET + timedelta(seconds=5) - oa.SCHEDULED_OVERLAP)
 
     # -- 4. Live: off by default, on request only, limited ---------------------
+    def test_live_reads_the_staff_list_once_per_request(self):
+        # Shelbi, 25 Nov: the roster is read when Live starts, not every 30 seconds.
+        from unittest import mock
+        from rfone_data_store.technical.connectors.clover import correction_sync
+        self.tick_all(MIDNIGHT_ET + timedelta(seconds=5))
+        now = MIDNIGHT_ET + timedelta(hours=12)
+        allowed = self.account(access=True)
+        with self.factory() as s:
+            oa.request_live(s, account=s.get(m.RFOneAccount, allowed), application="KITCHEN",
+                            location_ids=[self.md_id], resources=["orders"], live_until=now + timedelta(hours=1),
+                            now=now)
+            s.commit()
+        real = correction_sync._refresh_employees
+        with mock.patch.object(correction_sync, "_refresh_employees", side_effect=real) as roster:
+            worker = self.worker(self.md_id)
+            for step in (0, 31, 62, 93):
+                self.assertEqual(worker.tick(now + timedelta(seconds=step)).status, "COMPLETE")
+            self.assertEqual(roster.call_count, 1)
+            with self.factory() as s:  # a second request reads it again, once
+                oa.request_live(s, account=s.get(m.RFOneAccount, allowed), application="TIPS",
+                                location_ids=[self.md_id], resources=["payments"],
+                                live_until=now + timedelta(hours=1), now=now + timedelta(seconds=100))
+                s.commit()
+            for step in (124, 155):
+                self.assertEqual(worker.tick(now + timedelta(seconds=step)).status, "COMPLETE")
+            self.assertEqual(roster.call_count, 2)
+
     def test_live_only_on_authorized_request_for_requested_site_and_data(self):
         # Ordinary download done for today, so the ticks below can only be Live.
         self.tick_all(MIDNIGHT_ET + timedelta(seconds=5))

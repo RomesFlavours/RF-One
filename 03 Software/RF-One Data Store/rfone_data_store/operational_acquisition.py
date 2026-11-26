@@ -348,6 +348,8 @@ class LocationWorker:
     location_id: int
     client_factory: ClientFactory = None
     last_live_cycle_at: datetime | None = None
+    # Live requests whose first cycle already read the staff list.
+    live_roster_read_for: set = field(default_factory=set)
     instance_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def _client(self):
@@ -513,6 +515,7 @@ class LocationWorker:
             live = self._live_requests(session, now)
             if not live:
                 self.last_live_cycle_at = None  # Live off: the next request starts at once
+                self.live_roster_read_for = set()
                 return None
             if self.last_live_cycle_at is not None and now - self.last_live_cycle_at < LIVE_INTERVAL:
                 return None
@@ -522,11 +525,16 @@ class LocationWorker:
                 wanted.update((request.resources or "").split(","))
             resources = tuple(r for r in ALL_RESOURCES if r in wanted)
             request_ids = [request.id for request in live]
+            # The staff list is read when a Live request starts; the nightly download keeps it current.
+            read_roster = not set(request_ids) <= self.live_roster_read_for
             session.commit()
             outcome = shared_cycle.run_location_cycle(
                 session, location_id=self.location_id, trigger=shared_cycle.TRIGGER_LIVE, resources=resources,
                 client=self._client(), now=now, session_factory=self.session_factory,
+                refresh_employees=read_roster,
             )
+            if read_roster and outcome.status == shared_cycle.OUTCOME_COMPLETE:
+                self.live_roster_read_for = set(request_ids)
             session.rollback()
             for request_id in request_ids:
                 request = session.get(m.OperationalAcquisitionRequest, request_id)
