@@ -38,7 +38,7 @@ _IT = {
     "With free corners on, the corner side must be greater than zero.": "Con gli angoli liberi attivi, il lato deve essere maggiore di zero.",
     "The free corners are too large for this sheet.": "Gli angoli liberi sono troppo grandi per questo foglio.",
     "Text colour must be a colour such as #2E3A1C.": "Il colore del testo deve essere un colore come #2E3A1C.",
-    "Price colour must be a colour such as #2E3A1C.": "Il colore dei prezzi deve essere un colore come #2E3A1C.",
+    "Accent colour must be a colour such as #2E3A1C.": "Il colore di accento deve essere un colore come #2E3A1C.",
     "Line colour must be a colour such as #2E3A1C.": "Il colore delle linee deve essere un colore come #2E3A1C.",
     "The card title cannot be empty.": "Il titolo della carta non può essere vuoto.",
     "This wine is no longer in the catalog.": "Questo vino non è più nel catalogo.",
@@ -79,6 +79,7 @@ def _t(en: str, it: str | None = None) -> str:
 
 IMAGE_SLOT_LABELS = {
     "REFERENCE": ("Graphic example (reference only, not printed)", "Esempio grafico (solo riferimento, non stampato)"),
+    "BACKGROUND": ("Background, the whole page behind the text", "Sfondo, tutta la pagina dietro al testo"),
     "LOGO": ("Logo, replaces the heading", "Logo, al posto dell'intestazione"),
     "HEADER_LEFT": ("Decoration top left", "Decoro in alto a sinistra"),
     "HEADER_RIGHT": ("Decoration top right", "Decoro in alto a destra"),
