@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% set help_section='pass' %}
+{% block body_class %}pass-page{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{{ url_for('static',filename='pass.css') }}">{% endblock %}
+{% block path %} / {{ location.name }} / {{ 'Pass' }}{% endblock %}
+{% block content %}<main id="pass" data-location="{{ location.id }}" data-locale="{{ locale }}" data-csrf="{{ csrf }}" data-undo-minutes="{{ undo_minutes }}">
+<div class="pass-top"><h1>{{ 'Pass: ordini in cucina' if it else 'Pass: orders in the kitchen' }}</h1>
+<p id="pass-status" role="status" aria-live="polite"></p></div>
+<p class="pass-hint">{{ 'Tocca i piatti pronti e premi Escono, oppure Tutto esce per l’ordine intero. Lo schermo cucina si aggiorna da solo.' if it else 'Tap the dishes that are ready and press Send out, or All out for the whole order. The kitchen screen updates by itself.' }}</p>
+<section aria-labelledby="open-heading"><h2 id="open-heading" class="pass-section">{{ 'Da uscire' if it else 'Waiting to go out' }} <span id="open-count"></span></h2>
+<div id="pass-tickets" class="pass-grid"></div>
+<p id="pass-empty" hidden>{{ 'Nessun ordine in attesa.' if it else 'No orders waiting.' }}</p></section>
+<section aria-labelledby="recent-heading"><h2 id="recent-heading" class="pass-section">{{ 'Usciti di recente (annulla entro %d minuti)'|format(undo_minutes) if it else 'Recently sent out (undo within %d minutes)'|format(undo_minutes) }}</h2>
+<ul id="pass-recent" class="pass-recent"></ul></section>
+</main>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static',filename='pass.js') }}" defer></script>{% endblock %}

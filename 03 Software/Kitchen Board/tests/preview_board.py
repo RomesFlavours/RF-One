@@ -32,5 +32,10 @@ def preview():
     # Only this disposable fixture bypasses the login, never the real application.
     session['board_view'] = True
     return redirect('/board/1')
+@fixture.app.get('/preview-pass')
+def preview_pass():
+    # The pass tablet's view in the same disposable fixture.
+    session['board_view'] = True; session['board_manage'] = True
+    return redirect('/pass/1')
 print('Disposable Kitchen Board preview, screen token: '+VIEW, flush=True)
 fixture.app.run(host='127.0.0.1',port=5091,debug=False)

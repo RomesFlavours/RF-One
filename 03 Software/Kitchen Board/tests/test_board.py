@@ -688,5 +688,53 @@ class BoardTest(unittest.TestCase):
         self.assertTrue(r.headers['Location'].endswith('/board/1'))
 
 
+    # --- 26 Nov 2026: the pass tablet ---
+    def pass_login(self, token=RELEASE):
+        client = self.app.test_client()
+        client.post('/login', data={'token': token})
+        return client
+
+    def test_pass_page_needs_the_pass_code(self):
+        self.sync()
+        viewer = self.pass_login(VIEW)
+        self.assertEqual(viewer.get('/pass/1').status_code, 302)  # the kitchen screen code is not enough
+        manager = self.pass_login()
+        page = manager.get('/pass/1')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('data-csrf=', page.get_data(as_text=True))
+        self.assertIn('href="/pass/1"', manager.get('/').get_data(as_text=True))
+
+    def test_pass_releases_with_its_csrf_code_only(self):
+        self.sync()
+        manager = self.pass_login()
+        html = manager.get('/pass/1').get_data(as_text=True)
+        csrf = html.split('data-csrf="', 1)[1].split('"', 1)[0]
+        url = '/api/locations/1/orders/order-1/release'
+        self.assertEqual(manager.post(url, json={'released_by': 'Pass'}).status_code, 401)  # no code: refused
+        self.assertEqual(manager.post(url, json={'released_by': 'Pass'}, headers={'X-CSRF-Token': 'wrong'}).status_code, 401)
+        viewer = self.pass_login(VIEW)
+        viewer.get('/board/1')
+        self.assertEqual(viewer.post(url, json={'released_by': 'x'}, headers={'X-CSRF-Token': csrf}).status_code, 401)
+        r = manager.post(url, json={'released_by': 'Pass', 'line_ids': ['line-1']}, headers={'X-CSRF-Token': csrf})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.orders_now(), [])
+        recent = manager.get('/api/locations/1/released').json['released']
+        self.assertEqual([t['order_id'] for t in recent], ['order-1'])
+        self.assertEqual(recent[0]['released_by'], 'Pass')
+        undo = manager.post('/api/locations/1/orders/order-1/undo-release', json={'undone_by': 'Pass'},
+                            headers={'X-CSRF-Token': csrf})
+        self.assertEqual(undo.status_code, 200)
+        self.assertEqual([o['order_id'] for o in self.orders_now()], ['order-1'])
+
+    def test_recently_released_is_for_the_pass_only(self):
+        self.sync(); self.release_now()
+        self.assertEqual(self.pass_login(VIEW).get('/api/locations/1/released').status_code, 401)
+        old = self.client.get('/api/locations/1/released', headers=self.api).json['released']
+        self.assertEqual(len(old), 1)
+        with self.factory() as db:
+            db.get(Ticket, (1, 'order-1')).released_at = now() - timedelta(minutes=20); db.commit()
+        self.assertEqual(self.client.get('/api/locations/1/released', headers=self.api).json['released'], [])
+
+
 if __name__ == '__main__':
     unittest.main()

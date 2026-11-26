@@ -5,7 +5,7 @@ import hashlib
 import re
 import secrets
 from pathlib import Path
-from datetime import timezone
+from datetime import timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo
 
@@ -50,6 +50,11 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
                 if not write and session.get('board_view'):
                     valid = True
                 if configuration and session.get('board_manage'):
+                    valid = True
+                # The pass tablet, signed in with the release code, releases from its own page.
+                # A browser write must carry the page's CSRF code, so no other site can trigger it.
+                if (write and not configuration and session.get('board_manage') and session.get('pass_csrf')
+                        and is_token(request.headers.get('X-CSRF-Token', ''), session['pass_csrf'])):
                     valid = True
                 if not valid:
                     if request.path.startswith('/api/'):
@@ -228,6 +233,28 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
                 values={**values,**{key:submitted[key] for key in values if key in submitted}}
             return render_template('settings.html',location=location,values=values,error=error,
                 saved=request.args.get('saved')=='1' and request.method=='GET',csrf=session['settings_csrf']),status
+
+    @app.get('/pass/<int:location_id>')
+    @allowed(write=True, configuration=True)
+    def pass_page(location_id):
+        if 'pass_csrf' not in session:
+            session['pass_csrf'] = secrets.token_urlsafe(32)
+        with session_factory() as db:
+            _, location = configured(db, location_id)
+            return render_template('pass.html', location=location, csrf=session['pass_csrf'], undo_minutes=UNDO_MINUTES)
+
+    @app.get('/api/locations/<int:location_id>/released')
+    @allowed(write=True, configuration=True)
+    def recently_released(location_id):
+        # What went out in the last minutes, newest first, so the pass can undo a mistake.
+        with session_factory() as db:
+            _, location = configured(db, location_id)
+            since = now() - timedelta(minutes=UNDO_MINUTES)
+            tickets = list(db.scalars(select(Ticket).where(Ticket.location_id == location_id,
+                Ticket.released_at.is_not(None), Ticket.released_at >= since)
+                .order_by(Ticket.released_at.desc(), Ticket.order_id).limit(30)))
+            categories = categories_by_line(db, location_id, source_ids(tickets))
+            return jsonify(released=[serialize(t, location, categories) for t in tickets])
 
     @app.get('/archive/<int:location_id>')
     @allowed()
