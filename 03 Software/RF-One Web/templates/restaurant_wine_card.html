@@ -155,7 +155,7 @@
       <div><label for="cs-title">{{ t('Title', 'Titolo') }}</label><input id="cs-title" type="text" maxlength="80" name="title" value="{{ card.title }}" required></div>
       <div><label for="cs-footer">{{ t('Footer note', 'Nota a piè di pagina') }}</label><input id="cs-footer" type="text" maxlength="160" name="footer_note" value="{{ card.footer_note or '' }}"></div>
       <div><label for="cs-ink">{{ t('Text colour', 'Colore del testo') }}</label><input id="cs-ink" type="color" name="ink_color" value="{{ card.ink_color }}"></div>
-      <div><label for="cs-accent">{{ t('Price colour', 'Colore dei prezzi') }}</label><input id="cs-accent" type="color" name="accent_color" value="{{ card.accent_color }}"></div>
+      <div><label for="cs-accent">{{ t('Accent colour (subheading, G and B, footer note)', 'Colore di accento (sottotitolo, G e B, nota in fondo)') }}</label><input id="cs-accent" type="color" name="accent_color" value="{{ card.accent_color }}"></div>
       <div><label for="cs-line">{{ t('Line colour', 'Colore delle linee') }}</label><input id="cs-line" type="color" name="line_color" value="{{ card.line_color }}"></div>
     </div>
     <button type="submit">{{ t('Save and update preview', 'Salva e aggiorna l’anteprima') }}</button>

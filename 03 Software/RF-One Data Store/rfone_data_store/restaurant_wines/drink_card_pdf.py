@@ -9,7 +9,9 @@ with their G and B columns, each wine with producer · vintage on the next
 line and its description (pairings included) under it, and the footer note.
 
 Nothing is printed inside the free corner triangles: the frame, the text
-and the decorations are kept on the visible side of each hypotenuse.
+and the decorations are kept on the visible side of each hypotenuse. An
+uploaded background covers each page behind the text and replaces the drawn
+frame.
 """
 
 from __future__ import annotations
@@ -52,6 +54,8 @@ CORNER_GAP = 0.06 * INCH
 
 FOOTER_SLOTS = ("FOOTER_LEFT", "FOOTER_RIGHT", "FOOTER_CENTER")
 
+PRICE_COLOR = "#000000"   # prices are printed in black (Product Owner, 2026-11-26)
+
 # Type sizes, spacing and decoration boxes measured on the approved Winter Park card (5.5 x 8.5 in):
 # slot -> (distance from the side edge, distance from the top/bottom edge,
 # width, height) in inches, and the image anchor inside its box.
@@ -63,6 +67,15 @@ DECOR_BOXES = {
 }
 FOOTER_CENTER_BOX = (0.40, 2.90, 0.55)    # from the bottom edge, width, height
 LOGO_BOX = (0.49, 2.86, 0.66)             # from the top edge, width, height
+
+# A background covers the whole page and carries its own frame, so the
+# drawn frame is left out. The text stays clear of its side borders and of
+# the landscape at the bottom (fractions of the page width/height, measured
+# on the Mount Dora graphic sample, Product Owner 2026-11-26); the footer
+# note moves to the strip under the landscape.
+BACKGROUND_SIDE = 0.11
+BACKGROUND_BOTTOM = 0.215
+BACKGROUND_FOOTER = 0.036
 
 
 @dataclass
@@ -131,8 +144,13 @@ class _Geometry:
         # decorations are printed, as on the Winter Park card
         footer_decor = any(slot in spec.images for slot in FOOTER_SLOTS)
         self.bottom_offset = (1.38 if footer_decor else 1.25) * INCH
+        self.background = "BACKGROUND" in spec.images
+        side = 0.5 * INCH
+        if self.background:
+            self.bottom_offset = max(self.bottom_offset, BACKGROUND_BOTTOM * h)
+            side = max(side, BACKGROUND_SIDE * w)
         clear = self.leg + CORNER_GAP * 3 if self.leg else 0.0
-        self.margin = max(0.5 * INCH, clear - self.top_offset, clear - self.bottom_offset)
+        self.margin = max(side, clear - self.top_offset, clear - self.bottom_offset)
         self.left = self.margin
         self.right = w - self.margin
         self.text_top = h - self.top_offset
@@ -162,9 +180,12 @@ def _frame(g: _Geometry, inset: float, gap: float) -> list[tuple[float, float]]:
     ]
 
 
-def _image_box(g: _Geometry, slot: str) -> tuple[float, float, float, float, str] | None:
+def _image_box(g: _Geometry, slot: str) -> tuple[float, float, float, float, str | None] | None:
     """(x, y, width, height, anchor) of a decoration, placed as on the
-    Winter Park card. `render` clips it to the free corners."""
+    Winter Park card; the background fills the page (anchor None). `render`
+    clips it to the free corners."""
+    if slot == "BACKGROUND":
+        return 0.0, 0.0, g.w, g.h, None
     if slot in DECOR_BOXES:
         side, edge, bw, bh, anchor = DECOR_BOXES[slot]
         side, edge, bw, bh = side * INCH, edge * INCH, bw * INCH, bh * INCH
@@ -181,8 +202,11 @@ def _image_box(g: _Geometry, slot: str) -> tuple[float, float, float, float, str
 
 
 def _page_decor(g: _Geometry, spec: CardSpec) -> list[tuple]:
-    ops: list[tuple] = [("frame", _frame(g, OUTER_INSET, CORNER_GAP), 1.0),
-                        ("frame", _frame(g, INNER_INSET, CORNER_GAP * 2.6), 0.6)]
+    if g.background:
+        ops: list[tuple] = [("image", "BACKGROUND", _image_box(g, "BACKGROUND"))]
+    else:
+        ops = [("frame", _frame(g, OUTER_INSET, CORNER_GAP), 1.0),
+               ("frame", _frame(g, INNER_INSET, CORNER_GAP * 2.6), 0.6)]
     for slot in ("HEADER_LEFT", "HEADER_RIGHT", "FOOTER_LEFT", "FOOTER_RIGHT", "FOOTER_CENTER"):
         if slot in spec.images:
             ops.append(("image", slot, _image_box(g, slot)))
@@ -205,8 +229,10 @@ def _page_decor(g: _Geometry, spec: CardSpec) -> list[tuple]:
     title_size = _fit(spec.title, FONT_BOLD, TITLE_SIZE, g.clear_width(1.35 * INCH) - 1.8 * INCH, 12)
     ops.append(("text", center, g.h - 1.42 * INCH, spec.title, FONT_BOLD, title_size, "ink", "center", 0))
     if spec.footer_note:
-        size = _fit(spec.footer_note, FONT_ITALIC, FOOTER_SIZE, g.clear_width(1.1 * INCH) - 1.9 * INCH, 7)
-        ops.append(("text", center, 1.12 * INCH, spec.footer_note, FONT_ITALIC, size, "accent", "center", 0))
+        y = BACKGROUND_FOOTER * g.h if g.background else 1.12 * INCH
+        reserved = 0.0 if g.background else 1.9 * INCH    # room of the footer decorations
+        size = _fit(spec.footer_note, FONT_ITALIC, FOOTER_SIZE, g.clear_width(y) - reserved, 7)
+        ops.append(("text", center, y, spec.footer_note, FONT_ITALIC, size, "accent", "center", 0))
     return ops
 
 
@@ -279,9 +305,9 @@ def layout(spec: CardSpec, sections: list[Section]) -> Layout:
             base = y - NAME_SIZE + 1
             page.append(("text", g.left, base, entry.name, FONT_BOLD, size, "ink", "left", 0))
             if entry.bottle is not None:
-                page.append(("text", b_right, base, _money(entry.bottle), FONT_BOLD, PRICE_SIZE, "accent", "right", 0))
+                page.append(("text", b_right, base, _money(entry.bottle), FONT_BOLD, PRICE_SIZE, "price", "right", 0))
             if glass and entry.glass is not None:
-                page.append(("text", g_right, base, _money(entry.glass), FONT_BOLD, PRICE_SIZE, "accent", "right", 0))
+                page.append(("text", g_right, base, _money(entry.glass), FONT_BOLD, PRICE_SIZE, "price", "right", 0))
             cursor = y - NAME_LEAD
             if entry.detail:
                 page.append(("text", g.left, cursor - DETAIL_SIZE + 1.5, entry.detail, FONT_ITALIC, DETAIL_SIZE, "ink", "left", 0))
@@ -302,7 +328,8 @@ def layout(spec: CardSpec, sections: list[Section]) -> Layout:
 
 def render(spec: CardSpec, result: Layout) -> bytes:
     g = _Geometry(spec)
-    colors = {"ink": HexColor(spec.ink), "accent": HexColor(spec.accent), "line": HexColor(spec.line)}
+    colors = {"ink": HexColor(spec.ink), "accent": HexColor(spec.accent), "line": HexColor(spec.line),
+              "price": HexColor(PRICE_COLOR)}
     readers = {}
     for slot, data in spec.images.items():
         try:
@@ -343,7 +370,10 @@ def render(spec: CardSpec, result: Layout) -> bytes:
                             clip.lineTo(*point)
                         clip.close()
                         c.clipPath(clip, stroke=0, fill=0)
-                    c.drawImage(readers[slot], x, y, w, h, preserveAspectRatio=True, anchor=anchor, mask="auto")
+                    if anchor is None:    # background: stretched over the whole page
+                        c.drawImage(readers[slot], x, y, w, h, mask="auto")
+                    else:
+                        c.drawImage(readers[slot], x, y, w, h, preserveAspectRatio=True, anchor=anchor, mask="auto")
                     c.restoreState()
             elif kind == "text":
                 _, x, y, value, font, size, color, align, spacing = op

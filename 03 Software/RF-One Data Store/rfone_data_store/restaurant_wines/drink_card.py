@@ -159,7 +159,7 @@ def update_settings(session: Session, card: m.DrinkCard, form: dict) -> m.DrinkC
     if corners and leg * 2 >= short_side:
         raise DrinkCardError("The free corners are too large for this sheet.")
     colors = {}
-    for key, label in (("ink_color", "Text colour"), ("accent_color", "Price colour"), ("line_color", "Line colour")):
+    for key, label in (("ink_color", "Text colour"), ("accent_color", "Accent colour"), ("line_color", "Line colour")):
         value = (form.get(key) or "").strip()
         if not _COLOR.match(value):
             raise DrinkCardError(f"{label} must be a colour such as #2E3A1C.")
