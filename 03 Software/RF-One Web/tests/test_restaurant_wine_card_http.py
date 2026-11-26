@@ -294,6 +294,12 @@ def main() -> int:
         check("a decoration is uploaded", resp.status_code == 302
               and c.get(f"/restaurant/wines/card/{wp}/images/HEADER_LEFT").data == PNG)
         check("the card still renders with the decoration", c.get(f"/restaurant/wines/card/{wp}/card.pdf").status_code == 200)
+        resp = c.post(f"/restaurant/wines/card/{wp}/images/BACKGROUND",
+                      data={"csrf_token": csrf, "image": (io.BytesIO(PNG), "background.png")}, content_type="multipart/form-data")
+        with_background = c.get(f"/restaurant/wines/card/{wp}/card.pdf")
+        check("a background is uploaded and the card renders on it", resp.status_code == 302
+              and c.get(f"/restaurant/wines/card/{wp}/images/BACKGROUND").data == PNG
+              and with_background.status_code == 200 and len(pdf_pages(with_background.data)) == 4)
 
         # ---- Deleting a wine removes its card texts -----------------------------
         with SessionFactory() as s:
