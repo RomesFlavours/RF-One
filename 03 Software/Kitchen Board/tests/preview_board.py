@@ -1,4 +1,5 @@
 """Disposable in-memory UI fixture. Never reads credentials or calls Clover."""
+import os
 from test_board import BoardTest, VIEW, RELEASE, SECRET
 from app import create_app
 
@@ -15,8 +16,13 @@ def get(path, params=None):
         names = [('','Prosciutto & Cantaloupe'),('','Campari & Goat Cheese - Appetizer'),
                  ('GUEST 1','Still Water 500ml - Glass Bottle'),('GUEST 1','Pinot Grigio - Tenuta del Morer.'),
                  ('GUEST 2','Grillo - Casa di Grazia.')]
-        result.data = {'elements':[{'id':path.split('/')[-2]+str(j),'name':name,'binName':guest}
+        # Sent to the kitchen (Clover 'printed'), like a real ticket the board shows.
+        result.data = {'elements':[{'id':path.split('/')[-2]+str(j),'name':name,'binName':guest,'printed':True}
                                     for j,(guest,name) in enumerate(names)]}
+        if os.environ.get('PREVIEW_LONG_FIRST') and path.split('/')[-2] == 'preview-0':
+            # A first order far too long for one screen: it must still show, never a blank board.
+            result.data['elements'] += [{'id':f'long{k}','name':f'Dish {k} '+'with a long note '*6,
+                                         'binName':f'GUEST {k%9}','printed':True} for k in range(120)]
     return result
 fixture.clover.get = get
 fixture.sync()

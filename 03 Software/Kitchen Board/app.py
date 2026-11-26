@@ -82,7 +82,7 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
 
     def source_ids(tickets):
         # Addition tickets read categories and timing from their original Clover order.
-        return [t.payload.get('addition_to') or t.order_id for t in tickets]
+        return [t.payload.get('addition_to') or t.payload.get('part_of') or t.order_id for t in tickets]
 
     def serialize(ticket, location, category_lookup=None, timing_lookup=None):
         created = ticket.created_at
@@ -92,7 +92,7 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
                 'created_at': created.isoformat(), 'local_time': created.astimezone(ZoneInfo(location.timezone)).strftime('%H:%M'),
                 'released_at': ticket.released_at.isoformat() if ticket.released_at else None,
                 'released_by': ticket.released_by,
-                'source_order_id': ticket.payload.get('addition_to') or ticket.order_id}
+                'source_order_id': ticket.payload.get('addition_to') or ticket.payload.get('part_of') or ticket.order_id}
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -105,7 +105,9 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
                 session['board_view'] = True
                 session['board_manage'] = manager
                 target = request.args.get('next', '/')
-                return redirect(target if target.startswith('/') and not target.startswith('//') else '/')
+                # Only a path on this site: '//x' or any backslash can lead a browser off-site.
+                safe = target.startswith('/') and not target.startswith('//') and chr(92) not in target
+                return redirect(target if safe else '/')
             error = True
         return render_template('login.html', error=error), (401 if error else 200)
 
@@ -143,6 +145,8 @@ def create_app(session_factory, *, secret, view_token, release_token, local=Fals
                 visible_count=board.visible_count, total=len(tickets),
                 display_settings=read_settings(db,board),
                 last_sync=last.isoformat() if last else None, sync_error=bool(board.sync_error),
+                # The worker's own words (English); the Italian screen keeps its general message.
+                sync_message=board.sync_error if locale == 'en' else None,
                 stale=not last or (now()-last).total_seconds() > 60)
 
     @app.post('/api/locations/<int:location_id>/orders/<order_id>/release')

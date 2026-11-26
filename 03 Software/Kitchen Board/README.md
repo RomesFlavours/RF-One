@@ -146,3 +146,23 @@ Every flag is written in words; colour only supports it. No new tables or migrat
 Not in this branch (Product Owner decisions): an automatic call when a whole course is ready (Kitchen Flow phase 3; at Winter Park the server decides instead), a changed line after release (only new lines are caught), the "Surname I." display rule for server names (Clover supplies the name as entered), orders deleted in Clover, and printed/sent filtering.
 
 Tests: 27 pass (`python -m unittest discover -s tests`), including 11 new ones for the above. One existing assertion now expects the added `allergy` field.
+
+## Review before live service (26 Nov 2026, branch `shelbi/kitchen-board-improvements`)
+
+Checked against current `main` (the Clover engine of 23 Nov). Fixed, each with a test that fails on the previous code:
+
+| Problem | Fix |
+|---|---|
+| The worker always used Winter Park's Clover connection, so Mount Dora could never sync. | `acquisition.get_location_client(merchant_id)`: each restaurant uses its own connection. |
+| A dish changed or removed in Clover after it went out in a partial release was silently dropped. | It goes to an ADDITION ticket with `CHANGED`/`WAS` or `REMOVED`, like changes after a full release. |
+| A change or removal on an open ADDITION ticket was silent. | Flagged like any open ticket. |
+| Undo could succeed after an addition already existed (same sync cycle), so a dish could be cooked twice. | Additions are stamped when written; undo of a part is also refused once an addition follows it. |
+| Drinks were stored on tickets and only hidden on screen: bar orders piled up as invisible open tickets, checked with Clover every minute forever; drinks first then food showed the food as `CHANGED`/`NEW`. | Drinks (Clover category) are left out when the ticket is saved; the first dishes the kitchen sees are never a "change"; a paid order with nothing for the kitchen leaves no ticket. Re-checks stop 24 h after the order. |
+| A dish sent from Clover without Clover marking the order modified would never appear (unverified Clover behaviour). | Orders with dishes waiting to be sent keep a hidden ticket; the once-a-minute check reads any newly sent dish. |
+| One unreadable order rolled back every ticket and froze the board. | Each order is read on its own; the others still update; the board shows how many could not be read and the window is retried. |
+| A crashed kitchen worker blocked every Clover sync for that Location for 30 minutes. | The kitchen lock is tagged; a kitchen lock older than 3 minutes is cleared by the next kitchen cycle (never another job's lock). |
+| Another Clover download (backfill) stopped updates with no explanation. | The board says "Another Clover download is running". |
+| Every busy order was re-read about 9 times (2-minute overlap). | An order Clover has not modified since the last read is skipped. |
+| An order too long for the screen at the smallest text left the board blank; a layout error showed as "Connection interrupted". | The oldest order always shows; a layout problem says so. |
+| `/login?next=/\evil` redirected off-site. | Only same-site paths. |
+| Archive showed drinks on partial releases. | Partial releases read categories from their order. |

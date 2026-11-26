@@ -20,6 +20,7 @@ VIEW, RELEASE, SECRET = 'v'*40, 'r'*40, 's'*40
 class Clover:
     merchant_id = 'merchant'
     fail_lines = False
+    frozen = False
     lines = None
     def __init__(self):
         stamp = int((now()-timedelta(minutes=2)).timestamp()*1000)
@@ -30,13 +31,25 @@ class Clover:
                        'modifications':{'elements':[{'id':'mod-1','name':'No cheese'}]}}]
         self.paths = []
         self.deleted = set()
+        self.catalog = list(self.orders)  # what a single-order GET can still find
 
     def get(self, path, params=None):
         self.paths.append(path)
         data = {'id':'merchant'}
         if '/orders/' in path and path.rsplit('/', 1)[1] in self.deleted:
             return SimpleNamespace(ok=False, status_code=404, error='not found', data=None)
+        if '/orders/' in path and not path.endswith('/line_items'):
+            order = next((o for o in self.catalog if o['id'] == path.rsplit('/', 1)[1]), None)
+            if order is None:
+                return SimpleNamespace(ok=False, status_code=404, error='not found', data=None)
+            data = {**order, 'lineItems': {'elements': [{'printed':True, **line} for line in self.lines]}}
+            return SimpleNamespace(ok=True, status_code=200, error=None, data=data)
         if path.endswith('/orders'):
+            # Real Clover moves modifiedTime whenever a dish changes; each read here is "changed"
+            # unless a test freezes it to check the skip.
+            if not self.frozen:
+                for order in self.orders:
+                    order['modifiedTime'] = order.get('modifiedTime', 0) + 1
             data = {'elements':self.orders}
         elif path.endswith('/line_items'):
             if self.fail_lines:
@@ -107,7 +120,7 @@ class BoardTest(unittest.TestCase):
         with self.factory() as db:
             last = db.get(Board,1).last_sync
         self.clover.fail_lines = True
-        with self.assertRaises(Exception): self.sync()
+        self.assertFalse(self.sync())  # that order is retried; nothing else is blocked
         with self.factory() as db:
             self.assertEqual(db.get(Board,1).last_sync,last)
             self.assertIsNotNone(db.get(Board,1).sync_error)
@@ -526,6 +539,153 @@ class BoardTest(unittest.TestCase):
         self.sync()
         orders = self.client.get('/api/locations/1/orders',headers=self.api).json['orders']
         self.assertFalse(orders[0].get('deleted_in_clover'))
+
+
+    # --- 26 Nov 2026: review before the restaurant uses it ---
+    def add_beer_category(self):
+        with self.factory() as db:
+            db.add(m.Item(id=1, location_id=1, source_system_id=1, source_item_id='beer', name='Beer'))
+            db.add(m.Category(id=1, location_id=1, name='Beer')); db.flush()
+            db.add(m.ItemCategory(item_id=1, category_id=1)); db.commit()
+
+    def test_edit_to_a_dish_that_already_went_out_reaches_the_kitchen(self):
+        self.clover.lines.append({'id':'line-2','name':'Steak','unitQty':1000,'modifications':{'elements':[]}})
+        self.sync()
+        self.client.post('/api/locations/1/orders/order-1/release',headers=self.api,
+                         json={'released_by':'pass','line_ids':['line-1']})
+        self.clover.lines[0]['unitQty'] = 3000
+        self.clover.lines[0]['note'] = 'EXTRA PORTION'
+        self.sync()
+        orders = {o['order_id']: o for o in self.orders_now()}
+        self.assertEqual([l['name'] for l in orders['order-1']['lines']], ['Steak'])
+        extra = orders['order-1-add1']
+        self.assertEqual((extra['lines'][0]['quantity'], extra['lines'][0]['note']), (3, 'EXTRA PORTION'))
+        self.assertEqual(extra['changes']['changed'], ['line-1'])
+        self.assertEqual(extra['changes']['was']['line-1']['quantity'], 2)
+        self.sync()  # reported once, not again on every read
+        self.assertEqual(sorted(o['order_id'] for o in self.orders_now()), ['order-1', 'order-1-add1'])
+
+    def test_changes_on_an_open_addition_are_flagged(self):
+        self.sync(); self.release_now()
+        self.clover.lines.append({'id':'line-2','name':'Tiramisu','unitQty':1000,'modifications':{'elements':[]}})
+        self.sync()
+        self.clover.lines[1]['unitQty'] = 2000
+        self.sync()
+        extra = self.orders_now()[0]
+        self.assertEqual((extra['order_id'], extra['lines'][0]['quantity']), ('order-1-add1', 2))
+        self.assertEqual(extra['changes']['changed'], ['line-2'])
+        del self.clover.lines[1]
+        self.sync()
+        extra = self.orders_now()[0]  # still on the board, telling the kitchen to stop
+        self.assertEqual(extra['order_id'], 'order-1-add1')
+        self.assertEqual([r['name'] for r in extra['changes']['removed']], ['Tiramisu'])
+
+    def test_addition_is_never_older_than_the_release_it_follows(self):
+        self.sync(); self.release_now()
+        self.clover.lines.append({'id':'line-2','name':'Tiramisu','unitQty':1000})
+        with self.factory() as db:  # a sync cycle that started before the release
+            order = db.scalars(select(m.Order)).first()
+            from sync import ticket_payload
+            save_ticket(db, location_id=1, order=order, synced_at=now()-timedelta(seconds=30),
+                        payload=ticket_payload(self.clover.orders[0], [{'printed':True, **l} for l in self.clover.lines]))
+            db.commit()
+        r = self.client.post('/api/locations/1/orders/order-1/undo-release',headers=self.api,json={'undone_by':'p'})
+        self.assertEqual(r.status_code, 409)
+
+    def test_drinks_never_reach_the_ticket_and_drink_orders_do_not_pile_up(self):
+        self.add_beer_category()
+        self.clover.lines = [{'id':'beer-1','name':'Peroni','unitQty':1000,'item':{'id':'beer'}}]
+        self.sync()
+        self.assertEqual(self.orders_now(), [])
+        with self.factory() as db:
+            self.assertIsNone(db.get(Ticket,(1,'order-1')))  # nothing for the kitchen, nothing stored
+
+    def test_food_after_drinks_is_not_flagged_as_a_change(self):
+        self.add_beer_category()
+        self.clover.lines = [{'id':'beer-1','name':'Peroni','unitQty':1000,'item':{'id':'beer'}},
+                             {'id':'line-1','name':'Pasta','unitQty':1000,'printed':False}]
+        self.sync()
+        self.assertEqual(self.orders_now(), [])
+        self.clover.lines[1]['printed'] = True  # the server sends the food
+        self.sync()
+        order = self.orders_now()[0]
+        self.assertEqual([l['name'] for l in order['lines']], ['Pasta'])
+        self.assertNotIn('changes', order)
+
+    def test_dish_sent_without_clover_marking_the_order_modified(self):
+        self.clover.lines.append({'id':'line-2','name':'Tiramisu','unitQty':1000,'printed':False})
+        self.sync()
+        self.assertEqual(len(self.orders_now()[0]['lines']), 1)
+        self.clover.orders = []  # Clover does not list the order as modified...
+        self.clover.lines[1]['printed'] = True  # ...although the dish was sent
+        self.sync()  # the once-a-minute check reads it
+        self.assertEqual(len(self.orders_now()[0]['lines']), 2)
+
+    def test_paid_order_with_nothing_for_the_kitchen_is_dropped(self):
+        self.clover.lines[0]['printed'] = False
+        self.sync()
+        with self.factory() as db:
+            self.assertIsNotNone(db.get(Ticket,(1,'order-1')))  # waiting to be sent: watched
+        self.assertEqual(self.orders_now(), [])
+        self.clover.orders = []
+        self.clover.catalog[0]['paymentState'] = 'PAID'
+        self.sync()
+        with self.factory() as db:
+            self.assertIsNone(db.get(Ticket,(1,'order-1')))
+
+    def test_one_unreadable_order_does_not_block_the_others(self):
+        stamp = self.clover.orders[0]['createdTime']
+        self.clover.orders.append({'id':'order-2','title':'#4','createdTime':None,'modifiedTime':stamp})
+        self.assertFalse(self.sync())
+        self.assertEqual([o['order_id'] for o in self.orders_now()], ['order-1'])
+        with self.factory() as db:
+            board = db.get(Board, 1)
+            self.assertIn('could not be read', board.sync_error)
+            self.assertIsNone(board.last_sync)  # the window is retried
+
+    def test_unchanged_order_is_not_read_again(self):
+        self.sync()
+        self.clover.frozen = True
+        self.clover.paths.clear()
+        self.sync()
+        self.assertFalse([p for p in self.clover.paths if p.endswith('/line_items')])
+
+    def test_lock_left_by_a_crashed_kitchen_worker_is_cleared(self):
+        from rfone_data_store.technical.connectors.clover import acquisition as a
+        with self.factory() as db:
+            run = a._acquire_import_lock(db, location_id=1, source_system_id=1, period_start=now(), period_end=now(),
+                                         mode='CORRECTION')
+            run.notes = 'KITCHEN_BOARD kitchen orders; RUNNING'
+            run.started_at = now() - timedelta(minutes=10)
+            db.commit()
+        self.assertTrue(self.sync())
+
+    def test_another_download_is_never_cleared_and_is_shown(self):
+        from rfone_data_store.technical.connectors.clover import acquisition as a
+        with self.factory() as db:
+            run = a._acquire_import_lock(db, location_id=1, source_system_id=1, period_start=now(), period_end=now(),
+                                         mode='BACKFILL')
+            run.started_at = now() - timedelta(minutes=10)
+            run.heartbeat_at = now()
+            db.commit()
+        self.assertFalse(self.sync())
+        with self.factory() as db:
+            self.assertIn('Another Clover download', db.get(Board, 1).sync_error)
+
+    def test_each_restaurant_uses_its_own_clover_connection(self):
+        from unittest.mock import patch
+        from rfone_data_store.technical.connectors.clover import acquisition as a
+        from sync import run_cycle as cycle
+        with patch.object(a, 'get_location_client', return_value=self.clover) as chosen, self.factory() as db:
+            self.assertTrue(cycle(db, 1))
+        chosen.assert_called_once_with('merchant')
+
+    def test_login_never_redirects_off_site(self):
+        for target in ('//evil.example', '/\\evil.example', '/%5Cevil'):
+            r = self.client.post('/login?next=' + target, data={'token': VIEW})
+            self.assertTrue(r.headers['Location'].endswith('/') and 'evil' not in r.headers['Location'], target)
+        r = self.client.post('/login?next=/board/1', data={'token': VIEW})
+        self.assertTrue(r.headers['Location'].endswith('/board/1'))
 
 
 if __name__ == '__main__':

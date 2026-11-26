@@ -7,6 +7,7 @@ if (board) {
   let previous = '';
   let latest = null;
   let draft = null;
+  let layoutError = false;
   const el = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text != null) node.textContent = text;
@@ -116,7 +117,13 @@ if (board) {
   function draw() {
     if(!latest)return;
     const selected=preferences(latest);
-    layout.layout(latest.orders,selected.visible_count,selected.font_size,selected);
+    try { layout.layout(latest.orders,selected.visible_count,selected.font_size,selected); layoutError=false; }
+    catch (_) {
+      // A ticket too long for this screen: say so, never pretend the connection failed.
+      layoutError=true;
+      status.classList.add('warning');
+      status.textContent = it ? 'Un ordine non entra nello schermo: riduci il carattere o aumenta le colonne nelle impostazioni.' : 'An order does not fit this screen: lower the text size or add columns in Settings.';
+    }
   }
   if(board.dataset.offlinePreview==='1') {
     const query=new URLSearchParams(location.search);
@@ -146,8 +153,9 @@ if (board) {
       document.querySelector('#queue-count').textContent = `${data.total} ${it ? 'da rilasciare' : 'waiting'}`;
       document.querySelector('#empty').hidden = data.total !== 0;
       document.querySelector('#overflow').textContent = it ? 'Gli ordini lunghi proseguono nella colonna a destra.' : 'Long orders continue in the next column.';
-      status.classList.toggle('warning', data.stale || data.sync_error);
-      status.textContent = data.sync_error ? (it ? 'Lettura Clover non riuscita. Nuovo tentativo automatico; ultimi dati disponibili.' : 'Clover sync failed. Retrying automatically; showing last available data.') : data.stale ? (it ? 'In attesa di dati aggiornati da Clover.' : 'Waiting for fresh Clover data.') : (it ? 'Collegato · aggiornamento automatico' : 'Connected · automatic updates');
+      if (layoutError) return;
+      status.classList.toggle('warning', Boolean(data.stale || data.sync_error));
+      status.textContent = data.sync_error && data.sync_message ? data.sync_message : data.sync_error ? (it ? 'Lettura Clover non riuscita. Nuovo tentativo automatico; ultimi dati disponibili.' : 'Clover sync failed. Retrying automatically; showing last available data.') : data.stale ? (it ? 'In attesa di dati aggiornati da Clover.' : 'Waiting for fresh Clover data.') : (it ? 'Collegato · aggiornamento automatico' : 'Connected · automatic updates');
     } catch (_) {
       status.classList.add('warning');
       status.textContent = it ? 'Collegamento interrotto. Ultimi dati disponibili; nuovo tentativo automatico.' : 'Connection interrupted. Showing last available data; retrying automatically.';

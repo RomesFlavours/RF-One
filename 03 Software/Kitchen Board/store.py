@@ -81,7 +81,8 @@ def _track_changes(old, new):
     added = [i for i in new_lines if i not in old_lines]
     edited = [i for i in new_lines if i in old_lines and _line_view(new_lines[i]) != _line_view(old_lines[i])]
     gone = [_gone(i, l) for i, l in old_lines.items() if i not in new_lines]
-    if not (added or edited or gone):
+    if not (added or edited or gone) or not (old_lines or previous):
+        # Nothing new, or the kitchen had seen nothing on this ticket yet.
         return previous or None
     keep = lambda ids: [i for i in ids if i in new_lines]
     removed = [r for r in previous.get('removed', []) if r['id'] not in new_lines]
@@ -132,6 +133,13 @@ def save_ticket(session, *, location_id, order, payload, synced_at):
     if ticket.released_at is not None:
         _save_addition(session, location_id, order, ticket, payload, synced_at)
         return
+    gone_out = set(ticket.payload.get('released_line_ids') or ())
+    if gone_out:
+        # A dish that already went out in a partial release and was then changed
+        # or removed in Clover is reported on an ADDITION ticket, never dropped.
+        out_now = [l for l in payload.get('lines', []) if l.get('id') in gone_out]
+        _save_addition(session, location_id, order, ticket, {**payload, 'lines': out_now}, synced_at,
+                       parent_open=True)
     payload = _without_released(payload, ticket.payload)
     merged = {**payload, **{k: ticket.payload[k] for k in KEPT_KEYS if k in ticket.payload}}
     changes = _track_changes(ticket.payload, payload)
@@ -149,12 +157,13 @@ def _created(t):
     return c if c is None or c.tzinfo else c.replace(tzinfo=timezone.utc)
 
 
-def _save_addition(session, location_id, order, ticket, payload, synced_at):
+def _save_addition(session, location_id, order, ticket, payload, synced_at, parent_open=False):
     """After a release, anything new in Clover becomes an ADDITION ticket, never lost:
     dishes added, dishes changed after they went out (quantity, note, modifiers),
     and dishes removed after they went out (shown struck out, so the kitchen stops)."""
     family = related(session, location_id, ticket.order_id)
-    out = sorted([ticket] + [t for t in family if t.released_at],
+    # While the parent is still open only its released parts left the kitchen.
+    out = sorted(([] if parent_open else [ticket]) + [t for t in family if t.released_at],
                  key=lambda t: (_created(t) or now(), t.order_id))
     kitchen_view = {}
     for t in out:  # the last version of each dish that left the kitchen
@@ -183,8 +192,12 @@ def _save_addition(session, location_id, order, ticket, payload, synced_at):
         lines = _without_released({'lines': lines}, open_extra.payload)['lines']
         body = {**payload, 'lines': lines, **{k: open_extra.payload[k] for k in KEPT_KEYS if k in open_extra.payload}}
         changes = changes_for(open_extra.payload.get('changes'))
+        # Dishes already on the open addition: a later change or removal is flagged too.
+        changes = _track_changes({**open_extra.payload, 'changes': changes or {}}, body) or changes
         if changes:
             body['changes'] = changes
+        elif 'changes' in body:
+            del body['changes']
         session.execute(update(Ticket).where(
             Ticket.location_id == location_id, Ticket.order_id == open_extra.order_id,
             Ticket.released_at.is_(None)
@@ -195,8 +208,27 @@ def _save_addition(session, location_id, order, ticket, payload, synced_at):
         changes = changes_for()
         if changes:
             body['changes'] = changes
+        # created_at is the moment of writing, after the release it follows, so the
+        # undo check can never miss an addition made during the same sync cycle.
         session.add(Ticket(location_id=location_id, order_id=f'{ticket.order_id}-add{number}',
-                           rfone_order_id=order.id, created_at=synced_at, payload=body, synced_at=synced_at))
+                           rfone_order_id=order.id, created_at=now(), payload=body, synced_at=synced_at))
+
+
+def nothing_for_kitchen(ticket):
+    """An open ticket the kitchen cannot see and has no reason to see."""
+    p = ticket.payload
+    return (ticket.released_at is None and not p.get('lines') and not (p.get('changes') or {}).get('removed')
+            and not p.get('deleted_in_clover') and not p.get('released_line_ids') and not p.get('release_history'))
+
+
+def drop_if_empty(session, location_id, order_id):
+    """Remove the hidden ticket of a paid order that never had a dish for the kitchen
+    (a bar or drinks-only order). Nothing the kitchen saw is ever removed."""
+    ticket = session.get(Ticket, (location_id, order_id))
+    if ticket is None or not nothing_for_kitchen(ticket) or related(session, location_id, order_id):
+        return False
+    session.delete(ticket)
+    return True
 
 
 def mark_deleted(session, location_id, order_id):
@@ -296,6 +328,9 @@ def _undo_part(session, location_id, part, actor):
     parent = session.get(Ticket, (location_id, part.payload['part_of']))
     if parent is None or parent.released_at is not None:
         raise PermissionError('The rest of the order was already released')
+    released_at = part.released_at if part.released_at.tzinfo else part.released_at.replace(tzinfo=timezone.utc)
+    if any(_created(t) >= released_at for t in additions(session, location_id, parent.order_id)):
+        raise PermissionError('An addition ticket already exists')
     ids = {l.get('id') for l in part.payload.get('lines', [])}
     released = part.released_at if part.released_at.tzinfo else part.released_at.replace(tzinfo=timezone.utc)
     history = list(parent.payload.get('release_history', []))

@@ -20,6 +20,9 @@ window.KitchenRail = class KitchenRail {
     const probe = document.createElement('div');
     probe.className = 'rail-probe'; probe.style.width = width+'px'; probe.style.height = height+'px';
     document.body.append(probe); this.segments = [];
+    try { return this.place(orders, columns, fontSize, options, probe); } finally { probe.remove(); }
+  }
+  place(orders, columns, fontSize, options, probe) {
     if(options.layout==='cards') {
       for(const order of orders.slice(0,this.capacity)) {
         const card=this.makeTicket(order); let size=fontSize;
@@ -29,7 +32,7 @@ window.KitchenRail = class KitchenRail {
         while(card.scrollHeight>card.clientHeight && size>6) { size--; card.style.fontSize=size+'px'; }
         this.segments.push(card);
       }
-      probe.remove(); this.rail.replaceChildren(...this.segments); return;
+      this.rail.replaceChildren(...this.segments); return;
     }
     for (const order of orders) {
       const original = this.makeTicket(order);
@@ -93,9 +96,8 @@ window.KitchenRail = class KitchenRail {
         }
       }
     }
-    probe.remove();
     const firstCount=this.segments.filter(card=>card.dataset.orderId===orders[0]?.order_id).length;
-    if(firstCount>this.capacity && fontSize>6) return this.layout(orders,columns,Math.max(6,fontSize-2),options);
+    if(firstCount>this.capacity && fontSize>6) { probe.remove(); return this.layout(orders,columns,Math.max(6,fontSize-2),options); }
     this.segments.forEach((card,index)=>{
       if((index+1)%columns===0 && this.segments[index+1]?.dataset.orderId===card.dataset.orderId) {
         card.querySelector('.continues').textContent=this.it?'CONTINUA NELLA RIGA SOTTO ↙':'CONTINUES IN ROW BELOW ↙';
@@ -108,7 +110,11 @@ window.KitchenRail = class KitchenRail {
     for(let index=0;index<this.segments.length;) {
       let end=index+1;
       while(end<this.segments.length && this.segments[end].dataset.orderId===this.segments[index].dataset.orderId) end++;
-      if(visible.length+end-index>this.capacity) break;
+      if(visible.length+end-index>this.capacity) {
+        // The oldest order is never hidden, even if it is too long for the screen.
+        if(!visible.length) visible.push(...this.segments.slice(index,index+this.capacity));
+        break;
+      }
       visible.push(...this.segments.slice(index,end)); index=end;
     }
     this.rail.replaceChildren(...visible);
