@@ -166,3 +166,19 @@ Checked against current `main` (the Clover engine of 23 Nov). Fixed, each with a
 | An order too long for the screen at the smallest text left the board blank; a layout error showed as "Connection interrupted". | The oldest order always shows; a layout problem says so. |
 | `/login?next=/\evil` redirected off-site. | Only same-site paths. |
 | Archive showed drinks on partial releases. | Partial releases read categories from their order. |
+
+## Pass tablet and AWS deployment (26 Nov 2026)
+
+**Pass tablet:** `/pass/<location_id>`, signed in with the pass code. Tap ready dishes and Send out (partial release), All out, Clear for an order deleted in Clover, Undo within 15 minutes. Browser writes need the page's CSRF code; `released_by` is "Pass".
+
+**Live on AWS** (image `rfone-tips:kitchen-board-c102fa6`, built from current `main` plus this folder with `Dockerfile`, context `03 Software`):
+
+| Piece | Where |
+|---|---|
+| Site | App Runner `rfone-kitchen-board`, https://mupr53pev5.us-east-1.awsapprunner.com, NAT connector, role `rfone-kitchen-board-apprunner-instance-role` |
+| Order reader, Winter Park (Location 1) | ECS service `rfone-kitchen-board-sync-wp` (cluster rfone-jobs), Winter Park Clover credentials only |
+| Order reader, Mount Dora (Location 2) | ECS service `rfone-kitchen-board-sync-md`, Mount Dora Clover credentials only |
+| Codes | Secrets Manager `kitchen-board/screen-code` (kitchen PC, view only), `kitchen-board/pass-code` (pass tablet and settings), `kitchen-board/session-secret` |
+| Tables | `kitchen_boards`, `kitchen_tickets`, `kitchen_display_settings`, created by `store.initialize`; both boards start 2026-11-26 07:07 UTC |
+
+The readers only read Clover (no Clover write). They share the per-Location acquisition lock with the Clover engine; the engine's nightly download returns to PENDING when the lock is busy and runs on its next poll. Rollback: set both ECS services to 0 and pause or delete the App Runner service; the three tables can stay (nothing else reads them).
