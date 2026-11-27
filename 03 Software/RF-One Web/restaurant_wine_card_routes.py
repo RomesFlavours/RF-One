@@ -162,10 +162,11 @@ def register_restaurant_wine_card_routes(app, *, gate, SessionFactory, require_c
     @gate
     def restaurant_wine_card_pdf(location_id: int):
         download = request.args.get("download") == "1"
+        two_up = request.args.get("two_up") == "1"
         with SessionFactory() as db:
             site, card = _load(db, location_id)
             db.commit()
-            result = dc.build_card(db, site, card, _site_today(site))
+            result = dc.build_card(db, site, card, _site_today(site), two_up=two_up)
         if download and not result.exportable:
             flash(_t("The card does not fit the chosen pages: fix it before exporting.",
                      "La carta non entra nelle pagine scelte: correggi prima di esportare."), "error")
@@ -173,7 +174,7 @@ def register_restaurant_wine_card_routes(app, *, gate, SessionFactory, require_c
         slug = "".join(ch if ch.isalnum() else "-" for ch in site.location.name).strip("-") or "site"
         disposition = "attachment" if download else "inline"
         return Response(result.pdf, mimetype="application/pdf", headers={
-            "Content-Disposition": f'{disposition}; filename="drink-card-{slug}.pdf"',
+            "Content-Disposition": f'{disposition}; filename="drink-card-{slug}{"-2-per-sheet" if two_up else ""}.pdf"',
             "Cache-Control": "no-store",
         })
 
@@ -200,6 +201,16 @@ def register_restaurant_wine_card_routes(app, *, gate, SessionFactory, require_c
         with SessionFactory() as db:
             _, card = _load(db, location_id)
             dc.set_glass_price_visible(db, card, request.form.get("show_glass_price") == "1")
+            db.commit()
+        return jsonify({"ok": True})
+
+    @app.route("/restaurant/wines/card/<int:location_id>/paper-color", methods=["POST"])
+    @gate
+    def restaurant_wine_card_paper_color(location_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            _, card = _load(db, location_id)
+            dc.set_paper_color_printed(db, card, request.form.get("print_paper_color") == "1")
             db.commit()
         return jsonify({"ok": True})
 

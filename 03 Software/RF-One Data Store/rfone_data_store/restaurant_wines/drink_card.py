@@ -176,6 +176,8 @@ def update_settings(session: Session, card: m.DrinkCard, form: dict) -> m.DrinkC
     card.corners_enabled = corners
     card.corner_leg_in = leg
     card.show_glass_price = str(form.get("show_glass_price", "")) == "1"
+    if "print_paper_color" in form:
+        card.print_paper_color = str(form.get("print_paper_color")) == "1"
     card.title = title
     card.heading = _text(form.get("heading"), 80)
     card.subheading = _text(form.get("subheading"), 80)
@@ -188,6 +190,13 @@ def update_settings(session: Session, card: m.DrinkCard, form: dict) -> m.DrinkC
 
 def set_glass_price_visible(session: Session, card: m.DrinkCard, visible: bool) -> None:
     card.show_glass_price = visible
+    session.flush()
+
+
+def set_paper_color_printed(session: Session, card: m.DrinkCard, printed: bool) -> None:
+    """Print the background's paper colour, or white paper with the same
+    drawings and decorations."""
+    card.print_paper_color = printed
     session.flush()
 
 
@@ -589,6 +598,7 @@ def _spec(card: m.DrinkCard, images: dict[str, bytes]):
         corners=card.corners_enabled, corner_leg_in=card.corner_leg_in, show_glass=card.show_glass_price,
         title=card.title, heading=card.heading, subheading=card.subheading, footer_note=card.footer_note,
         ink=card.ink_color, accent=card.accent_color, line=card.line_color, images=images,
+        print_paper_color=card.print_paper_color is not False,
     )
 
 
@@ -607,9 +617,10 @@ class CardResult:
         return not self.overflow
 
 
-def build_card(session: Session, site: Site, card: m.DrinkCard, today: date) -> CardResult:
+def build_card(session: Session, site: Site, card: m.DrinkCard, today: date, two_up: bool = False) -> CardResult:
     """Lay out and render the site's card. The preview shows this PDF and the
-    export downloads the same bytes, so they always match."""
+    export downloads the same bytes, so they always match. `two_up` puts two
+    pages side by side on each sheet, for printing and cutting."""
     from . import drink_card_pdf as pdf
 
     wines = card_wines(session, site, today)
@@ -633,6 +644,6 @@ def build_card(session: Session, site: Site, card: m.DrinkCard, today: date) -> 
     spec = _spec(card, images)
     result = pdf.layout(spec, sections)
     return CardResult(
-        pdf=pdf.render(spec, result), overflow=result.overflow, long_descriptions=result.long_descriptions,
+        pdf=pdf.render(spec, result, two_up=two_up), overflow=result.overflow, long_descriptions=result.long_descriptions,
         pages_used=result.pages_used, page_count=card.page_count, wine_count=len(wines), water_count=len(waters),
     )
