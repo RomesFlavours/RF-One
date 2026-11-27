@@ -100,8 +100,34 @@
   {% endif %}
 </section>
 
+<section class="card-step" id="beers">
+  <h2><span class="num">3</span>{{ t('Beers', 'Birre') }}</h2>
+  <p class="muted">{{ t('The section appears on the card when it has at least one beer.', 'La sezione compare in carta quando contiene almeno una birra.') }}</p>
+  {% if beers %}
+  <table class="table-compact">
+    <thead><tr><th class="col-narrow"></th><th>{{ t('Name', 'Nome') }}</th><th>{{ t('Type', 'Tipo') }}</th><th>{{ t('Format', 'Formato') }}</th><th class="col-amount">{{ t('Price', 'Prezzo') }}</th><th class="col-narrow"></th></tr></thead>
+    <tbody>
+    {% for b in beers %}
+      <tr data-rr-key="beer:{{ b.id }}">
+        <td><button type="button" class="btn-secondary btn-inline wines-edit-btn" data-beer="{{ b.id }}">{{ t('Edit', 'Modifica') }}</button></td>
+        <td>{{ b.name }}</td><td>{{ b.beer_type }}</td><td>{{ b.size_label }}</td>
+        <td class="col-amount">${{ b.price }}</td>
+        <td>
+          <form method="post" action="{{ url_for('restaurant_wine_card_beer_delete', location_id=site.location.id, beer_id=b.id) }}" data-confirm="{{ t('Remove this beer from the card?', 'Togliere questa birra dalla carta?') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-danger btn-inline wines-delete-btn">{{ t('Delete', 'Elimina') }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <button type="button" class="btn-secondary" id="beer-new">{{ t('Add a beer', 'Aggiungi una birra') }}</button>
+</section>
+
 <section class="card-step" id="waters">
-  <h2><span class="num">3</span>{{ t('Mineral waters', 'Acque minerali') }}</h2>
+  <h2><span class="num">4</span>{{ t('Mineral waters', 'Acque minerali') }}</h2>
   <p class="muted">{{ t('The section appears on the card when it has at least one water.', 'La sezione compare in carta quando contiene almeno un’acqua.') }}</p>
   {% if waters %}
   <table class="table-compact">
@@ -127,7 +153,7 @@
 </section>
 
 <section class="card-step" id="print">
-  <h2><span class="num">4</span>{{ t('Print layout', 'Impostazioni di stampa') }}</h2>
+  <h2><span class="num">5</span>{{ t('Print layout', 'Impostazioni di stampa') }}</h2>
   <form method="post" action="{{ url_for('restaurant_wine_card_settings', location_id=site.location.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="show_glass_price" value="{{ '1' if card.show_glass_price else '0' }}">
@@ -192,7 +218,7 @@
 </div>
 
 <aside class="card-preview" id="preview">
-  <h2 style="font-size:1.05rem;margin:0 0 .5rem"><span class="num" style="display:inline-block;width:1.5rem;height:1.5rem;line-height:1.5rem;text-align:center;border-radius:50%;background:var(--olive-700);color:white;font-size:.8rem;margin-right:.4rem">5</span>{{ t('Preview and PDF', 'Anteprima e PDF') }}</h2>
+  <h2 style="font-size:1.05rem;margin:0 0 .5rem"><span class="num" style="display:inline-block;width:1.5rem;height:1.5rem;line-height:1.5rem;text-align:center;border-radius:50%;background:var(--olive-700);color:white;font-size:.8rem;margin-right:.4rem">6</span>{{ t('Preview and PDF', 'Anteprima e PDF') }}</h2>
   <label class="wines-check"><input type="checkbox" id="glass-toggle" {{ 'checked' if card.show_glass_price }}> {{ t('Show glass price', 'Mostra prezzo al calice') }}</label>
   {% if images.get('BACKGROUND') %}
   <label class="wines-check"><input type="checkbox" id="paper-color-toggle" {{ 'checked' if card.print_paper_color }}> {{ t('Print the paper colour of the background', 'Stampa il colore di fondo') }}</label>
@@ -205,7 +231,7 @@
   {% if result.long_descriptions %}
     <div class="card-warning">{{ t('Descriptions longer than two lines:', 'Descrizioni più lunghe di due righe:') }} {{ result.long_descriptions|join(', ') }}.</div>
   {% endif %}
-  <p class="muted" style="margin:.2rem 0 .5rem">{{ result.wine_count }} {{ t('wines', 'vini') }}, {{ result.water_count }} {{ t('waters', 'acque') }} · {{ t('pages used', 'pagine usate') }} {{ result.pages_used }} / {{ result.page_count }}</p>
+  <p class="muted" style="margin:.2rem 0 .5rem">{{ result.wine_count }} {{ t('wines', 'vini') }}, {{ result.beer_count }} {{ t('beers', 'birre') }}, {{ result.water_count }} {{ t('waters', 'acque') }} · {{ t('pages used', 'pagine usate') }} {{ result.pages_used }} / {{ result.page_count }}</p>
   <iframe id="preview-frame" title="{{ t('Drink card preview', 'Anteprima della carta') }}" src="{{ url_for('restaurant_wine_card_pdf', location_id=site.location.id) }}#view=FitH"></iframe>
   <p style="margin-top:.6rem">
     {% if result.exportable %}
@@ -257,6 +283,27 @@
   </div>
 </div>
 
+{# --- Add / edit a beer -------------------------------------------------- #}
+<div id="beer-modal" class="org-modal-overlay" hidden aria-hidden="true">
+  <div class="org-modal-panel wines-modal-narrow" role="dialog" aria-modal="true" aria-labelledby="beer-title">
+    <button class="org-modal-close" type="button" aria-label="{{ t('Close', 'Chiudi') }}" data-modal-close>&times;</button>
+    <button type="button" class="btn-secondary card-help-q" aria-label="{{ t('How this window works', 'Come funziona questa finestra') }}" data-help-dialog="rf-help-beer">?</button>
+    <div class="modal-header"><h3 id="beer-title"></h3></div>
+    <form id="beer-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="bf-name">{{ t('Name', 'Nome') }}</label><input id="bf-name" type="text" name="name" maxlength="120" required>
+      <label for="bf-type">{{ t('Type', 'Tipo') }}</label><input id="bf-type" type="text" name="beer_type" maxlength="60" placeholder="Lager">
+      <label for="bf-size">{{ t('Format', 'Formato') }}</label><input id="bf-size" type="text" name="size_label" maxlength="40" placeholder="12 oz bottle" required>
+      <label for="bf-price">{{ t('Price (USD)', 'Prezzo (USD)') }}</label><input id="bf-price" type="number" name="price_usd" min="0" step="0.01" required>
+      <div class="error" id="bf-error" hidden></div>
+      <div class="btn-row">
+        <button type="submit">{{ t('Save', 'Salva') }}</button>
+        <button type="button" class="btn-secondary" data-modal-close>{{ t('Cancel', 'Annulla') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 {# --- Add / edit a water ------------------------------------------------- #}
 <div id="water-modal" class="org-modal-overlay" hidden aria-hidden="true">
   <div class="org-modal-panel wines-modal-narrow" role="dialog" aria-modal="true" aria-labelledby="water-title">
@@ -278,7 +325,7 @@
   </div>
 </div>
 
-{% for dialog_id, part in [('rf-help-review', 'review'), ('rf-help-water', 'water')] %}
+{% for dialog_id, part in [('rf-help-review', 'review'), ('rf-help-beer', 'beer'), ('rf-help-water', 'water')] %}
 <dialog id="{{ dialog_id }}" aria-labelledby="{{ dialog_id }}-title" style="max-width:40rem;max-height:80vh;overflow:auto;border:1px solid #88985e;border-radius:12px;">
   <div style="position:sticky;top:0;background:white;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
     <h2 id="{{ dialog_id }}-title" style="font-size:1rem">{{ t('How this window works', 'Come funziona questa finestra') }}</h2>
@@ -289,8 +336,9 @@
 {% endfor %}
 
 <script type="application/json" id="card-data">{{ {
-  'rows': rows, 'waters': waters, 'dishes': dishes, 'it': ui_it,
+  'rows': rows, 'beers': beers, 'waters': waters, 'dishes': dishes, 'it': ui_it,
   'reviewUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/wines/',
+  'beerUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/beers/',
   'waterUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/waters/',
   'glassUrl': url_for('restaurant_wine_card_glass', location_id=site.location.id),
   'paperColorUrl': url_for('restaurant_wine_card_paper_color', location_id=site.location.id),
@@ -385,6 +433,40 @@ document.addEventListener("DOMContentLoaded", function () {
     event.preventDefault();
     RFOneWines.post(data.reviewUrl + current.wine_id, new FormData(reviewForm), true).then(function (answer) {
       if (!answer.ok) { reviewError.textContent = answer.error; reviewError.hidden = false; return; }
+      window.location.href = answer.redirect;
+    });
+  });
+
+  // ---- Beers ---------------------------------------------------------------
+  var beerModal = RFOneModal.create({ overlay: document.getElementById("beer-modal") });
+  var beerForm = document.getElementById("beer-form");
+  var beerError = document.getElementById("bf-error");
+  var beer = null;
+  function openBeer(trigger, b) {
+    beer = b;
+    beerForm.reset();
+    beerError.hidden = true;
+    document.getElementById("beer-title").textContent = b ? t("Edit beer", "Modifica birra") : t("Add a beer", "Aggiungi una birra");
+    if (b) {
+      document.getElementById("bf-name").value = b.name;
+      document.getElementById("bf-type").value = b.beer_type;
+      document.getElementById("bf-size").value = b.size_label;
+      document.getElementById("bf-price").value = b.price;
+    }
+    beerModal.open(trigger);
+  }
+  document.getElementById("beer-new").addEventListener("click", function () { openBeer(this, null); });
+  document.querySelectorAll("[data-beer]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = Number(button.getAttribute("data-beer"));
+      openBeer(button, data.beers.filter(function (b) { return b.id === id; })[0]);
+    });
+  });
+  beerForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var url = data.beerUrl + (beer ? beer.id : "new");
+    RFOneWines.post(url, new FormData(beerForm), true).then(function (answer) {
+      if (!answer.ok) { beerError.textContent = answer.error; beerError.hidden = false; return; }
       window.location.href = answer.redirect;
     });
   });
