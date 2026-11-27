@@ -1,14 +1,15 @@
 {
   "purpose": "Alembic revision currently applied to the shared AWS database. Every service build must contain it (check_migration_chain.py). Update it in the same commit that records a migration applied on AWS. See MIGRATIONS.md.",
   "database": "rfone-dev / rfone (RDS, us-east-1, account 418674484214)",
-  "revision": "t9a120261110",
-  "previous_revision": "f3b120261110",
-  "verified_utc": "2026-11-10T16:37:09.310005+00:00",
-  "applied_by": "Training release 88c4d0a8198f55fbeba3cda3d17003bdfb066b9a",
+  "revision": "w2b120261126",
+  "previous_revision": "w1c420261124",
+  "verified_utc": "2026-11-27T11:04:58.483672+00:00",
+  "applied_by": "WINES_DRINK_CARD_001 (feature/wines-drink-card 86d790c)",
   "evidence": {
-    "source_s3_key": "training/releases/88c4d0a8198f55fbeba3cda3d17003bdfb066b9a/source.zip",
-    "source_sha256": "dfd0a7cf9b29b922206a5a0ebdc66ebda38479ef2577419a2e8193005d9bbe31",
-    "snapshot": "rfone-dev-pre-training-f3-24f64624fd38",
-    "protected_data_unchanged": true
+    "source_commit": "86d790c",
+    "image": "rfone-web:wines-drink-card-20261127-86d790c-migration",
+    "snapshot": "rfone-dev-pre-wines-paper-color-20261127t105034z",
+    "migration_task": "arn:aws:ecs:us-east-1:418674484214:task/rfone-jobs/85ee4566b9914ef696057ebe92f0e774",
+    "note": "Additive only: restaurant_drink_cards.print_paper_color (boolean, default true). Previous revision w1c420261124 (six restaurant_wine_card_* / restaurant_drink_card_* tables) applied 2026-11-25 from 26f2c63, snapshot rfone-dev-pre-wines-drink-card-20261125t054833z."
   }
 }
