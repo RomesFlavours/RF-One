@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 
 from rfone_data_store import models as m
 from rfone_data_store import employee_directory as directory
+from rfone_data_store.validation_accounts import validation_account
 from rfone_data_store.database import create_configured_engine, create_session_factory
 
 
@@ -61,7 +62,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
         _, pending = self.sync([{"id": "E1", "name": "Jane Smith", "email": "jane@example.test"}], self.md)
         self.assertEqual(len(pending), 1)
         self.assertEqual(self.count(m.Employee), 1)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         for _ in range(2):
             result, pending = self.sync([{"id": "E1", "name": "Jane Smith", "email": "jane@example.test"}], self.md)
             self.assertEqual(result["E1"], self.legacy.id)
@@ -72,7 +73,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_same_name_never_auto_merges_and_explicit_new_is_possible(self):
         _, pending = self.sync([{"id": "E2", "name": "Jane Smith"}], self.md)
         self.assertEqual(self.count(m.Employee), 1)
-        employee = directory.attach_link(self.db, link_id=pending[0], create_new=True)
+        employee = directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], create_new=True)
         self.assertNotEqual(employee.id, self.legacy.id)
         self.assertEqual(self.count(m.Employee), 2)
 
@@ -87,7 +88,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_conflicts_review_reopens_on_change(self):
         self.sync([{"id": "E1", "name": "Jane Smith", "email": "wp@example.test"}])
         _, pending = self.sync([{"id": "M1", "name": "Jane Smith", "email": "md@example.test"}], self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         links = list(self.db.scalars(select(m.EmployeeCloverLink)))
         self.assertIn("email", directory.source_conflicts(links))
         self.assertFalse(directory.is_reviewed(self.db, self.legacy.id, links))
@@ -146,7 +147,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
             self.assertEqual(result.get("NEW"), None)
             self.assertEqual(len(pending), 1)
         self.assertEqual(self.count(m.Employee), 1)
-        person = directory.attach_link(self.db, link_id=pending[0], create_new=True)
+        person = directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], create_new=True)
         result, pending = self.sync([{"id": "NEW", "name": "Robert Jones"}])
         self.assertEqual(result["NEW"], person.id)
         self.assertEqual(pending, [])
@@ -156,13 +157,13 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         link = self.db.scalar(select(m.EmployeeCloverLink))
         with self.assertRaises(ValueError):
-            directory.attach_link(self.db, link_id=link.id, create_new=True)
+            directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=link.id, create_new=True)
         self.assertEqual(self.count(m.Employee), 1)
 
     def test_explicit_consolidation_preserves_work_and_retired_id(self):
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
-        duplicate_id = directory.attach_link(self.db, link_id=pending[0], create_new=True).id
+        duplicate_id = directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], create_new=True).id
         self.db.add(m.Shift(employee_id=duplicate_id, location_id=self.md.id,
             source_system_id=self.source.id, source_shift_id="MD-SHIFT",
             clock_in=datetime(2026, 10, 1, tzinfo=timezone.utc)))
@@ -177,7 +178,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
 
     def test_consolidation_constraint_conflict_rolls_back_every_reference(self):
         _, pending = self.sync([{"id": "M2", "name": "Different Known Name"}], self.md)
-        duplicate_id = directory.attach_link(self.db, link_id=pending[0], create_new=True).id
+        duplicate_id = directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], create_new=True).id
         role = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id,
                             source_role_id="SHARED", name="Source role")
         self.db.add(role)
@@ -197,7 +198,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         self.sync([])
         _, pending = self.sync([{"id": "REPLACEMENT", "name": "Jane Smith"}])
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         self.assertEqual(self.count(m.Employee), 1)
         self.assertEqual(self.count(m.EmployeeCloverLink), 2)
 
@@ -242,7 +243,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
         from rfone_data_store.technical.connectors.clover import acquisition
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "E1", "name": "Jane Smith"}], self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         observed = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
         run = m.IngestionRun(source_system_id=self.source.id, location_id=self.md.id, status="RUNNING", started_at=observed)
         self.db.add(run)
@@ -260,7 +261,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_location_scope_includes_shared_person_and_historical_links_once(self):
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         ids = lambda locations: list(self.db.scalars(directory.employees_for_locations(locations)))
         self.assertEqual([e.id for e in ids([self.md.id])], [self.legacy.id])
         self.assertEqual(len(ids([self.wp.id, self.md.id])), 1)
@@ -282,7 +283,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
         from rfone_data_store.payroll.adp_importer import ParsedEmployeeRow, resolve_employee_mappings
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         restaurant = m.Restaurant(name="MD restaurant")
         self.db.add(restaurant); self.db.flush()
         self.db.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=self.md.id))
@@ -295,7 +296,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
         from rfone_data_store.profile.bootstrap import bootstrap_restaurant_profile, MODE_PERSIST
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         restaurant = m.Restaurant(name="MD restaurant")
         self.db.add(restaurant); self.db.flush()
         self.db.add(m.RestaurantLocation(restaurant_id=restaurant.id, location_id=self.md.id))
@@ -340,7 +341,7 @@ class EmployeeDirectoryTest(unittest.TestCase):
     def test_selector_sites_are_scoped_and_unique_with_historical_absence(self):
         self.sync([{"id": "E1", "name": "Jane Smith"}])
         _, pending = self.sync([{"id": "MD-E1", "name": "Jane Smith"}], location=self.md)
-        directory.attach_link(self.db, link_id=pending[0], employee_id=self.legacy.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=self.legacy.id)
         options = directory.employee_options(self.db)
         self.assertEqual(len(options), 1)
         self.assertEqual(set(options[0].location_ids), {self.wp.id, self.md.id})
@@ -478,6 +479,24 @@ class EmployeeDirectoryTest(unittest.TestCase):
             (m.CARD_HOLDER_KIND_EMPLOYEE, self.legacy.id),
             (m.CARD_HOLDER_KIND_EMPLOYEE, homonym.id)})
 
+
+    def test_confirmation_without_a_signed_in_account_is_refused(self):
+        """REGISTRY_CONFIRM_NEEDS_PERSON_001: a script with no account can propose, never confirm."""
+        _, pending = self.sync([{"id": "N1", "name": "Jane Smith"}])
+        people = self.count(m.Employee)
+        for kwargs in ({"create_new": True}, {"employee_id": self.legacy.id}):
+            with self.assertRaises(ValueError):
+                directory.attach_link(self.db, link_id=pending[0], **kwargs)
+        inactive = m.RFOneAccount(username="gone", display_name="Gone", password_hash="!x", status="INACTIVE")
+        self.db.add(inactive); self.db.flush()
+        with self.assertRaises(ValueError):
+            directory.attach_link(self.db, link_id=pending[0], create_new=True, account_id=inactive.id)
+        link = self.db.get(m.EmployeeCloverLink, pending[0])
+        self.assertIsNone(link.employee_id)                      # still waiting in the queue
+        self.assertEqual(self.count(m.Employee), people)         # nobody created
+        person = directory.attach_link(self.db, link_id=pending[0], create_new=True,
+                                       account_id=validation_account(self.db).id)
+        self.assertEqual(link.employee_id, person.id)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

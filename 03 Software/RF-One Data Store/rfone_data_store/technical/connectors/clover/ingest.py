@@ -579,6 +579,7 @@ def ingest_employee_source_roles(
     source_role_map: dict[str, int],
     retrieved_at: datetime,
     stats: IngestionStats,
+    location_id: int,
 ) -> None:
     """Employee <-> named Role membership (TASK_CLOVER_004), discovered via
     `employees?expand=role` — confirmed to return the SPECIFIC named Role
@@ -624,7 +625,7 @@ def ingest_employee_source_roles(
         if complete:
             # REGISTRY_CLOVER_DEPARTMENTS_001: only Clover's current role(s) stay (no accumulation).
             from .historical_backfill_detail import _drop_stale_source_roles
-            _drop_stale_source_roles(session, employee_id, source_system_id, current)
+            _drop_stale_source_roles(session, employee_id, source_system_id, current, location_id=location_id)
     session.flush()
 
 
@@ -1171,7 +1172,8 @@ def run_full_ingestion(
         session, bundle, location_id, source_system_id, ingestion_run_id, retrieved_at
     )
     ingest_employee_source_roles(
-        session, bundle, source_system_id, catalog.employee_by_source_id, catalog.source_role_by_source_id, retrieved_at, stats
+        session, bundle, source_system_id, catalog.employee_by_source_id, catalog.source_role_by_source_id, retrieved_at, stats,
+        location_id=location_id,
     )
     ingest_shifts(session, bundle, source_system_id, catalog.employee_by_source_id, ingestion_run_id, retrieved_at, stats)
 
