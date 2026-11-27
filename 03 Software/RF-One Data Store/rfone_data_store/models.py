@@ -14991,6 +14991,9 @@ class DrinkCard(Base):
     corners_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     corner_leg_in: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("1"))
     show_glass_price: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    # False prints the background with its paper colour turned white; the
+    # drawings and decorations of the background stay.
+    print_paper_color: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     ink_color: Mapped[str] = mapped_column(String(7), nullable=False, default="#2E3A1C")
     accent_color: Mapped[str] = mapped_column(String(7), nullable=False, default="#A0401C")
     line_color: Mapped[str] = mapped_column(String(7), nullable=False, default="#B08A5A")

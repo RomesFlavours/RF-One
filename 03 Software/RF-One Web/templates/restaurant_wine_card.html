@@ -131,6 +131,7 @@
   <form method="post" action="{{ url_for('restaurant_wine_card_settings', location_id=site.location.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="show_glass_price" value="{{ '1' if card.show_glass_price else '0' }}">
+    <input type="hidden" name="print_paper_color" value="{{ '1' if card.print_paper_color else '0' }}">
     <div class="card-form-grid">
       <div><label for="cs-preset">{{ t('Sheet size', 'Dimensioni del foglio') }}</label>
         <select id="cs-preset">
@@ -193,6 +194,9 @@
 <aside class="card-preview" id="preview">
   <h2 style="font-size:1.05rem;margin:0 0 .5rem"><span class="num" style="display:inline-block;width:1.5rem;height:1.5rem;line-height:1.5rem;text-align:center;border-radius:50%;background:var(--olive-700);color:white;font-size:.8rem;margin-right:.4rem">5</span>{{ t('Preview and PDF', 'Anteprima e PDF') }}</h2>
   <label class="wines-check"><input type="checkbox" id="glass-toggle" {{ 'checked' if card.show_glass_price }}> {{ t('Show glass price', 'Mostra prezzo al calice') }}</label>
+  {% if images.get('BACKGROUND') %}
+  <label class="wines-check"><input type="checkbox" id="paper-color-toggle" {{ 'checked' if card.print_paper_color }}> {{ t('Print the paper colour of the background', 'Stampa il colore di fondo') }}</label>
+  {% endif %}
   {% if result.overflow %}
     <div class="card-warning" role="alert"><strong>{{ t('The card does not fit', 'La carta non entra') }}:</strong>
       {{ result.overflow|length }} {{ t('entries do not fit in', 'voci non entrano in') }} {{ result.page_count }} {{ t('pages', 'pagine') }} ({{ result.overflow[:3]|join(', ') }}{% if result.overflow|length > 3 %}…{% endif %}).
@@ -206,8 +210,10 @@
   <p style="margin-top:.6rem">
     {% if result.exportable %}
       <a class="btn" href="{{ url_for('restaurant_wine_card_pdf', location_id=site.location.id, download=1) }}">{{ t('Export PDF', 'Esporta PDF') }}</a>
+      <a class="btn btn-secondary" href="{{ url_for('restaurant_wine_card_pdf', location_id=site.location.id, download=1, two_up=1) }}">{{ t('Export 2 pages per sheet', 'Esporta 2 pagine per foglio') }}</a>
     {% else %}
       <button type="button" disabled>{{ t('Export PDF', 'Esporta PDF') }}</button>
+      <button type="button" disabled>{{ t('Export 2 pages per sheet', 'Esporta 2 pagine per foglio') }}</button>
     {% endif %}
   </p>
   {% if images.get('REFERENCE') %}
@@ -287,6 +293,7 @@
   'reviewUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/wines/',
   'waterUrl': url_for('restaurant_wine_card', site=None) ~ '/' ~ site.location.id ~ '/waters/',
   'glassUrl': url_for('restaurant_wine_card_glass', location_id=site.location.id),
+  'paperColorUrl': url_for('restaurant_wine_card_paper_color', location_id=site.location.id),
 }|tojson }}</script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -329,6 +336,18 @@ document.addEventListener("DOMContentLoaded", function () {
       if (answer.ok) { window.location.reload(); }
     });
   });
+
+  // Paper colour of the background or white: saved at once, the preview reloads.
+  var paperColorToggle = document.getElementById("paper-color-toggle");
+  if (paperColorToggle) {
+    paperColorToggle.addEventListener("change", function () {
+      var body = new FormData();
+      body.append("print_paper_color", this.checked ? "1" : "0");
+      RFOneWines.post(data.paperColorUrl, body, true).then(function (answer) {
+        if (answer.ok) { window.location.reload(); }
+      });
+    });
+  }
 
   // ---- Review one wine ----------------------------------------------------
   var reviewModal = RFOneModal.create({ overlay: document.getElementById("review-modal") });
