@@ -9,6 +9,8 @@ touched. PDF text is read with pypdfium2."""
 
 from __future__ import annotations
 
+import json
+
 import io
 import os
 import re
@@ -182,6 +184,7 @@ def main() -> int:
                 return {"wines": [
                     {"id": gavi, "description": "SHOULD NOT REPLACE", "dish_ids": [tagliata]},
                     {"id": amarone, "description": "A second proposal", "dish_ids": [tagliata]},
+                    {"id": barolo, "description": "A Barolo proposal", "dish_ids": []},
                 ]}
             drink_card_ai._call = fake_call_2
             c.post(f"/restaurant/wines/card/{wp}/propose", data={"csrf_token": csrf})
@@ -196,6 +199,29 @@ def main() -> int:
             with SessionFactory() as s:
                 rows = {w.wine.id: w for w in dc.card_wines(s, dc.get_site(s, wp), date(2026, 11, 24))}
             check("Approve all approves the proposals", rows[amarone].description_approved and rows[amarone].pairings_reviewed)
+            check("Approve all leaves a wine without dishes waiting for a proposal",
+                  rows[barolo].description_approved and rows[barolo].pairings == [] and not rows[barolo].pairings_reviewed)
+
+            # Proposing the missing pairings keeps the approved description and
+            # takes the dishes from the site's active menu only.
+            sent = []
+            def fake_call_3(prompt):
+                sent.append(json.loads(prompt))
+                return {"wines": [{"id": barolo, "description": "SHOULD NOT REPLACE", "dish_ids": [brasato, 999999]}]}
+            drink_card_ai._call = fake_call_3
+            c.post(f"/restaurant/wines/card/{wp}/propose", data={"csrf_token": csrf})
+            with SessionFactory() as s:
+                site = dc.get_site(s, wp)
+                rows = {w.wine.id: w for w in dc.card_wines(s, site, date(2026, 11, 24))}
+                menu_ids = [d.recipe_id for d in dc.menu_dishes(s, site.location.id)]
+            check("Propose keeps the approved description of a wine missing its pairings",
+                  rows[barolo].description == "A Barolo proposal" and rows[barolo].description_approved)
+            check("Propose fills the missing pairings from the active menu, left to review",
+                  [d.recipe_id for d in rows[barolo].pairings] == [brasato] and not rows[barolo].pairings_reviewed)
+            check("only the site's active menu is sent to the AI",
+                  sent and sorted(x["id"] for x in sent[0]["menu"]) == sorted(menu_ids))
+            check("wines already fully approved are not sent again",
+                  sent and {x["id"] for x in sent[0]["wines"]} == {w for w, r in rows.items() if not (r.description_approved and r.pairings_reviewed)})
         finally:
             drink_card_ai._call, drink_card_ai.is_configured = original_call, original_configured
 
