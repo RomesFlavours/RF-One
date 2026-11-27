@@ -124,7 +124,8 @@ def main() -> int:
         page = resp.data.decode()
         check("the Drink card page renders", resp.status_code == 200, str(resp.status_code))
         check("the page has its How Works link and help", "data-how-works" in page and 'id="wine-card"' in page)
-        check("both windows have their ? help", 'data-help-dialog="rf-help-review"' in page and 'data-help-dialog="rf-help-water"' in page
+        check("every window has its ? help", 'data-help-dialog="rf-help-review"' in page and 'data-help-dialog="rf-help-water"' in page
+              and 'data-help-dialog="rf-help-beer"' in page and 'id="wine-card-beer"' in page
               and 'id="wine-card-review"' in page and 'id="wine-card-water"' in page)
         check("the Drink card tab is in the Wines header", 'href="/restaurant/wines/card"' in c.get("/restaurant/wines").data.decode())
         check("the site's active menu is named", "Winter Park Fall" in page and "3 dishes" in page)
@@ -281,6 +282,39 @@ def main() -> int:
         text_all = " ".join(pdf_pages(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data))
         check("the water section appears with its entry", "MINERAL WATER" in text_all and "San Pellegrino" in text_all
               and "Sparkling · 750 mL" in text_all)
+
+        # ---- Beers -----------------------------------------------------------
+        check("no beer section without beers", "BEERS" not in " ".join(pdf_pages(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data)))
+        resp = c.post(f"/restaurant/wines/card/{wp}/beers/new", data={"csrf_token": csrf, "name": "", "size_label": "12 oz bottle", "price_usd": "8"})
+        check("a beer without a name is refused in the window", resp.status_code == 400 and "name" in resp.json["error"])
+        resp = c.post(f"/restaurant/wines/card/{wp}/beers/new", data={"csrf_token": csrf, "name": "Peroni Nastro Azzurro", "beer_type": "Lager", "size_label": "", "price_usd": "8"})
+        check("a beer without a format is refused in the window", resp.status_code == 400 and "format" in resp.json["error"])
+        resp = c.post(f"/restaurant/wines/card/{wp}/beers/new", data={"csrf_token": csrf, "name": "Peroni Nastro Azzurro",
+                                                                    "beer_type": "Lager", "size_label": "12 oz bottle", "price_usd": "8"})
+        check("a beer is added", resp.status_code == 200 and resp.json["ok"])
+        pdf_text = pdf_pages(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data)
+        text_all = " ".join(pdf_text)
+        check("the beer section appears with name, type · format and price", "BEERS" in text_all and "Peroni Nastro Azzurro" in text_all
+              and "Lager · 12 oz bottle" in text_all)
+        check("beers are printed after the wines and before the mineral waters",
+              text_all.index("BEERS") > text_all.index("WINES") and text_all.index("BEERS") < text_all.index("MINERAL WATER"))
+        with SessionFactory() as s:
+            card = dc.get_card(s, dc.get_site(s, wp))
+            beer_id = dc.list_beers(s, card)[0].id
+            check("the beer is saved for the site", [b.name for b in dc.list_beers(s, card)] == ["Peroni Nastro Azzurro"])
+        page = c.get(f"/restaurant/wines/card?site={wp}").data.decode()
+        check("the page lists the beer with Edit and Delete", 'data-beer="%d"' % beer_id in page and "Peroni Nastro Azzurro" in page
+              and "1 beers" in page)
+        resp = c.post(f"/restaurant/wines/card/{wp}/beers/{beer_id}", data={"csrf_token": csrf, "name": "Moretti",
+                                                                           "beer_type": "", "size_label": "Draft 16 oz", "price_usd": "7"})
+        text_all = " ".join(pdf_pages(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data))
+        check("a beer is edited; an empty type prints only the format", resp.status_code == 200 and "Moretti" in text_all
+              and "Draft 16 oz" in text_all and "Peroni" not in text_all)
+        resp = c.post(f"/restaurant/wines/card/{wp}/beers/{beer_id}/delete", data={"csrf_token": csrf})
+        check("a beer is removed and the section disappears", resp.status_code == 302
+              and "BEERS" not in " ".join(pdf_pages(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data)))
+        c.post(f"/restaurant/wines/card/{wp}/beers/new", data={"csrf_token": csrf, "name": "Peroni Nastro Azzurro",
+                                                             "beer_type": "Lager", "size_label": "12 oz bottle", "price_usd": "8"})
 
         # ---- Print settings and overflow --------------------------------------
         settings = {"csrf_token": csrf, "page_count": "2", "page_width_in": "8.5", "page_height_in": "11",

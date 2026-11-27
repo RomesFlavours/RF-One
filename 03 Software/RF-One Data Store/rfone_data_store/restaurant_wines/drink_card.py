@@ -9,6 +9,7 @@ The printable drink card of one site (a Restaurant `Location`):
               site) and up to two dishes per wine and site, referenced as
               Kitchen recipes of the site's active menu, so the card always
               prints the dish's current name;
+  * beers   — beers added to the card by hand.
   * waters  — mineral waters added to the card by hand.
 
 Product Owner choices recorded on 2026-11-24 (`Decisioni RF1.md`): no beer
@@ -493,6 +494,49 @@ def forget_wine(session: Session, wine_id: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Beers
+# ---------------------------------------------------------------------------
+
+def list_beers(session: Session, card: m.DrinkCard) -> list[m.DrinkCardBeer]:
+    return list(session.scalars(
+        select(m.DrinkCardBeer).where(m.DrinkCardBeer.drink_card_id == card.id)
+        .order_by(m.DrinkCardBeer.position, m.DrinkCardBeer.id)
+    ).all())
+
+
+def save_beer(session: Session, card: m.DrinkCard, beer_id: int | None, form: dict) -> m.DrinkCardBeer:
+    name = _text(form.get("name"), 120)
+    beer_type = _text(form.get("beer_type"), 60)
+    size = _text(form.get("size_label"), 40)
+    if not name:
+        raise DrinkCardError("Enter the name of the beer.")
+    if not size:
+        raise DrinkCardError("Enter the format, for example 12 oz bottle.")
+    price = _decimal(form.get("price_usd") or "", "Price")
+    if price < 0:
+        raise DrinkCardError("The price cannot be negative.")
+    if beer_id is None:
+        beers = list_beers(session, card)
+        beer = m.DrinkCardBeer(drink_card_id=card.id, position=(beers[-1].position + 1) if beers else 1,
+                               name=name, beer_type=beer_type, size_label=size, price_usd=price)
+        session.add(beer)
+    else:
+        beer = session.get(m.DrinkCardBeer, beer_id)
+        if beer is None or beer.drink_card_id != card.id:
+            raise DrinkCardError("This beer is no longer on the card.")
+        beer.name, beer.beer_type, beer.size_label, beer.price_usd = name, beer_type, size, price
+    session.flush()
+    return beer
+
+
+def delete_beer(session: Session, card: m.DrinkCard, beer_id: int) -> None:
+    beer = session.get(m.DrinkCardBeer, beer_id)
+    if beer is not None and beer.drink_card_id == card.id:
+        session.delete(beer)
+        session.flush()
+
+
+# ---------------------------------------------------------------------------
 # Mineral waters
 # ---------------------------------------------------------------------------
 
@@ -611,6 +655,7 @@ class CardResult:
     page_count: int
     wine_count: int
     water_count: int
+    beer_count: int = 0
 
     @property
     def exportable(self) -> bool:
@@ -634,6 +679,12 @@ def build_card(session: Session, site: Site, card: m.DrinkCard, today: date, two
                 bottle=cw.bottle_price, glass=printed_glass_price(card, cw), key=f"wine-{cw.wine.id}",
             ))
         sections.append(pdf.Section(SECTION_TITLES[category], entries, glass_column=True))
+    beers = list_beers(session, card)
+    sections.append(pdf.Section("BEERS", [
+        pdf.Entry(name=b.name, detail=" · ".join(x for x in (b.beer_type, b.size_label) if x),
+                  description="", bottle=b.price_usd, key=f"beer-{b.id}")
+        for b in beers
+    ], glass_column=False, column_letters=False))
     waters = list_waters(session, card)
     sections.append(pdf.Section("MINERAL WATER", [
         pdf.Entry(name=w.name, detail=f"{'Sparkling' if w.sparkling else 'Still'} · {w.size_label}",
@@ -646,4 +697,5 @@ def build_card(session: Session, site: Site, card: m.DrinkCard, today: date, two
     return CardResult(
         pdf=pdf.render(spec, result, two_up=two_up), overflow=result.overflow, long_descriptions=result.long_descriptions,
         pages_used=result.pages_used, page_count=card.page_count, wine_count=len(wines), water_count=len(waters),
+        beer_count=len(beers),
     )

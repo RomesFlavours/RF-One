@@ -1,5 +1,5 @@
 {# Help of the two Drink card windows (How Works Standard §1.1): included in
-   the page's own "?" dialogs with `help_part` = "review" or "water". #}
+   the page's own "?" dialogs with `help_part` = "review", "beer" or "water". #}
 {% if help_part == 'review' %}
 <section id="wine-card-review">
 {% if ui_it %}
@@ -12,6 +12,14 @@
   <p><strong>Description</strong>: one short English sentence about the wine, without the dishes; at most 160 characters, which must not exceed two printed lines. It applies to this wine at every site.</p>
   <p><strong>Paired dish 1 and 2</strong>: none, one or two dishes of this site’s active menu. On the card they are added to the description with “ideal with …”. <strong>Printed as</strong> shows the line as it will be printed.</p>
   <p><strong>Save and approve</strong> saves and approves the description and pairings: later AI proposals will not change them. If the save is refused, the window stays open with the reason. <strong>Cancel</strong> or × close without saving.</p>
+{% endif %}
+</section>
+{% elif help_part == 'beer' %}
+<section id="wine-card-beer">
+{% if ui_it %}
+  <p>Qui aggiungi o modifichi una birra della carta di questa sede: <strong>nome</strong>, <strong>tipo</strong> (testo libero, per esempio Lager o IPA; si può lasciare vuoto), <strong>formato</strong> (per esempio 12 oz bottle) e <strong>prezzo</strong> in dollari. In carta compare nella sezione <em>Beers</em>, con tipo e formato sotto il nome. <strong>Salva</strong> aggiorna la carta; se un dato manca, la finestra resta aperta con il motivo.</p>
+{% else %}
+  <p>Here you add or change a beer on this site’s card: <strong>name</strong>, <strong>type</strong> (free text, for example Lager or IPA; it may be left empty), <strong>format</strong> (for example 12 oz bottle) and <strong>price</strong> in dollars. On the card it appears in the <em>Beers</em> section, with type and format under its name. <strong>Save</strong> updates the card; when something is missing the window stays open with the reason.</p>
 {% endif %}
 </section>
 {% elif help_part == 'water' %}
