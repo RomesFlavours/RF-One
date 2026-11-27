@@ -190,6 +190,19 @@ def _require_rfone_login():
     return redirect(target)
 
 @app.before_request
+def _select_site_from_request():
+    """`?site=<restaurant id>` on any Tips page selects that site."""
+    if request.blueprint == "training" or request.endpoint in _PUBLIC_ENDPOINTS:
+        return None
+    value = request.args.get("site", "")
+    if value.isdigit():
+        with SessionFactory() as db_session:
+            if int(value) in {site.id for site in _tips_sites(db_session)}:
+                _remember_site(int(value))
+    return None
+
+
+@app.before_request
 def _central_training_entry():
     # The public dish guide is a separate endpoint, not this blueprint.
     # Operational Training has one RF1 entry; legacy Training cookies and
@@ -223,13 +236,44 @@ app.jinja_env.globals["rfone_web_not_configured_message"] = rfone_web_link.NOT_C
 
 
 def _default_restaurant(session) -> "m.Restaurant | None":
-    """Rome's Flavours is currently the only Restaurant RF-One tracks — this
-    picks it deterministically (lowest id) rather than offering a selector,
-    per task §11's "keep it simple" and "do not redesign the global UI".
-    Never creates one: unlike Selection's own isolated demo database, this
+    """The lowest-id Restaurant: the fallback when no site has a Location
+    (TIPS_PER_SITE_001 pages use `_current_restaurant`). Never creates one: unlike Selection's own isolated demo database, this
     app runs against the shared operational store, where the real
     Restaurant/Location/Clover onboarding already exists."""
     return session.scalars(select(m.Restaurant).order_by(m.Restaurant.id)).first()
+
+
+# TIPS_PER_SITE_001 (Product Owner, 2026-11-27) — configuration and
+# calculation are independent per site: Winter Park and Mount Dora each
+# choose their own rules and percentages. A site is a Restaurant with its own
+# Clover Location (`RestaurantLocation`); every Tips page works on the site
+# the person selected (`?site=<restaurant id>`, remembered in the RF-One
+# session), and on the first site when none was chosen yet.
+TIPS_SITE_SESSION_KEY = "tips_site_id"
+
+
+def _tips_sites(session) -> list["m.Restaurant"]:
+    """The sites a person can choose: every Restaurant with a Location."""
+    with_location = select(m.RestaurantLocation.restaurant_id)
+    return list(session.scalars(
+        select(m.Restaurant).where(m.Restaurant.id.in_(with_location)).order_by(m.Restaurant.id)))
+
+
+def _current_restaurant(session) -> "m.Restaurant | None":
+    """The site the current page works on (see TIPS_PER_SITE_001 above)."""
+    sites = _tips_sites(session)
+    chosen = flask_session.get(TIPS_SITE_SESSION_KEY)
+    for site in sites:
+        if site.id == chosen:
+            return site
+    return sites[0] if sites else _default_restaurant(session)
+
+
+def _remember_site(restaurant_id: int | None) -> None:
+    """Pages opened on one site's record (a rule, a saved period) switch the
+    selection to that site, so the selector never names another site."""
+    if restaurant_id is not None and flask_session.get(TIPS_SITE_SESSION_KEY) != restaurant_id:
+        flask_session[TIPS_SITE_SESSION_KEY] = restaurant_id
 
 
 def _max_order_business_date(session, restaurant_id: int):
@@ -342,7 +386,7 @@ def inject_brand_context() -> dict:
     name/logo even where a route does not otherwise need the Restaurant row
     (e.g. `distribution_rule_detail`)."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         # RF-One UI Rules §1: `tz` is the Restaurant's Clover Location's
         # own timezone, the zone every time on a Tips page is shown in
         # (`|local_dt(tz)`). None -> the formatter says "UTC" honestly.
@@ -352,6 +396,9 @@ def inject_brand_context() -> dict:
             "brand_name": restaurant.name if restaurant is not None else "RF-One",
             "brand_logo_filename": _brand_logo_filename(),
             "tz": location.timezone if location is not None else None,
+            # TIPS_PER_SITE_001 — the site selector in the Tips header.
+            "tips_sites": [(site.id, site.name) for site in _tips_sites(session)],
+            "tips_site_id": restaurant.id if restaurant is not None else None,
         }
 
 
@@ -431,7 +478,7 @@ def _employee_names(session, employee_ids) -> dict:
 @app.route("/")
 def home():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         through_date = request.args.get("through_date") or ""
 
         # Prefill "From date" with the latest operational Business Date
@@ -739,7 +786,7 @@ def calculate_tips_home():
     (cutoff to cutoff); for any other window the page says so. No dates are
     asked again, and the same period with the same result is saved once."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         tz_name, tz, cutoff, tz_configured, config_error = _restaurant_period_config(session, restaurant)
 
         start_at = request.args.get("start_at") or ""
@@ -846,7 +893,7 @@ def calculate_tips_consolidate():
         return redirect(back)
 
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(back)
@@ -879,7 +926,7 @@ def tips_run_history():
     would hide the recalculations that led there, which is precisely the
     part an auditor asks about."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         runs = (
             run_svc.list_runs(session, restaurant_id=restaurant.id)
             if restaurant is not None else []
@@ -898,7 +945,7 @@ def tips_run_history():
 def historical_tip_payments():
     from rfone_data_store.tips import historical_payments
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         documents = historical_payments.list_documents(session, restaurant_id=restaurant.id) if restaurant else []
         run_id = request.args.get("document", type=int)
         if run_id is None and documents:
@@ -928,6 +975,7 @@ def tips_run_report(run_id: int):
         if report is None:
             flash(f"No Calculation Run with id {run_id}.", "error")
             return redirect(url_for("tips_run_history"))
+        _remember_site(report["run"].restaurant_id)
         blockers = run_svc.finalization_blockers(session, report["run"])
         return render_template(
             "tips_run_report.html", report=report, run=report["run"],
@@ -946,7 +994,7 @@ def calculate_tips_order_drilldown(order_id: int):
     start_at = request.args.get("start_at") or ""
     end_at = request.args.get("end_at") or ""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         _, tz, _, _, _ = _restaurant_period_config(session, restaurant)
         period = _calculation_period_dt(start_at, end_at, tz)
         drilldown = None
@@ -1011,7 +1059,7 @@ def configuration_home():
     Rules, then General Configuration. Nothing here changes what either
     section did on its former tab."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         return render_template("configuration.html", **_distribution_rules_base_context(session, restaurant))
 
 
@@ -1032,7 +1080,7 @@ def tips_configuration_set_validation_mode():
     an unattributed switch to AUTOMATIC is called out rather than accepted
     silently."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("configuration_home", _anchor="general-configuration"))
@@ -1062,7 +1110,7 @@ def tips_configuration_set_validation_mode():
 @app.route("/tips-configuration/review-mode", methods=["POST"])
 def tips_configuration_set_review_mode():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("configuration_home", _anchor="general-configuration"))
@@ -1080,7 +1128,7 @@ def tips_configuration_set_review_mode():
 @app.route("/tips-configuration/calculation-schedule", methods=["POST"])
 def tips_configuration_set_calculation_schedule():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("configuration_home", _anchor="general-configuration"))
@@ -1105,7 +1153,7 @@ def tips_configuration_set_calculation_schedule():
 @app.route("/tips-configuration/payment-schedule", methods=["POST"])
 def tips_configuration_set_payment_schedule():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("configuration_home", _anchor="general-configuration"))
@@ -1139,7 +1187,7 @@ def tips_configuration_run_calculation_now():
     the automatic scheduler would be — manual and automatic triggers share
     the exact same gated entry point, `payout_process.run_calculation_now`."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("configuration_home", _anchor="general-configuration"))
@@ -1210,7 +1258,7 @@ def _render_payment_control(*, cycle_id: int | None):
                 return redirect(url_for("payment_control_home"))
             restaurant = session.get(m.Restaurant, deep_link_cycle.restaurant_id)
         else:
-            restaurant = _default_restaurant(session)
+            restaurant = _current_restaurant(session)
 
         calc_state = None
         cycle_readiness = None
@@ -1309,7 +1357,7 @@ def _render_payment_control(*, cycle_id: int | None):
 @app.route("/payment-control/start-cycle", methods=["POST"])
 def payment_control_start_cycle():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("payment_control_home"))
@@ -1327,7 +1375,7 @@ def payment_control_start_cycle():
 @app.route("/payment-control/approve-and-pay", methods=["POST"])
 def payment_control_approve_and_pay():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         cycle = cycle_svc.get_open_cycle(session, restaurant.id) if restaurant is not None else None
         if cycle is None:
             flash("No open Payment Cycle to approve.", "error")
@@ -1415,7 +1463,7 @@ def payment_control_link_recipient(employee_id: int):
         if employee is None:
             flash("Employee not found.", "error")
             return redirect(url_for("payment_control_home"))
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("payment_control_home"))
@@ -1535,7 +1583,7 @@ def distribution_rule_ai_interpret():
     `rule_ai_authoring.interpret_rule_statement` call underneath this route
     could equally be driven by a future chat/voice interface (task §10)."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         base_ctx = _distribution_rules_base_context(session, restaurant)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
@@ -1590,7 +1638,7 @@ def distribution_rule_ai_confirm():
     (task §6). Re-validates the proposal from scratch (`confirm_rule_
     proposal` never trusts the round-tripped hidden field blindly)."""
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         try:
             data = json.loads(request.form.get("proposal_json") or "{}")
             proposal = rule_ai_svc.RuleProposal(**data)
@@ -1623,7 +1671,7 @@ def distribution_rule_ai_cancel():
 @app.route("/distribution-rules/new", methods=["POST"])
 def distribution_rule_create():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("configuration_home", _anchor="distribution-rules"))
@@ -1661,6 +1709,7 @@ def distribution_rule_detail(rule_id: int):
         rule = rule_svc.get_rule(session, rule_id)
         if rule is None:
             return redirect(url_for("configuration_home", _anchor="distribution-rules"))
+        _remember_site(rule.restaurant_id)
         versions = rule_svc.list_versions(session, rule_id)
         roles = list(
             session.scalars(
@@ -1781,7 +1830,7 @@ def _host_audit_report_from_request(session, restaurant):
 @app.route("/host-audit")
 def host_audit_home():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         employees = _host_audit_filters(session, restaurant)
         from rfone_data_store.employee_directory import resolve_employee_id
         selected_id = request.args.get("employee_id", type=int)
@@ -1798,7 +1847,7 @@ def host_audit_home():
 @app.route("/host-audit/export.csv")
 def host_audit_export_csv():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         report = _host_audit_report_from_request(session, restaurant)
         if report is None:
             flash("Select a Restaurant, Host Employee, and a start/end date and time first.", "error")
@@ -1838,7 +1887,7 @@ def host_audit_export_csv():
 @app.route("/roles")
 def restaurant_roles_home():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         roles = role_svc.list_roles(session, restaurant.id) if restaurant is not None else []
         return render_template(
             "restaurant_roles_home.html", restaurant=restaurant, roles=roles, active_nav="configuration",
@@ -1848,7 +1897,7 @@ def restaurant_roles_home():
 @app.route("/roles/new", methods=["GET", "POST"])
 def restaurant_role_new():
     with SessionFactory() as session:
-        restaurant = _default_restaurant(session)
+        restaurant = _current_restaurant(session)
         if restaurant is None:
             flash("No Restaurant exists in this database yet.", "error")
             return redirect(url_for("restaurant_roles_home"))
