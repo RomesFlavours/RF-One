@@ -16,6 +16,7 @@ frame.
 
 from __future__ import annotations
 
+import functools
 import io
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -114,6 +115,9 @@ class CardSpec:
     accent: str
     line: str
     images: dict[str, bytes] = field(default_factory=dict)
+    # False prints the background with its paper colour turned white: the
+    # drawings and decorations stay exactly as they are.
+    print_paper_color: bool = True
 
 
 @dataclass
@@ -327,20 +331,59 @@ def layout(spec: CardSpec, sections: list[Section]) -> Layout:
                   long_descriptions=long_descriptions, pages_used=used)
 
 
-def render(spec: CardSpec, result: Layout) -> bytes:
+PAPER_NEAR = 18     # within this distance from the paper colour a pixel becomes white
+PAPER_FAR = 60      # beyond it a pixel is graphic and stays exactly as it is
+
+
+@functools.lru_cache(maxsize=4)
+def white_paper(data: bytes) -> bytes:
+    """The background image with its paper colour turned white. The paper
+    colour is the median of the lighter pixels; pixels close to it become
+    white, pixels far from it (drawings, frames, decorations) are kept, and
+    the ones in between are blended so edges stay smooth. An unreadable image
+    is returned unchanged."""
+    try:
+        from PIL import Image, ImageChops
+
+        image = Image.open(io.BytesIO(data)).convert("RGB")
+        raw = image.resize((128, 192)).tobytes()
+        pixels = sorted((raw[i:i + 3] for i in range(0, len(raw), 3)), key=sum)
+        light = pixels[int(len(pixels) * 0.4):]
+        paper = tuple(sorted(p[k] for p in light)[len(light) // 2] for k in range(3))
+        red, green, blue = ImageChops.difference(image, Image.new("RGB", image.size, paper)).split()
+        distance = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+        span = PAPER_FAR - PAPER_NEAR
+        keep = distance.point(lambda v: 0 if v <= PAPER_NEAR else 255 if v >= PAPER_FAR else round((v - PAPER_NEAR) * 255 / span))
+        out = Image.composite(image, Image.new("RGB", image.size, (255, 255, 255)), keep)
+        buffer = io.BytesIO()
+        out.save(buffer, "JPEG", quality=92)
+        return buffer.getvalue()
+    except Exception:
+        return data
+
+
+def render(spec: CardSpec, result: Layout, two_up: bool = False) -> bytes:
+    """The card as a PDF. With `two_up`, two pages side by side on each sheet
+    (pages 1-2 on the first, 3-4 on the next…), each with its own graphic:
+    cutting the sheets in half gives the single pages."""
     g = _Geometry(spec)
     colors = {"ink": HexColor(spec.ink), "accent": HexColor(spec.accent), "line": HexColor(spec.line),
               "price": HexColor(PRICE_COLOR)}
     readers = {}
     for slot, data in spec.images.items():
+        if slot == "BACKGROUND" and not spec.print_paper_color:
+            data = white_paper(data)
         try:
             readers[slot] = ImageReader(io.BytesIO(data))
         except Exception:  # an unreadable upload is skipped, never breaks the card
             continue
     buffer = io.BytesIO()
-    c = pdf_canvas.Canvas(buffer, pagesize=(g.w, g.h), pageCompression=1)
+    c = pdf_canvas.Canvas(buffer, pagesize=(g.w * 2 if two_up else g.w, g.h), pageCompression=1)
     c.setTitle(spec.title)
-    for ops in result.pages:
+    for index, ops in enumerate(result.pages):
+        c.saveState()
+        if two_up and index % 2:
+            c.translate(g.w, 0)
         for op in ops:
             kind = op[0]
             if kind == "frame":
@@ -397,6 +440,8 @@ def render(spec: CardSpec, result: Layout) -> bytes:
                         c.drawRightString(x, y, value)
                     else:
                         c.drawString(x, y, value)
-        c.showPage()
+        c.restoreState()
+        if not two_up or index % 2 or index == len(result.pages) - 1:
+            c.showPage()
     c.save()
     return buffer.getvalue()

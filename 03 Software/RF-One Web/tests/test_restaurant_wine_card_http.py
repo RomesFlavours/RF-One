@@ -337,6 +337,50 @@ def main() -> int:
         check("a background is uploaded and the card renders on it", resp.status_code == 302
               and c.get(f"/restaurant/wines/card/{wp}/images/BACKGROUND").data == PNG
               and with_background.status_code == 200 and len(pdf_pages(with_background.data)) == 4)
+        page = c.get(f"/restaurant/wines/card?site={wp}").data.decode()
+        check("with a background, the 'Print the paper colour' checkbox is shown ticked",
+              'id="paper-color-toggle" checked' in page)
+        from PIL import Image
+        from rfone_data_store.restaurant_wines import drink_card_pdf as card_pdf
+        sample = Image.new("RGB", (200, 300), (250, 243, 225))          # cream paper
+        sample.paste((90, 110, 40), (60, 100, 140, 200))                  # a green leaf
+        raw = io.BytesIO(); sample.save(raw, "PNG")
+        c.post(f"/restaurant/wines/card/{wp}/images/BACKGROUND",
+               data={"csrf_token": csrf, "image": (io.BytesIO(raw.getvalue()), "cream.png")}, content_type="multipart/form-data")
+        with_background = c.get(f"/restaurant/wines/card/{wp}/card.pdf")
+        resp = c.post(f"/restaurant/wines/card/{wp}/paper-color", data={"csrf_token": csrf, "print_paper_color": "0"})
+        white_card = c.get(f"/restaurant/wines/card/{wp}/card.pdf")
+        def first_page_pixels(data):
+            return pdfium.PdfDocument(data)[0].render(scale=0.5).to_pil().convert("RGB").tobytes()
+        check("the checkbox saves at once and the printed page changes", resp.status_code == 200 and resp.json["ok"]
+              and white_card.status_code == 200 and first_page_pixels(white_card.data) != first_page_pixels(with_background.data))
+        check("unticked, the layout stays the same", pdf_pages(white_card.data) == pdf_pages(with_background.data))
+        whitened = Image.open(io.BytesIO(card_pdf.white_paper(raw.getvalue()))).convert("RGB")
+        paper_px, leaf_px = whitened.getpixel((10, 10)), whitened.getpixel((100, 150))
+        check("unticked, the paper colour becomes white", min(paper_px) >= 250, str(paper_px))
+        check("unticked, the drawings keep their colour", all(abs(a - b) <= 6 for a, b in zip(leaf_px, (90, 110, 40))), str(leaf_px))
+        with SessionFactory() as s:
+            card = dc.get_card(s, dc.get_site(s, wp))
+            check("the uploaded background is not modified", dc.card_images(s, card)["BACKGROUND"].data == raw.getvalue()
+                  and card.print_paper_color is False)
+        page = c.get(f"/restaurant/wines/card?site={wp}").data.decode()
+        check("the page and the print settings form keep the choice", 'name="print_paper_color" value="0"' in page
+              and 'id="paper-color-toggle"' in page and 'id="paper-color-toggle" checked' not in page)
+        c.post(f"/restaurant/wines/card/{wp}/paper-color", data={"csrf_token": csrf, "print_paper_color": "1"})
+        check("ticked again, the paper colour is printed",
+              first_page_pixels(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data) == first_page_pixels(with_background.data))
+
+        # ---- Two pages per sheet, for printing and cutting -------------------------
+        single = pdf_pages(c.get(f"/restaurant/wines/card/{wp}/card.pdf").data)
+        resp = c.get(f"/restaurant/wines/card/{wp}/card.pdf?download=1&two_up=1")
+        sheets = pdf_pages(resp.data)
+        check("2 pages per sheet: 4 pages on 2 landscape Letter sheets",
+              resp.status_code == 200 and len(single) == 4 and len(sheets) == 2
+              and tuple(round(v) for v in pdf_size(resp.data)) == (792, 612), str(pdf_size(resp.data)))
+        check("2 pages per sheet keeps the content of pages 1-2 and 3-4",
+              all(sorted(sheets[k].split()) == sorted((single[2 * k] + " " + single[2 * k + 1]).split()) for k in range(2)))
+        check("2 pages per sheet is a download with its own name", resp.headers["Content-Disposition"].startswith("attachment")
+              and "2-per-sheet" in resp.headers["Content-Disposition"])
 
         # ---- Deleting a wine removes its card texts -----------------------------
         with SessionFactory() as s:
