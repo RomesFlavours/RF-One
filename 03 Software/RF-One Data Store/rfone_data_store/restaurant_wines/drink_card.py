@@ -388,7 +388,9 @@ def save_review(session: Session, site: Site, wine_id: int, description: str, re
 
 def approve_all(session: Session, site: Site, today: date) -> int:
     """Approve every proposal currently shown for the site. Returns how many
-    wines were approved."""
+    wines were approved. Pairings are approved only when they hold at least
+    one dish: an empty pairing stays waiting for a proposal (a person can
+    still choose "no dish" for one wine with its own review)."""
     count = 0
     for cw in card_wines(session, site, today):
         if cw.removed_dishes:
@@ -399,12 +401,14 @@ def approve_all(session: Session, site: Site, today: date) -> int:
             desc.approved = True
             changed = True
         if not cw.pairings_reviewed:
-            for p in session.scalars(select(m.WineCardPairing).where(
+            pairings = session.scalars(select(m.WineCardPairing).where(
                 m.WineCardPairing.location_id == site.location.id, m.WineCardPairing.wine_id == cw.wine.id,
-            )).all():
-                p.approved = True
-            session.add(m.WineCardPairingReview(location_id=site.location.id, wine_id=cw.wine.id))
-            changed = True
+            )).all()
+            if pairings:
+                for p in pairings:
+                    p.approved = True
+                session.add(m.WineCardPairingReview(location_id=site.location.id, wine_id=cw.wine.id))
+                changed = True
         count += changed
     session.flush()
     return count
