@@ -2,7 +2,7 @@
 
 One page, `/restaurant/wines/card`, gated like the other Wines pages by
 `require_domain_access("WINES")`. The person chooses the site, reviews the
-descriptions and pairings, adds mineral waters, sets the print layout and
+descriptions and pairings, adds beers and mineral waters, sets the print layout and
 downloads the PDF. The preview on the page IS the PDF the export downloads
 (`rfone_data_store.restaurant_wines.drink_card.build_card`).
 
@@ -47,6 +47,9 @@ _IT = {
     f"The description can be at most {dc.MAX_DESCRIPTION_LENGTH} characters.":
         f"La descrizione può avere al massimo {dc.MAX_DESCRIPTION_LENGTH} caratteri.",
     "Enter the name of the water.": "Scrivi il nome dell'acqua.",
+    "Enter the name of the beer.": "Scrivi il nome della birra.",
+    "Enter the format, for example 12 oz bottle.": "Scrivi il formato, per esempio 12 oz bottle.",
+    "This beer is no longer on the card.": "Questa birra non è più nella carta.",
     "Enter the format, for example 750 mL.": "Scrivi il formato, per esempio 750 mL.",
     "Price must be a number.": "Il prezzo deve essere un numero.",
     "The price cannot be negative.": "Il prezzo non può essere negativo.",
@@ -148,6 +151,8 @@ def register_restaurant_wine_card_routes(app, *, gate, SessionFactory, require_c
                         "pairings_reviewed": w.pairings_reviewed, "removed": w.removed_dishes,
                         "printed": w.printed_description(),
                     } for w in wines],
+                    beers=[{"id": b.id, "name": b.name, "beer_type": b.beer_type or "", "size_label": b.size_label,
+                            "price": _money(b.price_usd)} for b in dc.list_beers(db, card)],
                     waters=[{"id": w.id, "name": w.name, "sparkling": w.sparkling, "size_label": w.size_label,
                              "price": _money(w.price_usd)} for w in dc.list_waters(db, card)],
                     images={slot: img.filename for slot, img in images.items()},
@@ -272,6 +277,40 @@ def register_restaurant_wine_card_routes(app, *, gate, SessionFactory, require_c
                 return jsonify({"ok": False, "error": _t(str(exc))}), 400
         flash(_t("Description and pairings approved.", "Descrizione e abbinamenti approvati."), "info")
         return jsonify({"ok": True, "redirect": url_for("restaurant_wine_card", site=location_id)})
+
+    def _save_beer(location_id: int, beer_id: int | None):
+        require_csrf()
+        with SessionFactory() as db:
+            _, card = _load(db, location_id)
+            try:
+                dc.save_beer(db, card, beer_id, request.form)
+                db.commit()
+            except dc.DrinkCardError as exc:
+                db.rollback()
+                return jsonify({"ok": False, "error": _t(str(exc))}), 400
+        flash(_t("Beer saved.", "Birra salvata."), "info")
+        return jsonify({"ok": True, "redirect": url_for("restaurant_wine_card", site=location_id)})
+
+    @app.route("/restaurant/wines/card/<int:location_id>/beers/new", methods=["POST"])
+    @gate
+    def restaurant_wine_card_beer_create(location_id: int):
+        return _save_beer(location_id, None)
+
+    @app.route("/restaurant/wines/card/<int:location_id>/beers/<int:beer_id>", methods=["POST"])
+    @gate
+    def restaurant_wine_card_beer_update(location_id: int, beer_id: int):
+        return _save_beer(location_id, beer_id)
+
+    @app.route("/restaurant/wines/card/<int:location_id>/beers/<int:beer_id>/delete", methods=["POST"])
+    @gate
+    def restaurant_wine_card_beer_delete(location_id: int, beer_id: int):
+        require_csrf()
+        with SessionFactory() as db:
+            _, card = _load(db, location_id)
+            dc.delete_beer(db, card, beer_id)
+            db.commit()
+        flash(_t("Beer removed from the card.", "Birra tolta dalla carta."), "info")
+        return _back(location_id, "beers")
 
     def _save_water(location_id: int, water_id: int | None):
         require_csrf()

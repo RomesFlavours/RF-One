@@ -15019,6 +15019,23 @@ class DrinkCardWater(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class DrinkCardBeer(Base):
+    """A beer added by hand to one site's drink card (like the waters)."""
+
+    __tablename__ = "restaurant_drink_card_beers"
+    __table_args__ = (
+        CheckConstraint("price_usd >= 0", name="ck_restaurant_drink_card_beers_price"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    drink_card_id: Mapped[int] = mapped_column(ForeignKey("restaurant_drink_cards.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    beer_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    size_label: Mapped[str] = mapped_column(String(40), nullable=False)
+    price_usd: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
 class DrinkCardImage(Base):
     """An image of one site's drink card: the uploaded graphic example
     (`REFERENCE`, shown next to the preview, never printed) or a decoration
