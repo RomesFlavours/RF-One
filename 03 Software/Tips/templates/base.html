@@ -61,6 +61,18 @@
      context from Calculate Tips ("check Hosts", a row's "audit"), and its
      breadcrumb reads RF-One > Tips > Calculate Tips > Explain / Audit Host
      Tips (TIPS_NAVIGATION_STANDARD_001). #}
+  {# TIPS_PER_SITE_001 — each site has its own Tips configuration and
+     calculation; every page works on the site chosen here. #}
+  {% if tips_sites and tips_sites|length > 1 and request.blueprint != 'training' %}
+    <form method="get" action="{{ request.script_root }}{{ request.path }}" class="tips-site-picker" style="margin:.25rem 0 .5rem;">
+      {% for key, values in request.args.lists() if key != 'site' %}{% for value in values %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}{% endfor %}
+      <label for="tips-site">{{ ui("Site") }}</label>
+      <select id="tips-site" name="site" onchange="this.form.submit()">
+        {% for site_id, site_name in tips_sites %}<option value="{{ site_id }}" {{ 'selected' if site_id == tips_site_id else '' }}>{{ site_name }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit">{{ ui("Show") }}</button></noscript>
+    </form>
+  {% endif %}
   <div class="nav-tabs">
     <a href="{{ url_for('home') }}" class="{{ 'active' if active_nav == 'historical-backfill' else '' }}">{{ ui("Clover Acquisition") }}</a>
     <a href="{{ url_for('calculate_tips_home') }}" class="{{ 'active' if active_nav in ('calculate-tips', 'host-audit') else '' }}">{{ ui("Calculate Tips") }}</a>

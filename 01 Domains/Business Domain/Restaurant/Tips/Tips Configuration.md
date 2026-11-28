@@ -177,6 +177,17 @@ AUTOMATIC + WITHOUT_APPROVAL   the scheduler opens the cycle when due, and
 
 ---
 
+## 13. Configuration and calculation per site (TIPS_PER_SITE_001, Product Owner 2026-11-27)
+
+Winter Park and Mount Dora are separate sites, each a Restaurant with its own Clover Location. Each site configures its own Roles, Distribution Rules and percentages, schedules and modes; the distribution engine itself is unchanged and keeps supporting both a simple percentage split and the other formulas (aggregation, eligibility, equal or hours-proportional split).
+
+- Every Order contributes only to the Tips of the site where Clover recorded it (`Order.location_id` → `RestaurantLocation` → Restaurant), with that site's rules.
+- A person who works at both sites — also on the same day — receives a separate share for each site, computed with that site's rules and only the hours worked at that site (`Shift.location_id`).
+- The Tips app shows a site selector on every page (`?site=<restaurant id>`, remembered in the RF-One session; first site by default). Opening a record of a site (a rule, a saved period) selects that site. A rule can only use Roles of its own site (already enforced by `distribution_rule_service`).
+- Not decided here: which LLC pays the shares earned at each site, and the per-person sum across sites (`Decisioni RF1.md`, 2026-11-24).
+
+The `/payment-control/cycle/<cycle_id>` note in §12 about `_default_restaurant()` predates this section: Tips pages now work on the selected site.
+
 ## Related documents
 
 - [Tips Payment Execution.md](Tips%20Payment%20Execution.md) — the Mercury sandbox payout pilot this document extends; its own "Canonical payment-connector decision" is what §7/§10/§11 above implement, and its "What this pilot did NOT implement" section is superseded where noted there
