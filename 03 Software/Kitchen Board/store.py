@@ -256,6 +256,22 @@ def release(session, location_id, order_id, actor, line_ids=None):
     return {'order_id': order_id, 'released': True, 'already_released': not bool(changed)}
 
 
+CLEARED_AT_CLOSE = 'cleared at close'
+
+
+def clear_open(session, location_id, before, actor=CLEARED_AT_CLOSE):
+    """KITCHEN_CLEAR_AT_CLOSE_001: release every ticket still open from before `before`.
+
+    Nothing is deleted: the tickets move to the archive with `actor` as who released them,
+    so a board that nobody cleared during service starts the next service empty."""
+    changed = session.execute(update(Ticket).where(
+        Ticket.location_id == location_id, Ticket.released_at.is_(None), Ticket.created_at < before
+    ).values(released_at=now(), released_by=actor).execution_options(synchronize_session=False)).rowcount
+    session.commit()
+    session.expire_all()
+    return changed
+
+
 def undo_release(session, location_id, order_id, actor):
     """Bring a ticket back to the board shortly after a mistaken release."""
     ticket = session.get(Ticket, (location_id, order_id))

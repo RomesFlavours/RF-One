@@ -12,7 +12,7 @@ from rfone_data_store.technical.connectors.clover import acquisition as a
 from rfone_data_store.technical.connectors.clover.historical_backfill_detail import ingest_order_item_and_modifier_detail
 from rfone_data_store.technical.connectors.clover.source_guard import require_complete, require_ok
 from kitchen_filter import categories_by_line, is_beverage
-from store import Board, Ticket, drop_if_empty, mark_deleted, now, pending, related, save_ticket
+from store import Board, Ticket, clear_open, drop_if_empty, mark_deleted, now, pending, related, save_ticket
 
 LOG = logging.getLogger('kitchen_live_sync')
 
@@ -271,8 +271,23 @@ def run_cycle(session, location_id, client=None, check_deleted=True):
         raise
 
 
+def clear_hour():
+    """Local hour for the nightly clear (KITCHEN_BOARD_CLEAR_HOUR, default 4); 'off' disables it."""
+    value = os.environ.get('KITCHEN_BOARD_CLEAR_HOUR', '4').strip().lower()
+    return None if value in ('off', '') else int(value)
+
+
+def nightly_clear_due(local_now, hour, last_day):
+    """The boundary to clear before, once per local day after `hour`, else None."""
+    if hour is None or local_now.hour < hour or last_day == local_now.date():
+        return None
+    return local_now.replace(hour=hour, minute=0, second=0, microsecond=0)
+
+
 def run_forever(session_factory, location_id, interval=15):
+    from zoneinfo import ZoneInfo
     stop = threading.Event()
+    hour, last_clear = clear_hour(), None
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     cycle = 0
@@ -281,6 +296,13 @@ def run_forever(session_factory, location_id, interval=15):
             with session_factory() as session:
                 # Open-ticket check about once a minute, not every 15 seconds.
                 run_cycle(session, location_id, check_deleted=(cycle % 4 == 0))
+                location = session.get(m.Location, location_id)
+                local_now = datetime.now(ZoneInfo(location.timezone or 'America/New_York'))
+                boundary = nightly_clear_due(local_now, hour, last_clear)
+                if boundary is not None:
+                    cleared = clear_open(session, location_id, boundary)
+                    last_clear = local_now.date()
+                    LOG.info('Nightly clear for Location %s: %s open tickets moved to the archive', location_id, cleared)
         except Exception:
             # Do not log credentials, raw responses or exception strings.
             LOG.error('Kitchen order sync failed for Location %s; next cycle will retry', location_id)

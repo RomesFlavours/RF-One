@@ -11,7 +11,14 @@ def is_beverage(categories):
                     'wine', 'wines', 'cocktail', 'cocktails', 'spirits',
                     'coffee milk tea'} or name.startswith('wine '):
             return True
+        # KITCHEN_NOT_FOOD_CATEGORY_001: Clover's 'Various' holds only cork fees, gift
+        # certificates, reservation charges and wine pairings at both restaurants (27 Nov 2026).
+        if name in NOT_FOR_KITCHEN:
+            return True
     return False
+
+
+NOT_FOR_KITCHEN = {'various'}
 
 
 def categories_by_line(db, location_id, order_ids):
