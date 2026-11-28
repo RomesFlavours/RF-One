@@ -18,6 +18,10 @@ def main():
     sync = commands.add_parser('sync')
     sync.add_argument('--location-id', type=int, required=True)
     sync.add_argument('--interval-seconds', type=float, default=15)
+    clear = commands.add_parser('clear', help='Move every ticket still open from before --before to the archive')
+    clear.add_argument('--location-id', type=int, required=True)
+    clear.add_argument('--before', required=True)
+    clear.add_argument('--label', default='cleared at close')
     serve = commands.add_parser('serve')
     serve.add_argument('--host', default='127.0.0.1')
     serve.add_argument('--port', type=int, default=5090)
@@ -39,6 +43,13 @@ def main():
             parser.error('--since requires a timezone offset')
         from store import initialize
         initialize(create_configured_engine(url), args.location_id, since)
+    elif args.command == 'clear':
+        before = datetime.fromisoformat(args.before)
+        if before.tzinfo is None:
+            parser.error('--before requires a timezone offset')
+        from store import clear_open
+        with create_session_factory(create_configured_engine(url))() as session:
+            print('cleared', clear_open(session, args.location_id, before, args.label))
     elif args.command == 'sync':
         if args.interval_seconds < 5:
             parser.error('Polling interval must be at least 5 seconds')

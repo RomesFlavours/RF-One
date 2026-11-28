@@ -161,6 +161,38 @@ class BoardTest(unittest.TestCase):
         self.assertEqual(self.client.get('/exit',headers=self.api).status_code,200)
         self.assertIn('href="/exit"',self.client.get('/board/1',headers=self.api).get_data(as_text=True))
 
+    def test_various_category_is_not_for_the_kitchen(self):
+        from kitchen_filter import kitchen_payload
+        lines = [{'id':'a','name':'Lamb Herb'}, {'id':'b','name':'Cork Fee'}, {'id':'c','name':'Gift Certificate'}]
+        payload = kitchen_payload({'lines':lines},{'a':['Meat & Fish'],'b':['Various'],'c':['Various']})
+        self.assertEqual([line['name'] for line in payload['lines']],['Lamb Herb'])
+
+    def test_clear_at_close_archives_open_tickets_only_before_the_boundary(self):
+        from store import clear_open, pending
+        self.sync()
+        with self.factory() as db:
+            old = db.scalars(select(Ticket)).first()
+            self.assertIsNone(old.released_at)
+            self.assertEqual(clear_open(db,1,old.created_at),0)  # nothing older than the oldest ticket
+            self.assertEqual(clear_open(db,1,now()),1)
+            self.assertEqual(pending(db,1),[])
+            ticket = db.get(Ticket,(1,old.order_id))
+            self.assertEqual(ticket.released_by,'cleared at close')
+            self.assertIsNotNone(ticket.payload)  # kept in the archive, not deleted
+            self.assertEqual(clear_open(db,1,now()),0)  # running it again changes nothing
+
+    def test_nightly_clear_runs_once_per_day_after_the_hour(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from sync import nightly_clear_due
+        et = ZoneInfo('America/New_York')
+        early = datetime(2026,11,28,3,59,tzinfo=et)
+        late = datetime(2026,11,28,4,5,tzinfo=et)
+        self.assertIsNone(nightly_clear_due(early,4,None))
+        self.assertEqual(nightly_clear_due(late,4,None),datetime(2026,11,28,4,0,tzinfo=et))
+        self.assertIsNone(nightly_clear_due(late,4,late.date()))
+        self.assertIsNone(nightly_clear_due(late,None,None))
+
     def test_wrong_merchant_does_not_import(self):
         self.clover.merchant_id = 'wrong'
         with self.assertRaises(ValueError): self.sync()
