@@ -270,6 +270,7 @@ def _test_live_sync_cycle_populates_provider_mirror(session: Session, result: Va
 
     # Fixture people are explicitly confirmed before acquisition starts.
     from .employee_directory import import_snapshot, attach_link
+    from .validation_accounts import validation_account
     records = list(client.employees)
     known = {record["id"] for record in records}
     for payment in client.payments:
@@ -279,7 +280,7 @@ def _test_live_sync_cycle_populates_provider_mirror(session: Session, result: Va
             known.add(reference["id"])
     _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=records)
     for link_id in pending:
-        attach_link(session, link_id=link_id, create_new=True)
+        attach_link(session, link_id=link_id, create_new=True, account_id=validation_account(session).id)
     session.flush()
     summary = run_live_sync_cycle(session, location_id=location.id, client=client, now=now)
     session.commit()
@@ -386,9 +387,10 @@ def _test_live_sync_cycle_reduced_scope_and_idempotency(session: Session, result
     })
 
     from .employee_directory import import_snapshot, attach_link
+    from .validation_accounts import validation_account
     _, pending = import_snapshot(session, location_id=location.id, merchant_id=client.merchant_id, records=client.employees)
     for link_id in pending:
-        attach_link(session, link_id=link_id, create_new=True)
+        attach_link(session, link_id=link_id, create_new=True, account_id=validation_account(session).id)
     session.flush()
     summary1 = run_live_sync_cycle(session, location_id=location.id, client=client, now=now)
     session.commit()
