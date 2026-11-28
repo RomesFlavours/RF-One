@@ -217,10 +217,30 @@ class RegistryDepartmentsTest(unittest.TestCase):
         self.db.add_all([m.EmployeeSourceRole(employee_id=self.alice.id, source_role_id=r.id,
                          source_system_id=self.source.id, observed_at=now) for r in (r1, r2)])
         self.db.flush()
-        _drop_stale_source_roles(self.db, self.alice.id, self.source.id, {r2.id})
+        _drop_stale_source_roles(self.db, self.alice.id, self.source.id, {r2.id}, location_id=self.wp.id)
         self.db.flush()
         self.assertEqual([r.source_role_id for r in self.db.scalars(select(m.EmployeeSourceRole))], [r2.id])
 
+
+    def test_download_keeps_roles_of_the_other_restaurant(self):
+        """REGISTRY_ROLES_PER_RESTAURANT_001: one person at both restaurants keeps both Clover roles."""
+        from rfone_data_store.technical.connectors.clover.historical_backfill_detail import _drop_stale_source_roles
+        wp_role = m.SourceRole(location_id=self.wp.id, source_system_id=self.source.id, source_role_id="W1", name="Server")
+        md_role = m.SourceRole(location_id=self.md.id, source_system_id=self.source.id, source_role_id="M1", name="Server")
+        md_old = m.SourceRole(location_id=self.md.id, source_system_id=self.source.id, source_role_id="M0", name="Host")
+        self.db.add_all([wp_role, md_role, md_old]); self.db.flush()
+        now = datetime.now(timezone.utc)
+        self.db.add_all([m.EmployeeSourceRole(employee_id=self.alice.id, source_role_id=r.id,
+                         source_system_id=self.source.id, observed_at=now) for r in (wp_role, md_role, md_old)])
+        self.db.flush()
+        _drop_stale_source_roles(self.db, self.alice.id, self.source.id, {md_role.id}, location_id=self.md.id)
+        self.db.flush()
+        kept = sorted(r.source_role_id for r in self.db.scalars(select(m.EmployeeSourceRole)))
+        self.assertEqual(kept, sorted([wp_role.id, md_role.id]))      # MD's old role gone, WP's untouched
+        _drop_stale_source_roles(self.db, self.alice.id, self.source.id, {wp_role.id}, location_id=self.wp.id)
+        self.db.flush()
+        kept = sorted(r.source_role_id for r in self.db.scalars(select(m.EmployeeSourceRole)))
+        self.assertEqual(kept, sorted([wp_role.id, md_role.id]))      # WP download leaves MD's role alone
 
 if __name__ == "__main__":
     unittest.main()

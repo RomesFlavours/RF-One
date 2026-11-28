@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
 from rfone_data_store import models as m, employee_directory as directory
+from rfone_data_store.validation_accounts import validation_account
 from rfone_data_store.database import create_configured_engine, create_session_factory
 from rfone_data_store.projects import service as projects
 from rfone_data_store.bank_reconciliation import card_configuration as cards
@@ -67,7 +68,7 @@ class PersonFoundationTests(unittest.TestCase):
         assignment.valid_to = None
         self.db.flush()
         _, pending = self.sync([{"id": "MANUAL-PERSON", "name": person.display_name}])
-        directory.attach_link(self.db, link_id=pending[0], employee_id=person.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=pending[0], employee_id=person.id)
         from rfone_data_store.profile.bootstrap import bootstrap_restaurant_profile, MODE_PERSIST
         bootstrap_restaurant_profile(self.db, restaurant_id=restaurant.id, source_system_id=self.source.id,
             mode=MODE_PERSIST, sync_time=datetime.now(timezone.utc))
@@ -82,7 +83,7 @@ class PersonFoundationTests(unittest.TestCase):
         link = self.db.get(m.EmployeeCloverLink, pending[0])
         self.assertNotIn("pin", link.snapshot)
         person = self.person("Reference Name")
-        directory.attach_link(self.db, link_id=link.id, employee_id=person.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=link.id, employee_id=person.id)
         resolved, pending = self.sync([{"id": "A", "name": "POS Changed", "email": "source@example.test"}])
         self.assertEqual(resolved["A"], person.id)
         self.assertEqual((person.display_name, person.email), ("Reference Name", "reference@example.test"))
@@ -91,7 +92,7 @@ class PersonFoundationTests(unittest.TestCase):
         person = self.person("Pinco Pallino")
         _, pending = self.sync([{"id": "A", "name": "Pinco Pallino"}, {"id": "B", "name": "Pallino Pinco"}])
         for identity in pending:
-            directory.attach_link(self.db, link_id=identity, employee_id=person.id)
+            directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=identity, employee_id=person.id)
         links = list(self.db.scalars(select(m.EmployeeCloverLink)))
         self.assertIn("duplicate_accounts", directory.source_conflicts(links))
         self.sync([{"id": "A", "name": "Pinco Pallino"}])
@@ -110,7 +111,7 @@ class PersonFoundationTests(unittest.TestCase):
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Employee)), 0)
         link = self.db.scalar(select(m.EmployeeCloverLink))
         person = self.person()
-        directory.attach_link(self.db, link_id=link.id, employee_id=person.id)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=link.id, employee_id=person.id)
         self.assertEqual(directory.observe_historical_employee(self.db, **arguments).id, person.id)
 
     def test_removed_unconfirmed_source_record_leaves_current_queue_but_history_remains(self):

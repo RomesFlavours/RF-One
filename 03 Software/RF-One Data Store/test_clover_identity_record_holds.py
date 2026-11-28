@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 
 from rfone_data_store import models as m
 from rfone_data_store import employee_directory as directory
+from rfone_data_store.validation_accounts import validation_account
 from rfone_data_store.clover_correction_sync_validation import _CorrectionFakeCloverClient
 from rfone_data_store.database import create_configured_engine, create_session_factory
 from rfone_data_store.technical.connectors.clover import acquisition, identity_holds
@@ -153,7 +154,7 @@ class IdentityRecordHoldTest(unittest.TestCase):
 
     def test_confirmation_reattributes_idempotently_and_is_traced(self):
         self.cycle()
-        person = directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        person = directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=self.pending_link().id, create_new=True)
         self.db.commit()
         self.db.expire_all()
         self.assertEqual(self.order("O-NEW").employee_id, person.id)
@@ -194,7 +195,7 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertEqual(len(held), 1)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(m.Shift)), 1)
         self.assertIn("S-NEW", identity_holds.held_shifts(self.db, location_ids=[self.wp.id], external_ids={"U1"}))
-        person = directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        person = directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=self.pending_link().id, create_new=True)
         shift = self.db.scalar(select(m.Shift).filter_by(source_shift_id="S-NEW"))
         self.assertEqual((shift.employee_id, shift.location_id), (person.id, self.wp.id))
         self.assertFalse(identity_holds.held_shifts(self.db, location_ids=[self.wp.id], external_ids={"U1"}))
@@ -208,7 +209,7 @@ class IdentityRecordHoldTest(unittest.TestCase):
         self.assertIn(str(NEW_DAY), blocked[0])
         self.assertIn(blocked[0], calculation_run_service.finalization_blockers(self.db, self.run_for(NEW_DAY)))
         self.assertEqual(calculation_run_service.identity_hold_blockers(self.db, self.run_for(KNOWN_DAY)), [])
-        directory.attach_link(self.db, link_id=self.pending_link().id, create_new=True)
+        directory.attach_link(self.db, account_id=validation_account(self.db).id, link_id=self.pending_link().id, create_new=True)
         self.assertEqual(calculation_run_service.identity_hold_blockers(self.db, self.run_for(NEW_DAY)), [])
 
     def test_poller_attributes_confirmation_made_by_older_web_release(self):

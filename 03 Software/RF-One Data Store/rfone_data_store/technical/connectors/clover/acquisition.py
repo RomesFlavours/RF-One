@@ -1313,6 +1313,7 @@ def import_clover_period(
             historical_backfill_detail.ingest_employee_source_roles(
                 session, resolved_client, source_system_id=source_system_id,
                 employee_by_source_id=employee_by_source_id, catalog=catalog, retrieved_at=retrieved_at,
+                location_id=location_id,
             )
 
         order_ids_needed: set[str] = set()

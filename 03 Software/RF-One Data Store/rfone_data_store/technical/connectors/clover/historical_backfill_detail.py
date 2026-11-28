@@ -296,7 +296,7 @@ def fetch_full_catalog(
 
 def ingest_employee_source_roles(
     session: Session, client: _PaginatingClient, *, source_system_id: int,
-    employee_by_source_id: dict[str, int], catalog: CatalogMaps, retrieved_at: datetime,
+    employee_by_source_id: dict[str, int], catalog: CatalogMaps, retrieved_at: datetime, location_id: int,
 ) -> None:
     """Employee <-> named source Role membership, via `/employees?expand=
     role` — a CURRENT-STATE snapshot only (no historical log exists), so
@@ -328,17 +328,24 @@ def ingest_employee_source_roles(
                     )
                 )
         if complete:
-            _drop_stale_source_roles(session, employee_id, source_system_id, current)
+            _drop_stale_source_roles(session, employee_id, source_system_id, current, location_id=location_id)
     session.flush()
 
 
-def _drop_stale_source_roles(session: Session, employee_id: int, source_system_id: int, current: set[int]) -> None:
+def _drop_stale_source_roles(session: Session, employee_id: int, source_system_id: int, current: set[int],
+                             *, location_id: int) -> None:
     """REGISTRY_CLOVER_DEPARTMENTS_001: this table is Clover's CURRENT role only. A role Clover no longer
     reports for the employee is removed, so a role change never leaves two current roles. The history of
-    role changes stays in the Employee Directory events (CLOVER_ROLE_CHANGE)."""
-    for row in session.scalars(select(m.EmployeeSourceRole).where(
+    role changes stays in the Employee Directory events (CLOVER_ROLE_CHANGE).
+
+    REGISTRY_ROLES_PER_RESTAURANT_001: one person can work at several restaurants, each its own Clover
+    merchant under the same source system. A download only knows the roles of its own restaurant, so it
+    removes only roles of that restaurant (`source_roles.location_id`) and never the other one's."""
+    for row in session.scalars(select(m.EmployeeSourceRole).join(
+            m.SourceRole, m.SourceRole.id == m.EmployeeSourceRole.source_role_id).where(
             m.EmployeeSourceRole.employee_id == employee_id,
-            m.EmployeeSourceRole.source_system_id == source_system_id)):
+            m.EmployeeSourceRole.source_system_id == source_system_id,
+            m.SourceRole.location_id == location_id)):
         if row.source_role_id not in current:
             session.delete(row)
 

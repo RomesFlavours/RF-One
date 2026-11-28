@@ -322,6 +322,11 @@ def attach_link(db, *, link_id, employee_id=None, create_new=False, account_id=N
         raise ValueError("Clover link not found.")
     if link.employee_id is not None:
         raise ValueError("This link is already confirmed. Historical identities cannot be reassigned here.")
+    # REGISTRY_CONFIRM_NEEDS_PERSON_001: a Clover identity becomes a person only through a signed-in
+    # RF-One account. A script or job with no account can propose (the pending queue) but never confirm.
+    account = db.get(m.RFOneAccount, account_id) if account_id is not None else None
+    if account is None or (account.status or "").upper() != "ACTIVE":
+        raise ValueError("A Clover identity can be confirmed only by a signed-in RF-One account.")
     if create_new:
         location = db.get(m.Location, link.location_id)
         employee = m.Employee(location_id=link.location_id, display_name=(link.snapshot or {}).get("name"),
