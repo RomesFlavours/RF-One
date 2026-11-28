@@ -4,6 +4,13 @@ AWS is at t9a120261110. The local development chain interleaves the Student
 registry and temporarily scopes Menu Areas to locations before sharing them
 again. This explicit release branch applies only Kitchen's final additive
 schema. It preserves shared areas, published recipes and all identity data.
+
+Each step runs only when its object is still missing (or, for the old
+unique constraint, still present). On AWS the migration already ran on a
+database without these objects, so nothing changes there. On a brand-new
+database, k9a020261110 creates the Kitchen tables from the current Kitchen
+code, which already holds the column, the foreign key and the indexes; the
+checks keep this migration from adding them a second time.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -13,13 +20,29 @@ down_revision='t9a120261110'
 branch_labels=('kitchen_aws_20261112',)
 depends_on=None
 
+def _state():
+    inspector=sa.inspect(op.get_bind())
+    def columns(table):return {c['name'] for c in inspector.get_columns(table)}
+    def indexes(table):return {i['name'] for i in inspector.get_indexes(table)}
+    def uniques(table):return {u['name'] for u in inspector.get_unique_constraints(table)}
+    def fks(table):return {f['name'] for f in inspector.get_foreign_keys(table)}|{
+        f['referred_table'] for f in inspector.get_foreign_keys(table) if f.get('constrained_columns')==['location_id']}
+    return columns,indexes,uniques,fks
+
 def upgrade():
-    op.add_column('kitchen_recipes',sa.Column('elapsed_preparation_minutes',sa.Numeric(14,4),nullable=True))
-    op.add_column('kitchen_configuration_items',sa.Column('location_id',sa.Integer,nullable=True))
-    op.create_foreign_key('fk_kitchen_configuration_location','kitchen_configuration_items','locations',['location_id'],['id'])
-    op.drop_constraint('uq_kitchen_configuration_name','kitchen_configuration_items',type_='unique')
-    op.create_index('uq_kitchen_configuration_shared_name','kitchen_configuration_items',['section','normalized_name'],unique=True,postgresql_where=sa.text("section <> 'MENU_AREA'"))
-    op.create_index('uq_kitchen_menu_area_location_name','kitchen_configuration_items',['normalized_name'],unique=True,postgresql_where=sa.text("section = 'MENU_AREA'"))
+    columns,indexes,uniques,fks=_state()
+    if 'elapsed_preparation_minutes' not in columns('kitchen_recipes'):
+        op.add_column('kitchen_recipes',sa.Column('elapsed_preparation_minutes',sa.Numeric(14,4),nullable=True))
+    if 'location_id' not in columns('kitchen_configuration_items'):
+        op.add_column('kitchen_configuration_items',sa.Column('location_id',sa.Integer,nullable=True))
+    if not {'fk_kitchen_configuration_location','locations'}&fks('kitchen_configuration_items'):
+        op.create_foreign_key('fk_kitchen_configuration_location','kitchen_configuration_items','locations',['location_id'],['id'])
+    if 'uq_kitchen_configuration_name' in uniques('kitchen_configuration_items'):
+        op.drop_constraint('uq_kitchen_configuration_name','kitchen_configuration_items',type_='unique')
+    if 'uq_kitchen_configuration_shared_name' not in indexes('kitchen_configuration_items'):
+        op.create_index('uq_kitchen_configuration_shared_name','kitchen_configuration_items',['section','normalized_name'],unique=True,postgresql_where=sa.text("section <> 'MENU_AREA'"))
+    if 'uq_kitchen_menu_area_location_name' not in indexes('kitchen_configuration_items'):
+        op.create_index('uq_kitchen_menu_area_location_name','kitchen_configuration_items',['normalized_name'],unique=True,postgresql_where=sa.text("section = 'MENU_AREA'"))
     op.create_table('kitchen_menus',
         sa.Column('id',sa.Integer,primary_key=True),
         sa.Column('draft_key',sa.String(32),nullable=False,unique=True),
@@ -39,6 +62,7 @@ def upgrade():
         sa.Column('position',sa.Integer,nullable=False),
         sa.CheckConstraint('position > 0',name='ck_kitchen_menu_position'),
         sa.UniqueConstraint('menu_id','position',name='uq_kitchen_menu_position'))
+
 
 def downgrade():
     raise RuntimeError('Preserve published Kitchen data; roll back the service image only.')
