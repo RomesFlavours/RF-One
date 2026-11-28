@@ -145,6 +145,7 @@ def normalize_institution(value: str | None) -> str | None:
 
 CHASE = "CHASE"
 FIRST_CITIZENS = "FIRST_CITIZENS"
+MERCURY = "MERCURY"
 
 # Windows appends ` (1)`, ` (2)`, ... when the same file is downloaded
 # twice into the same folder. That suffix is a download artifact, never
@@ -237,6 +238,8 @@ class InstrumentResolution:
 def _institution_for_format(detected_format: str) -> str | None:
     if detected_format == parsers.FIRST_CITIZENS:
         return FIRST_CITIZENS
+    if detected_format == parsers.MERCURY:
+        return MERCURY
     if detected_format in (
         parsers.CHASE_BANK_ACCOUNT, parsers.CHASE_CREDIT_CARD_WITH_CARD,
         parsers.CHASE_CREDIT_CARD_NO_CARD,
@@ -248,7 +251,7 @@ def _institution_for_format(detected_format: str) -> str | None:
 def _instrument_type_for_format(detected_format: str) -> str | None:
     if detected_format in (parsers.CHASE_CREDIT_CARD_WITH_CARD, parsers.CHASE_CREDIT_CARD_NO_CARD):
         return "CREDIT_CARD"
-    if detected_format in (parsers.CHASE_BANK_ACCOUNT, parsers.FIRST_CITIZENS):
+    if detected_format in (parsers.CHASE_BANK_ACCOUNT, parsers.FIRST_CITIZENS, parsers.MERCURY):
         return "BANK_ACCOUNT"
     return None
 

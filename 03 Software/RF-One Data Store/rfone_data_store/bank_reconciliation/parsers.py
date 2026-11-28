@@ -28,6 +28,8 @@ CHASE_BANK_ACCOUNT = "CHASE_BANK_ACCOUNT"
 CHASE_CREDIT_CARD_WITH_CARD = "CHASE_CREDIT_CARD_WITH_CARD"
 CHASE_CREDIT_CARD_NO_CARD = "CHASE_CREDIT_CARD_NO_CARD"
 FIRST_CITIZENS = "FIRST_CITIZENS"
+# BANK_MERCURY_CSV_001: Mercury's "Export all" transactions CSV (bank account).
+MERCURY = "MERCURY"
 
 _CHASE_BANK_HEADERS = {"Details", "Posting Date", "Description", "Amount", "Type", "Balance", "Check or Slip #"}
 _CHASE_CARD_WITH_CARD_HEADERS = {
@@ -39,6 +41,23 @@ _CHASE_CARD_NO_CARD_HEADERS = {
 _FIRST_CITIZENS_HEADERS = {
     "Account Number", "Post Date", "Check", "Description", "Debit", "Credit", "Status", "Balance",
 }
+
+
+# Mercury lets the user pick export columns and adds new ones over time, so a
+# Mercury file is recognized by the columns it always carries, not by an exact
+# match. These seven appear together in no other supported layout.
+_MERCURY_REQUIRED_HEADERS = {
+    "Date (UTC)", "Description", "Amount", "Status", "Source Account", "Note", "Tracking ID",
+}
+# Mercury statuses for money that never moved: the row is kept and flagged,
+# never counted as a normal transaction.
+_MERCURY_NOT_COMPLETED = {"FAILED", "CANCELLED", "CANCELED", "REVERSED", "BLOCKED"}
+# Not settled yet: it may still fail, so it is flagged for review, never taken as final.
+_MERCURY_NOT_SETTLED = {"PENDING"}
+# Mercury exports dates and times in UTC. The restaurants keep Florida time, so the
+# posting date is the Timestamp converted to America/New_York (a 9 pm payment on the
+# 31st stays in that month). Falls back to Date (UTC) when Timestamp is missing.
+_MERCURY_LOCAL_TZ = "America/New_York"
 
 
 class UnrecognizedFormatError(ValueError):
@@ -72,9 +91,11 @@ def detect_format(header: list[str]) -> str:
         return CHASE_CREDIT_CARD_NO_CARD
     if header_set == _FIRST_CITIZENS_HEADERS:
         return FIRST_CITIZENS
+    if _MERCURY_REQUIRED_HEADERS <= header_set:
+        return MERCURY
     raise UnrecognizedFormatError(
         f"Header {sorted(header_set)!r} does not match any known Bank Reconciliation source "
-        "layout (Chase bank account, Chase credit card with/without Card, First Citizens)."
+        "layout (Chase bank account, Chase credit card with/without Card, First Citizens, Mercury)."
     )
 
 
@@ -111,7 +132,7 @@ def _parse_date(value: str | None) -> tuple[date | None, str | None]:
     if value is None or not value.strip():
         return None, "missing date"
     text = value.strip()
-    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d"):
+    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d", "%m-%d-%Y"):  # last: Mercury's 09-22-2026
         try:
             return datetime.strptime(text, fmt).date(), None
         except ValueError:
@@ -274,6 +295,70 @@ def _parse_first_citizens_row(row_number: int, fields: dict[str, str]) -> Parsed
     )
 
 
+def _mercury_local_date(fields: dict[str, str]) -> tuple[date | None, str | None]:
+    stamp = _get(fields, "Timestamp")
+    if stamp:
+        from zoneinfo import ZoneInfo
+        for fmt in ("%m-%d-%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                moment = datetime.strptime(stamp, fmt).replace(tzinfo=ZoneInfo("UTC"))
+            except ValueError:
+                continue
+            return moment.astimezone(ZoneInfo(_MERCURY_LOCAL_TZ)).date(), None
+    return _parse_date(_get(fields, "Date (UTC)"))
+
+
+def _parse_mercury_row(row_number: int, fields: dict[str, str]) -> ParsedBankRow:
+    """One row of a Mercury transactions export.
+
+    - Amount is already signed the RF-One way (money out negative).
+    - `Description` is the counterparty Mercury shows; `Bank Description` is
+      the raw bank text and stays in raw_fields.
+    - Purpose: `Note` (the internal note typed when paying) first, else
+      `Reference` (the memo sent with the payment). A blank cell is not purpose.
+    - Identifier: `Tracking ID`, else `Check Number`.
+    - `Source Account` names the Mercury account on every row, so its last
+      four digits resolve the instrument per row.
+    - Failed / cancelled payments are kept and flagged ANOMALOUS: money that
+      never moved must not look like a normal transaction. Pending ones are
+      flagged too, since they may still fail.
+    - Posting date is Florida time (see _MERCURY_LOCAL_TZ), not UTC."""
+    anomalies: list[str] = []
+    posting_date, date_err = _mercury_local_date(fields)
+    amount_minor, amount_err = to_minor_units(_get(fields, "Amount"))
+    description = _get(fields, "Description") or _get(fields, "Bank Description")
+    if date_err:
+        anomalies.append(date_err)
+    if amount_err:
+        anomalies.append(amount_err)
+    if not description:
+        anomalies.append("missing description")
+    source_memo, source_memo_field = _purpose_field(fields, "Note")
+    if source_memo is None:
+        source_memo, source_memo_field = _purpose_field(fields, "Reference")
+    status_text = _get(fields, "Status")
+    if (status_text or "").upper() in _MERCURY_NOT_COMPLETED:
+        reason = _get(fields, "Failure Reason")
+        anomalies.append(f"Mercury status {status_text}: the money did not move"
+                         + (f" ({reason})" if reason else ""))
+    elif (status_text or "").upper() in _MERCURY_NOT_SETTLED:
+        anomalies.append(f"Mercury status {status_text}: not settled yet, it may still fail. "
+                         "Import a newer export once it shows Sent.")
+    if date_err or amount_err or not description:
+        status = "UNREADABLE"
+    else:
+        status = "ANOMALOUS" if anomalies else "PARSED"
+    return ParsedBankRow(
+        row_number=row_number, raw_fields=fields, parse_status=status, anomalies=anomalies,
+        posting_date=posting_date, transaction_date=None, description=description,
+        source_memo=source_memo, source_memo_field=source_memo_field,
+        amount_minor=amount_minor, bank_transaction_type=None,
+        reference=_get(fields, "Tracking ID") or _get(fields, "Check Number") or None,
+        balance_minor=None, pending_status=status_text,
+        account_hint=_get(fields, "Source Account") or None,
+    )
+
+
 def parse_row_fields(detected_format: str, row_number: int, fields: dict[str, str]) -> ParsedBankRow:
     """Re-parse a single row's already-preserved `raw_fields` (spec §4.1)
     into a `ParsedBankRow`, without needing the original CSV bytes again —
@@ -289,6 +374,8 @@ def parse_row_fields(detected_format: str, row_number: int, fields: dict[str, st
         return _parse_chase_card_row(row_number, fields, has_card=detected_format == CHASE_CREDIT_CARD_WITH_CARD)
     if detected_format == FIRST_CITIZENS:
         return _parse_first_citizens_row(row_number, fields)
+    if detected_format == MERCURY:
+        return _parse_mercury_row(row_number, fields)
     raise UnrecognizedFormatError(f"Unknown detected_format {detected_format!r}")
 
 
@@ -328,6 +415,8 @@ def parse_csv_bytes(data: bytes) -> ParsedFile:
             parsed = _parse_chase_bank_row(line_number, fields, extra_value)
         elif detected_format in (CHASE_CREDIT_CARD_WITH_CARD, CHASE_CREDIT_CARD_NO_CARD):
             parsed = _parse_chase_card_row(line_number, fields, has_card)
+        elif detected_format == MERCURY:
+            parsed = _parse_mercury_row(line_number, fields)
         else:
             parsed = _parse_first_citizens_row(line_number, fields)
         rows.append(parsed)

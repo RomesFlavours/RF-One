@@ -11237,7 +11237,7 @@ class BankImportBatch(Base):
             "detected_format IN ("
             "'CHASE_BANK_ACCOUNT', 'CHASE_CREDIT_CARD_WITH_CARD', "
             "'CHASE_CREDIT_CARD_NO_CARD', 'FIRST_CITIZENS', "
-            "'AMEX_QBO', 'AMEX_XLSX', 'AMEX_CSV')",
+            "'AMEX_QBO', 'AMEX_XLSX', 'AMEX_CSV', 'MERCURY')",
             name="ck_bank_import_batch_detected_format",
         ),
         CheckConstraint(

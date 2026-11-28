@@ -67,6 +67,7 @@ _FORMAT_TYPE = {
     parsers.CHASE_CREDIT_CARD_WITH_CARD: ("Chase", "CREDIT_CARD"),
     parsers.CHASE_CREDIT_CARD_NO_CARD: ("Chase", "CREDIT_CARD"),
     parsers.FIRST_CITIZENS: ("First Citizens", "BANK_ACCOUNT"),
+    parsers.MERCURY: ("Mercury", "BANK_ACCOUNT"),
 }
 _TYPE_LABEL = {"BANK_ACCOUNT": "bank account", "CREDIT_CARD": "credit card"}
 _COPY_SUFFIX = re.compile(r"\s*\(\d+\)\s*$")
@@ -91,7 +92,7 @@ class FileIdentity:
     detected_format: str | None = None
     institution: str | None = None
     instrument_type: str | None = None
-    account_digits: str | None = None   # from the FILE NAME only
+    account_digits: str | None = None   # from the FILE NAME (Mercury: from its Source Account column)
     note: str = ""
 
 
@@ -126,12 +127,20 @@ def identify_file(file_name: str, content: bytes) -> FileIdentity:
             "PayPal activity export: PayPal movements (and item details when present). Its importer is "
             "not available yet."))
     try:
-        detected = parsers.parse_csv_bytes(content).detected_format
+        parsed = parsers.parse_csv_bytes(content)
     except parsers.UnrecognizedFormatError as exc:
         return FileIdentity(file_name, KIND_UNRECOGNIZED, note=str(exc))
+    detected = parsed.detected_format
     institution, instrument_type = _FORMAT_TYPE.get(detected, (None, None))
+    digits = account_digits_from_name(file_name)
+    if detected == parsers.MERCURY:
+        # A Mercury file name is "<company>-transactions-to-2026-nov-20": its digits are a date,
+        # never an account. The account is in every row (Source Account "... xx6667").
+        found = {bank_service.extract_last_four(r.account_hint) for r in parsed.rows if r.account_hint}
+        found.discard(None)
+        digits = next(iter(found)) if len(found) == 1 else None
     return FileIdentity(file_name, KIND_BANK, detected_format=detected, institution=institution,
-                        instrument_type=instrument_type, account_digits=account_digits_from_name(file_name))
+                        instrument_type=instrument_type, account_digits=digits)
 
 
 def matching_sources(session: Session, identity: FileIdentity) -> list["m.PaymentInstrument"]:
